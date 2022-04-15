@@ -41,6 +41,25 @@ enum ActivationMode {
 Status GetActivationModeFromString(const string& str_value,
                                    ActivationMode* value);
 
+inline absl::string_view ToString(ActivationMode mode) {
+  switch (mode) {
+    case NONE:
+      return "NONE";
+    case SIGMOID:
+      return "SIGMOID";
+    case RELU:
+      return "RELU";
+    case RELU6:
+      return "RELU6";
+    case RELUX:
+      return "RELUX";
+    case TANH:
+      return "TANH";
+    case BANDPASS:
+      return "BANDPASS";
+  }
+}
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_ACTIVATION_MODE_H_

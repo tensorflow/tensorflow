@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 TensorSpec::TensorSpec()
-    : shape_(std::initializer_list<int64>()), dtype_(DT_FLOAT) {}
+    : shape_(std::initializer_list<int64_t>()), dtype_(DT_FLOAT) {}
 
 TensorSpec::TensorSpec(PartialTensorShape shape, DataType dtype)
     : shape_(std::move(shape)), dtype_(dtype) {}

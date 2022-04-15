@@ -19,6 +19,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../" && pwd)"
 TMP_DIR="tensorflow/lite/ios/tmp"
+OUT_FILES=()
 
 function print_usage {
   echo "Usage:"
@@ -55,9 +56,21 @@ function generate_list_field {
   printf '%s' "${message[@]}"
 }
 
+# get_output_file_path takes one bazel target label as an argument, and prints
+# the path of the first output file of the specified target.
+function get_output_file_path {
+  local starlark_file="${TMP_DIR}/print_output_file.starlark"
+  cat > "${starlark_file}" << EOF
+def format(target):
+  return target.files.to_list()[0].path
+EOF
+  bazel cquery --config=ios $1 \
+    --output=starlark --starlark:file="${starlark_file}" 2> /dev/null
+}
+
 function print_output {
   echo "Output can be found here:"
-  for i in "$@"
+  for i in "${OUT_FILES[@]}"
   do
     # ls command returns failure if the file does not exist.
     ls -1a ${ROOT_DIR}/$i
@@ -94,11 +107,11 @@ function generate_tflite_framework {
   printf '%s\n' "${message[@]}" >> BUILD
 
   # Build the framework package.
+  local target="//${TMP_DIR}:TensorFlowLiteC_framework"
   popd > /dev/null
-  bazel build -c opt --config=ios --ios_multi_cpus=${TARGET_ARCHS}  \
-    //${TMP_DIR}:TensorFlowLiteC_framework
+  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" "${target}"
 
-  OUT_FILES="${OUT_FILES} bazel-bin/${TMP_DIR}/TensorFlowLiteC_framework.zip"
+  OUT_FILES+=($(get_output_file_path "${target}"))
 }
 
 function generate_flex_framework {
@@ -124,10 +137,10 @@ function generate_flex_framework {
   popd
 
   # Build the framework.
-  bazel build -c opt --config=ios --ios_multi_cpus=${TARGET_ARCHS} \
-    //${TMP_DIR}:TensorFlowLiteSelectTfOps_framework
+  local target="//${TMP_DIR}:TensorFlowLiteSelectTfOps_framework"
+  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" "${target}"
 
-  OUT_FILES="${OUT_FILES} bazel-bin/${TMP_DIR}/TensorFlowLiteSelectTfOps_framework.zip"
+  OUT_FILES+=($(get_output_file_path "${target}"))
 }
 
 # Check command line flags.
@@ -155,12 +168,6 @@ done
 
 cd $ROOT_DIR
 
-# Bazel v3.4 is required to build tensorflow python.
-if ! grep -q "3.4.0" ".bazelversion"; then
-  mv .bazelversion .bazelversion_old
-  echo "3.4.0" > .bazelversion
-fi
-
 # Check if users ran configure with iOS enabled.
 if [ ! -f "$ROOT_DIR/TensorFlowLiteObjC.podspec" ]; then
   echo "ERROR: Please run ./configure with iOS config."
@@ -187,7 +194,7 @@ done
 # Build the custom framework.
 generate_tflite_framework
 if [ -z ${FLAG_MODELS} ]; then
-  print_output ${OUT_FILES}
+  print_output
   exit 0
 fi
 
@@ -198,10 +205,5 @@ if [[ `cat ${TMP_DIR}/ops_list.txt` != "[]" ]]; then
   generate_flex_framework
 fi
 
-# List the output files.
-if [ ! -f ".bazelversion_old" ]; then
-  rm .bazelversion
-  mv -f .bazelversion_old .bazelversion
-fi
 rm -rf ${TMP_DIR}
-print_output ${OUT_FILES}
+print_output

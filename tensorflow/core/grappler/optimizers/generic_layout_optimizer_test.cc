@@ -515,13 +515,13 @@ TEST_F(GenericLayoutOptimizerTest, DoNotPruneNonAddedCancellableTransposes) {
     auto input = ops::RandomUniform(scope.WithOpName("input"),
                                     DIMS(kBatchSize, kHeight, kWidth, kDepthIn),
                                     DT_FLOAT);
-    // Permuation for source to destination data format.
+    // Permutation for source to destination data format.
     // GPU: NHWC -> NCHW: {0, 3, 1, 2}
     // CPU: NCHW -> NHWC: {0, 2, 3, 1}
     auto input_in_transpose =
         ops::Transpose(scope.WithOpName("input_in_transpose"), input,
                        ops::Const(scope, PERMUTATION_SRC_TO_DST, {4}));
-    // Permuation for destination to source data format.
+    // Permutation for destination to source data format.
     // GPU: NCHW -> NHWC: {0, 2, 3, 1}
     // CPU: NHWC -> NCHW: {0, 3, 1, 2}
     auto input_out_transpose = ops::Transpose(
@@ -688,6 +688,7 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   item.graph = test::function::GDef({NDef(
       "x", "_Arg", {},
       {{"T", DT_FLOAT}, {"index", 0}, {"_output_shapes", output_shapes}})});
+  item.feed.emplace_back("x", Tensor(DT_FLOAT));
 
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -699,6 +700,8 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   auto* arg = graph_view.GetNode("x");
   ASSERT_NE(arg, nullptr);
   EXPECT_TRUE(arg->HasAttr("_output_shapes"));
+  EXPECT_EQ(arg->GetAttr("_output_shapes")->DebugString(),
+            output_shapes.DebugString());
 }
 
 // TODO(yanzha): Add more complex Graph for test.

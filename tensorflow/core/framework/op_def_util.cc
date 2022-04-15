@@ -431,6 +431,9 @@ string SummarizeOpDef(const OpDef& op_def) {
   if (op_def.allows_uninitialized_input()) {
     strings::StrAppend(&ret, "; allows_uninitialized_input=true");
   }
+  if (op_def.is_distributed_communication()) {
+    strings::StrAppend(&ret, "; is_distributed_communication=true");
+  }
   strings::StrAppend(&ret, ">");
   return ret;
 }
@@ -818,9 +821,10 @@ bool RepeatedAttrDefEqual(
     const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2) {
   std::unordered_map<string, const OpDef::AttrDef*> a1_set;
   for (const OpDef::AttrDef& def : a1) {
-    DCHECK(a1_set.find(def.name()) == a1_set.end())
-        << "AttrDef names must be unique, but '" << def.name()
-        << "' appears more than once";
+    if (a1_set.find(def.name()) != a1_set.end()) {
+      LOG(ERROR) << "AttrDef names must be unique, but '" << def.name()
+                 << "' appears more than once";
+    }
     a1_set[def.name()] = &def;
   }
   for (const OpDef::AttrDef& def : a2) {

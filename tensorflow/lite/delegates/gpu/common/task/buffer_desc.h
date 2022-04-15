@@ -48,14 +48,17 @@ struct BufferDescriptor : public GPUObjectDescriptor {
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
+  GPUResources GetGPUResources(const GpuInfo& gpu_info) const override;
+  absl::Status PerformReadSelector(const GpuInfo& gpu_info,
+                                   const std::vector<std::string>& args,
                                    std::string* result) const;
   absl::Status PerformGetPtrSelector(
       const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
 
   void Release() override;
+
+  uint64_t GetSizeInBytes() const override { return data.size(); };
 };
 
 }  // namespace gpu

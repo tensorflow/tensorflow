@@ -14,10 +14,6 @@
 # ==============================================================================
 """CTC (Connectionist Temporal Classification) Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import uuid
 
 from tensorflow.python.eager import context
@@ -211,13 +207,21 @@ def _ctc_loss_impl(labels,
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
   if not isinstance(labels, sparse_tensor.SparseTensor):
-    raise TypeError("Expected labels (first argument) to be a SparseTensor")
+    raise TypeError("Expected argument `labels` to be a SparseTensor. "
+                    f"Received labels={labels} of type: "
+                    f"{type(labels).__name__}")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
   inputs = deprecation.deprecated_argument_lookup("logits", logits, "inputs",
                                                   inputs)
+
+  inputs = ops.convert_to_tensor(inputs, name="logits")
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
+
+  orig_dtype = inputs.dtype
+  if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+    inputs = math_ops.cast(inputs, dtypes.float32)
 
   # gen_ctc_ops.ctc_loss_v2 differs from gen_ctc_ops.ctc_loss. v2 assumes the
   # blank index to be 0, but v1 views it as the last index.
@@ -234,6 +238,9 @@ def _ctc_loss_impl(labels,
       preprocess_collapse_repeated=preprocess_collapse_repeated,
       ctc_merge_repeated=ctc_merge_repeated,
       ignore_longer_outputs_than_inputs=ignore_longer_outputs_than_inputs)
+
+  if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+    loss = math_ops.cast(loss, orig_dtype)
 
   return loss
 
@@ -287,12 +294,37 @@ def _CTCLossV2Grad(op, grad_loss, _):
 
 @tf_export("nn.ctc_greedy_decoder")
 @dispatch.add_dispatch_support
-def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
+def ctc_greedy_decoder(inputs,
+                       sequence_length,
+                       merge_repeated=True,
+                       blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
-  Note: Regardless of the value of merge_repeated, if the maximum index of a
-  given time and batch corresponds to the blank index `(num_classes - 1)`, no
-  new element is emitted.
+  Given a tensor as `inputs`, the `blank_index` parameter defines the class
+  index of the blank symbol.
+
+  For example:
+
+  If `blank_index` is equal to 1:
+
+  >>> inf = float("inf")
+  >>> logits = tf.constant([[[   0., -inf, -inf],
+  ...                        [ -2.3, -inf, -0.1]],
+  ...                       [[ -inf, -0.5, -inf],
+  ...                        [ -inf, -inf, -0.1]],
+  ...                       [[ -inf, -inf, -inf],
+  ...                        [ -0.1, -inf, -2.3]]])
+  >>> seq_lens = tf.constant([2, 3])
+  >>> outputs = tf.nn.ctc_greedy_decoder(
+  ...     logits,
+  ...     seq_lens,
+  ...     blank_index=1)
+
+  Notes:
+
+  - Unlike `ctc_beam_search_decoder`, `ctc_greedy_decoder` considers blanks
+    as regular elements when computing the probability of a sequence.
+  - Default `blank_index` is `(num_classes - 1)`, unless overriden.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,
@@ -308,6 +340,10 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     sequence_length: 1-D `int32` vector containing sequence lengths, having size
       `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
+    blank_index: (Optional). Default: `num_classes - 1`. Define the class index
+      to use for the blank label. Negative values will start from num_classes,
+      ie, -1 will reproduce the ctc_greedy_decoder behavior of using
+      num_classes - 1 for the blank symbol, which corresponds to the default.
 
   Returns:
     A tuple `(decoded, neg_sum_logits)` where
@@ -328,8 +364,12 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
+
   outputs = gen_ctc_ops.ctc_greedy_decoder(
-      inputs, sequence_length, merge_repeated=merge_repeated)
+      inputs,
+      sequence_length,
+      merge_repeated=merge_repeated,
+      blank_index=blank_index)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val,
                                       decoded_shape)], log_probabilities)
@@ -344,9 +384,12 @@ def ctc_beam_search_decoder(inputs,
                             merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
 
-  **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  **Note** Although in general greedy search is a special case of beam-search
+  with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
+  probability of a sequence:
+    - `ctc_beam_search_decoder` treats blanks as sequence termination
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
@@ -406,9 +449,12 @@ def ctc_beam_search_decoder_v2(inputs,
                                top_paths=1):
   """Performs beam search decoding on the logits given in input.
 
-  **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  **Note** Although in general greedy search is a special case of beam-search
+  with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
+  probability of a sequence:
+    - `ctc_beam_search_decoder` treats blanks as sequence termination
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   Args:
     inputs: 3-D `float` `Tensor`, size `[max_time, batch_size, num_classes]`.
@@ -793,7 +839,8 @@ def ctc_loss_v2(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
@@ -888,10 +935,13 @@ def ctc_loss_v3(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
+
+    logits = ops.convert_to_tensor(logits, name="logits")
 
     params = {
         "labels": labels,
@@ -1008,6 +1058,10 @@ def ctc_loss_dense(labels,
     label_length = ops.convert_to_tensor(label_length, name="label_length")
     logit_length = ops.convert_to_tensor(logit_length, name="logit_length")
 
+    orig_dtype = logits.dtype
+    if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+      logits = math_ops.cast(logits, dtypes.float32)
+
     if not logits_time_major:
       logits = array_ops.transpose(logits, perm=[1, 0, 2])
 
@@ -1059,7 +1113,10 @@ def ctc_loss_dense(labels,
 
       return result[0], grad
 
-    return compute_ctc_loss(*args)
+    loss = compute_ctc_loss(*args)
+    if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+      loss = math_ops.cast(loss, orig_dtype)
+    return loss
 
 
 @tf_export("nn.collapse_repeated")
@@ -1250,8 +1307,9 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     perm = [0, 2, 1]
   else:
     raise ValueError(
-        "state_trans_log_probs rank must be known and == 2 or 3, is: %s" %
-        state_trans_log_probs.shape.ndims)
+        "Rank of argument `state_trans_log_probs` must be known and equal to "
+        f"2 or 3. Received state_trans_log_probs={state_trans_log_probs} of "
+        f"rank {state_trans_log_probs.shape.ndims}")
 
   bwd_state_trans_log_probs = array_ops.transpose(state_trans_log_probs, perm)
   batch_size = _get_dim(observed_log_probs, 1)

@@ -16,16 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_FFT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_FFT_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 extern "C" {
 
 extern void __xla_cpu_runtime_EigenSingleThreadedFft(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, void* out,
-    void* operand, tensorflow::int32 fft_type,
-    tensorflow::int32 double_precision, tensorflow::int32 fft_rank,
-    tensorflow::int64 input_batch, tensorflow::int64 fft_length0,
-    tensorflow::int64 fft_length1, tensorflow::int64 fft_length2);
+    void* operand, int32_t fft_type, int32_t double_precision, int32_t fft_rank,
+    int64_t input_batch, int64_t fft_length0, int64_t fft_length1,
+    int64_t fft_length2);
 
 }  // extern "C"
 

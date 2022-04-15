@@ -24,11 +24,91 @@ limitations under the License.
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
-#define TENSORFLOW_INCLUDED_FROM_SAMPLER_H  // prevent accidental use of
-                                            // mobile_sampler.h
-#include "tensorflow/core/lib/monitoring/mobile_sampler.h"
-#undef TENSORFLOW_INCLUDED_FROM_SAMPLER_H
-#else
+
+#include <memory>
+
+#include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
+
+namespace tensorflow {
+namespace monitoring {
+
+// SamplerCell which has a null implementation.
+class SamplerCell {
+ public:
+  SamplerCell() {}
+  ~SamplerCell() {}
+
+  void Add(double value) {}
+  HistogramProto value() const { return HistogramProto(); }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(SamplerCell);
+};
+
+// Buckets which has a null implementation.
+class Buckets {
+ public:
+  Buckets() = default;
+  ~Buckets() = default;
+
+  static std::unique_ptr<Buckets> Explicit(
+      std::initializer_list<double> bucket_limits) {
+    return std::unique_ptr<Buckets>(new Buckets());
+  }
+
+  static std::unique_ptr<Buckets> Exponential(double scale,
+                                              double growth_factor,
+                                              int bucket_count) {
+    return std::unique_ptr<Buckets>(new Buckets());
+  }
+
+  const std::vector<double>& explicit_bounds() const {
+    return explicit_bounds_;
+  }
+
+ private:
+  std::vector<double> explicit_bounds_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(Buckets);
+};
+
+// Sampler which has a null implementation.
+template <int NumLabels>
+class Sampler {
+ public:
+  ~Sampler() {}
+
+  template <typename... MetricDefArgs>
+  static Sampler* New(const MetricDef<MetricKind::kCumulative, HistogramProto,
+                                      NumLabels>& metric_def,
+                      std::unique_ptr<Buckets> buckets) {
+    return new Sampler<NumLabels>(std::move(buckets));
+  }
+
+  template <typename... Labels>
+  SamplerCell* GetCell(const Labels&... labels) {
+    return &default_sampler_cell_;
+  }
+
+  Status GetStatus() { return Status::OK(); }
+
+ private:
+  Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}
+
+  SamplerCell default_sampler_cell_;
+  std::unique_ptr<Buckets> buckets_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
+};
+
+}  // namespace monitoring
+}  // namespace tensorflow
+
+#else  // IS_MOBILE_PLATFORM
 
 #include <float.h>
 

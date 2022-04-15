@@ -85,12 +85,14 @@ py_test(
 # copybara:uncomment_end
 
 exports_files([
+    "conversion_metadata.fbs",
     "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",
     "schema_v3.fbs",
     "schema_v3a.fbs",
+    "schema_v3b.fbs",
 ])
 
 flatbuffer_cc_library(
@@ -133,7 +135,7 @@ cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3a.fbs",
+        "schema_v3b.fbs",
     ],
     tags = [
         "no_oss",
@@ -142,7 +144,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:flatc_library",
     ],
 )

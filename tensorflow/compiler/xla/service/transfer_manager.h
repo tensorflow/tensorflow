@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -27,10 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
@@ -232,7 +230,7 @@ class TransferManager {
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
-  virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
+  virtual int64_t GetByteSizeRequirement(const Shape& shape) const = 0;
 
   // Chooses a compact layout for 'shape', ignoring any existing layout on
   // 'shape'. What "reasonable" means is left up to the backend. The
@@ -242,6 +240,11 @@ class TransferManager {
   // Fails if 'shape' cannot be represented by the device.
   virtual StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
+
+  // For the given shape, chooses a layout for infeed. The returned shape
+  // has the same dimensions as the original shape, and only the layout is
+  // changed.
+  virtual Shape ChooseGoodInfeedLayout(const Shape& shape) const;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
 
@@ -312,19 +315,19 @@ class TransferManager {
   // size is the size to transfer to destination in bytes.
   virtual Status TransferBufferFromDevice(se::Stream* stream,
                                           const se::DeviceMemoryBase& source,
-                                          int64 size, void* destination);
+                                          int64_t size, void* destination);
 
   // Transfer a memory block of the given size from 'source' buffer to the given
   // destination of the device.
   //
   // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64 size,
+  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
                                         const void* source,
                                         se::DeviceMemoryBase* destination);
 
  private:
   // The mutex that guards the platform-to-transfer manager map.
-  static tensorflow::mutex platform_transfer_manager_mutex_;
+  static absl::Mutex platform_transfer_manager_mutex_;
 
   // State kept for each kind of TransferManager.  Registration functions
   // set up creation_function, and then we use that to lazily create
@@ -335,7 +338,8 @@ class TransferManager {
   };
 
   // Map from platform kind to transfer manager singleton.
-  static std::map<se::Platform::Id, State>* GetPlatformTransferManagers();
+  static absl::flat_hash_map<se::Platform::Id, State>*
+  GetPlatformTransferManagers();
 };
 
 }  // namespace xla

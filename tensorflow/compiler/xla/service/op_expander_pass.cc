@@ -28,9 +28,12 @@ namespace xla {
 StatusOr<bool> OpExpanderPass::Run(HloModule* module) {
   std::vector<HloInstruction*> matching_instructions;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    absl::c_copy_if(
-        computation->instructions(), std::back_inserter(matching_instructions),
-        [&](HloInstruction* inst) { return InstructionMatchesPattern(inst); });
+    absl::c_copy_if(computation->instructions(),
+                    std::back_inserter(matching_instructions),
+                    [&](HloInstruction* inst) {
+                      return InstructionMatchesPattern(inst) &&
+                             (!extra_filter_ || extra_filter_(inst));
+                    });
   }
 
   for (HloInstruction* inst : matching_instructions) {

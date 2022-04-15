@@ -4,9 +4,8 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
@@ -96,7 +95,34 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
+)
+
+MATH_DEPS = [
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:math_grad",
+    "//tensorflow/core/framework:bounds_check",
+    "//third_party/eigen3",
+]
+
+cc_library(
+    name = "matmul_util",
+    srcs = ["matmul_util.cc"],
+    hdrs = ["matmul_util.h"],
+    deps = [
+        ":stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/kernels:gpu_utils",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_static(
+        ["//tensorflow/core/platform:tensor_float_32_utils"],
+        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
+    ) + MATH_DEPS,
 )
 
 cc_library(
@@ -143,6 +169,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -208,6 +235,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -309,6 +337,7 @@ cc_library(
     hdrs = ["device_options.h"],
     deps = [
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -355,6 +384,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -439,16 +469,35 @@ cc_library(
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+    ] + if_static(["@com_google_protobuf//:protobuf"]),
+)
+
+cc_library(
+    name = "lazy_op_runner",
+    hdrs = ["lazy_op_runner.h"],
+    deps = [
+        ":dnn",
+        ":stream_header",
     ],
 )
+
+# This is terrible, but we need to defeat the dependency check to depend on the
+# header-only lazy_op_runner template in fused_conv2d_bias_activation (being
+# header-only means it can't cause linkage issues), so export the actual header
+# file itself and add a target for it in core/kernels.  Unsophisticated checks
+# beget dumb circumventions :(
+#
+# TODO(b/202546057) get rid of this once fused_conv is moved out of contrib.
+exports_files(["lazy_op_runner.h"])
 
 cc_library(
     name = "stream_executor_internal",
@@ -500,11 +549,12 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
 # It implements :stream_executor_pimpl_header
-cc_library(
+tf_cuda_library(
     name = "stream_executor_pimpl",
     srcs = [
         "stream.cc",
@@ -530,6 +580,7 @@ cc_library(
         ":timer",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//third_party/eigen3",

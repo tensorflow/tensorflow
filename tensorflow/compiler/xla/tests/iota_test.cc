@@ -27,7 +27,7 @@ namespace xla {
 namespace {
 
 XLA_TEST_F(HloTestBase, IotaReshapeR1) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
     i = s32[24] iota(), iota_dimension=0
@@ -38,7 +38,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeR1) {
 }
 
 XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
     i = s32[5,5,111,42] iota(), iota_dimension=0
@@ -49,7 +49,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
 }
 
 template <typename T>
-std::vector<T> GetR1Expected(const int64 num_elements) {
+std::vector<T> GetR1Expected(const int64_t num_elements) {
   std::vector<T> result(num_elements);
   std::iota(result.begin(), result.end(), 0);
   return result;
@@ -62,19 +62,19 @@ class IotaR1Test
 XLA_TEST_P(IotaR1Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
-  const int64 num_elements = std::get<1>(spec);
+  const int64_t num_elements = std::get<1>(spec);
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   Iota(&builder, element_type, num_elements);
   if (element_type == F32) {
     ComputeAndCompareR1<float>(&builder, GetR1Expected<float>(num_elements), {},
                                ErrorSpec{0.0001});
   } else if (element_type == U32) {
-    ComputeAndCompareR1<uint32>(&builder, GetR1Expected<uint32>(num_elements),
-                                {});
+    ComputeAndCompareR1<uint32_t>(&builder,
+                                  GetR1Expected<uint32_t>(num_elements), {});
   } else {
     CHECK_EQ(element_type, S32);
-    ComputeAndCompareR1<int32>(&builder, GetR1Expected<int32>(num_elements),
-                               {});
+    ComputeAndCompareR1<int32_t>(&builder, GetR1Expected<int32_t>(num_elements),
+                                 {});
   }
 }
 
@@ -91,15 +91,15 @@ class IotaR2Test : public ClientLibraryTestBase,
 XLA_TEST_P(IotaR2Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
-  const int64 num_elements = std::get<1>(spec);
-  const int64 iota_dim = std::get<2>(spec);
+  const int64_t num_elements = std::get<1>(spec);
+  const int64_t iota_dim = std::get<2>(spec);
 #ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
   if (element_type == BF16) {
     return;
   }
 #endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
-  std::vector<int64> dimensions = {42};
+  std::vector<int64_t> dimensions = {42};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
   Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
@@ -123,15 +123,15 @@ class IotaR3Test : public ClientLibraryTestBase,
 XLA_TEST_P(IotaR3Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
-  const int64 num_elements = std::get<1>(spec);
-  const int64 iota_dim = std::get<2>(spec);
+  const int64_t num_elements = std::get<1>(spec);
+  const int64_t iota_dim = std::get<2>(spec);
 #ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
   if (element_type == BF16) {
     return;
   }
 #endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
-  std::vector<int64> dimensions = {42, 19};
+  std::vector<int64_t> dimensions = {42, 19};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
   Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {

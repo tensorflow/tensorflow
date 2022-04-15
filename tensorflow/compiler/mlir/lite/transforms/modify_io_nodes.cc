@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -44,13 +44,26 @@ namespace {
 // This transformation pass modifies the input and output types of the function
 // to what are specified. The task was not just adding cast operations, but,
 // instead, using tfl.quantize and tfl.dequantize ops to scale the tensors.
-struct ModifyIONodesPass : public PassWrapper<ModifyIONodesPass, FunctionPass> {
+struct ModifyIONodesPass
+    : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
+
   explicit ModifyIONodesPass() {}
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
       : input_type(input_type), output_type(output_type) {}
 
-  void runOnFunction() override;
+  void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-modify-io-nodes";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Modify the type of the model io nodes.";
+  }
 
  private:
   // Assign the io types from the command line flag. This is only required for
@@ -108,6 +121,7 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
     Value arg = block.getArgument(0);
     Type arg_type = arg.getType();
     Value new_arg = arg;
+    Location loc = func.getLoc();
     if (arg.hasOneUse() && llvm::isa<QuantizeOp>(*arg.user_begin())) {
       auto quantize_op = llvm::cast<QuantizeOp>(*arg.user_begin());
       auto quantize_output = quantize_op.output();
@@ -116,13 +130,13 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
                               .getStorageType();
       if (current_type == input_type) {  // int8 == int8
         arg_type = quantize_output.getType();
-        new_arg = block.addArgument(arg_type);
+        new_arg = block.addArgument(arg_type, loc);
         quantize_output.replaceAllUsesWith(new_arg);
       } else if (input_type.isUnsignedInteger(
                      current_type.getIntOrFloatBitWidth())) {  // int8 != uint8
         arg_type = quant::ConvertSignedQuantizedToUnsigned(
-            quantize_output.getType(), quantize_op.getLoc());
-        new_arg = block.addArgument(arg_type);
+            quantize_output.getType(), loc);
+        new_arg = block.addArgument(arg_type, loc);
         quantize_op.setOperand(new_arg);
       } else {
         input_type.print(llvm::errs() << "Requested input type ");
@@ -135,7 +149,11 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
         quantize_op.erase();
       }
     } else {
-      new_arg = block.addArgument(arg_type);
+      // `arg` has multiple uses or the user isn't a quantiz op (so we couldn't
+      // rewrite it to a different type. Make a copy of the `arg` and replace
+      // its use.
+      new_arg = block.addArgument(arg_type, loc);
+      arg.replaceAllUsesWith(new_arg);
     }
     block.eraseArgument(0);
   }
@@ -192,10 +210,17 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
   return success();
 }
 
-void ModifyIONodesPass::runOnFunction() {
-  auto func = getFunction();
+void ModifyIONodesPass::runOnOperation() {
+  auto func = getOperation();
+  auto attrs = func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+
+  // Handle the entry functions only.
+  if (func.getName() != "main" && (!attrs || attrs.empty())) {
+    return;
+  }
+
   OpBuilder builder(func);
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),
                                              func_type.getInputs().end());
   llvm::SmallVector<Type, 4> new_output_types(func_type.getResults().begin(),
@@ -225,8 +250,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
   return std::make_unique<ModifyIONodesPass>(input_type, output_type);
 }
 
-static PassRegistration<ModifyIONodesPass> pass(
-    "tfl-modify-io-nodes", "Modify the type of the model io nodes.");
+static PassRegistration<ModifyIONodesPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

@@ -19,8 +19,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
 namespace mlir {
-
+namespace bufferization {
 class BufferizeTypeConverter;
+}
 class LLVMTypeConverter;
 class MLIRContext;
 class RewritePatternSet;
@@ -30,27 +31,36 @@ namespace kernel_gen {
 namespace tf_framework {
 
 /// Collects a set of patterns to convert from the TF Framework dialect to LLVM.
-void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, RewritePatternSet *patterns);
+void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                                 RewritePatternSet *patterns);
 
 /// Collects a set of patterns to rewrite functions for use with TF framework
-/// and also replace `alloc` and correspondign free operations with .
-void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
-    MLIRContext *context, RewritePatternSet *patterns);
-
-/// Collects a set of patterns to embed TF Framework.
-void PopulateEmbedTFFrameworkAssertConversionPatterns(
-    MLIRContext *context, RewritePatternSet *patterns);
+/// and also replace `alloc`, `dealloc` and `assert`.
+void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns);
+void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns);
 
 }  // namespace tf_framework
 
 namespace transforms {
 
-/// Collects a set of patterns that bufferize operations from the standard
-/// dialect.
-void populateExtraStdBufferizePattern(MLIRContext *context,
-                                      BufferizeTypeConverter *converter,
-                                      RewritePatternSet *patterns);
+/// Collects a set of patterns that bufferize operations from the standard and
+/// other dialects.
+void populateExtraBufferizePatterns(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns);
+
+/// Populate pattern to bufferize `linalg.tiled_loop`.
+void populateTiledLoopBufferizePattern(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns);
+
+/// Populate patterns to rewrite TF operations to TF framework JIT invocations.
+void PopulateTFToJITInvocationPatterns(
+    MLIRContext *ctx, RewritePatternSet *patterns,
+    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
+    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
+    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors);
+
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir

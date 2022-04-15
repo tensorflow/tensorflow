@@ -14,17 +14,13 @@
 #==============================================================================
 """Data Flow Operations."""
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import functools
 import hashlib
 import threading
 
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
@@ -73,17 +69,18 @@ def _as_shape_list(shapes,
     shapes = [shapes]
   if not isinstance(shapes, (tuple, list)):
     raise TypeError(
-        "shapes must be a TensorShape or a list or tuple of TensorShapes.")
+        "Shapes must be a TensorShape or a list or tuple of TensorShapes, "
+        f"got {type(shapes)} instead.")
   if all(shape is None or isinstance(shape, int) for shape in shapes):
     # We have a single shape.
     shapes = [shapes]
   shapes = [tensor_shape.as_shape(shape) for shape in shapes]
   if not unknown_dim_allowed:
     if any(not shape.is_fully_defined() for shape in shapes):
-      raise ValueError("All shapes must be fully defined: %s" % shapes)
+      raise ValueError(f"All shapes must be fully defined: {shapes}")
   if not unknown_rank_allowed:
     if any(shape.dims is None for shape in shapes):
-      raise ValueError("All shapes must have a defined rank: %s" % shapes)
+      raise ValueError(f"All shapes must have a defined rank: {shapes}")
 
   return shapes
 
@@ -95,7 +92,8 @@ def _as_name_list(names, dtypes):
     names = [names]
   if len(names) != len(dtypes):
     raise ValueError("List of names must have the same length as the list "
-                     "of dtypes")
+                     f"of dtypes, received len(names)={len(names)},"
+                     f"len(dtypes)={len(dtypes)}")
   return list(names)
 
 
@@ -116,7 +114,7 @@ def _shape_common(s1, s2):
 @tf_export("queue.QueueBase",
            v1=["queue.QueueBase", "io.QueueBase", "QueueBase"])
 @deprecation.deprecated_endpoints(["io.QueueBase", "QueueBase"])
-class QueueBase(object):
+class QueueBase:
   """Base class for queue implementations.
 
   A queue is a TensorFlow data structure that stores tensors across
@@ -160,13 +158,17 @@ class QueueBase(object):
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
-        raise ValueError("Queue shapes must have the same length as dtypes")
+        raise ValueError("Queue shapes must have the same length as dtypes, "
+                         f"received len(shapes)={len(shapes)}, "
+                         f"len(dtypes)={len(dtypes)}")
       self._shapes = [tensor_shape.TensorShape(s) for s in shapes]
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._dtypes]
     if names is not None:
       if len(names) != len(dtypes):
-        raise ValueError("Queue names must have the same length as dtypes")
+        raise ValueError("Queue names must have the same length as dtypes,"
+                         f"received len(names)={len(names)},"
+                         f"len {len(dtypes)}")
       self._names = names
     else:
       self._names = None
@@ -211,7 +213,7 @@ class QueueBase(object):
 
     queue_shapes = [q.shapes for q in queues]
     reduced_shapes = [
-        six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)
+        functools.reduce(_shape_common, s) for s in zip(*queue_shapes)
     ]
 
     queue_refs = array_ops.stack([x.queue_ref for x in queues])
@@ -274,8 +276,8 @@ class QueueBase(object):
         raise ValueError("Queue must have names to enqueue a dictionary")
       if sorted(self._names, key=str) != sorted(vals.keys(), key=str):
         raise ValueError("Keys in dictionary to enqueue do not match "
-                         "names of Queue.  Dictionary: (%s), Queue: (%s)" %
-                         (sorted(vals.keys()), sorted(self._names)))
+                         f"names of Queue.  Dictionary: {sorted(vals.keys())},"
+                         f"Queue: {sorted(self._names)}")
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
       vals = [vals[k] for k in self._names]
@@ -906,9 +908,8 @@ class PaddingFIFOQueue(QueueBase):
     names = _as_name_list(names, dtypes)
     if len(dtypes) != len(shapes):
       raise ValueError("Shapes must be provided for all components, "
-                       "but received %d dtypes and %d shapes." % (len(dtypes),
-                                                                  len(shapes)))
-
+                       f"but received {len(dtypes)} dtypes and "
+                       f"{len(shapes)} shapes.")
     queue_ref = gen_data_flow_ops.padding_fifo_queue_v2(
         component_types=dtypes,
         shapes=shapes,
@@ -991,7 +992,7 @@ class PriorityQueue(QueueBase):
 # TODO(josh11b): class BatchQueue(QueueBase):
 
 
-class Barrier(object):
+class Barrier:
   """Represents a key-value map that persists across graph executions."""
 
   def __init__(self, types, shapes=None, shared_name=None, name="barrier"):
@@ -1060,7 +1061,7 @@ class Barrier(object):
       for i, shape in enumerate(self._shapes):
         if shape.num_elements() == 0:
           raise ValueError("Empty tensors are not supported, but received "
-                           "shape '%s' at index %d" % (shape, i))
+                           f"shape '{shape}' at index {i}")
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._types]
 
@@ -1237,7 +1238,7 @@ class Barrier(object):
 
 
 @tf_export(v1=["ConditionalAccumulatorBase"])
-class ConditionalAccumulatorBase(object):
+class ConditionalAccumulatorBase:
   """A conditional accumulator for aggregating gradients.
 
   Up-to-date gradients (i.e., time step at which gradient was computed is
@@ -1563,7 +1564,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     """
     return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
-    return ops.IndexedSlices(
+    return indexed_slices.IndexedSlices(
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)
@@ -1603,7 +1604,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         name=name)
 
 
-class BaseStagingArea(object):
+class BaseStagingArea:
   """Base class for Staging Areas."""
   _identifier = 0
   _lock = threading.Lock()
@@ -1618,10 +1619,10 @@ class BaseStagingArea(object):
     if shared_name is None:
       self._name = (
           ops.get_default_graph().unique_name(self.__class__.__name__))
-    elif isinstance(shared_name, six.string_types):
+    elif isinstance(shared_name, str):
       self._name = shared_name
     else:
-      raise ValueError("shared_name must be a string")
+      raise ValueError(f"shared_name must be a string, got {shared_name}")
 
     self._dtypes = dtypes
 
@@ -1710,8 +1711,8 @@ class BaseStagingArea(object):
             "Staging areas must have names to enqueue a dictionary")
       if not set(vals.keys()).issubset(self._names):
         raise ValueError("Keys in dictionary to put do not match names "
-                         "of staging area. Dictionary: (%s), Queue: (%s)" %
-                         (sorted(vals.keys()), sorted(self._names)))
+                         f"of staging area. Dictionary: {sorted(vals.keys())}"
+                         f"Queue: {sorted(self._names)}")
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
       vals, indices, _ = zip(*[(vals[k], i, k)
@@ -1727,8 +1728,8 @@ class BaseStagingArea(object):
                          "of tensors")
 
       if len(indices) != len(vals):
-        raise ValueError("Number of indices '%s' doesn't match "
-                         "number of values '%s'")
+        raise ValueError(f"Number of indices {len(indices)} doesn't match "
+                         f"number of values {len(vals)}")
 
       if not isinstance(vals, (list, tuple)):
         vals = [vals]
@@ -1736,8 +1737,8 @@ class BaseStagingArea(object):
 
     # Sanity check number of values
     if not len(vals) <= len(self._dtypes):
-      raise ValueError("Unexpected number of inputs '%s' vs '%s'" %
-                       (len(vals), len(self._dtypes)))
+      raise ValueError(f"Unexpected number of inputs {len(vals)} vs"
+                       f"{len(self._dtypes)}")
 
     tensors = []
 
@@ -1745,9 +1746,9 @@ class BaseStagingArea(object):
       dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
       if val.dtype != dtype:
-        raise ValueError("Datatypes do not match. '%s' != '%s'" %
-                         (str(val.dtype), str(dtype)))
-
+        raise ValueError(f"Datatypes do not match. "
+                         f"Received val.dtype {str(val.dtype)} and "
+                         f"dtype {str(dtype)}")
       # Check shape
       val.get_shape().assert_is_compatible_with(shape)
 
@@ -1919,7 +1920,7 @@ class StagingArea(BaseStagingArea):
         values = [values]
 
       # Hard-code indices for this staging area
-      indices = list(six.moves.range(len(values)))
+      indices = list(range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
@@ -1936,7 +1937,7 @@ class StagingArea(BaseStagingArea):
     with ops.colocate_with(self._coloc_op):
       ret = get_fn()
 
-    indices = list(six.moves.range(len(self._dtypes)))  # Hard coded
+    indices = list(range(len(self._dtypes)))  # Hard coded
     return self._get_return_value(ret, indices)
 
   def get(self, name=None):
@@ -2206,29 +2207,29 @@ class MapStagingArea(BaseStagingArea):
 
   def _get_indices_and_dtypes(self, indices=None):
     if indices is None:
-      indices = list(six.moves.range(len(self._dtypes)))
+      indices = list(range(len(self._dtypes)))
 
     if not isinstance(indices, (tuple, list)):
-      raise TypeError("Invalid indices type '%s'" % type(indices))
+      raise TypeError(f"Invalid indices type {type(indices)}")
 
     if len(indices) == 0:
       raise ValueError("Empty indices")
 
     if all(isinstance(i, str) for i in indices):
       if self._names is None:
-        raise ValueError("String indices provided '%s', but this Staging Area "
-                         "was not created with names." % indices)
+        raise ValueError(f"String indices provided {indices}, but "
+                         "this Staging Area was not created with names.")
 
       try:
         indices = [self._names.index(n) for n in indices]
       except ValueError:
-        raise ValueError("Named index '%s' not in "
-                         "Staging Area names '%s'" % (n, self._names))
+        raise ValueError(f"Named index not in "
+                         f"Staging Area names {self._names}")
     elif all(isinstance(i, int) for i in indices):
       pass
     else:
-      raise TypeError("Mixed types in indices '%s'. "
-                      "May only be str or int" % indices)
+      raise TypeError(f"Mixed types in indices {indices}. "
+                      "May only be str or int")
 
     dtypes = [self._dtypes[i] for i in indices]
 
@@ -2427,7 +2428,7 @@ class MapStagingArea(BaseStagingArea):
         memory_limit=self._memory_limit)
 
 
-class RecordInput(object):
+class RecordInput:
   """RecordInput asynchronously reads and randomly yields TFRecords.
 
   A RecordInput Op will continuously read a batch of records asynchronously
@@ -2508,7 +2509,7 @@ class RecordInput(object):
       return records
     else:
       with ops.name_scope(self._name):
-        batch_list = [[] for _ in six.moves.range(self._batches)]
+        batch_list = [[] for _ in range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
         for index, protobuf in enumerate(records):
           batch_index = index % self._batches

@@ -29,7 +29,7 @@ class MemorySpaceAssignmentBestFitRepacker
   using Type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::Type;
 
   explicit MemorySpaceAssignmentBestFitRepacker(
-      int64 max_size, int64 alignment,
+      int64_t max_size, int64_t alignment,
       Type type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::kTemporal)
       : MemorySpaceAssignmentRepacker(max_size, alignment), type_(type) {}
 

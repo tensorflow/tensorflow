@@ -46,7 +46,7 @@ includes the necessary library of TensorFlow ops.
 To reduce the binary size, please build your own custom AAR files as guided in
 the [next section](#building-the-android-aar). If the binary size is not a
 considerable concern, we recommend using the prebuilt
-[AAR with TensorFlow ops hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
+[AAR with TensorFlow ops hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-select-tf-ops).
 
 You can specify this in your `build.gradle` dependencies by adding it alongside
 the standard TensorFlow Lite AAR as follows:
@@ -58,6 +58,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly-SNAPSHOT'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
 
 Once you've added the dependency, the necessary delegate for handling the
 graph's TensorFlow ops should be automatically installed for graphs that require
@@ -116,7 +119,11 @@ has support for select TensorFlow ops:
 ```build
 allprojects {
     repositories {
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
+        }
         mavenLocal()
     }
 }
@@ -195,20 +202,32 @@ Flags`, and add:
 -force_load <path/to/your/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps>
 ```
 
-### C++
+### C/C++
 
-When building TensorFlow Lite libraries using the bazel pipeline, the additional
-TensorFlow ops library can be included and enabled as follows:
+If you're using Bazel or
+[CMake](https://www.tensorflow.org/lite/guide/build_cmake) to build TensorFlow
+Lite interpreter, you can enable Flex delegate by linking a TensorFlow Lite Flex
+delegate shared library. You can build it with Bazel as the following command.
 
-*   Enable monolithic builds if necessary by adding the `--config=monolithic`
-    build flag.
-*   Add the TensorFlow ops delegate library dependency to the build
-    dependencies: `tensorflow/lite/delegates/flex:delegate`.
+```
+bazel build -c opt --config=monolithic tensorflow/lite/delegates/flex:tensorflowlite_flex
+```
+
+This command generates the following shared library in
+`bazel-bin/tensorflow/lite/delegates/flex`.
+
+Platform | Library name
+-------- | ----------------------------
+Linux    | libtensorflowlite_flex.so
+macOS    | libtensorflowlite_flex.dylib
+Windows  | tensorflowlite_flex.dll
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
-creating the interpreter at runtime as long as the delegate is linked into the
-client library. It is not necessary to explicitly install the delegate instance
-as is typically required with other delegate types.
+creating the interpreter at runtime as long as the shared library is linked. It
+is not necessary to explicitly install the delegate instance as is typically
+required with other delegate types.
+
+**Note:** This feature is available since version 2.7.
 
 ### Python
 
@@ -257,12 +276,13 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
 
 *   Unsupported types: Certain TensorFlow ops may not support the full set of
     input/output types that are typically available in TensorFlow.
-*   Unsupported ops: Control flow ops and ops that require explicit
-    initialization from resources, like `HashTableV2`, are not yet supported.
 
 ## Updates
 
-*   Version 2.5 (not yet officially released)
+*   Version 2.6
+    -   Supports for GraphDef-attribute based operators and HashTable resource
+        initializations have improved.
+*   Version 2.5
     -   You can apply an optimization known as
         [post training quantization](../performance/post_training_quantization.md)
 *   Version 2.4

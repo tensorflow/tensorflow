@@ -14,13 +14,10 @@
 # ==============================================================================
 """State management for eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import copy
+import gc
 import os
 import random
 import threading
@@ -31,6 +28,7 @@ import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -78,9 +76,16 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION", False)
+
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 
 
+# This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():
   """Execute elementary eager ops (non-function) wrapped in a call op.
 
@@ -89,13 +94,51 @@ def enable_run_eager_op_as_function():
   TF2 programs in the runtime, thereby improving consistency (in terms of
   optimizations and rewrites for instance) and maintainability.
   """
-  # Must be called before context is actually built.
   global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
   _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_run_eager_op_as_function():
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = False
 
 
 def run_eager_op_as_function_enabled():
+  if context_safe() is not None:
+    return context_safe().run_eager_op_as_function
   return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+
+
+# This method should only be called after the context has beein initialized.
+def enable_jit_compile_rewrite():
+  """Run jit_compile functions through rewrite pass.
+
+  This runs jit_compile functions through all of the multidevice function
+  rewrite passes.
+  """
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = True
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_jit_compile_rewrite():
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = False
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = False
+
+
+def jit_compile_rewrite_enabled():
+  if context_safe() is not None:
+    return context_safe().jit_compile_rewrite
+  return _JIT_COMPILE_REWRITE_ENABLED
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -143,12 +186,11 @@ class FunctionCallOptions(object):
       executor_type: (optional) name of the executor to be used to execute the
         eager function. If None or an empty string, the default Tensorflow
         executor will be used.
-      config_proto: (optional) a `config_pb2.ConfigProto` proto or
-        a serialized string of that proto.
-        The config used by Grappler when optimizing the function graph.
-        Each concrete function is optimized the first time is called. Changing
-        config_proto after the first call has no effect.
-        If config_proto is None, an empty RewriterConfig will be used.
+      config_proto: (optional) a `config_pb2.ConfigProto` proto or a serialized
+        string of that proto. The config used by Grappler when optimizing the
+        function graph. Each concrete function is optimized the first time is
+        called. Changing config_proto after the first call has no effect. If
+        config_proto is None, an empty RewriterConfig will be used.
     """
     self.config_proto_serialized = config_proto
     self.executor_type = executor_type
@@ -211,8 +253,8 @@ class _TensorCaches(threading.local):
 
 
 ContextSwitch = collections.namedtuple(
-    "ContextSwitch", ["is_building_function", "enter_context_fn",
-                      "device_stack"])
+    "ContextSwitch",
+    ["is_building_function", "enter_context_fn", "device_stack"])
 
 
 # `_ContextSwitchStack` is a `threading.local` to match the semantics of
@@ -229,8 +271,10 @@ class _ContextSwitchStack(threading.local):
       # across threads, since (1) `enable_eager_execution` modifies a
       # process-level flag (`default_execution_mode`) and (2) `__init__` is
       # called each time a threading.local object is used in a separate thread.
-      self.push(is_building_function=False, enter_context_fn=eager_mode,
-                device_stack=None)
+      self.push(
+          is_building_function=False,
+          enter_context_fn=eager_mode,
+          device_stack=None)
 
   def push(self, is_building_function, enter_context_fn, device_stack):
     """Push metadata about a context switch onto the stack.
@@ -243,10 +287,10 @@ class _ContextSwitchStack(threading.local):
       is_building_function: (bool.) Whether the context is building a function.
       enter_context_fn: (function.) A callable that executes the context switch.
         For example, `graph.as_default` or `eager_mode`.
-      device_stack: If applicable, the device function stack for this
-        graph. When breaking out of graphs in init_scope, the innermost nonempty
-        device stack is used. Eager contexts put `None` here and the value is
-        never used.
+      device_stack: If applicable, the device function stack for this graph.
+        When breaking out of graphs in init_scope, the innermost nonempty device
+        stack is used. Eager contexts put `None` here and the value is never
+        used.
     """
 
     self.stack.append(
@@ -381,18 +425,17 @@ class Context(object):
         options for the Context. Note that a lot of these options may be
         currently unimplemented or irrelevant when eager execution is enabled.
       device_policy: (Optional.) What policy to use when trying to run an
-        operation on a device with inputs which are not on that device.
-        When set to None, an appropriate value will be picked automatically.
-        The value picked may change between TensorFlow releases.
-
-        Defaults to DEVICE_PLACEMENT_SILENT.
+        operation on a device with inputs which are not on that device. When set
+        to None, an appropriate value will be picked automatically. The value
+        picked may change between TensorFlow releases.  Defaults to
+        DEVICE_PLACEMENT_SILENT.
         Valid values:
-        - DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
-          not correct.
-        - DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-          right device but raises a warning.
-        - DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-          hide performance problems.
+        - DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+          correct.
+        - DEVICE_PLACEMENT_WARN: copies the tensors which are not on the right
+          device but raises a warning.
+        - DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might hide
+          performance problems.
         - DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
           raising errors on the other ones.
       execution_mode: (Optional.) Policy controlling how operations dispatched
@@ -401,13 +444,13 @@ class Context(object):
         releases.
         Valid values:
         - SYNC: executes each operation synchronously.
-        - ASYNC: executes each operation asynchronously. These
-          operations may return "non-ready" handles.
-      server_def: (Optional.) A tensorflow::ServerDef proto.
-        Enables execution on remote devices. GrpcServers need to be started by
-        creating an identical server_def to this, and setting the appropriate
-        task_indexes, so that the servers can communicate. It will then be
-        possible to execute operations on remote devices.
+        - ASYNC: executes each operation asynchronously. These operations may
+          return "non-ready" handles.
+      server_def: (Optional.) A tensorflow::ServerDef proto. Enables execution
+        on remote devices. GrpcServers need to be started by creating an
+        identical server_def to this, and setting the appropriate task_indexes,
+        so that the servers can communicate. It will then be possible to execute
+        operations on remote devices.
 
     Raises:
      ValueError: If execution_mode is not valid.
@@ -434,19 +477,22 @@ class Context(object):
     self._device_policy = device_policy
     self._mirroring_policy = None
     if execution_mode not in (None, SYNC, ASYNC):
-      raise ValueError(
-          "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
+      raise ValueError("execution_mode should be None/SYNC/ASYNC. Got %s" %
+                       execution_mode)
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
+    self._use_tfrt_distributed_runtime = None
     self._run_eager_op_as_function = run_eager_op_as_function_enabled()
+    self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
     self._collective_scoped_allocator_enabled_ops = None
     self._collective_use_nccl_communication = None
     self._collective_device_filters = None
+    self._coordination_service_config = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
@@ -461,10 +507,14 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._operation_timeout_in_ms = None
     self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
+
+    self._is_global_context = False
+
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -502,6 +552,10 @@ class Context(object):
     device_list = pywrap_tfe.TFE_ContextListDevices(self._context_handle)
     try:
       self._num_gpus = 0
+      current_job, current_task = None, None
+      server_def = self._server_def or self._collective_ops_server_def
+      if server_def is not None:
+        current_job, current_task = server_def.job_name, server_def.task_index
       for i in range(pywrap_tfe.TF_DeviceListCount(device_list)):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
@@ -513,7 +567,8 @@ class Context(object):
         logical_devices.append(
             LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tfe.TF_DeviceListType(device_list, i)
-        if dev_type == "GPU":
+        if (dev_type == "GPU" and spec.job == current_job and
+            spec.task == current_task):
           self._num_gpus += 1
 
     finally:
@@ -543,8 +598,15 @@ class Context(object):
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
+        # pylint: disable=g-backslash-continuation
+        if self._use_tfrt is not None and \
+            self._use_tfrt_distributed_runtime is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
+              opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
             opts, self._run_eager_op_as_function)
+        pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
+            opts, self._jit_compile_rewrite)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -563,6 +625,16 @@ class Context(object):
       self._initialize_logical_devices()
       self._initialized = True
 
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+
+  def mark_as_global_context(self):
+    # If the context was already initialized, publish it. Otherwise wait with
+    # publication until it's initialized.
+    if self._initialized:
+      pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+    self._is_global_context = True
+
   def _clear_caches(self):
     self.ones_rank_cache().flush()
     self.zeros_cache().flush()
@@ -579,13 +651,13 @@ class Context(object):
     to a tensor on the remote device, it will raise an error.
 
     Args:
-      server_def: A tensorflow::ServerDef proto.
-        Enables execution on remote devices.
-      keep_alive_secs: Num. seconds after which the remote end will hang up.
-        As long as the client is still alive, the server state for the context
-        will be kept alive. If the client is killed (or there is some failure),
-        the server will clean up its context keep_alive_secs after the final RPC
-        it receives.
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+      keep_alive_secs: Num. seconds after which the remote end will hang up. As
+        long as the client is still alive, the server state for the context will
+        be kept alive. If the client is killed (or there is some failure), the
+        server will clean up its context keep_alive_secs after the final RPC it
+        receives.
 
     Raises:
       ValueError: if server_def is None.
@@ -684,16 +756,68 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def clear_kernel_cache(self):
-    """Clear kernel cache and reset all stateful kernels.
+  def configure_coordination_service(self,
+                                     service_type,
+                                     service_leader="",
+                                     enable_health_check=True,
+                                     cluster_register_timeout_in_ms=0,
+                                     heartbeat_timeout_in_ms=0,
+                                     coordinated_jobs=None):
+    """Enable distributed coordination service with specified configs."""
+    if self._context_handle:
+      logging.warning("Configuring coordination service type may not be "
+                      "effective because the context is already initialized.")
+    config = coordination_config_pb2.CoordinationServiceConfig()
+    config.service_type = service_type
+    if service_leader:
+      config.service_leader = pydev.canonical_name(service_leader)
+    config.enable_health_check = enable_health_check
+    config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
+    config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    if coordinated_jobs is not None:
+      if isinstance(coordinated_jobs, list):
+        config.coordinated_jobs.extend(coordinated_jobs)
+      else:
+        raise ValueError("`coordinated_jobs` must be a list of job names or "
+                         "None, but got: %s" % (coordinated_jobs,))
+    self._coordination_service_config = config
 
-    Raises:
-      ValueError: if context is not initialized.
+  @property
+  def coordination_service(self):
+    return self._coordination_service_config
+
+  def set_config_key_value(self, key, value):
+    ensure_initialized()
+    pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
+
+  def get_config_key_value(self, key):
+    ensure_initialized()
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key, buffer_)
+      value = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
+    return value
+
+  def delete_config_key_value(self, key):
+    ensure_initialized()
+    pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
+
+  def report_error_to_cluster(self, error_code, error_message):
+    """Report error to other members in a multi-client cluster.
+
+    Args:
+      error_code: a `tf.errors` error code.
+      error_message: a string. The error message.
     """
-    if self._context_handle is not None:
-      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
+    if self._context_handle:
+      pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
+                                          error_message)
     else:
       raise ValueError("Context is not initialized.")
+
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels."""
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -921,8 +1045,8 @@ class Context(object):
   def execution_mode(self, mode):
     """Sets execution mode for current thread."""
     if mode not in (None, SYNC, ASYNC):
-      raise ValueError(
-          "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
+      raise ValueError("Execution mode should be None/SYNC/ASYNC. Got %s" %
+                       mode)
 
     if mode is None:
       mode = SYNC
@@ -983,6 +1107,9 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
+    if self._operation_timeout_in_ms is not None:
+      config.operation_timeout_in_ms = self._operation_timeout_in_ms
+
     is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
     config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
     if (is_mlir_bridge_enabled ==
@@ -998,8 +1125,7 @@ class Context(object):
       if toggle is None:
         return
 
-      setattr(config.graph_options.rewrite_options,
-              option,
+      setattr(config.graph_options.rewrite_options, option,
               (rewriter_config_pb2.RewriterConfig.ON
                if toggle else rewriter_config_pb2.RewriterConfig.OFF))
 
@@ -1008,9 +1134,7 @@ class Context(object):
       if toggle is None:
         return
 
-      setattr(config.graph_options.rewrite_options,
-              option,
-              toggle)
+      setattr(config.graph_options.rewrite_options, option, toggle)
 
     rewriter_toggle("layout_optimizer")
     rewriter_toggle("constant_folding")
@@ -1028,6 +1152,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
       config.graph_options.rewrite_options.min_graph_nodes = nodes
@@ -1065,6 +1190,11 @@ class Context(object):
       del config.device_filters[:]
       for f in self._collective_device_filters:
         config.device_filters.append(f)
+
+    # Configure coordination service
+    if self._coordination_service_config:
+      config.experimental.coordination_config.CopyFrom(
+          self._coordination_service_config)
 
     return config
 
@@ -1245,10 +1375,9 @@ class Context(object):
     the order in which they are added.
 
     Args:
-      callback: a callable of the signature
-        `f(op_type, inputs, attrs, outputs, op_name=None, graph=None)`.
-        See doc strings in `op_callbacks.py` for details on the function
-        signature and its semantics.
+      callback: a callable of the signature `f(op_type, inputs, attrs, outputs,
+        op_name=None, graph=None)`. See doc strings in `op_callbacks.py` for
+        details on the function signature and its semantics.
     """
     if callback not in self._thread_local_data.op_callbacks:
       self._thread_local_data.op_callbacks.append(callback)
@@ -1263,9 +1392,8 @@ class Context(object):
       KeyError: If `callback` is not already registered.
     """
     if callback not in self._thread_local_data.op_callbacks:
-      raise KeyError(
-          "The specified op callback has not been registered, "
-          "and hence cannot be removed.")
+      raise KeyError("The specified op callback has not been registered, "
+                     "and hence cannot be removed.")
     del self._thread_local_data.op_callbacks[
         self._thread_local_data.op_callbacks.index(callback)]
 
@@ -1296,8 +1424,9 @@ class Context(object):
 
       devs = pywrap_tfe.TF_ListPhysicalDevices()
       self._physical_devices = [
-          PhysicalDevice(name=d.decode(),
-                         device_type=d.decode().split(":")[1]) for d in devs]
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in devs
+      ]
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
@@ -1468,10 +1597,11 @@ class Context(object):
     self.ensure_initialized()
     return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
 
-  # TODO(reedwm): Remove this function
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
-    return self.get_memory_info(dev)["current"]
+  def reset_memory_stats(self, dev):
+    """Resets the tracked memory stats for the device."""
+    self._initialize_physical_devices()
+    self.ensure_initialized()
+    pywrap_tfe.TFE_ResetMemoryStats(self._context_handle, dev)
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -1562,9 +1692,16 @@ class Context(object):
      RuntimeError: If virtual CPUs are already configured at context
      initialization.
     """
+    server_def = self._server_def or self._collective_ops_server_def
+    local_prefix = ["/device"]
+    if server_def is not None:
+      local_prefix.append("/job:%s/replica:0/task:%d" % (server_def.job_name,
+                                                         server_def.task_index))
+    logical_local_devices = [d for d in self.list_logical_devices("CPU") if
+                             d.name.startswith(tuple(local_prefix))]
     self.ensure_initialized()
     # Error out if there are already multiple logical CPU in the context.
-    if len(self.list_logical_devices("CPU")) > 1:
+    if len(logical_local_devices) > 1:
       raise RuntimeError("Virtual CPUs already set, cannot modify again.")
 
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
@@ -1643,6 +1780,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:
       options["min_graph_nodes"] = rewrite_options.min_graph_nodes
@@ -1714,6 +1852,26 @@ class Context(object):
     self._thread_local_data.function_call_options = None
 
   @property
+  def run_eager_op_as_function(self):
+    return self._run_eager_op_as_function
+
+  @run_eager_op_as_function.setter
+  def run_eager_op_as_function(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
+    self._run_eager_op_as_function = enable
+
+  @property
+  def jit_compile_rewrite(self):
+    return self._jit_compile_rewrite
+
+  @jit_compile_rewrite.setter
+  def jit_compile_rewrite(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetJitCompileRewrite(self._handle, enable)
+    self._jit_compile_rewrite = enable
+
+  @property
   def device_policy(self):
     # Only get the policy from the context if it has already been initialized
     if self._context_handle is not None:
@@ -1748,6 +1906,43 @@ class Context(object):
       if self._initialized:
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt = tfrt
+
+  @property
+  def use_tfrt_distributed_runtime(self):
+    return self._use_tfrt_distributed_runtime
+
+  @use_tfrt_distributed_runtime.setter
+  def use_tfrt_distributed_runtime(self, enable):
+    """Sets whether to use TFRT distributed runtime.
+
+    This is only effective when use_tfrt is also true. Note that currently TFRT
+    distributed runtime is not function complete and this config is for testing
+    only.
+    Args:
+      enable: A boolean to set whether to use TFRT distributed runtime.
+    """
+    if not isinstance(enable, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(enable))
+
+    if self._use_tfrt_distributed_runtime != enable:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt_distributed_runtime = enable
+
+  @property
+  def operation_timeout_in_ms(self):
+    return self.config.operation_timeout_in_ms
+
+  @operation_timeout_in_ms.setter
+  def operation_timeout_in_ms(self, timeout_in_ms):
+    if self._operation_timeout_in_ms == timeout_in_ms:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Operation timeout cannot be modified after initialization.")
+
+    self._operation_timeout_in_ms = timeout_in_ms
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -1813,6 +2008,8 @@ class _EagerDeviceContext(object):
     self._ctx = ctx
     self._stack = []
 
+  # TODO(b/189233748): Consolidate the device string parsing logic with
+  # tensorflow/core/util/device_name_utils.cc.
   def __enter__(self):
     ctx = self._ctx
     old_device_name = ctx.device_name
@@ -1851,13 +2048,12 @@ class _EagerDeviceContext(object):
     ctx = self._ctx
     old_device_name, old_device_spec, new_device_spec = self._stack[-1]
     if ctx.device_spec is not new_device_spec:
-      raise RuntimeError(
-          "Exiting device scope without proper scope nesting")
+      raise RuntimeError("Exiting device scope without proper scope nesting")
     del self._stack[-1]
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-# Do not set directly. Use _set_context.
+# Do not change directly.
 _context = None
 _context_lock = threading.Lock()
 
@@ -1865,6 +2061,7 @@ _context_lock = threading.Lock()
 def _set_context_locked(ctx):
   global _context
   pywrap_tfe.TFE_Py_SetEagerContext(ctx)
+  ctx.mark_as_global_context()
   _context = ctx
 
 
@@ -1887,13 +2084,25 @@ def _reset_context():
   """
   global _context
   global _device_parsing_cache
+
+  # Garbage collect and clear scalar cache to avoid Tensor from current context
+  # polluting next context.
+  gc.collect()
+  pywrap_tfe.TFE_ClearScalarCache()
   with _context_lock:
     if _context is not None:
       _context._clear_caches()
       _context = None
   _create_context()
   _device_parsing_cache = {}
-  pywrap_tfe.TFE_ClearScalarCache()
+
+
+def _reset_jit_compiler_flags():
+  """Clears and re-initializes the TF JIT compiler flags.
+
+  Should only be used for testing.
+  """
+  pywrap_tfe.TF_ResetJitCompilerFlags()
 
 
 def context():
@@ -2062,24 +2271,19 @@ def in_eager_mode():
   return executing_eagerly()
 
 
-def shared_name(name=None):
-  """Returns the anonymous shared name GUID if no shared name is specified.
+def anonymous_name():
+  """Returns the anonymous shared name.
 
-  In eager mode we need to use a unique shared name to avoid spurious sharing
-  issues. The runtime generates a unique name on our behalf when the reserved
-  GUID is used as a shared name.
-
-  Args:
-    name: Optional shared name
+  In eager mode we create anonymous resources to avoid spurious sharing issues.
+  The runtime generates a unique name on our behalf when the reserved
+  anonymous shared name is used as a shared name.
 
   Returns:
-    Eager compatible shared name.
+    The anonymous shared name.
   """
-  if name or not executing_eagerly():
-    return name
 
-  # Ensure a unique name when eager execution is enabled to avoid spurious
-  # sharing issues.
+  # The magic value is defined as
+  # `tensorflow::ResourceHandle::ANONYMOUS_NAME` in C++.
   return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
 
 
@@ -2114,8 +2318,8 @@ def device(name):
   operation runs on GPU 0.
 
   Args:
-    name: Name of the device (see context().devices()), or None to
-      perform automatic placement.
+    name: Name of the device (see context().devices()), or None to perform
+      automatic placement.
 
   Returns:
     Context manager for setting the device.
@@ -2366,6 +2570,7 @@ def collect_graphs(optimized=True):
 
   Args:
     optimized: whether to collect optimized graphs or non-optimized graphs
+
   Yields:
     A list of GraphDefs, populated when the context manager exits.
   """
@@ -2455,9 +2660,13 @@ def async_wait():
   actual execution. Calling this method creates a synchronization barrier for
   all async op and function execution. It only returns when all pending nodes
   are finished, potentially raising exceptions if async execution results in
-  an error state.
+  an error state. It is a no-op if the context is not initialized.
   """
-  context().sync_executors()
+  disable_async_executor_env_var = "TF_PS_DISABLE_ASYNC_EXECUTOR_GLOBALLY"
+  if os.environ.get(disable_async_executor_env_var) == str(True):
+    return
+  if context()._context_handle is not None:  # pylint: disable=protected-access
+    context().sync_executors()
 
 
 @tf_export("experimental.async_clear_error")

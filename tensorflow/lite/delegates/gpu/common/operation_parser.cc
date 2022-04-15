@@ -25,22 +25,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-absl::Status CheckKernels(int kernel_h, int kernel_w) {
-  if (kernel_h <= 0 || kernel_w <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Incorrect kernel values: kernel_height = ", kernel_h,
-                     ", kernel_width = ", kernel_w));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
-                                    int strides_w) {
-  RETURN_IF_ERROR(CheckKernels(kernel_h, kernel_w));
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
-  return absl::OkStatus();
-}
-
 absl::Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
                                         int max_version) {
   const int op_version = registration->version;
@@ -48,26 +32,6 @@ absl::Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
     return absl::UnimplementedError(
         absl::StrCat("Max version supported: ", max_version,
                      ". Requested version ", op_version, "."));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckStrides(int strides_h, int strides_w) {
-  if (strides_h <= 0 || strides_w <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Incorrect stride values: stride_height = ", strides_h,
-                     ", stride_width = ", strides_w));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
-                                    const TfLiteNode* tflite_node, int idx) {
-  // If tensor id is in range, it's guaranteed that it'll be available.
-  if (idx >= tflite_node->inputs->size) {
-    return absl::OutOfRangeError(
-        absl::StrCat("Requested index goes beyond array size: ", idx, " vs ",
-                     idx, tflite_node->inputs->size));
   }
   return absl::OkStatus();
 }

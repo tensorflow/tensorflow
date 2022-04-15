@@ -82,7 +82,7 @@ cc_toolchain_config(
         "-fdata-sections",
     ],
     dbg_compile_flags = ["-g"],
-    cxx_flags = ["-std=c++11"],
+    cxx_flags = ["-std=c++14"],
     link_flags = [
         "-fuse-ld=gold",
         "-Wl,-no-as-needed",

@@ -24,7 +24,7 @@ namespace xla {
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
   dimensions_.reserve(shape_proto.dimensions_size());
-  for (const int64 dimension : shape_proto.dimensions()) {
+  for (const int64_t dimension : shape_proto.dimensions()) {
     add_dimensions(dimension);
   }
   // A malformed proto may have different is_dynamic_dimension_size and
@@ -41,7 +41,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
       LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
     }
   }
-  int64 num_dynamic_dimension_fields = std::min(
+  int64_t num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
   for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
@@ -59,7 +59,7 @@ ShapeProto Shape::ToProto() const {
   ShapeProto proto;
   proto.set_element_type(element_type_);
   proto.mutable_dimensions()->Reserve(dimensions_size());
-  for (const int64 dimension : dimensions()) {
+  for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
   for (const bool dynamic : dynamic_dimensions_) {
@@ -75,7 +75,7 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
-string Shape::ToString(bool print_layout) const {
+std::string Shape::ToString(bool print_layout) const {
   if (print_layout) {
     return ShapeUtil::HumanStringWithLayout(*this);
   } else {
@@ -113,7 +113,7 @@ bool Shape::is_static() const {
   return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
 
-void Shape::DeleteDimension(int64 dim_to_delete) {
+void Shape::DeleteDimension(int64_t dim_to_delete) {
   CHECK(IsArray());
   CHECK_GE(dim_to_delete, 0);
   CHECK_LT(dim_to_delete, dimensions_.size());
@@ -121,7 +121,7 @@ void Shape::DeleteDimension(int64 dim_to_delete) {
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
     layout_.set_format(DENSE);
-    for (int64 i = 0; i < layout_.minor_to_major().size();) {
+    for (int64_t i = 0; i < layout_.minor_to_major().size();) {
       if (layout_.minor_to_major(i) == dim_to_delete) {
         layout_.mutable_minor_to_major()->erase(
             layout_.mutable_minor_to_major()->begin() + i);
@@ -217,7 +217,7 @@ ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
     *add_parameters() = Shape(shape_proto);
   }
   *mutable_result() = Shape(program_shape_proto.result());
-  for (const string& name : program_shape_proto.parameter_names()) {
+  for (const std::string& name : program_shape_proto.parameter_names()) {
     add_parameter_names(name);
   }
 }
@@ -228,14 +228,14 @@ ProgramShapeProto ProgramShape::ToProto() const {
     *proto.add_parameters() = shape.ToProto();
   }
   *proto.mutable_result() = result().ToProto();
-  for (const string& name : parameter_names()) {
+  for (const std::string& name : parameter_names()) {
     proto.add_parameter_names(name);
   }
   return proto;
 }
 
-string ProgramShape::ToString() const {
-  std::vector<string> parameter_strings(parameters_size());
+std::string ProgramShape::ToString() const {
+  std::vector<std::string> parameter_strings(parameters_size());
   for (int i = 0; i < parameters_size(); ++i) {
     parameter_strings[i] = absl::StrCat(
         i < parameter_names_size() ? parameter_names(i) : "(unknown)", ": ",

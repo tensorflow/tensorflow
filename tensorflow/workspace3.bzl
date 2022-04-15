@@ -1,6 +1,8 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
+load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 def workspace():
     http_archive(
@@ -13,25 +15,21 @@ def workspace():
         ],
     )
 
+    tf_runtime()
+
+    # https://github.com/bazelbuild/bazel-skylib/releases
     http_archive(
-        name = "tf_toolchains",
-        sha256 = "28cff50d55c82d124fa54ac132692451d953d383807884d15ae32bea6f189a0b",
-        strip_prefix = "toolchains-1.1.10",
+        name = "bazel_skylib",
+        sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
         urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.1.10.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v1.1.10.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
         ],
     )
 
-    http_archive(
-        name = "tf_runtime",
-        sha256 = "f0e2ea23d0f9650c277d2aabc6177863bc8a9c30e01b3b7757bb7a4cccda3eb1",
-        strip_prefix = "runtime-982960f22399eaadfbbe1bc1cdfe994f53029399",
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/runtime/archive/982960f22399eaadfbbe1bc1cdfe994f53029399.tar.gz",
-            "https://github.com/tensorflow/runtime/archive/982960f22399eaadfbbe1bc1cdfe994f53029399.tar.gz",
-        ],
-    )
+    # Load the raw llvm-project.  llvm does not have build rules set up by default,
+    # but provides a script for setting up build rules via overlays.
+    llvm("llvm-raw")
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

@@ -28,14 +28,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
+
+class PhaseOrderPipeline;
 
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const string& name,
+  explicit HloPassPipeline(const std::string& name,
                            CompilationStats* compilation_stats = nullptr)
       : name_(name), compilation_stats_(compilation_stats) {
     if (compilation_stats == nullptr) {
@@ -83,6 +84,11 @@ class HloPassPipeline : public HloPassInterface {
 
   bool IsPassPipeline() override { return true; }
 
+  // Return size of passes_.
+  int PassesSize() { return passes_.size(); }
+  // Return reference to pass specified by index.
+  HloPassInterface& GetPass(int index) { return *passes_[index]; }
+
  private:
   // Returns the set of passes which are enabled. DebugOptions can selectively
   // disable passes via --xla_disable_hlo_passes flag.
@@ -125,7 +131,7 @@ class HloPassPipeline : public HloPassInterface {
     return changed;
   }
 
-  const string name_;
+  const std::string name_;
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
@@ -134,6 +140,10 @@ class HloPassPipeline : public HloPassInterface {
   // Default stats instance for when one is not passed in the constructor.
   // Use via compilation_stats_, not directly.
   std::unique_ptr<CompilationStats> empty_compilation_stats_;
+
+  // Allow PhaseOrderPipeline to modify private passes_ member in order to
+  // perform PhaseOrdering.
+  friend class ::xla::PhaseOrderPipeline;
 };
 
 }  // namespace xla

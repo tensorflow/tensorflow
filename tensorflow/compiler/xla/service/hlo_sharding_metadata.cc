@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -39,7 +43,7 @@ enum class AssignmentKind { kUnassigned, kAssigned, kConflict };
 // partial information. At the end of the propagation the sharding of
 // tuple-shaped instructions using kUnassignedDevice's is cleared.
 // TODO(b/112883246): Centralized enum of reserved devices.
-constexpr int64 kUnassignedDevice = -2;
+constexpr int64_t kUnassignedDevice = -2;
 
 struct PassThrough {
   PassThrough(HloInstruction* user, HloInstruction* operand)
@@ -312,9 +316,9 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
 // Tries to propagate the sharding information into the instructions that are
 // part of the domain, in a reverse post order manner (users propagate to
 // instruction).
-StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
-                                        const HloSharding& domain_sharding) {
-  int64 assigned = 0;
+StatusOr<int64_t> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
+                                          const HloSharding& domain_sharding) {
+  int64_t assigned = 0;
   // domain.instructions are ordered in a post-order manner. As we do
   // user->operand propagation we process instructions in reverse order. In so
   // doing we are guaranteed to process all users before their operands.
@@ -351,16 +355,20 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
   VLOG(1) << "Assigning non-trivial sharding " << sharding;
   TF_RETURN_IF_ERROR(ApplyDomainShardingPass(domain, sharding).status());
 
-  int64 unassigned = 0;
+  int64_t unassigned = 0;
   for (HloInstruction* instruction : domain.instructions) {
     if (!instruction->has_sharding()) {
       LOG(WARNING) << "Unassigned instruction: " << instruction->ToString();
       ++unassigned;
     } else {
-      // Un-set sharding of tuples whose sub-sgardings are assigned to
+      // Un-set sharding of tuples whose sub-shardings are assigned to
       // kUnassignedDevice. Indeed in case of doubt it is better to leave the
       // entire tuple unassigned, and let the device placer decide for it.
-      if (instruction->sharding().UsesDevice(kUnassignedDevice)) {
+      // Do not clear the tuple sharding when the instruction is kParameter. The
+      // sharding of the tuple might not be able to reconstructed if its users
+      // are removed during DCE.
+      if (instruction->sharding().UsesDevice(kUnassignedDevice) &&
+          instruction->opcode() != HloOpcode::kParameter) {
         TF_RET_CHECK(instruction->shape().IsTuple())
             << "Only tuples can have kUnassignedDevice sub shardings";
         instruction->clear_sharding();
@@ -422,14 +430,7 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
              : false;
 }
 
-size_t ShardingMetadata::Hash() const {
-  if (sharding_ != nullptr) {
-    return sharding_->Hash();
-  }
-  return static_cast<size_t>(0x297814aaad196e6dULL);
-}
-
-string ShardingMetadata::ToString() const {
+std::string ShardingMetadata::ToString() const {
   return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 
@@ -528,14 +529,6 @@ bool ShardingDomainCreator::DomainCseMapKey::operator==(
     return false;
   }
   return *sharding == *other.sharding;
-}
-
-size_t ShardingDomainCreator::DomainCseMapHasher::operator()(
-    const ShardingDomainCreator::DomainCseMapKey& key) const {
-  return tensorflow::Hash64Combine(
-      std::hash<const HloInstruction*>{}(key.instruction),
-      key.sharding ? key.sharding->Hash()
-                   : static_cast<size_t>(0x297814aaad196e6dULL));
 }
 
 }  // namespace xla

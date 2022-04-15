@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -29,31 +31,26 @@ GTEST_API_ int main(int argc, char** argv) {
     return 2;
   }
 
-  // If the --benchmarks flag is passed in then only run the benchmarks, not the
-  // tests.
+  // If the --benchmark_filter flag is passed in then only run the benchmarks,
+  // not the tests.
   for (int i = 1; i < argc; i++) {
     absl::string_view arg(argv[i]);
-    if (arg == "--benchmarks" || absl::StartsWith(arg, "--benchmarks=")) {
+    if (arg == "--benchmark_filter" ||
+        absl::StartsWith(arg, "--benchmark_filter=")) {
       const char* pattern = nullptr;
-      if (absl::StartsWith(arg, "--benchmarks=")) {
-        pattern = argv[i] + strlen("--benchmarks=");
+      if (absl::StartsWith(arg, "--benchmark_filter=")) {
+        pattern = argv[i] + strlen("--benchmark_filter=");
       } else {
-        // Handle flag of the form '--benchmarks foo' (no '=').
+        // Handle flag of the form '--benchmark_filter foo' (no '=').
         if (i + 1 >= argc || absl::StartsWith(argv[i + 1], "--")) {
-          LOG(ERROR) << "--benchmarks flag requires an argument.";
+          LOG(ERROR) << "--benchmark_filter flag requires an argument.";
           return 2;
         }
         pattern = argv[i + 1];
       }
-      // Unfortunately Google's internal benchmark infrastructure has a
-      // different API than Tensorflow's.
+      ::benchmark::Initialize(&argc, argv);
       testing::InitGoogleTest(&argc, argv);
-#if defined(PLATFORM_GOOGLE)
-      absl::SetFlag(&FLAGS_benchmarks, pattern);
-      RunSpecifiedBenchmarks();
-#else
-      tensorflow::testing::Benchmark::Run(pattern);
-#endif
+      benchmark::RunSpecifiedBenchmarks();
       return 0;
     }
   }

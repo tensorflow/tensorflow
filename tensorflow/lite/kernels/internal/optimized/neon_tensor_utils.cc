@@ -142,6 +142,31 @@ inline int32_t AccumulateNeonLane(const int32x4_t lane) {
 #endif
 }
 
+// Single-rounding MultiplyByQuantizedMultiplier
+#if TFLITE_SINGLE_ROUNDING
+inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
+    int32x4x2_t input_val, int32_t quantized_multiplier, int shift) {
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+  const int right_shift = std::min(-1, shift);
+  const int left_shift = shift - right_shift;
+
+  const int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
+  const int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
+  const int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
+
+  int32x4x2_t result;
+  result.val[0] = vrshlq_s32(
+      vqdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup), multiplier_dup),
+      right_shift_dup);
+
+  result.val[1] = vrshlq_s32(
+      vqdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup), multiplier_dup),
+      right_shift_dup);
+
+  return result;
+}
+// Double-rounding MultiplyByQuantizedMultiplier
+#else
 inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
     int32x4x2_t input_val, int32 quantized_multiplier, int shift) {
   using gemmlowp::RoundingDivideByPOT;
@@ -192,6 +217,7 @@ inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
 #endif
   return result;
 }
+#endif  // TFLITE_SINGLE_ROUNDING
 
 }  // namespace
 
@@ -1373,11 +1399,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
-#ifdef TFLITE_WITH_RUY_GEMV
-  const bool use_cpu_backend_gemm = true;
-#else
-  const bool use_cpu_backend_gemm = UseCpuBackendGemm(m_rows, m_cols, n_batch);
-#endif
+  const bool use_cpu_backend_gemm = (context && context->use_caching()) ||
+                                    UseCpuBackendGemm(m_rows, m_cols, n_batch);
   if (input_offset == nullptr) {
     if (use_cpu_backend_gemm && context) {
       NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
@@ -1521,9 +1544,10 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
       sum_sq += val * val;
     }
 
+    // Divide by `n_input` first to avoid overflow but only works for POT
+    // `n_input`.
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
-    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
     int32_t variance2 = static_cast<int32>(variance / 1048576);
@@ -1931,6 +1955,82 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate1x4(
   }
 }
 
+void NeonSparseMatrixBatchVectorMultiplyAccumulate1x16(
+    const int8_t* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
+    int n_batch, const int32_t input_offset, const int32_t output_multiplier,
+    const int32_t output_shift, const int32_t output_offset,
+    const int32_t output_activation_min, const int32_t output_activation_max,
+    int8_t* __restrict__ result) {
+  constexpr int kBlockSize = kInt8ValuesPerNeonVector;
+  TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
+
+  for (int batch = 0; batch < n_batch; ++batch) {
+    const int8_t* matrix_ptr = matrix;
+    for (int row = 0; row < m_rows; ++row) {
+      // Accumulation loop.
+      int32x4_t acc_i32x4 = vmovq_n_s32(0);
+      int32_t matrix_row_sum = 0;
+      const int8_t* vector_in_batch = vector + batch * m_cols;
+
+      for (int i = segments[row]; i < segments[row + 1]; ++i) {
+        const int block_start_index = indices[i] * kBlockSize;
+        const int8_t* vector_block_in_batch_ptr =
+            vector_in_batch + block_start_index;
+
+        // Load 16 int8 values from the vector and matrix row.
+        int8x16_t vector_i8x16 = vld1q_s8(vector_block_in_batch_ptr);
+        int8x16_t matrix_i8x16 = vld1q_s8(matrix_ptr);
+#ifdef __aarch64__
+        int16_t matrix_block_sum = vaddlvq_s8(matrix_i8x16);
+#else
+        int16_t matrix_block_sum =
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 0)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 1)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 2)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 3)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 4)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 5)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 6)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 7)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 8)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 9)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 10)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 11)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 12)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 13)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 14)) +
+            static_cast<int8_t>(vgetq_lane_s8(matrix_i8x16, 15));
+#endif
+
+        // Multiply the vector and matrix row and add to accumulator.
+        int16x8_t acc_i16x8 =
+            vmull_s8(vget_low_s8(vector_i8x16), vget_low_s8(matrix_i8x16));
+        acc_i16x8 = vmlal_s8(acc_i16x8, vget_high_s8(vector_i8x16),
+                             vget_high_s8(matrix_i8x16));
+        acc_i32x4 = vpadalq_s16(acc_i32x4, acc_i16x8);
+        matrix_row_sum += matrix_block_sum;
+        matrix_ptr += kBlockSize;
+      }
+#ifdef __aarch64__
+      int32_t acc = vaddvq_s32(acc_i32x4);
+#else
+      int32_t acc = vgetq_lane_s32(acc_i32x4, 0) +
+                    vgetq_lane_s32(acc_i32x4, 1) +
+                    vgetq_lane_s32(acc_i32x4, 2) + vgetq_lane_s32(acc_i32x4, 3);
+#endif
+      const int32_t bias_value = bias_vector != nullptr ? bias_vector[row] : 0;
+      acc = acc + bias_value + input_offset * matrix_row_sum;
+      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      acc += output_offset;
+      result[batch * m_rows + row] =
+          static_cast<int8_t>(ActivationFunctionWithMinMax(
+              acc, output_activation_min, output_activation_max));
+    }
+  }
+}
+
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
@@ -2228,9 +2328,8 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
   }
 }
 
-// TODO(renjieliu): Avoid duplicating the logic.
-// Also consider changing the rounding stragey from "ties to away" to
-// "ties to even" since vcvtnq_s32_f32 is generally more available.
+// TODO(b/185850916): Consider changing the rounding stragey from "ties to away"
+// to "ties to even" since vcvtnq_s32_f32 is generally more available.
 inline int32x4_t RoundToNearest(const float32x4_t input) {
 #if __ARM_ARCH >= 8
   return vcvtaq_s32_f32(input);

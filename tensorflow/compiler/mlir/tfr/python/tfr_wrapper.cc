@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -34,16 +35,16 @@ limitations under the License.
 PYBIND11_MODULE(tfr_wrapper, m) {
   m.def("verify", [](std::string input) {
     mlir::DialectRegistry registry;
-    registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
-                    mlir::StandardOpsDialect, mlir::shape::ShapeDialect,
-                    mlir::TFR::TFRDialect>();
+    registry.insert<mlir::arith::ArithmeticDialect, mlir::scf::SCFDialect,
+                    mlir::TF::TensorFlowDialect, mlir::func::FuncDialect,
+                    mlir::shape::ShapeDialect, mlir::TFR::TFRDialect>();
     mlir::MLIRContext ctx(registry);
     ctx.loadAllAvailableDialects();
 
     llvm::SourceMgr source_mgr = llvm::SourceMgr();
     source_mgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                                   llvm::SMLoc());
-    auto module = mlir::parseSourceFile(source_mgr, &ctx);
+    auto module = mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &ctx);
     if (!module) {
       return false;
     }

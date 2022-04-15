@@ -14,10 +14,6 @@
 # ========================================================================
 """Utilities to handle tensor tracer parameters."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import os
 import os.path
@@ -73,6 +69,22 @@ FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
 FLAG_FLUSH_SUMMARY = 'flush_summaries'
 
+
+VALID_FLAG_NAMES = [
+    FLAG_NAME_ENABLE, FLAG_NAME_TRACE_MODE,
+    FLAG_NAME_TRACE_SCALAR_OPS,
+    FLAG_NAME_SUBMODE, FLAG_NAME_EXCLUDED_OPNAMES,
+    FLAG_NAME_EXCLUDED_OPTYPES, FLAG_NAME_INCLUDED_OPNAMES,
+    FLAG_NAME_INCLUDED_OPTYPES, FLAG_NAME_TRACE_DIR,
+    FLAG_NAME_REPORT_FILE,
+    FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
+    FLAG_NAME_OP_RANGE,
+    FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
+    FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
+    FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
+    FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY,
+]
+
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
 
@@ -83,6 +95,7 @@ _TT_NORM = 'norm'
 _TT_MAX = 'max'
 _TT_MAX_ABS = 'max-abs'
 _TT_MIN = 'min'
+_TT_SPARSITY = 'sparsity'
 _TT_MEAN = 'mean'
 _TT_VAR = 'var'
 _TT_SIZE = 'size'
@@ -91,13 +104,14 @@ TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
 TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
 TT_SUMMARY_MAX_ABS = '%s_%s' % (_TT_PREFIX, _TT_MAX_ABS)
 TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
+TT_SUMMARY_SPARSITY = '%s_%s' % (_TT_PREFIX, _TT_SPARSITY)
 TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
 TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
 TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
 
 TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
-                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE,
-                         TT_SUMMARY_MAX_ABS)
+                         TT_SUMMARY_SPARSITY, TT_SUMMARY_MEAN, TT_SUMMARY_VAR,
+                         TT_SUMMARY_SIZE, TT_SUMMARY_MAX_ABS)
 
 
 class TTParameters(object):
@@ -139,9 +153,15 @@ class TTParameters(object):
                                                 _TT_DEFAULT_TRACE_LEVEL)
     self.summary_signatures = self._get_summary_signatures()
     self.collect_summary_per_core = self.is_flag_on(FLAG_NAME_SUMMARY_PER_CORE)
+    # TODO(b/199284834): Will be resolved with referenced bug.
+    if self.collect_summary_per_core:
+      logging.warning('Aggregate signatures are approximate for mean, variance'
+                      ' and sparsity.')
     self.flush_summaries_with_outside_compile = self.is_flag_on(
         FLAG_FLUSH_SUMMARY)
-    self._check_flag_errors()
+    # Do not produce errors or warnings if Tensor Tracer is not enabled.
+    if self.is_enabled():
+      self._check_flag_errors()
 
   def _check_flag_errors(self):
     if self.trace_mode in (TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY):
@@ -153,8 +173,7 @@ class TTParameters(object):
     """Sets the path of the output report file."""
 
     found, report_file_path = self.get_flag_value(FLAG_NAME_REPORT_FILE)
-    if found and report_file_path \
-       and self.use_test_undeclared_outputs_dir():
+    if found and report_file_path and self.use_test_undeclared_outputs_dir():
       if os.path.isabs(report_file_path):
         raise ValueError('If use_test_undeclared_outputs_dir is set,'
                          'report_file_path cannot be an absolute path (%s)'
@@ -178,8 +197,7 @@ class TTParameters(object):
 
   def _get_trace_dir(self):
     found, trace_dir = self.get_flag_value(FLAG_NAME_TRACE_DIR)
-    if found and trace_dir \
-       and self.use_test_undeclared_outputs_dir():
+    if found and trace_dir and self.use_test_undeclared_outputs_dir():
       raise ValueError(
           'Cannot not use --%s and --%s at the same time' %
           (FLAG_NAME_TRACE_DIR, FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR))
@@ -254,20 +272,6 @@ class TTParameters(object):
 
   def _validate_flag_names(self):
     """Validates if the TensorTrace flags passed are valid."""
-    valid_flag_names = [
-        FLAG_NAME_ENABLE, FLAG_NAME_TRACE_MODE,
-        FLAG_NAME_TRACE_SCALAR_OPS,
-        FLAG_NAME_SUBMODE, FLAG_NAME_EXCLUDED_OPNAMES,
-        FLAG_NAME_EXCLUDED_OPTYPES, FLAG_NAME_INCLUDED_OPNAMES,
-        FLAG_NAME_INCLUDED_OPTYPES, FLAG_NAME_TRACE_DIR,
-        FLAG_NAME_REPORT_FILE,
-        FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
-        FLAG_NAME_OP_RANGE,
-        FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
-        FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
-        FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
-        FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY
-    ]
     tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
       return
@@ -277,12 +281,16 @@ class TTParameters(object):
       if not match:
         break
       flag_name = match.group(1)
-      if flag_name not in valid_flag_names:
+      if flag_name not in VALID_FLAG_NAMES:
         raise ValueError(
             'The flag name "%s" passed via the environment variable "%s" '
             'is invalid. Valid flag names are:'
-            '\n%s' % (flag_name, FLAGS_ENV_VAR, valid_flag_names))
+            '\n%s' % (flag_name, FLAGS_ENV_VAR, VALID_FLAG_NAMES))
       pos = match.end()
+
+  def _supported_signatures(self):
+    """Returns a tuple of supported signatures."""
+    return TT_SUMMARY_SIGNATURES
 
   def _get_summary_signatures(self):
     """Verifies and returns the summary signatures.
@@ -292,17 +300,18 @@ class TTParameters(object):
       computed when trace_mode is summary.
     """
     signatures = self._flag_value_as_list(FLAG_NAME_SUMMARY_SIGNATURES)
+    supported_signatures = self._supported_signatures()
 
     tt_signatures = []
     for signature in signatures:
       signature_with_prefix = '%s_%s' % (_TT_PREFIX, signature)
-      if signature in TT_SUMMARY_SIGNATURES:
+      if signature in supported_signatures:
         tt_signatures.append(signature)
-      elif signature_with_prefix in TT_SUMMARY_SIGNATURES:
+      elif signature_with_prefix in supported_signatures:
         tt_signatures.append(signature_with_prefix)
       else:
-        logging.warning('Unknown signature:%s. Supported signatures: %s' % (
-            signature, TT_SUMMARY_SIGNATURES))
+        logging.warning('Unknown signature:%s. Supported signatures: %s' %
+                        (signature, supported_signatures))
     if not tt_signatures:
       # Default case collects norm and max only.
       return {TT_SUMMARY_MAX_ABS: 0, TT_SUMMARY_NORM: 1}
@@ -311,6 +320,9 @@ class TTParameters(object):
 
   def get_signature_to_agg_fn_map(self):
     """Returns a map that contains the aggregate function for each signature."""
+    # TODO(b/199284834): Aggregations are not accurate for mean and sparsity if
+    # cores have a different number of elements. Variance uses the maximal core
+    # variance.
     return {TRACE_MODE_NORM: linalg_ops.norm,
             TRACE_MODE_MAX_ABS: math_ops.reduce_max,
             TRACE_MODE_NAN_INF: math_ops.reduce_max,
@@ -320,6 +332,8 @@ class TTParameters(object):
                 lambda t, axis=0: math_ops.reduce_max(math_ops.abs(t),  # pylint: disable=g-long-lambda
                                                       axis=axis),
             TT_SUMMARY_MIN: math_ops.reduce_min,
+            # Exact if each part has the same number of values.
+            TT_SUMMARY_SPARSITY: math_ops.reduce_mean,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
             TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.
             TT_SUMMARY_SIZE: math_ops.reduce_sum}
@@ -416,7 +430,8 @@ class TTParameters(object):
       if flag_name == wanted_flag_name:
         return True, flag_value
       pos = match.end()
-    raise RuntimeError('Should not reach here.')
+    raise RuntimeError('Invalid tensor tracer flag. Could not recognize %s.' %
+                       flag_name)
 
   def _flag_value_to_re_list(self, flag_name):
     """Converts list of strings to compiled RE."""
@@ -448,8 +463,8 @@ class TTParameters(object):
     """Returns True if TensorTracer is enabled."""
 
     if self.is_flag_on(FLAG_NAME_ENABLE):
-      logging.info('Tensor Tracer is enabled with flags %s.' %
-                   self._env.get(FLAGS_ENV_VAR))
+      logging.debug('Tensor Tracer is enabled with flags %s.',
+                    self._env.get(FLAGS_ENV_VAR))
       return True
     else:
       return False

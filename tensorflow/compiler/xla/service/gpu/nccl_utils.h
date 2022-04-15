@@ -18,43 +18,32 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#endif
-#include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+// Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
-// Local hipify of cuda symbols
-#define cudaError_t hipError_t
-#define cudaStream_t hipStream_t
-#define cudaGetErrorString hipGetErrorString
-#define cudaGetDevice hipGetDevice
-#define cudaSetDevice hipSetDevice
-#define cudaSuccess hipSuccess
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "third_party/nccl/nccl.h"
 #endif
 
 namespace xla {
 namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type);
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type);
 
 bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line, const char* expr);
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                const char* expr);
 
 // Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
 // NCCL and CUDA errors.)
@@ -80,78 +69,51 @@ Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
     }                                 \
   } while (0)
 
-// RAII type for NCCL communicators.
-using NcclComm = std::unique_ptr<ncclComm, void (*)(ncclComm_t)>;
-
-// Owns a clique of NCCL comms which can be used for collective operations among
-// a particular set of GPUs.
-//
-// Note that if you want to do a collective operation among a subset of these
-// GPUs, you'll need a different clique.
-class NcclClique {
- public:
-  explicit NcclClique(
-      absl::flat_hash_map<int, NcclComm> comms_by_device_ordinal);
-
-  ncclComm_t GetCommForDeviceOrdinal(int device_ordinal) const;
-  absl::Mutex* mu() { return &mu_; }
-
- private:
-  absl::flat_hash_map<int, NcclComm> comms_by_device_ordinal_;
-  absl::Mutex mu_;
-};
-
-struct LocalParticipant {
-  int device_ordinal;
-  int rank;
-};
-
-StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
+size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-class LockedNcclClique {
- public:
-  LockedNcclClique(NcclClique& clique, std::unique_ptr<absl::MutexLock> lock,
-                   absl::BlockingCounter* counter);
-  LockedNcclClique(LockedNcclClique&&);
-  ~LockedNcclClique();
+StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
+    const NcclUniqueIdCallback* unique_id_callback,  // may be null
+    bool is_local);
 
-  NcclClique& clique;
+// Represents a type that requires mutually exclusive access.
+template <typename T>
+class Lockable {
+ public:
+  // RAII type that will release the exclusive lock when it is destroyed.
+  using Lock = std::unique_ptr<T, std::function<void(T*)>>;
+
+  explicit Lockable(T value = T()) : value_(std::move(value)) {}
+
+  Lock Acquire() {
+    absl::MutexLock lock(&mutex_);
+    mutex_.Await(absl::Condition(&is_unlocked_));
+    is_unlocked_ = false;
+
+    return {&value_, [this](T*) {
+              absl::MutexLock lock(&mutex_);
+              CHECK(!is_unlocked_);
+              is_unlocked_ = true;
+            }};
+  }
 
  private:
-  // Must come after clique, so it is destroyed first.
-  // One thread holds a lock (it is null in the others).
-  std::unique_ptr<absl::MutexLock> lock_;
-  absl::BlockingCounter* counter_;
+  T value_;
+  absl::Mutex mutex_;
+  bool is_unlocked_ ABSL_GUARDED_BY(mutex_) = true;
 };
 
-// Threadsafe leaky map from NcclCliqueKeys to NcclCliques.
-class NcclCliqueMap {
- public:
-  StatusOr<NcclClique*> GetOrTryCreateIfAbsent(
-      const NcclCliqueKey& key,
-      const std::function<StatusOr<std::unique_ptr<NcclClique>>(
-          const NcclCliqueKey&)>& value_factory) ABSL_LOCKS_EXCLUDED(mu_);
+TF_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
 
-  // Runs a function over every key/value in the map.
-  void ForEach(
-      const std::function<void(const NcclCliqueKey&, const NcclClique&)>& fn)
-      ABSL_LOCKS_EXCLUDED(mu_);
-
- private:
-  absl::Mutex mu_;
-  absl::flat_hash_map<NcclCliqueKey, std::unique_ptr<NcclClique>> map_
-      ABSL_GUARDED_BY(mu_);
+struct NcclComm : public Lockable<ncclComm_t> {
+  NcclComm() : Lockable(nullptr) {}
 };
 
-NcclCliqueMap& NcclCliqueCache();
-
-// Acquires a locked NCCL clique for use in NCCL collective operations.
-StatusOr<LockedNcclClique> AcquireNcclClique(
-    const RendezvousKey& rendezvous_key, int local_device_ordinal,
-    se::Stream* stream, const std::vector<LocalParticipant>& local_participants,
-    const NcclUniqueIdCallback* callback);  // may be null
+StatusOr<NcclComm::Lock> AcquireNcclComm(
+    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
+    size_t num_local_participants,
+    const NcclUniqueIdCallback& unique_id_callback, int rank);
 
 }  // namespace gpu
 }  // namespace xla

@@ -18,10 +18,6 @@ There is a fair amount of setup needed to initialize tensorflow and get it
 into a proper TF2 execution mode. This hides that boilerplate.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tempfile
 
 from absl import app

@@ -77,7 +77,7 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
       dtype = node->attr().at("dtype").type();
     }
     input_layer_types.push_back(DataTypeString(dtype));
-    std::vector<int64> sizes;
+    std::vector<int64_t> sizes;
     PartialTensorShape shape;
     if (node->attr().count("shape")) {
       TensorShapeProto shape_proto = node->attr().at("shape").shape();
@@ -197,8 +197,8 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
     std::cout << std::endl;
   }
 
-  int64 const_parameter_count = 0;
-  int64 variable_parameter_count = 0;
+  int64_t const_parameter_count = 0;
+  int64_t variable_parameter_count = 0;
   int control_edge_count = 0;
   std::map<string, int> device_counts;
   for (const NodeDef& node : graph.node()) {

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -68,6 +69,9 @@ bool IsIdentityConsumingSwitch(const MutableGraphView& graph,
     }
 
     NodeDef* input_node = graph.GetNode(tensor_id.node());
+    if (input_node == nullptr) {
+      return false;
+    }
     return IsSwitch(*input_node);
   }
   return false;
@@ -334,6 +338,24 @@ string GeneratedNameForIdentityConsumingSwitch(
       kMutableGraphViewCtrl);
 }
 
+string PrintInTextFormat(const protobuf::MessageLite& message) {
+  // Unfortunately proto2::TextFormat::Printer::PrintToString does not have
+  // a overload for MessageLite so here we have to use
+  // MessageLite::ShortDebugString.
+  return message.ShortDebugString();
+}
+
+string PrintInTextFormat(const protobuf::Message& message) {
+  string message_text;
+  ::tensorflow::protobuf::TextFormat::Printer printer;
+  printer.SetSingleLineMode(true);
+  printer.PrintToString(message, &message_text);
+  if (!message_text.empty() && message_text[message_text.size() - 1] == ' ') {
+    message_text.resize(message_text.size() - 1);
+  }
+  return message_text;
+}
+
 }  // namespace
 
 void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
@@ -498,7 +520,7 @@ Status MutableGraphView::UpdateNode(
     attr_strs.reserve(attrs.size());
     for (const auto& attr : attrs) {
       string attr_str = absl::Substitute("('$0', $1)", attr.first,
-                                         attr.second.ShortDebugString());
+                                         PrintInTextFormat(attr.second));
       attr_strs.push_back(attr_str);
     }
     string params =
@@ -1291,22 +1313,15 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
   const int num_regular_fanins =
       NumFanins(*node, /*include_controlling_nodes=*/false);
   bool modified = false;
-  absl::flat_hash_set<InputPort>* from_fanin_port_fanouts = nullptr;
-  absl::flat_hash_set<InputPort>* to_fanin_port_fanouts = nullptr;
   for (int i = 0; i < num_regular_fanins; ++i) {
     if (ParseTensorName(node->input(i)) == from_fanin) {
       InputPort input(node, i);
-      if (from_fanin_port_fanouts == nullptr) {
-        OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
-        from_fanin_port_fanouts = &fanouts()[from_fanin_port];
-      }
-      from_fanin_port_fanouts->erase(input);
 
-      if (to_fanin_port_fanouts == nullptr) {
-        OutputPort to_fanin_port(to_fanin_node, to_fanin.index());
-        to_fanin_port_fanouts = &fanouts()[to_fanin_port];
-      }
-      to_fanin_port_fanouts->insert(input);
+      OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
+      fanouts()[from_fanin_port].erase(input);
+
+      OutputPort to_fanin_port(to_fanin_node, to_fanin.index());
+      fanouts()[to_fanin_port].insert(input);
 
       node->set_input(i, to_fanin_string);
       modified = true;
@@ -1315,8 +1330,9 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
 
   // Dedup control dependencies and update max regular output ports.
   if (modified) {
+    OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
     UpdateMaxRegularOutputPortForRemovedFanin(
-        {from_fanin_node, from_fanin.index()}, *from_fanin_port_fanouts);
+        {from_fanin_node, from_fanin.index()}, fanouts()[from_fanin_port]);
     if (max_regular_output_port()[to_fanin_node] < to_fanin.index()) {
       max_regular_output_port()[to_fanin_node] = to_fanin.index();
     }

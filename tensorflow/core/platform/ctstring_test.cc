@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/core/platform/ctstring_internal.h"
 #include "tensorflow/core/platform/test.h"
 
 static const char kLongString[] =
@@ -327,5 +328,82 @@ TEST(TF_CTStringTest, ResizeReserve) {
     EXPECT_EQ(207, TF_TString_GetCapacity(&s70));
 
     TF_TString_Dealloc(&s70);
+  }
+  {
+    // ReserveAmortized
+    TF_TString s70;
+
+    TF_TString_Init(&s70);
+
+    TF_TString_ReserveAmortized(&s70, TF_TString_SmallCapacity - 1);
+
+    EXPECT_EQ(TF_TString_SmallCapacity, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(0, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TSTR_SMALL, TF_TString_GetType(&s70));
+
+    TF_TString_ReserveAmortized(&s70, TF_TString_SmallCapacity);
+
+    EXPECT_EQ(TF_TString_SmallCapacity, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(0, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TSTR_SMALL, TF_TString_GetType(&s70));
+
+    TF_TString_Copy(&s70, "hello", 5);
+
+    EXPECT_EQ(5, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TString_SmallCapacity, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(TF_TSTR_SMALL, TF_TString_GetType(&s70));
+
+    TF_TString_ReserveAmortized(&s70, 100);
+
+    // Test 16 byte alignment (7*16 - 1 = 111)
+    EXPECT_EQ(111, TF_TString_GetCapacity(&s70));
+    EXPECT_EQ(5, TF_TString_GetSize(&s70));
+    EXPECT_EQ(TF_TSTR_LARGE, TF_TString_GetType(&s70));
+
+    TF_TString_AssignView(&s70, kLongString, kLongStringLen);
+    TF_TString_ReserveAmortized(&s70, 10);
+
+    EXPECT_EQ(TF_TSTR_VIEW, TF_TString_GetType(&s70));
+    EXPECT_EQ(0, TF_TString_GetCapacity(&s70));
+
+    TF_TString_ReserveAmortized(&s70, 100);
+
+    // Converted to LARGE since it can no longer fit in SMALL.
+    EXPECT_EQ(TF_TSTR_LARGE, TF_TString_GetType(&s70));
+    EXPECT_EQ(111, TF_TString_GetCapacity(&s70));
+
+    TF_TString_ReserveAmortized(&s70, 200);
+
+    EXPECT_EQ(TF_TSTR_LARGE, TF_TString_GetType(&s70));
+    // 223 = 2*previous_capacity+1
+    EXPECT_EQ(223, TF_TString_GetCapacity(&s70));
+
+    TF_TString_Dealloc(&s70);
+  }
+}
+
+TEST(TF_CTStringTest, OffsetType) {
+  {
+    TF_TString s71;
+
+    TF_TString_Init(&s71);
+    size_t header_length = 24;
+    size_t size = 8;
+    TF_TString_ResizeUninitialized(&s71, header_length + size);
+    uint32_t save_size = s71.u.offset.size;
+    uint32_t save_offset = s71.u.offset.offset;
+    uint32_t save_count = s71.u.offset.count;
+
+    s71.u.offset.size = TF_TString_ToInternalSizeT(size, TF_TSTR_OFFSET);
+    s71.u.offset.offset = header_length;
+    s71.u.offset.count = 0;
+    EXPECT_EQ(size, TF_TString_GetSize(&s71));
+    EXPECT_EQ(TF_TSTR_OFFSET, TF_TString_GetType(&s71));
+
+    // restore state so string can be deallocated
+    s71.u.offset.size = save_size;
+    s71.u.offset.offset = save_offset;
+    s71.u.offset.count = save_count;
+    TF_TString_Dealloc(&s71);
   }
 }

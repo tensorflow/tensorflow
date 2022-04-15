@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -42,6 +41,22 @@ namespace xla {
 // sense.
 class HloReachabilityMap {
  public:
+  // An opaque index that clients can use to make repeated operations for the
+  // same instruction faster, by calling GetIndex once for the instruction,
+  // and then calling the variants of other interfaces that take Index arguments
+  // rather than HloInstruction* arguments.
+  struct Index {
+   public:
+    bool operator==(Index other) const { return v == other.v; }
+    bool operator!=(Index other) const { return v != other.v; }
+
+   private:
+    friend class HloReachabilityMap;
+
+    // Index assigned for a particular instruction.  The value is used to index
+    // into the vector of BitVectors and the BitVectors themselves.
+    int v;
+  };
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
   explicit HloReachabilityMap(
@@ -85,19 +100,11 @@ class HloReachabilityMap {
   void FastSetReachabilityToUnion(
       absl::Span<const HloInstruction* const> inputs,
       const HloInstruction* instruction);
+  // As above, but use Index instead if it's already looked up which is even
+  // faster since no hash map lookup will occur.
+  void FastSetReachabilityToUnion(absl::Span<const Index> input_indices,
+                                  Index index);
 
-  // An opaque index that clients can use to make repeated operations for the
-  // same instruction faster, by calling GetIndex once for the instruction,
-  // and then calling the variants of other interfaces that take Index arguments
-  // rather than HloInstruction* arguments.
-  struct Index {
-   private:
-    friend class HloReachabilityMap;
-
-    // Index assigned for a particular instruction.  The value is used to index
-    // into the vector of BitVectors and the BitVectors themselves.
-    int v;
-  };
   Index GetIndex(const HloInstruction* instruction) const {
     Index i;
     i.v = FindOrDie(indices_, GetKey(instruction));
@@ -188,7 +195,7 @@ class HloReachabilityMap {
     }
 
    private:
-    using Word = uint64;
+    using Word = uint64_t;
     static constexpr size_t kBits = 64;
 
     // Number of bits in the bitvector.
@@ -212,13 +219,14 @@ class HloReachabilityMap {
 
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
   void SetReachabilityToUnionHelper(
-      absl::Span<const HloInstruction* const> inputs,
-      const HloInstruction* instruction, BitVector* bit_vector);
+      absl::Span<const HloInstruction* const> inputs, Index index);
+  void SetReachabilityToUnionHelper(absl::Span<const Index> input_indices,
+                                    Index index);
 
-  uint64 GetKey(const HloInstruction* instruction) const {
-    uint64 unique_id = absl::bit_cast<uint32>(instruction->unique_id());
-    uint64 module_id =
-        absl::bit_cast<uint32>(instruction->parent()->parent()->unique_id());
+  uint64_t GetKey(const HloInstruction* instruction) const {
+    uint64_t unique_id = absl::bit_cast<uint32_t>(instruction->unique_id());
+    uint64_t module_id =
+        absl::bit_cast<uint32_t>(instruction->parent()->parent()->unique_id());
     return (module_id << 32) | unique_id;
   }
   // Return the index of the given instruction.
@@ -231,7 +239,7 @@ class HloReachabilityMap {
 
   // Dense assignment from HloInstruction::unique_id to number. These numbers
   // index into the bit_vectors_ vector and into the bits within a BitVector.
-  absl::flat_hash_map<uint64, int> indices_;
+  absl::flat_hash_map<uint64_t, int> indices_;
 
   // Bitvectors holding the reachability to each instruction. The bit vector for
   // instruction X includes ones for each instruction which X is reachable from.

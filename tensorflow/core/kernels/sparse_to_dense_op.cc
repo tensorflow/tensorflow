@@ -58,8 +58,8 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
         "got shape ",
         indices.shape().DebugString());
   }
-  const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
-  const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+  const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+  const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
   // output_shape
   if (!TensorShapeUtils::IsVector(output_shape.shape())) {
@@ -74,7 +74,7 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   }
 
   // sparse_values
-  const int64 num_values = sparse_values.NumElements();
+  const int64_t num_values = sparse_values.NumElements();
   if (sparse_values.dims() != 0 &&
       (sparse_values.dims() != 1 || num_values != num_elems)) {
     return errors::InvalidArgument("sparse_values has incorrect shape ",
@@ -108,8 +108,8 @@ class SparseToDense : public OpKernel {
     OP_REQUIRES_OK(c, CheckSparseToDenseShapes(indices, output_shape,
                                                sparse_values, default_value));
 
-    const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
-    const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+    const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+    const int64_t num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
 
     auto output_shape_vec = output_shape.flat<Index>();
     TensorShape output_tensor_shape;
@@ -130,9 +130,9 @@ class SparseToDense : public OpKernel {
       if (indices.dtype() == DT_INT64) {
         CHECK(indices_shaped_holder->CopyFrom(indices, ix_shape));
       } else {
-        indices_shaped_holder->matrix<int64>() =
+        indices_shaped_holder->matrix<int64_t>() =
             indices.shaped<Index, 2>(ix_shape.dim_sizes())
-                .template cast<int64>();
+                .template cast<int64_t>();
       }
     }
 
@@ -151,7 +151,7 @@ class SparseToDense : public OpKernel {
     }
 
     // Assume SparseTensor is lexicographically sorted.
-    gtl::InlinedVector<int64, 8> order(output->shape().dims());
+    gtl::InlinedVector<int64_t, 8> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st;
     OP_REQUIRES_OK(
@@ -182,11 +182,13 @@ class SparseToDense : public OpKernel {
 
 #define REGISTER_KERNELS_ALL(type) \
   REGISTER_KERNELS(type, int32);   \
-  REGISTER_KERNELS(type, int64);
+  REGISTER_KERNELS(type, int64_t);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS_ALL);
 REGISTER_KERNELS_ALL(bool);
 REGISTER_KERNELS_ALL(tstring);
+REGISTER_KERNELS_ALL(complex64);
+REGISTER_KERNELS_ALL(complex128);
 
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS
@@ -268,7 +270,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
 
 #define REGISTER_GPU_KERNELS_ALL(type) \
   REGISTER_GPU_KERNELS(type, int32);   \
-  REGISTER_GPU_KERNELS(type, int64);
+  REGISTER_GPU_KERNELS(type, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS_ALL);
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL)

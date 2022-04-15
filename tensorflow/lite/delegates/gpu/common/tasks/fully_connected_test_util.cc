@@ -37,12 +37,12 @@ absl::Status FullyConnectedTest(TestExecutionEnvironment* env) {
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.5f, -0.5f};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
@@ -83,12 +83,12 @@ absl::Status FullyConnectedLargeTest(TestExecutionEnvironment* env) {
   attr.bias.data = {-0.6f, -0.5f, -0.4f, -0.3f, -0.2f, -0.1f,
                     0.1f,  0.2f,  0.3f,  0.4f,  0.5f,  0.6f};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 0.0f : 1.0f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
@@ -122,8 +122,9 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
 
   std::vector<float> expected(kOutputSize, 2481.38f);
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       float eps;
       switch (precision) {
         case CalculationsPrecision::F32:
@@ -136,16 +137,19 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
           eps = 39.0f;
           break;
       }
-      if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
-        eps *= 4.0f;
-      }
       if (precision == CalculationsPrecision::F32_F16 &&
           env->GetGpuInfo().IsApiMetal() && env->GetGpuInfo().IsIntel()) {
         eps = 3.5f;
       }
+      if (precision == CalculationsPrecision::F32_F16 &&
+          env->GetGpuInfo().IsGlsl()) {
+        eps = 3.5f;
+      }
+      if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
+        eps *= 4.0f;
+      }
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;

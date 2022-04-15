@@ -154,7 +154,7 @@ void RegisterScalarSummaryOpKernel() {
 // register the ScalarSummary kernel.
 TF_ATTRIBUTE_UNUSED bool IsScalarSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {
-    RegisterScalarSummaryOpKernel<tensorflow::int64>();
+    RegisterScalarSummaryOpKernel<int64_t>();
     RegisterScalarSummaryOpKernel<tensorflow::uint64>();
     RegisterScalarSummaryOpKernel<tensorflow::int32>();
     RegisterScalarSummaryOpKernel<tensorflow::uint32>();

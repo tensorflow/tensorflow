@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -39,6 +40,9 @@ namespace utils {
 namespace {
 const int8_t kMinQuantizedValue = -127;
 const int8_t kMaxQuantizedValue = 127;
+
+// The maximum number of dimensions supported in per-channel quantization.
+constexpr int kPerChannelMaxDim = 4;
 }  // namespace
 
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
@@ -142,33 +146,39 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
         "Min or max already present in tensor quantization params.");
     return kTfLiteError;
   }
-  if (dimension.size() != 4) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "Expected tensor with four dimensions, but got %d.",
-                         dimension.size());
-    return kTfLiteError;
-  }
-  if (channel_dim_index > 3) {
+
+  if (dimension.size() > kPerChannelMaxDim) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
-        "Expected channel_dim_index to be less than four, but got %d.",
-        channel_dim_index);
+        "Expected tensor with less than %d dimensions, but got %d.",
+        kPerChannelMaxDim + 1, dimension.size());
     return kTfLiteError;
   }
+  if (channel_dim_index >= dimension.size()) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
+        "Expected channel_dim_index to be less than %d, but got %d.",
+        dimension.size(), channel_dim_index);
+    return kTfLiteError;
+  }
+
   const int32_t channel_dim_size = dimension[channel_dim_index];
   quantization_params->quantized_dimension = channel_dim_index;
   quantization_params->min = std::vector<float>(channel_dim_size);
   quantization_params->max = std::vector<float>(channel_dim_size);
   std::vector<bool> has_min_max_value(channel_dim_size, false);
-  int indices[4];
-  RuntimeShape tensor_dims{dimension[0], dimension[1], dimension[2],
-                           dimension[3]};
+  int indices[kPerChannelMaxDim];
+  RuntimeShape unextended_tensor_dims(dimension.size(), dimension.data());
+  RuntimeShape tensor_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
+  channel_dim_index +=
+      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
 
   // Compute min max ranges per channel
-  for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
-    for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
-      for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
-        for (indices[3] = 0; indices[3] < dimension[3]; indices[3]++) {
+  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
           int channel_idx = indices[channel_dim_index];
           const float val = input[Offset(tensor_dims, indices)];
           if (has_min_max_value[channel_idx]) {
@@ -373,13 +383,16 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        int32_t channel_dim_index,
                                        std::vector<int8_t>* output_value) {
   // Quantize the values.
-  int indices[4];
-  RuntimeShape tensor_dims{dimension[0], dimension[1], dimension[2],
-                           dimension[3]};
-  for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
-    for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
-      for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
-        for (indices[3] = 0; indices[3] < dimension[3]; indices[3]++) {
+  int indices[kPerChannelMaxDim];
+  RuntimeShape unextended_tensor_dims(dimension.size(), dimension.data());
+  RuntimeShape tensor_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
+  channel_dim_index +=
+      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
+  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
           int channel_idx = indices[channel_dim_index];
           int index = Offset(tensor_dims, indices);
           const float val = input[index];
@@ -515,7 +528,7 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
                  quantized_buffer.begin(), [=](float a) {
                    float clamped = std::min(std::max(a, kMinFloat16Value),
                                             kMaxFloat16Value);
-                   return Eigen::half_impl::float_to_half_rtne(clamped);
+                   return static_cast<Eigen::half>(clamped);
                  });
 
   char* half_buffer = reinterpret_cast<char*>(quantized_buffer.data());
@@ -559,12 +572,12 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
 TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,
                                                ErrorReporter* error_reporter) {
-  if (tensor->shape.size() != 4) {
+  if (tensor->shape.size() > kPerChannelMaxDim) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
-        "SymmetricQuantizeTensorPerChannel requires tensor with four "
+        "SymmetricQuantizeTensorPerChannel requires tensor with less than %d "
         "dimensions, but got %d dimension(s).",
-        tensor->shape.size());
+        kPerChannelMaxDim + 1, tensor->shape.size());
     return kTfLiteError;
   }
 
@@ -745,7 +758,7 @@ TfLiteStatus QuantizeActivation(TensorT* tensor, TensorType activations_type,
 }
 
 TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale) {
-  const int32 zero_point = 0;
+  const int32_t zero_point = 0;
   tensor->quantization = absl::make_unique<QuantizationParametersT>();
   tensor->quantization->scale.push_back(scale);
   tensor->quantization->zero_point.push_back(zero_point);
@@ -757,7 +770,8 @@ int GetPowerOfTwoScale(float min, float max) {
   const float range = std::max(std::abs(min), std::abs(max));
   int pot = 0;
   for (int i = 0; i < 10; i++) {
-    if (std::pow(2, pot) < range) {
+    // NOTE: use std::pow() for bitwise accuracy.
+    if (std::pow(2, pot) < range) {  // NOLINT
       pot++;
     }
   }

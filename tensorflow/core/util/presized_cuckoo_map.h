@@ -142,7 +142,7 @@ class PresizedCuckooMap {
     port::prefetch<hint>(&buckets_[fast_map_to_buckets(h2(tk))].keys);
   }
 
-  int64 MemoryUsed() const {
+  int64_t MemoryUsed() const {
     return sizeof(PresizedCuckooMap<value>) + sizeof(CuckooPathQueue);
   }
 

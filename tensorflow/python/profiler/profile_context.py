@@ -14,10 +14,6 @@
 # ==============================================================================
 """A Context that captures profile and performs profiling/dumping.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import os
 import random
@@ -308,7 +304,7 @@ class ProfileContext(object):
 
   @contextlib.contextmanager
   def _new_step(self):
-    acquired = self._lock.acquire(False)
+    acquired = self._lock.acquire(False)  # pylint: disable=assignment-from-no-return
     yield (self._step, acquired)
     self._step += 1
     self._trace_next_step = False

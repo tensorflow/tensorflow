@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -344,7 +343,7 @@ TEST_F(SliceSinkerTest, SlicesWithMultiUsers) {
       add1 = f32[6,9] add(f32[6,9] s01, f32[6,9] s11)
       mul0 = f32[2,9] multiply(f32[2,9] s00, f32[2,9] s10)
       mul1 = f32[6,9] multiply(f32[6,9] s01, f32[6,9] s11)
-      ROOT tuple = (f32[2,9], f32[6,9]) tuple(add0, add1, mul0, mul1)
+      ROOT tuple = (f32[2,9], f32[6,9], f32[2,9], f32[6,9]) tuple(add0, add1, mul0, mul1)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

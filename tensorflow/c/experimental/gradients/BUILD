@@ -119,7 +119,7 @@ tf_cuda_cc_test(
     srcs = [
         "custom_gradient_test.cc",
     ],
-    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
+    args = ["--heap_check="],  # TODO(b/174752220): Remove
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
@@ -176,7 +176,7 @@ tf_cuda_cc_test(
     srcs = [
         "nn_grad_test.cc",
     ],
-    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
+    args = ["--heap_check="],  # TODO(b/174752220): Remove
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
@@ -203,7 +203,7 @@ tf_cuda_cc_test(
     srcs = [
         "math_grad_test.cc",
     ],
-    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
+    args = ["--heap_check="],  # TODO(b/174752220): Remove
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
@@ -230,7 +230,7 @@ tf_cuda_cc_test(
     srcs = [
         "array_grad_test.cc",
     ],
-    args = ["--heap_check=local"],  # TODO(b/174752220): Remove
+    args = ["--heap_check="],  # TODO(b/174752220): Remove
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [

@@ -47,8 +47,8 @@ XLA_TEST_F(QrTest, Simple) {
   });
 
   for (bool full_matrices : {false, true}) {
-    for (xla::int64 m : {3, 4}) {
-      for (xla::int64 n : {3, 4}) {
+    for (int64_t m : {3, 4}) {
+      for (int64_t n : {3, 4}) {
         xla::XlaBuilder builder(TestName());
         xla::XlaOp a, q, r;
         xla::Array<float> a_vals = data.Slice({0, 0}, {m, n});

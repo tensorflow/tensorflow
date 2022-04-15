@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 
 import numpy as np
@@ -92,13 +88,13 @@ class DirichletTest(test.TestCase):
     dist = dirichlet_lib.Dirichlet(concentration)
     log_prob = self.evaluate(dist.log_prob(x))
     self.assertAllEqual(
-        np.ones_like(log_prob, dtype=np.bool), np.isfinite(log_prob))
+        np.ones_like(log_prob, dtype=np.bool_), np.isfinite(log_prob))
 
     # Test when concentration[k] = 1., and x is zero at various dimensions.
     dist = dirichlet_lib.Dirichlet(10 * [1.])
     log_prob = self.evaluate(dist.log_prob(x))
     self.assertAllEqual(
-        np.ones_like(log_prob, dtype=np.bool), np.isfinite(log_prob))
+        np.ones_like(log_prob, dtype=np.bool_), np.isfinite(log_prob))
 
   def testPdfZeroBatches(self):
     alpha = [1., 2]

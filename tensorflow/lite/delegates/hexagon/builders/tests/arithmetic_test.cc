@@ -110,7 +110,7 @@ void QuantizedTestsNoActivation(ActivationFunctionType activation_func) {
     m.InitInterpreter();
     m.SetInput1<integer_dtype>(inputs1[i]);
     m.SetInput2<integer_dtype>(inputs2[i]);
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     auto reference_output = m.GetDequantizedOutput<integer_dtype>();
     m.ApplyDelegateAndInvoke();
     EXPECT_THAT(
@@ -139,7 +139,7 @@ TEST(QuantizedAddOpModelNoActivation, TestUInt8_ConstInput_1) {
                {110, 142, 156, 171}, {}, ActivationFunctionType_NONE);
   m.InitInterpreter();
   m.SetInput1<uint8_t>({0.1, 0.2, 0.3, 0.4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(
@@ -155,7 +155,7 @@ TEST(QuantizedAddOpModelNoActivation, TestUInt8_ConstInput_2) {
                {110, 142, 156, 171}, ActivationFunctionType_NONE);
   m.InitInterpreter();
   m.SetInput2<uint8_t>({0.1, 0.2, 0.3, 0.4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(
@@ -171,7 +171,7 @@ TEST(QuantizedAddOpModelNoActivation, TestInt8_ConstInput) {
                {110, 101, 105, 120}, ActivationFunctionType_NONE);
   m.InitInterpreter();
   m.SetInput2<int8_t>({0.1, 0.2, 0.3, 0.4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(

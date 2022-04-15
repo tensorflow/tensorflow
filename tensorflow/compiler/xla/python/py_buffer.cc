@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include <functional>
+#include <string>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
@@ -24,7 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -112,8 +117,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
       buffer_(std::move(buffer)),
       traceback_(std::move(traceback)) {
   CHECK(PyGILState_Check());
-  next_ = client_->buffers_;
-  client_->buffers_ = this;
+  next_ = client_->buffers_[buffer_->device()->id()];
+  client_->buffers_[buffer_->device()->id()] = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
@@ -122,8 +127,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
 
 PyBuffer::~PyBuffer() {
   CHECK(PyGILState_Check());
-  if (client_->buffers_ == this) {
-    client_->buffers_ = next_;
+  if (client_->buffers_[device()->id()] == this) {
+    client_->buffers_[device()->id()] = next_;
   }
   if (prev_) {
     prev_->next_ = next_;
@@ -133,7 +138,7 @@ PyBuffer::~PyBuffer() {
   }
 }
 
-StatusOr<int64> PyBuffer::size() {
+StatusOr<int64_t> PyBuffer::size() {
   Shape max_buffer_shape = buffer()->on_device_shape();
   if (max_buffer_shape.is_dynamic()) {
     TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
@@ -161,7 +166,7 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return IntSpanToTuple(buffer()->on_device_shape().dimensions());
+  return SpanToTuple(buffer()->on_device_shape().dimensions());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
@@ -183,6 +188,16 @@ PyBuffer::object PyBuffer::Clone() const {
 StatusOr<py::object> PyBuffer::CopyToDevice(
     const ClientAndPtr<PjRtDevice>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
+  auto transfer_guard_formatter = [this, &dst_device] {
+    auto shape = py::cast<std::string>(py::str(python_shape()));
+    auto dtype = py::cast<std::string>(py::str(python_dtype()));
+    return absl::StrCat("shape=", shape, ", dtype=", dtype,
+                        ", device=", device()->DebugString(),
+                        ", dst_device=", dst_device->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+
   GlobalPyRefManager()->CollectGarbage();
   std::unique_ptr<PjRtBuffer> out;
   {
@@ -193,6 +208,29 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
   return Make(dst_device.client, std::move(out), std::move(traceback));
 }
 
+std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
+    absl::string_view serialized_descriptor) const {
+  absl::Mutex mu;
+  bool done = false;
+  Status status;
+  bool sends_were_enqueued;
+  buffer_->CopyToRemoteDevice(
+      serialized_descriptor,
+      [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
+        absl::MutexLock l(&mu);
+        done = true;
+        status = s;
+        sends_were_enqueued = dispatched;
+      });
+  {
+    py::gil_scoped_release gil_release;
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(
+        +[](bool* done) { return *done; }, &done));
+  }
+  return std::make_pair(status, sends_were_enqueued);
+}
+
 Status PyBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
@@ -201,6 +239,15 @@ Status PyBuffer::BlockHostUntilReady() {
 
 Status PyBuffer::CopyToHostAsync() {
   if (!buffer_->IsOnCpu() && !host_value_) {
+    auto transfer_guard_formatter = [this] {
+      auto shape = py::cast<std::string>(py::str(python_shape()));
+      auto dtype = py::cast<std::string>(py::str(python_dtype()));
+      return absl::StrCat("shape=", shape, ", dtype=", dtype,
+                          ", device=", device()->DebugString());
+    };
+    TF_RETURN_IF_ERROR(
+        jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
+
     std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
     host_value_ = host_value;
     // TODO(b/182461453): This is a blocking call. If we further implemented
@@ -270,7 +317,7 @@ StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
 
 StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
-  if (buffer_->client()->platform_id() != kGpuId) {
+  if (buffer_->client()->platform_id() != GpuId()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }
@@ -287,7 +334,7 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
 
   py::dict result;
   TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
-  result["shape"] = IntSpanToTuple(dynamic_shape->dimensions());
+  result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
                           buffer_->on_device_shape().element_type()));
@@ -387,11 +434,11 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     if ((flags & PyBUF_ND) == PyBUF_ND) {
       view->ndim = shape->dimensions_size();
-      static_assert(sizeof(int64) == sizeof(Py_ssize_t),
+      static_assert(sizeof(int64_t) == sizeof(Py_ssize_t),
                     "Py_ssize_t must be 64 bits");
       if (view->ndim != 0) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
-            const_cast<int64*>(shape->dimensions().data()));
+            const_cast<int64_t*>(shape->dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
           extra->strides = ByteStridesForShape(*shape);
           view->strides = extra->strides.data();
@@ -425,21 +472,6 @@ PyBufferProcs PyBuffer_tp_as_buffer = []() {
   procs.bf_releasebuffer = &PyBuffer_bf_releasebuffer;
   return procs;
 }();
-
-// Helpers for building Python properties
-template <typename Func>
-py::object property_readonly(Func&& get) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<Func>(get)), py::none(),
-                  py::none(), "");
-}
-
-template <typename GetFunc, typename SetFunc>
-py::object property(GetFunc&& get, SetFunc&& set) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<GetFunc>(get)),
-                  py::cpp_function(std::forward<SetFunc>(set)), py::none(), "");
-}
 
 }  // namespace
 
@@ -478,8 +510,8 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   }
   py::object base_type = py::reinterpret_borrow<py::object>(base_type_);
   base_type.attr("__module__") = m.attr("__name__");
-
   m.attr("DeviceArrayBase") = base_type;
+
   {
     py::tuple bases = py::make_tuple(base_type);
     py::str name = py::str("DeviceArray");
@@ -523,6 +555,8 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   // pybind11's casting logic. This is most likely slightly slower than
   // hand-writing bindings, but most of these methods are not performance
   // critical.
+  using jax::property;
+  using jax::property_readonly;
   type.attr("__array_priority__") =
       property_readonly([](py::object self) -> int { return 100; });
   type.attr("_device") = property(
@@ -545,13 +579,11 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self, absl::optional<bool> weak_type) {
         return self.buf()->set_weak_type(weak_type);
       });
-  type.attr("_lazy_expr") =
-      property_readonly([](py::handle self) { return py::none(); });
   type.attr("device_buffer") =
       property_readonly([](py::object self) { return self; });
   type.attr(
       "shape") = property_readonly([](PyBuffer::object self) -> py::tuple {
-    return IntSpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
+    return SpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
   });
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =
@@ -574,15 +606,37 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->CopyToDevice(dst_device);
       },
       py::is_method(type));
+  type.attr("copy_to_remote_device") = py::cpp_function(
+      [](PyBuffer::object self, const py::bytes serialized_descriptor) {
+        // TODO(phawkins): remove the std::string cast after C++17 is required.
+        // py::bytes has a std::string_view cast, but not an absl::string_view
+        // cast.
+        return self.buf()->CopyToRemoteDevice(
+            static_cast<std::string>(serialized_descriptor));
+      },
+      py::is_method(type));
+
   type.attr("on_device_size_in_bytes") = py::cpp_function(
-      [](PyBuffer::object self) -> int64_t {
+      [](PyBuffer::object self) -> StatusOr<size_t> {
         return self.buf()->OnDeviceSizeInBytes();
       },
       py::is_method(type));
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
   type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->BlockHostUntilReady(); },
+      [](PyBuffer::object self) {
+        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
+        PythonDeprecationWarning(
+            "block_host_until_ready() on a JAX array object is deprecated, use "
+            "block_until_ready() instead.");
+        return self.buf()->BlockHostUntilReady();
+      },
+      py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsReady(); },
+      py::is_method(type));
+  type.attr("is_known_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsKnownReady(); },
       py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {

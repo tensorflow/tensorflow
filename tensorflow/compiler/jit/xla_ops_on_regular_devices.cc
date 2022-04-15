@@ -54,6 +54,8 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(Name("XlaDynamicUpdateSlice").Device(DEVICE),        \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaIf").Device(DEVICE), XlaCompileOnDemandOp); \
+  REGISTER_KERNEL_BUILDER(Name("XlaOptimizationBarrier").Device(DEVICE),       \
+                          XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaPad")                                       \
                               .HostMemory("padding_low")                       \
                               .HostMemory("padding_high")                      \
@@ -63,6 +65,10 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(Name("XlaRecv").Device(DEVICE),                      \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduce").Device(DEVICE),                    \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaVariadicReduce").Device(DEVICE),            \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaVariadicReduceV2").Device(DEVICE),          \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduceWindow")                              \
                               .HostMemory("window_dimensions")                 \
@@ -92,6 +98,11 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(Name("XlaDequantize").Device(DEVICE),                \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaEinsum").Device(DEVICE),                    \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaRngBitGenerator")                           \
+                              .HostMemory("algorithm")                         \
+                              .HostMemory("shape")                             \
+                              .Device(DEVICE),                                 \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaSpmdShardToFullShape").Device(DEVICE),      \
                           XlaCompileOnDemandOp);                               \

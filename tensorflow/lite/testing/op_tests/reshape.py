@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for reshape."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -29,25 +25,37 @@ def make_reshape_tests(options):
   """Make a set of tests to do reshape."""
 
   # All shapes below are suitable for tensors with 420 elements.
-  test_parameters = [{
-      "dtype": [tf.float32, tf.int32],
-      "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
-      "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
-      "constant_shape": [True, False],
-      "fully_quantize": [False],
-  }, {
-      "dtype": [tf.float32],
-      "input_shape": [[1]],
-      "output_shape": [[]],
-      "constant_shape": [True, False],
-      "fully_quantize": [False],
-  }, {
-      "dtype": [tf.float32],
-      "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
-      "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
-      "constant_shape": [True],
-      "fully_quantize": [True],
-  }]
+  test_parameters = [
+      {
+          "dtype": [tf.float32, tf.int32],
+          "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
+          "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
+          "constant_shape": [True, False],
+          "fully_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1]],
+          "output_shape": [[]],
+          "constant_shape": [True, False],
+          "fully_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
+          "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
+          "constant_shape": [True],
+          "fully_quantize": [True],
+      },
+      {
+          # Zero in input shape.
+          "dtype": [tf.float32],
+          "input_shape": [[1, 4, 0]],
+          "output_shape": [[2, -1], [2, 0, -1]],
+          "constant_shape": [True, False],
+          "fully_quantize": [False],
+      }
+  ]
 
   def build_graph(parameters):
     """Build the graph for reshape tests."""

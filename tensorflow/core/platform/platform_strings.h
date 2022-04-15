@@ -342,7 +342,7 @@ limitations under the License.
         /* following gyrations subvert most such optimizations. */             \
         tf_cpu_option_global = tf_cpu_option;                                  \
         /* Nothing is printed because the string starts with a nul. */         \
-        printf("%s", tf_cpu_option);                                           \
+        printf("%s%s", tf_cpu_option, "");                                     \
       }                                                                        \
     } tf_cpu_option_avoid_omit_class;                                          \
     }  /* anonymous namespace */

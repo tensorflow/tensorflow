@@ -34,7 +34,7 @@ static NSString *const kAddQuantizedModelResourceName = @"add_quantized";
 static NSString *const kAddModelResourceType = @"bin";
 
 /** Size of the first (and only) dimension of the input and output tensor in the Add model. */
-static const NSUInteger kAddModelTensorFirstDimensionSize = 2U;
+enum EnumType : NSUInteger {kAddModelTensorFirstDimensionSize = 2U};
 
 /** Quantization scale of the quantized model. */
 static const float kAddQuantizedModelScale = 0.003922F;

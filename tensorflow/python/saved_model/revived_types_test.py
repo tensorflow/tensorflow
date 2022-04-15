@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for revived type matching."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.platform import test
@@ -105,6 +101,18 @@ class RegistrationMatchingTest(test.TestCase):
                 bad_consumers=[])))
     self.assertEqual(3, deserialized.version)
 
+  def test_register_twice(self):
+    identifier = "foo"
+    predicate = lambda x: isinstance(x, int)
+    versions = [
+        revived_types.VersionedTypeRegistration(
+            object_factory=lambda _: 1,
+            version=1, min_producer_version=1,
+            min_consumer_version=1),
+    ]
+    revived_types.register_revived_type(identifier, predicate, versions)
+    with self.assertRaisesRegex(AssertionError, "Duplicate registrations"):
+      revived_types.register_revived_type(identifier, predicate, versions)
 
 if __name__ == "__main__":
   test.main()

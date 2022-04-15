@@ -62,15 +62,15 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
   // [3   4]
 
   const auto indices_shape = TensorShape({4, 2});
-  std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> indices(in);
-  std::initializer_list<int64> sh{3, 2};
-  const gtl::ArraySlice<int64> shape(sh);
+  std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
+  const gtl::ArraySlice<int64_t> indices(in);
+  std::initializer_list<int64_t> sh{3, 2};
+  const gtl::ArraySlice<int64_t> shape(sh);
 
 #define ADD_TENSOR_INPUT()                                  \
-  AddInputFromArray<int64>(indices_shape, indices);         \
+  AddInputFromArray<int64_t>(indices_shape, indices);       \
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4}); \
-  AddInputFromArray<int64>(TensorShape({2}), shape);
+  AddInputFromArray<int64_t>(TensorShape({2}), shape);
 
   ADD_TENSOR_INPUT();
   ADD_TENSOR_INPUT();
@@ -80,17 +80,17 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_indices(allocator(), DT_INT64, indices_shape);
-  test::FillValues<int64>(&expected_indices, indices);
-  test::ExpectTensorEqual<int64>(expected_indices, *GetOutput(0));
+  test::FillValues<int64_t>(&expected_indices, indices);
+  test::ExpectTensorEqual<int64_t>(expected_indices, *GetOutput(0));
 
   Tensor expected_values(allocator(), DT_FLOAT, {4});
   test::FillValues<float>(&expected_values, {2, 4, 6, 8});
   test::ExpectTensorEqual<float>(expected_values, *GetOutput(1));
 
   Tensor expected_shape(allocator(), DT_INT64,
-                        {static_cast<int64>(shape.size())});
-  test::FillValues<int64>(&expected_shape, shape);
-  test::ExpectTensorEqual<int64>(expected_shape, *GetOutput(2));
+                        {static_cast<int64_t>(shape.size())});
+  test::FillValues<int64_t>(&expected_shape, shape);
+  test::ExpectTensorEqual<int64_t>(expected_shape, *GetOutput(2));
 }
 
 // [    1]     [5    ]      [5   1]
@@ -102,18 +102,18 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
     DataType val_dtype = tensorflow::DataTypeToEnum<VALTYPE>::value;        \
                                                                             \
     const auto indices_shape = TensorShape({4, 2});                         \
-    std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};                \
-    const gtl::ArraySlice<int64> indices(in);                               \
-    std::initializer_list<int64> sh{3, 2};                                  \
-    const gtl::ArraySlice<int64> shape(sh);                                 \
+    std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};              \
+    const gtl::ArraySlice<int64_t> indices(in);                             \
+    std::initializer_list<int64_t> sh{3, 2};                                \
+    const gtl::ArraySlice<int64_t> shape(sh);                               \
                                                                             \
-    AddInputFromArray<int64>(indices_shape, indices);                       \
+    AddInputFromArray<int64_t>(indices_shape, indices);                     \
     AddInputFromArray<VALTYPE>(TensorShape({4}), {1, 2, 3, 4});             \
-    AddInputFromArray<int64>(TensorShape({2}), shape);                      \
+    AddInputFromArray<int64_t>(TensorShape({2}), shape);                    \
                                                                             \
-    AddInputFromArray<int64>(TensorShape({2, 2}), {0, 0, 1, 1});            \
+    AddInputFromArray<int64_t>(TensorShape({2, 2}), {0, 0, 1, 1});          \
     AddInputFromArray<VALTYPE>(TensorShape({2}), {5, 6});                   \
-    AddInputFromArray<int64>(TensorShape({2}), shape);                      \
+    AddInputFromArray<int64_t>(TensorShape({2}), shape);                    \
                                                                             \
     if (val_dtype == DT_COMPLEX64) {                                        \
       AddInputFromArray<float>(TensorShape({}), {0});                       \
@@ -128,21 +128,21 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
     const int expected_nnz = 6;                                             \
     Tensor expected_indices(allocator(), DT_INT64,                          \
                             TensorShape({expected_nnz, 2}));                \
-    test::FillValues<int64>(&expected_indices,                              \
-                            {0, 0, 0, 1, 1, 0, 1, 1, 2, 0, 2, 1});          \
-    test::ExpectTensorEqual<int64>(expected_indices, *GetOutput(0));        \
+    test::FillValues<int64_t>(&expected_indices,                            \
+                              {0, 0, 0, 1, 1, 0, 1, 1, 2, 0, 2, 1});        \
+    test::ExpectTensorEqual<int64_t>(expected_indices, *GetOutput(0));      \
                                                                             \
     Tensor expected_values(allocator(), val_dtype, {expected_nnz});         \
     test::FillValues<VALTYPE>(&expected_values, {5, 1, 2, 6, 3, 4});        \
     test::ExpectTensorEqual<VALTYPE>(expected_values, *GetOutput(1));       \
                                                                             \
     Tensor expected_shape(allocator(), DT_INT64,                            \
-                          {static_cast<int64>(shape.size())});              \
-    test::FillValues<int64>(&expected_shape, shape);                        \
-    test::ExpectTensorEqual<int64>(expected_shape, *GetOutput(2));          \
+                          {static_cast<int64_t>(shape.size())});            \
+    test::FillValues<int64_t>(&expected_shape, shape);                      \
+    test::ExpectTensorEqual<int64_t>(expected_shape, *GetOutput(2));        \
   }
 
-RUN_TEST(int64);
+RUN_TEST(int64_t);
 RUN_TEST(float);
 RUN_TEST(double);
 RUN_TEST(complex64);
@@ -159,20 +159,20 @@ RUN_TEST(complex128);
     MakeOp<VALTYPE>();                                                   \
     DataType val_dtype = tensorflow::DataTypeToEnum<VALTYPE>::value;     \
     const auto indices_shape = TensorShape({4, 2});                      \
-    std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};             \
-    const gtl::ArraySlice<int64> indices(in);                            \
-    std::initializer_list<int64> sh{3, 2};                               \
-    const gtl::ArraySlice<int64> shape(sh);                              \
+    std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};           \
+    const gtl::ArraySlice<int64_t> indices(in);                          \
+    std::initializer_list<int64_t> sh{3, 2};                             \
+    const gtl::ArraySlice<int64_t> shape(sh);                            \
                                                                          \
     auto AddSparseTensor = [indices, indices_shape, shape,               \
                             this](bool negate) {                         \
-      AddInputFromArray<int64>(indices_shape, indices);                  \
+      AddInputFromArray<int64_t>(indices_shape, indices);                \
       if (!negate) {                                                     \
         AddInputFromArray<VALTYPE>(TensorShape({4}), {1, 2, 3, 4});      \
       } else {                                                           \
         AddInputFromArray<VALTYPE>(TensorShape({4}), {-1, -2, -3, -4});  \
       }                                                                  \
-      AddInputFromArray<int64>(TensorShape({2}), shape);                 \
+      AddInputFromArray<int64_t>(TensorShape({2}), shape);               \
     };                                                                   \
     AddSparseTensor(false);                                              \
     AddSparseTensor(true);                                               \
@@ -187,18 +187,18 @@ RUN_TEST(complex128);
     TF_ASSERT_OK(RunOpKernel());                                         \
                                                                          \
     Tensor expected_indices(allocator(), DT_INT64, TensorShape({0, 2})); \
-    test::ExpectTensorEqual<int64>(expected_indices, *GetOutput(0));     \
+    test::ExpectTensorEqual<int64_t>(expected_indices, *GetOutput(0));   \
                                                                          \
     Tensor expected_values(allocator(), val_dtype, TensorShape({0}));    \
     test::ExpectTensorEqual<VALTYPE>(expected_values, *GetOutput(1));    \
                                                                          \
     Tensor expected_shape(allocator(), DT_INT64,                         \
-                          {static_cast<int64>(shape.size())});           \
-    test::FillValues<int64>(&expected_shape, shape);                     \
-    test::ExpectTensorEqual<int64>(expected_shape, *GetOutput(2));       \
+                          {static_cast<int64_t>(shape.size())});         \
+    test::FillValues<int64_t>(&expected_shape, shape);                   \
+    test::ExpectTensorEqual<int64_t>(expected_shape, *GetOutput(2));     \
   }
 
-RUN_TEST(int64, 1);
+RUN_TEST(int64_t, 1);
 RUN_TEST(float, 1e-3f);
 RUN_TEST(double, 1e-3f);
 RUN_TEST(complex64, 1e-3f);

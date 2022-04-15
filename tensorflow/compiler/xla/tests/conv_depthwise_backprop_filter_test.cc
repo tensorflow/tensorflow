@@ -27,17 +27,17 @@ limitations under the License.
 namespace xla {
 namespace {
 
-string GetFloatDataType(bool use_bfloat16) {
+std::string GetFloatDataType(bool use_bfloat16) {
   return use_bfloat16 ? "bf16" : "f32";
 }
 
 struct BatchGroupedConvolution2DSpec {
-  int64 output_batch, window, window_dilation;
-  std::vector<int64> activation_dims;
-  std::vector<int64> kernel_dims;
-  std::vector<int64> output_dims;
-  std::vector<int64> activation_and_kernel_layout;
-  std::vector<int64> output_layout;
+  int64_t output_batch, window, window_dilation;
+  std::vector<int64_t> activation_dims;
+  std::vector<int64_t> kernel_dims;
+  std::vector<int64_t> output_dims;
+  std::vector<int64_t> activation_and_kernel_layout;
+  std::vector<int64_t> output_layout;
 };
 
 class BatchGroupedConvolution2DTest
@@ -53,17 +53,17 @@ class BatchGroupedConvolution2DDepthTest
 static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
     bool use_depth_multiplier) {
   std::vector<BatchGroupedConvolution2DSpec> config_set;
-  std::vector<std::vector<int64>> config_options = {
+  std::vector<std::vector<int64_t>> config_options = {
       {129, 10, 3, 2}, {4, 3, 3, 258}, {8, 4, 2, 128},
       {8, 3, 2, 256},  {256, 7, 5, 4}, {128, 6, 6, 4},
       {32, 5, 2, 129}, {16, 4, 3, 2},  {16, 3, 2, 64}};
 
-  int64 counter = 2;
+  int64_t counter = 2;
   for (auto option : config_options) {
-    int64 feature = option[3];
-    int64 activation_size = option[1];
-    int64 kernel_size = option[2];
-    int64 batch = option[0];
+    int64_t feature = option[3];
+    int64_t activation_size = option[1];
+    int64_t kernel_size = option[2];
+    int64_t batch = option[0];
 
     BatchGroupedConvolution2DSpec config;
     config.window_dilation = 1;
@@ -72,14 +72,14 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
 
     config.activation_dims = {batch, activation_size, activation_size, feature};
 
-    const int64 depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
+    const int64_t depthwise_multiplier = use_depth_multiplier ? counter++ : 1;
     config.kernel_dims = {batch, kernel_size, kernel_size,
                           feature * depthwise_multiplier};
     // Don't let the counter grow too much, else the compute demand will grow.
     if (counter == 4) {
       counter = 2;
     }
-    int64 output_space_size = 3 + activation_size - kernel_size;
+    int64_t output_space_size = 3 + activation_size - kernel_size;
     config.output_dims = {output_space_size, output_space_size,
                           feature * depthwise_multiplier, 1};
 
@@ -103,7 +103,7 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
       config.activation_and_kernel_layout = {0, 3, 1, 2};
       config.output_layout = {2, 3, 0, 1};
 
-      int64 output_space_size = 5;
+      int64_t output_space_size = 5;
       config.output_dims = {output_space_size, output_space_size, feature, 1};
 
       config_set.push_back(config);
@@ -117,12 +117,12 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
   return config_set;
 }
 
-string BatchGroupedConvolution2DTestDataToString(
+std::string BatchGroupedConvolution2DTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<BatchGroupedConvolution2DSpec, bool>>& data) {
   const auto& spec = ::testing::get<0>(data.param);
-  const string data_type = GetFloatDataType(::testing::get<1>(data.param));
-  string str = absl::StrCat(
+  const std::string data_type = GetFloatDataType(::testing::get<1>(data.param));
+  std::string str = absl::StrCat(
       "activation_dims_", absl::StrJoin(spec.activation_dims, "x"),
       "_kernel_dims_", absl::StrJoin(spec.kernel_dims, "x"),
       "_activation_layout_",
@@ -135,11 +135,11 @@ string BatchGroupedConvolution2DTestDataToString(
   return str;
 }
 
-string BuildHloTextBatchGroupedConvolution2D(
+std::string BuildHloTextBatchGroupedConvolution2D(
     const BatchGroupedConvolution2DSpec& spec, bool use_bfloat16,
     bool scheduled = false) {
-  const string data_type = GetFloatDataType(use_bfloat16);
-  const string scheduled_tag = scheduled ? ",is_scheduled=true" : "";
+  const std::string data_type = GetFloatDataType(use_bfloat16);
+  const std::string scheduled_tag = scheduled ? ",is_scheduled=true" : "";
   return absl::StrFormat(
       R"(
     HloModule TensorFlowDepthwiseConv %s
@@ -176,7 +176,7 @@ XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   }
 #endif
 
-  const string hlo_text = BuildHloTextBatchGroupedConvolution2D(
+  const std::string hlo_text = BuildHloTextBatchGroupedConvolution2D(
       spec, use_bfloat16, /*scheduled=*/false);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01}));

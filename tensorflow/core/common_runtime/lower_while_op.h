@@ -22,10 +22,13 @@ namespace tensorflow {
 
 class Graph;
 class Node;
+class FunctionLibraryDefinition;
 
 // Replaces While node `n` with its lowered form that uses Enter, Exit, Switch,
 // Merge, NextIteration and LoopCond nodes.
-Status RewriteWhileNode(Node* n, Graph* g, bool keep_node_fetchable);
+Status RewriteWhileNode(Node* n, Graph* g,
+                        const FunctionLibraryDefinition* flib_def,
+                        bool keep_node_fetchable);
 
 }  // namespace tensorflow
 

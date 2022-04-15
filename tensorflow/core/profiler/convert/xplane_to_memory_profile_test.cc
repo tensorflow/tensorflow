@@ -40,15 +40,15 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "MemoryAllocation",
                40000, 1000,
-               {{StatType::kBytesReserved, int64{2000}},
-                {StatType::kBytesAllocated, int64{3000}},
-                {StatType::kBytesAvailable, int64{5000}},
-                {StatType::kPeakBytesInUse, int64{8500}},
-                {StatType::kRequestedBytes, int64{200}},
-                {StatType::kAllocationBytes, int64{256}},
-                {StatType::kAddress, int64{222333}},
-                {StatType::kStepId, int64{-93746}},
-                {StatType::kDataType, int64{1}},
+               {{StatType::kBytesReserved, int64_t{2000}},
+                {StatType::kBytesAllocated, int64_t{3000}},
+                {StatType::kBytesAvailable, int64_t{5000}},
+                {StatType::kPeakBytesInUse, int64_t{8500}},
+                {StatType::kRequestedBytes, int64_t{200}},
+                {StatType::kAllocationBytes, int64_t{256}},
+                {StatType::kAddress, int64_t{222333}},
+                {StatType::kStepId, int64_t{-93746}},
+                {StatType::kDataType, int64_t{1}},
                 {StatType::kAllocatorName, "GPU_0_bfc"},
                 {StatType::kTfOp, "foo/bar"},
                 {StatType::kRegionType, "output"},
@@ -56,30 +56,30 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
 
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "MemoryDeallocation",
                50000, 1000,
-               {{StatType::kBytesReserved, int64{2000}},
-                {StatType::kBytesAllocated, int64{2744}},
-                {StatType::kBytesAvailable, int64{5256}},
-                {StatType::kPeakBytesInUse, int64{8500}},
-                {StatType::kRequestedBytes, int64{200}},
-                {StatType::kAllocationBytes, int64{256}},
-                {StatType::kAddress, int64{222333}},
-                {StatType::kStepId, int64{0}},
-                {StatType::kDataType, int64{0}},
+               {{StatType::kBytesReserved, int64_t{2000}},
+                {StatType::kBytesAllocated, int64_t{2744}},
+                {StatType::kBytesAvailable, int64_t{5256}},
+                {StatType::kPeakBytesInUse, int64_t{8500}},
+                {StatType::kRequestedBytes, int64_t{200}},
+                {StatType::kAllocationBytes, int64_t{256}},
+                {StatType::kAddress, int64_t{222333}},
+                {StatType::kStepId, int64_t{0}},
+                {StatType::kDataType, int64_t{0}},
                 {StatType::kAllocatorName, "GPU_0_bfc"},
                 {StatType::kRegionType, ""},
                 {StatType::kTensorShapes, ""}});
 
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "MemoryAllocation",
                70000, 1000,
-               {{StatType::kBytesReserved, int64{2000}},
-                {StatType::kBytesAllocated, int64{5000}},
-                {StatType::kBytesAvailable, int64{3000}},
-                {StatType::kPeakBytesInUse, int64{9500}},
-                {StatType::kRequestedBytes, int64{300}},
-                {StatType::kAllocationBytes, int64{300}},
-                {StatType::kAddress, int64{345678}},
-                {StatType::kStepId, int64{-93746}},
-                {StatType::kDataType, int64{9}},
+               {{StatType::kBytesReserved, int64_t{2000}},
+                {StatType::kBytesAllocated, int64_t{5000}},
+                {StatType::kBytesAvailable, int64_t{3000}},
+                {StatType::kPeakBytesInUse, int64_t{9500}},
+                {StatType::kRequestedBytes, int64_t{300}},
+                {StatType::kAllocationBytes, int64_t{300}},
+                {StatType::kAddress, int64_t{345678}},
+                {StatType::kStepId, int64_t{-93746}},
+                {StatType::kDataType, int64_t{9}},
                 {StatType::kAllocatorName, "GPU_0_bfc"},
                 {StatType::kTfOp, "mul_grad/Sum"},
                 {StatType::kRegionType, "temp"},
@@ -92,6 +92,7 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
   EXPECT_EQ(memory_profile.memory_ids_size(), 1);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().begin()->first,
             "GPU_0_bfc");
+  EXPECT_EQ(memory_profile.version(), 1);
   const auto& allocator_memory_profile =
       memory_profile.memory_profile_per_allocator().begin()->second;
   EXPECT_EQ(
@@ -103,10 +104,16 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
             7000);
   EXPECT_EQ(allocator_memory_profile.profile_summary().peak_stats_time_ps(),
             70000);
-  EXPECT_EQ(allocator_memory_profile.memory_profile_snapshots_size(), 3);
+  EXPECT_EQ(allocator_memory_profile.sampled_timeline_snapshots_size(), 3);
+  EXPECT_EQ(allocator_memory_profile.memory_profile_snapshots_size(), 1);
+  EXPECT_EQ(allocator_memory_profile.memory_profile_snapshots()
+                .at(0)
+                .activity_metadata()
+                .tf_op_name(),
+            "mul_grad/Sum");
   EXPECT_EQ(allocator_memory_profile.active_allocations_size(), 3);
   EXPECT_EQ(
-      allocator_memory_profile.active_allocations().at(2).snapshot_index(), 2);
+      allocator_memory_profile.active_allocations().at(2).snapshot_index(), 0);
   EXPECT_EQ(allocator_memory_profile.special_allocations_size(), 2);
   EXPECT_EQ(allocator_memory_profile.special_allocations().at(1).tf_op_name(),
             "stack");

@@ -30,7 +30,7 @@ TF_LIB_GTL_DEFINE_INT_TYPE(UInt8_IT, uint8);
 TF_LIB_GTL_DEFINE_INT_TYPE(Int16_IT, int16);
 TF_LIB_GTL_DEFINE_INT_TYPE(UInt16_IT, uint16);
 TF_LIB_GTL_DEFINE_INT_TYPE(Int32_IT, int32);
-TF_LIB_GTL_DEFINE_INT_TYPE(Int64_IT, int64);
+TF_LIB_GTL_DEFINE_INT_TYPE(Int64_IT, int64_t);
 TF_LIB_GTL_DEFINE_INT_TYPE(UInt32_IT, uint32);
 TF_LIB_GTL_DEFINE_INT_TYPE(UInt64_IT, uint64);
 TF_LIB_GTL_DEFINE_INT_TYPE(Long_IT, long);  // NOLINT
@@ -256,7 +256,7 @@ TYPED_TEST(IntTypeTest, TestValueAccessor) {
   EXPECT_EQ(static_cast<int16>(i), int_type.template value<int16>());
   EXPECT_EQ(static_cast<int32>(i), int_type.template value<int32>());
   EXPECT_EQ(static_cast<uint32>(i), int_type.template value<uint32>());
-  EXPECT_EQ(static_cast<int64>(i), int_type.template value<int64>());
+  EXPECT_EQ(static_cast<int64_t>(i), int_type.template value<int64_t>());
   EXPECT_EQ(static_cast<uint64>(i), int_type.template value<uint64>());
   EXPECT_EQ(static_cast<long>(i), int_type.template value<long>());  // NOLINT
   static_assert(int_type.template value<int>() == static_cast<int>(i),

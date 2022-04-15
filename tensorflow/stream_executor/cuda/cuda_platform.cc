@@ -79,10 +79,8 @@ void CudaPlatform::InspectNumaNodes() {
   // examine their device descriptions to see their bus assignments.
   static absl::once_flag once;
   absl::call_once(once, [&] {
-    StreamExecutorConfig config;
     for (int i = 0; i < VisibleDeviceCount(); i++) {
-      config.ordinal = i;
-      StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+      StreamExecutor* exec = *ExecutorForDevice(i);
       if (i == 0) {
         // NUMA nodes may not start at 0, so set the minimum node  based on the
         // first executor we see.
@@ -104,9 +102,7 @@ int CudaPlatform::BusCount() {
 }
 
 int CudaPlatform::DeviceToBus(int device_ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = device_ordinal;
-  StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+  StreamExecutor* exec = *ExecutorForDevice(device_ordinal);
   return exec->GetDeviceDescription().numa_node() - min_numa_node_;
 }
 
@@ -116,9 +112,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
   CHECK_LT(bus_ordinal, BusCount()) << "bus ordinal out of available range";
   for (int i = 0; i < VisibleDeviceCount(); i++) {
     if (DeviceToBus(i) == bus_ordinal) {
-      StreamExecutorConfig config;
-      config.ordinal = i;
-      return GetExecutor(config).ValueOrDie();
+      return *ExecutorForDevice(i);
     }
   }
 

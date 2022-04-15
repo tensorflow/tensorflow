@@ -14,25 +14,35 @@
 # ==============================================================================
 """Tests for ShardedVariable."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+
+from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.test_util import get_cluster_def
+from tensorflow.python.distribute.test_util import TestClusterParams
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
@@ -40,9 +50,15 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
+
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+test_cluster_params = TestClusterParams(None, 2, 3)
 
 
 def _load_and_run(
@@ -99,7 +115,7 @@ class PartitionerTest(test.TestCase):
     self.assertAllEqual(got, [1, 1])
 
 
-class ShardedVariableTest(test.TestCase):
+class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
   def test_sharded_variable_simple(self):
     v0 = variables_lib.Variable([0])
@@ -143,6 +159,114 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(self.evaluate(s.variables[1]), [[0, 0], [1, 1]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[0, 0]])
     self.assertIs(ret, s)
+
+  def test_scatter_add_uneven_partition(self):
+    v = variables_lib.Variable(array_ops.zeros((32, 1)))
+    sparse_delta = indexed_slices.IndexedSlices(
+        values=constant_op.constant([[0.], [1.], [2.], [3.], [4.], [5.]]),
+        indices=constant_op.constant([0, 10, 11, 12, 30, 31]))
+
+    v0 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    v.scatter_add(sparse_delta)
+    sv.scatter_add(sparse_delta)
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+    @def_function.function
+    def func():
+      v.scatter_add(sparse_delta)
+      sv.scatter_add(sparse_delta)
+
+    func()
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+  @parameterized.parameters('scatter_add', 'scatter_div', 'scatter_max',
+                            'scatter_min', 'scatter_mul', 'scatter_sub',
+                            'scatter_update')
+  def test_scatter_ops_even_partition(self, op):
+    v = variables_lib.Variable(array_ops.zeros((30, 1)))
+    # Make sure values does not contain 0 due to testing `scatter_div`!
+    sparse_delta = indexed_slices.IndexedSlices(
+        values=constant_op.constant([[1.], [2.], [3.], [4.], [5.]]),
+        indices=constant_op.constant([0, 10, 12, 21, 22]))
+
+    v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    getattr(v, op)(sparse_delta, name='scatter_v')
+    getattr(sv, op)(sparse_delta, name='scatter_sv')
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+    @def_function.function
+    def func():
+      getattr(v, op)(sparse_delta, name='scatter_v')
+      getattr(sv, op)(sparse_delta, name='scatter_sv')
+
+    func()
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+  def test_batch_scatter_update(self):
+    v = variables_lib.Variable(array_ops.zeros((32, 1)))
+    sparse_delta = indexed_slices.IndexedSlices(
+        values=constant_op.constant([[0.], [1.], [2.], [3.], [4.], [5.]]),
+        indices=constant_op.constant([10, 11, 12, 13, 14, 15]))
+
+    v0 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((11, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    v.batch_scatter_update(sparse_delta)
+    sv.batch_scatter_update(sparse_delta)
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+    @def_function.function
+    def func():
+      v.batch_scatter_update(sparse_delta)
+      sv.batch_scatter_update(sparse_delta)
+
+    func()
+    self.assertAllEqual(v, ops.convert_to_tensor(sv))
+
+  def test_sparse_read(self):
+    v = variables_lib.Variable(array_ops.zeros((30, 1)))
+    indices = constant_op.constant([0, 10, 12, 21, 22])
+
+    v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v1 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
+
+    @def_function.function
+    def func():
+      return v.sparse_read(indices), sv.sparse_read(indices)
+
+    got, expect = func()
+    self.assertAllEqual(got, expect)
+
+  def test_control_dep_on_assign(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    @def_function.function
+    def func():
+      ret = s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
+      with ops.control_dependencies([ret]):
+        a = array_ops.ones((1, 1))
+      with ops.control_dependencies([control_flow_ops.group(ret)]):
+        b = array_ops.ones((1, 1))
+      return a, b
+
+    func()
 
   def test_convert_to_tensor(self):
     v0 = variables_lib.Variable([[0, 0]])
@@ -304,23 +428,16 @@ class ShardedVariableTest(test.TestCase):
     # Continue using root.train for training
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
 
-  def test_load_raises_error(self):
-    root = tracking.AutoTrackable()
-    v1 = variables_lib.Variable([3.])
-    v2 = variables_lib.Variable([2.])
-    root.v = sharded_variable.ShardedVariable([v1, v2])
-
-    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save.save(root, save_dir)
-
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, 'Loading `ShardedVariable` is not supported'):
-      load.load(save_dir)
-
   def test_validation_errors(self):
-    with self.assertRaisesRegex(ValueError, 'Expected a list of '):
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
+      sharded_variable.ShardedVariable(None)
+
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
       sharded_variable.ShardedVariable(
           [variables_lib.Variable([0]), 'not-a-variable'])
+
+    with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
+      sharded_variable.ShardedVariable([])
 
     with self.assertRaisesRegex(ValueError, 'must have the same dtype'):
       sharded_variable.ShardedVariable([
@@ -375,7 +492,7 @@ class ShardedVariableTest(test.TestCase):
     s = sharded_variable.ShardedVariable(variables)
 
     got = nest.flatten(s)
-    self.assertEqual(s, got[0])
+    self.assertIs(s, got[0])
 
     got = nest.flatten(s, expand_composites=True)
     self.assertAllEqual(variables, got)
@@ -399,8 +516,8 @@ class ShardedVariableTest(test.TestCase):
     self.assertEqual(model.variables[1], [1])
     self.assertAllEqual(model.variables, model.trainable_variables)
 
-    self.assertLen(model._checkpoint_dependencies, 1)
-    self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
+    self.assertLen(model._trackable_children(), 1)
+    self.assertIs(model._trackable_children().popitem()[1], model.w)
 
   def test_embedding_lookup(self):
     v = [
@@ -544,6 +661,143 @@ class ShardedVariableTest(test.TestCase):
       return a
 
     self.assertAllEqual(func(), [1, 3, 5, 7, 9, 11, 13, 15])
+
+  def test_operator_overload(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+
+    v2 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv2 = sharded_variable.ShardedVariable(v2)
+
+    equal = sv1 == sv2
+    self.assertAllEqual(equal, [True, True])
+    self.assertAllEqual(sv1 + sv2, [2.0, 4.0])
+
+  def test_shards_have_container_set(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+    for v in sv1.variables:
+      self.assertTrue(hasattr(v, '_sharded_container'))
+      self.assertIs(v._sharded_container(), sv1)
+
+  def test_numpy(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+    sv1_np = sv1.numpy()
+    self.assertIsInstance(sv1_np, np.ndarray)
+    self.assertAllEqual(sv1_np, np.array([1., 2.]))
+
+
+class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(test_cluster_params, num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+
+  def tearDown(self):
+    super().tearDown()
+    # Reset context to disconnect from the cluster.
+    context._reset_context()
+
+  def _create_strategy(self, num_shards):
+    if num_shards > 1:
+      strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+          self.cluster_resolver,
+          variable_partitioner=sharded_variable.FixedShardsPartitioner(
+              num_shards))
+    else:
+      strategy = ds_context._get_default_strategy()
+    return strategy
+
+  @combinations.generate(
+      combinations.combine(
+          shard_config=[[2, 2], [2, 3], [3, 2], [2, 1], [1, 1]],
+      ))
+  def testSaveAndLoadSingleVariable(self, shard_config):
+    """Test saving and loading ShardedVariable with different numbers of shards.
+
+    Loading tf.Variables into multiple Shards is not yet supported
+
+    Args:
+      shard_config: The number of shards to use before and after loading. For
+        example, [2, 1] means to create and save the variable with 2 shards and
+        load it into 1 shard (i.e., a regular tf.Variable).
+    """
+    strategy = self._create_strategy(shard_config[0])
+
+    with strategy.scope():
+      var = variables_lib.Variable([1., 2., 3., 4., 5., 6.])
+
+    # Save variable
+    model_dir = self.get_temp_dir()
+    save.save(var, model_dir)
+
+    strategy2 = self._create_strategy(shard_config[1])
+    with strategy2.scope():
+      # Load variable
+      loaded = load.load(model_dir)
+
+    # Assert all values loaded, values are same
+    if shard_config[1] > 1:
+      loaded = array_ops.concat(loaded.variables, axis=0)
+    self.assertLen(loaded.numpy(), 6)
+
+    if shard_config[0] > 1:
+      var = array_ops.concat(var.variables, axis=0)
+    self.assertAllClose(var.numpy(), loaded.numpy())
+
+  def testSaveAndLoadModuleUnderStrategy(self):
+
+    class Dense(module.Module):
+
+      def __init__(self):
+        self.kernel = variables_lib.Variable(
+            random_ops.random_uniform((6, 6)), name='kernel')
+        self.bias = variables_lib.Variable(
+            random_ops.random_uniform((6,)), name='bias')
+
+      @def_function.function
+      def __call__(self, x):
+        out = math_ops.matmul(self.kernel, x)
+        out = out + self.bias
+        return out
+
+    x = constant_op.constant(
+        math_ops.range(6, dtype=dtypes.float32), shape=[6, 1])
+
+    strategy = self._create_strategy(2)
+    with strategy.scope():
+      layer = Dense()
+      expect = layer(x)
+
+    model_dir = self.get_temp_dir()
+    save.save(layer, model_dir)
+
+    strategy2 = self._create_strategy(3)
+    with strategy2.scope():
+      loaded_layer = load.load(model_dir)
+      # Should fail with informative error
+      with self.assertRaisesRegex(ValueError, 'run a loaded non-Keras'):
+        got = loaded_layer(x)
+
+    # Loading without a strategy should work, because the tf.function is traced
+    # with a single variable as input
+    loaded_layer = load.load(model_dir)
+    got = loaded_layer(x)
+    self.assertAllClose(got, expect)
 
 
 if __name__ == '__main__':

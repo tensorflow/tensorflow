@@ -28,7 +28,7 @@ function install_pylint () {
   # TODO(mihaimaruseac): this is used in the release build in the same way,
   # maybe extract out to a common?
   sudo python3.8 -m pip install setuptools --upgrade
-  sudo python3.8 -m pip install pylint==2.7.2
+  sudo python3.8 -m pip install pylint==2.7.4
 }
 
 function run_sanity_checks () {
@@ -67,8 +67,13 @@ EOF
   "${BAZEL_WRAPPER_PATH}" \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \
+    --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+    --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
     --test_output=all \
     tensorflow/tools/ci_build:${SANITY_OUT_TARGET}
+
+  # Print build time statistics, including critical path.
+  bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json.gz"
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"

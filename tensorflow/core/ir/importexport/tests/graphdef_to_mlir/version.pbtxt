@@ -1,0 +1,9 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+#CHECK:  tfg.graph #tf_type.version<producer = 27, min_consumer = 20, bad_consumers = [0, 1, 1, 2, 3, 5, 8, 13]> {
+
+versions {
+  producer: 27
+  min_consumer: 20
+  bad_consumers: [0, 1, 1, 2, 3, 5, 8, 13]
+}

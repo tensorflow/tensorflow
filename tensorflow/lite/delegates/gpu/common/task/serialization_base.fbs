@@ -153,6 +153,8 @@ table TensorDescriptor {
   layout:Layout;
   shape:BHWDC;
   data:[uint8];
+  use_buffer_for_write_only_2d_texture:bool;
+  use_buffer_for_write_only_image_buffer:bool;
 }
 
 table BufferDescriptorMapValue {
@@ -208,7 +210,7 @@ enum TensorToGrid : byte {
 enum CompilerOptions : byte {
   ADRENO_FULL_SIMD_LINE = 0,
   ADRENO_MORE_WAVES = 1,
-  POWERVR_FP16 = 2,
+  CL_FAST_RELAXED_MATH = 2,
   CL_OPT_DISABLE = 3,
   CL_2_0 = 4,
   CL_3_0 = 5,
@@ -233,6 +235,7 @@ table GPUOperation {
   elementwise:bool;
   linkable:bool;
   check_src_channels_size:bool;
+  flops:uint64;
   definition:OperationDef;
   grid_dimension:int32;
   work_group_launch_order:Int3;

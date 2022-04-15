@@ -206,7 +206,7 @@ label_image
 --old_accelerated, -d: [0|1], use old Android NNAPI delegate or not
 --allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not
 --count, -c: loop interpreter->Invoke() for certain times
---gl_backend, -g: [0|1]: use GL GPU Delegate on Android
+--gl_backend, -g: [0|1]: use GPU Delegate on Android
 --hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android
 --input_mean, -b: input mean
 --input_std, -s: input standard deviation
@@ -223,8 +223,8 @@ label_image
 
 See the `label_image.cc` source code for other command line options.
 
-Note that this binary also supports runtime/delegate arguments introduced by the
-[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+Note that this binary also supports more runtime/delegate arguments introduced
+by the [delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
 If there is any conflict, the arguments mentioned earlier are given precedence.
 For example, you can run the binary with additional command line options
 such as `--use_nnapi=true --nnapi_accelerator_name=google-edgetpu` to utilize

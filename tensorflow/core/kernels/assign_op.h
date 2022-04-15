@@ -50,6 +50,12 @@ class AssignOp : public OpKernel {
     // We always return the input ref.
     context->forward_ref_input_to_ref_output(0, 0);
 
+    // Prevent copying uninitialized data, to solve harder to debug undefined
+    // behaviors that cannot be traced back to the original tensor.
+    OP_REQUIRES(
+        context, rhs.IsInitialized(),
+        errors::Internal("Right hand side of AssignOp is not initialized"));
+
     // We can't always know how this value will be used downstream, so make
     // conservative assumptions in specifying constraints on the memory
     // allocation attributes, unless the Grappler graph analysis determined that
@@ -108,19 +114,18 @@ class AssignOp : public OpKernel {
           return;
         }
 
-        // Otherwise, create a new persistent tensor whose shape matches the
+        // Otherwise, create a new tensor whose shape matches the
         // right hand side, hand off to lhs and copy the rhs into it.
-        PersistentTensor copy;
-        Tensor* copyTensor = nullptr;
-        OP_REQUIRES_OK(
-            context, context->allocate_persistent(old_lhs.dtype(), rhs.shape(),
-                                                  &copy, &copyTensor, attr));
+        Tensor copy_tensor;
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(old_lhs.dtype(), rhs.shape(),
+                                              &copy_tensor, attr));
         // We track memory of variables in variable ops instead of in this
         // assign op.
         context->clear_recorded_memory();
-        context->replace_ref_input(0, *copyTensor, /* lock_held */ true);
+        context->replace_ref_input(0, copy_tensor, /* lock_held */ true);
         if (use_exclusive_lock_) {
-          Copy(context, copyTensor, rhs);
+          Copy(context, &copy_tensor, rhs);
           return;
         }
       }

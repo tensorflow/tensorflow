@@ -154,7 +154,7 @@ struct CompiledSubgraph : public core::RefCounted {
   // Computes total program size.
   size_t ComputeTotalSize() const {
     CHECK_EQ(total_size, 0);
-    int64 size = tpu_program_group->program_size();
+    int64_t size = tpu_program_group->program_size();
 
     if (sharding_entry != nullptr) {
       size += sharding_entry->total_size;

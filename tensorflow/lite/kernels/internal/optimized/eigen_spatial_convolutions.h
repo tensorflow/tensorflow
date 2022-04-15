@@ -19,23 +19,27 @@ limitations under the License.
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 #define EIGEN_USE_THREADS
 
-// NOTE: Eigen is slightly different internally and externally. We need to
-// hack the unsupported/Eigen/CXX11/Tensor header instantiation macros at
-// specific places, so we need two copies of the hacked file, one for
-// internal and one for external.
-// If you have trouble simply undef out the reducer macro e.g.
-// TFLITE_REDUCE_INSTANTIATIONS_GOOGLE, but be aware this will make
-// the binary much bigger!
-#define TFLITE_REDUCE_INSTANTIATIONS_OPEN_SOURCE
 #define Eigen EigenForTFLite
-#if defined(TFLITE_REDUCE_INSTANTIATIONS_GOOGLE)
-#include "tensorflow/lite/kernels/internal/optimized/eigen_tensor_reduced_instantiations_google.h"
-#elif defined(TFLITE_REDUCE_INSTANTIATIONS_OPEN_SOURCE)
-#include "tensorflow/lite/kernels/internal/optimized/eigen_tensor_reduced_instantiations_oss.h"
-#else
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+// NOTE: We need to define our own tensor contraction dispatch method before
+// including the unsupported/Eigen/CXX11/Tensor header in order to reduce the
+// total number of kernel instantiations.
+// If you have trouble simply undef out the reducer macro e.g.
+// TFLITE_REDUCE_INSTANTIATIONS, but be aware this will make
+// the binary much bigger!
+#define TFLITE_REDUCE_INSTANTIATIONS
+#if defined(TFLITE_REDUCE_INSTANTIATIONS)
+// Override Eigen tensor contraction dispatch method.
+#define TENSOR_CONTRACTION_DISPATCH(METHOD, ALIGNMENT, ARGS)                  \
+  if (this->m_lhs_inner_dim_contiguous && this->m_rhs_inner_dim_contiguous && \
+      !this->m_rhs_inner_dim_reordered) {                                     \
+    METHOD<true, true, false, ALIGNMENT> ARGS;                                \
+  } else {                                                                    \
+    eigen_assert(false && "Unsupported contraction formats");                 \
+  }
 #endif
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/eigen_spatial_convolutions-inl.h"
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_

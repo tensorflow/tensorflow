@@ -52,4 +52,4 @@ inline T LogSumExp(T log_prob_1, T log_prob_2) {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
-// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_loss_util.h)
+// LINT.ThenChange(//tensorflow/lite/kernels/ctc/ctc_loss_util.h)

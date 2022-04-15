@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -32,15 +33,6 @@ limitations under the License.
 
 namespace tflite {
 
-// Corresponding weak declaration found in lite/interpreter_builder.cc.
-#if TFLITE_HAS_ATTRIBUTE_WEAK
-// If weak symbol is not supported (Windows), it can use
-// TF_AcquireFlexDelegate() path instead.
-TfLiteDelegateUniquePtr AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
-}
-#endif
-
 TfLiteDelegateUniquePtr FlexDelegate::Create(
     std::unique_ptr<FlexDelegate> base_delegate) {
   TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
@@ -57,6 +49,8 @@ TfLiteDelegateUniquePtr FlexDelegate::Create(
         ->CopyFromBufferHandle(context, buffer_handle, tensor);
   };
   flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->base_delegate_ =
+      flex_delegate.get();
   return flex_delegate;
 }
 
@@ -64,16 +58,29 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
   // If the TensorFlow Lite thread count is explicitly configured, use it,
   // otherwise rely on the default TensorFlow threading behavior.
   tensorflow::SessionOptions session_options;
+  // We don't run multiple ops at the same time, so prefer using
+  // 1 thread for inter-op parallelism.
+  // Negative value means all are done on the caller thread.
+  session_options.config.set_inter_op_parallelism_threads(-1);
   if (context->recommended_num_threads > 0) {
     session_options.config.set_intra_op_parallelism_threads(
         context->recommended_num_threads);
   }
 
-  auto status = delegate_data_.Prepare(session_options);
+  auto status = delegate_data_.Prepare(
+      session_options, reinterpret_cast<Subgraph*>(context->impl_),
+      base_delegate_);
   if (!status.ok()) {
-    context->ReportError(context, "Failed to initialize TensorFlow context: %s",
-                         status.error_message().c_str());
+    TF_LITE_KERNEL_LOG(context, "Failed to initialize TensorFlow context: %s",
+                       status.error_message().c_str());
     return kTfLiteError;
+  }
+
+  // Initializes the cancellation manager.
+  if (!cancellation_manager_) {
+    cancellation_manager_ =
+        absl::make_unique<tensorflow::CancellationManager>();
+    delegate_data_.SetCancellationManager(cancellation_manager_.get());
   }
 
   return kTfLiteOk;
@@ -102,7 +109,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   flex::BufferMap* buffer_map = delegate_data_.GetBufferMap(context);
 
   if (!buffer_map->HasTensor(buffer_handle)) {
-    context->ReportError(context, "Invalid tensor index %d.", buffer_handle);
+    TF_LITE_KERNEL_LOG(context, "Invalid tensor index %d.", buffer_handle);
     return kTfLiteError;
   }
 
@@ -110,9 +117,9 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 
   if (output->type == kTfLiteString) {
     if (t.dtype() != tensorflow::DT_STRING) {
-      context->ReportError(context,
-                           "Inconsistent type for TF string tensor index %d.",
-                           buffer_handle);
+      TF_LITE_KERNEL_LOG(context,
+                         "Inconsistent type for TF string tensor index %d.",
+                         buffer_handle);
       return kTfLiteError;
     }
     DynamicBuffer dynamic_buffer;
@@ -138,7 +145,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   // The life cycle of the pointer will be managed by the reference counting in
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
-  if (output->type == kTfLiteResource || output->type == kTfLiteVariant) {
+  if (flex::IsResourceOrVariant(output)) {
     const size_t required_bytes = sizeof(tensorflow::Tensor**);
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
@@ -154,12 +161,12 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   tensorflow::StringPiece t_data = t.tensor_data();
 
   if (output->bytes != t_data.size()) {
-    context->ReportError(context,
-                         absl::StrCat("The given ", output->bytes,
-                                      " bytes are not enough to store "
-                                      "TensorFlow's aligned buffer of size ",
-                                      t_data.size(), " bytes.")
-                             .c_str());
+    TF_LITE_KERNEL_LOG(context,
+                       absl::StrCat("The given ", output->bytes,
+                                    " bytes are not enough to store "
+                                    "TensorFlow's aligned buffer of size ",
+                                    t_data.size(), " bytes.")
+                           .c_str());
     return kTfLiteError;
   }
 
@@ -167,18 +174,15 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   return kTfLiteOk;
 }
 
-}  // namespace tflite
+void FlexDelegate::Cancel() { cancellation_manager_->StartCancel(); }
 
-// LINT.IfChange
-// Exported C interface function which is used by AcquireFlexDelegate() at
-// interpreter_builder.cc. To export the function name globally, the function
-// name must be matched with patterns in tf_version_script.lds. In Android, we
-// don't use this feature so skip building.
-#if !defined(__ANDROID__)
-extern "C" {
-TFL_CAPI_EXPORT tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
-  return tflite::FlexDelegate::Create();
+bool FlexDelegate::HasCancelled(void* data) {
+  if (data == nullptr) {
+    return false;
+  }
+
+  auto* flex_delegate = static_cast<FlexDelegate*>(data);
+  return flex_delegate->cancellation_manager_->IsCancelled();
 }
-}  // extern "C"
-#endif  // !defined(__ANDROID__)
-// LINT.ThenChange(//tensorflow/lite/interpreter_builder.cc)
+
+}  // namespace tflite

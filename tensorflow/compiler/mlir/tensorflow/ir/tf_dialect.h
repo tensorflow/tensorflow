@@ -21,13 +21,12 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace TF {
 
-class ResourceType;
 class TensorFlowRegistryEffectInterfaceFallback;
-class VariantType;
 
 class TensorFlowDialect final : public Dialect {
  public:
@@ -35,6 +34,10 @@ class TensorFlowDialect final : public Dialect {
   ~TensorFlowDialect() override;
 
   static StringRef getDialectNamespace() { return "tf"; }
+
+  // Overrides to redirect to tf_type dialect.
+  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   // Gradient attribute ("tf.gradient") in the list of NamedAttributes in a
   // function references to its gradient function. This attribute in TensorFlow
@@ -52,27 +55,6 @@ class TensorFlowDialect final : public Dialect {
   // Returns true if the op can have side effects.
   static bool CanHaveSideEffects(Operation *op);
 
-  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
-
-  void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
-
-  // Parse a type registered to this dialect.
-  Type parseType(DialectAsmParser &parser) const override;
-
-  // Prints a type registered to this dialect.
-  void printType(Type ty, DialectAsmPrinter &os) const override;
-
-  // Parses resource type with potential subtypes.
-  Type ParseResourceType(DialectAsmParser &parser) const;
-
-  // Prints resource type with potential subtypes.
-  void PrintResourceType(ResourceType ty, DialectAsmPrinter &os) const;
-
-  // Parse and print variant type. It may have subtypes inferred using shape
-  // inference.
-  Type ParseVariantType(DialectAsmParser &parser) const;
-  void PrintVariantType(VariantType ty, DialectAsmPrinter &os) const;
-
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
@@ -85,9 +67,8 @@ class TensorFlowDialect final : public Dialect {
   // A hook may use the public addOperations() method to add additional
   // operations to the dialect. Hooks will only apply to subsequent
   // instantations of the Dialect/MLIRContext.
-  static void RegisterAdditionalOperationHook(AdditionalOpFunction fn) {
-    GetAdditionalOperationHooks()->push_back(std::move(fn));
-  }
+  static void RegisterAdditionalOperationHook(TypeID uniqueId,
+                                              AdditionalOpFunction fn);
 
   // Re-define publicly the protected addOperations() method from the Dialect
   // class, usually used in a Dialect constructor. This allows hook
@@ -125,15 +106,6 @@ class TensorFlowDialect final : public Dialect {
                                     mlir::OperationName opName) override;
 
  private:
-  /// Register the attributes of this dialect.
-  void registerAttributes();
-  /// Register the types of this dialect.
-  void registerTypes();
-
-  // Hook functions which may add additional operations to the dialect.
-  // These are invoked at construction time.
-  static std::vector<AdditionalOpFunction> *GetAdditionalOperationHooks();
-
   static ConstantFoldHook constant_fold_hook_;
   static DecodeConstantHook decode_constant_hook_;
 
@@ -143,5 +115,12 @@ class TensorFlowDialect final : public Dialect {
 
 }  // namespace TF
 }  // namespace mlir
+
+#define TF_DIALECT_REGISTER_ADDITIONAL_OPERATIONS(hookFn)           \
+  {                                                                 \
+    static bool key;                                                \
+    ::mlir::TF::TensorFlowDialect::RegisterAdditionalOperationHook( \
+        ::mlir::TypeID::getFromOpaquePointer(&key), hookFn);        \
+  }
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DIALECT_H_

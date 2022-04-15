@@ -143,5 +143,37 @@ TEST_F(SummaryAudioOpTest, Basic2D) {
   )");
 }
 
+TEST_F(SummaryAudioOpTest, ZeroLength) {
+  const float kSampleRate = 44100.0f;
+  const int kMaxOutputs = 3;
+  MakeOp(kMaxOutputs);
+
+  // Feed and run
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
+  AddInputFromArray<float>(TensorShape({4, 0}), {});
+  AddInputFromArray<float>(TensorShape({}), {kSampleRate});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output size.
+  Tensor* out_tensor = GetOutput(0);
+  ASSERT_EQ(0, out_tensor->dims());
+  Summary summary;
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
+
+  CheckAndRemoveEncodedAudio(&summary);
+  EXPECT_SummaryMatches(summary, R"(
+    value { tag: 'tag/audio/0'
+            audio { content_type: "audio/wav" sample_rate: 44100 num_channels: 1
+                    length_frames: 0 } }
+    value { tag: 'tag/audio/1'
+            audio { content_type: "audio/wav" sample_rate: 44100 num_channels: 1
+                    length_frames: 0 } }
+    value { tag: 'tag/audio/2'
+            audio { content_type: "audio/wav" sample_rate: 44100 num_channels: 1
+                    length_frames: 0 } }
+  )");
+}
+
 }  // namespace
 }  // namespace tensorflow

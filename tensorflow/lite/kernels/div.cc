@@ -194,9 +194,19 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 #undef TF_LITE_DIV
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Unsupported combination of input and output types in Div.");
     return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+template <typename T>
+TfLiteStatus CheckNonZero(TfLiteContext* context, const TfLiteTensor* tensor) {
+  const auto* data = GetTensorData<T>(tensor);
+  const size_t number_elements = tensor->bytes / sizeof(T);
+  for (size_t i = 0; i < number_elements; i++) {
+    TF_LITE_ENSURE(context, data[i] != 0);
   }
   return kTfLiteOk;
 }
@@ -216,14 +226,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+
+  if (output->type == kTfLiteFloat32) {
+    // Div by zero seems ok in this case, just like in TF case infinities are
+    // returned. So we don't do a check at this point.
+    EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
+  } else if (output->type == kTfLiteInt32) {
+    CheckNonZero<int32_t>(context, input2);
     EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8) {
+    CheckNonZero<uint8_t>(context, input2);
     TF_LITE_ENSURE_OK(
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "Div only supports FLOAT32, INT32 and quantized UINT8 now, got %d.",
         output->type);

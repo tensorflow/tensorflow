@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <unistd.h>
+
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -56,7 +56,7 @@ TEST_F(InfeedTest, SingleInfeedR0Bool) {
 }
 
 TEST_F(InfeedTest, SingleInfeedR1U32) {
-  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32>({1, 2, 3}));
+  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32_t>({1, 2, 3}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR2F32) {
@@ -99,7 +99,7 @@ TEST_F(InfeedTest, LargeInfeed) {
 
 TEST_F(InfeedTest, SingleInfeedTuple) {
   TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
-      {LiteralUtil::CreateR1<uint32>({1, 2, 3}),
+      {LiteralUtil::CreateR1<uint32_t>({1, 2, 3}),
        LiteralUtil::CreateR0<bool>(false)}));
 }
 
@@ -113,7 +113,51 @@ TEST_F(InfeedTest, SingleInfeedLargeTuple) {
   array.FillIota(1.0f);
   TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR4FromArray4D<float>(array),
-       LiteralUtil::CreateR0<int32>(5)}));
+       LiteralUtil::CreateR0<int32_t>(5)}));
+}
+
+class BlockingInfeedTest : public ClientLibraryTestBase {};
+
+TEST_F(BlockingInfeedTest, TestNoOoms) {
+  Array3D<float> array(1024, 1024, 64);
+  array.FillIota(1.0f);
+  auto literal = LiteralUtil::CreateR3FromArray3D<float>(array);
+
+  int64_t kMemoryPressure = 32ul * 1024 * 1024 * 1024;
+  int64_t infeed_count =
+      kMemoryPressure / (array.num_elements() * sizeof(float));
+
+  auto transfer_infeeds = [&] {
+    for (int i = 0; i < infeed_count; i++) {
+      ASSERT_IS_OK(client_->TransferToInfeed(literal));
+    }
+  };
+
+  auto* env = tensorflow::Env::Default();
+
+  std::unique_ptr<tensorflow::Thread> thread{env->StartThread(
+      tensorflow::ThreadOptions{}, "transfer_infeeds", transfer_infeeds)};
+
+  // Sleep for 30s waiting for the infeed thread to "catch up".
+  //
+  // Without the fix accompanying this test, transfer_infeeds causes an OOM if
+  // the consumer (XLA computation running on the main thread) is unable to keep
+  // up with the producer (the transfer_infeeds thread).  When that happens, the
+  // GPU buffers from the producer pile up and consume all of GPU memory.
+  //
+  // To reliably reproduce the issue we need to slow down the consumer, and we
+  // do that by inserting a sleep here.
+  //
+  // The fix is to back TransferToInfeed by a blocking queue that does not allow
+  // more than kMaxInfeedsInFlight infeeds in flight.
+  env->SleepForMicroseconds(30ul * 1000 * 1000);
+
+  XlaBuilder builder(TestName());
+  for (int i = 0; i < infeed_count; i++) {
+    Infeed(&builder, literal.shape());
+  }
+
+  ComputeAndCompareLiteral(&builder, literal, {});
 }
 
 }  // namespace

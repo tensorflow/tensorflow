@@ -74,7 +74,8 @@ Status ReadJsonString(const Json::Value& json, const string& name,
   return Status::OK();
 }
 
-Status ReadJsonInt(const Json::Value& json, const string& name, int64* value) {
+Status ReadJsonInt(const Json::Value& json, const string& name,
+                   int64_t* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {
@@ -285,7 +286,7 @@ Status OAuthClient::ParseOAuthResponse(StringPiece response,
     return errors::FailedPrecondition("Unexpected Oauth token type: " +
                                       token_type);
   }
-  int64 expires_in = 0;
+  int64_t expires_in = 0;
   TF_RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
   *expiration_timestamp_sec = request_timestamp_sec + expires_in;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));

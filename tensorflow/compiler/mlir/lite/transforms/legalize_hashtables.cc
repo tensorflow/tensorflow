@@ -16,7 +16,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -53,7 +53,6 @@ class LegalizeHashTableOpPattern : public OpRewritePattern<TF::HashTableV2Op> {
     // Hash the shared name to generate integer hash table id. The TFLite
     // native resource design is based on integer keys to identify the
     // corresponding resource objects.
-    // TODO(b/180645662): Issue a zero-based integer hash table ID.
     auto table_id =
         static_cast<int32_t>(::llvm::hash_value(hashtable_op.shared_name()));
     auto key_dtype = hashtable_op.key_dtype();
@@ -65,7 +64,6 @@ class LegalizeHashTableOpPattern : public OpRewritePattern<TF::HashTableV2Op> {
   }
 };
 
-// TODO(b/182429294): Move those patterns into the table gen-based patterns.
 class LegalizeHashTableFindOpPattern
     : public OpRewritePattern<TF::LookupTableFindV2Op> {
  public:
@@ -173,8 +171,20 @@ class LegalizeHashTables
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeHashTables)
+
   LegalizeHashTables() = default;
   LegalizeHashTables(const LegalizeHashTables&) {}
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-hashtables-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TensorFlow hash tables to TensorFlow Lite dialect";
+  }
 
   void runOnOperation() override {
     auto module = getOperation();
@@ -183,10 +193,11 @@ class LegalizeHashTables
       return;
     }
 
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
-                    LegalizeHashTableImportOpPattern,
-                    LegalizeHashTableSizeOpPattern>(&getContext());
+    RewritePatternSet patterns(&getContext());
+    patterns
+        .add<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
+             LegalizeHashTableImportOpPattern, LegalizeHashTableSizeOpPattern>(
+            &getContext());
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;
@@ -200,9 +211,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass() {
   return std::make_unique<LegalizeHashTables>();
 }
 
-static PassRegistration<LegalizeHashTables> pass(
-    "tfl-legalize-hashtables-tf",
-    "Legalize TensorFlow hash tables to TensorFlow Lite dialect");
+static PassRegistration<LegalizeHashTables> pass;
 
 }  // namespace TFL
 }  // namespace mlir

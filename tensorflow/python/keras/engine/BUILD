@@ -65,12 +65,13 @@ py_library(
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:callbacks_v1",
         "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/distribute",
+        "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
+        "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/mixed_precision:autocast_variable",
         "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision:policy",
@@ -152,7 +153,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras/initializers",
         # TODO(keras-team): Fix the cyclar deps between layer and metrics.
         # "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:regularizers",
@@ -525,24 +526,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "feature_columns_integration_test",
-    size = "medium",
-    srcs = ["feature_columns_integration_test.py"],
-    python_version = "PY3",
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/feature_column:feature_column_py",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["training_eager_test.py"],
@@ -621,9 +604,9 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:models",
         "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -674,7 +657,6 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_spec",
@@ -694,6 +676,7 @@ tf_py_test(
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/summary",
         "//third_party/py/numpy",
     ],
 )

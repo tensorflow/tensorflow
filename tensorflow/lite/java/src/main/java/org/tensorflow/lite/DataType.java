@@ -35,6 +35,9 @@ public enum DataType {
   /** Bool. */
   BOOL(6),
 
+  /** 16-bit signed integer. */
+  INT16(7),
+
   /** 8-bit signed integer. */
   INT8(9);
 
@@ -50,6 +53,8 @@ public enum DataType {
       case FLOAT32:
       case INT32:
         return 4;
+      case INT16:
+        return 2;
       case INT8:
       case UINT8:
         return 1;
@@ -68,42 +73,6 @@ public enum DataType {
   /** Corresponding value of the TfLiteType enum in the TensorFlow Lite C API. */
   int c() {
     return value;
-  }
-
-  /** Converts a C TfLiteType enum value to the corresponding type. */
-  static DataType fromC(int c) {
-    for (DataType t : values) {
-      if (t.value == c) {
-        return t;
-      }
-    }
-    throw new IllegalArgumentException(
-        "DataType error: DataType "
-            + c
-            + " is not recognized in Java (version "
-            + TensorFlowLite.runtimeVersion()
-            + ")");
-  }
-
-  /** Gets string names of the data type. */
-  String toStringName() {
-    switch (this) {
-      case FLOAT32:
-        return "float";
-      case INT32:
-        return "int";
-      case INT8:
-      case UINT8:
-        return "byte";
-      case INT64:
-        return "long";
-      case BOOL:
-        return "bool";
-      case STRING:
-        return "string";
-    }
-    throw new IllegalArgumentException(
-        "DataType error: DataType " + this + " is not supported yet");
   }
 
   // Cached to avoid copying it

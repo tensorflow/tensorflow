@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SPARSE_OPS_FULLY_CONNECTED_H_
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 namespace tflite {
 namespace reference_ops {
@@ -32,7 +32,7 @@ inline void FullyConnectedSparseWeight(
   for (int i = 0; i < weights_shape.DimensionsCount(); i++) {
     weights_shape_vector[i] = weights_shape.Dims(i);
   }
-  tflite::optimize::sparsity::FormatConverter<float> converter(
+  tflite::internal::sparsity::FormatConverter<float> converter(
       weights_shape_vector, sparsity);
   converter.SparseToDense(weights_data);
   const std::vector<float>& dense_weights_data = converter.GetData();

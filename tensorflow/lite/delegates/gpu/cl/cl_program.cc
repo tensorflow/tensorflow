@@ -99,7 +99,7 @@ std::string CompilerOptionToString(const GpuInfo& gpu_info,
       } else {
         return "unsupported";
       }
-    case CompilerOptions::kClPowervrFp16:
+    case CompilerOptions::kClFastRelaxedMath:
       return "-cl-fast-relaxed-math";
     case CompilerOptions::kClDisableOptimizations:
       return "-cl-opt-disable";

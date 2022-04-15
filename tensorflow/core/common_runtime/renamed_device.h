@@ -50,8 +50,9 @@ class RenamedDevice : public Device {
     return underlying_device_->tensorflow_cpu_worker_threads();
   }
 
-  const GpuDeviceInfo* tensorflow_gpu_device_info() const override {
-    return underlying_device_->tensorflow_gpu_device_info();
+  const DeviceBase::AcceleratorDeviceInfo* tensorflow_accelerator_device_info()
+      const override {
+    return underlying_device_->tensorflow_accelerator_device_info();
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
@@ -59,7 +60,7 @@ class RenamedDevice : public Device {
   }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64 step_id) override {
+                                int64_t step_id) override {
     return underlying_device_->GetScopedAllocator(attr, step_id);
   }
 

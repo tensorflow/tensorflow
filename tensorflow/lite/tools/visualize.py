@@ -20,17 +20,20 @@ Example usage:
 python visualize.py foo.tflite foo.html
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 import re
 import sys
 import numpy as np
 
-from tensorflow.lite.python import schema_py_generated as schema_fb
+# pylint: disable=g-import-not-at-top
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join("tflite_runtime", "visualize")):
+  # This file is part of tensorflow package.
+  from tensorflow.lite.python import schema_py_generated as schema_fb
+else:
+  # This file is part of tflite_runtime package.
+  from tflite_runtime import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -263,6 +266,9 @@ class TensorMapper(object):
 
   def __call__(self, x):
     html = ""
+    if x is None:
+      return html
+
     html += "<span class='tooltip'><span class='tooltipcontent'>"
     for i in x:
       tensor = self.data["tensors"][i]
@@ -294,23 +300,24 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
   pixel_mult = 200  # TODO(aselle): multiplier for initial placement
   width_mult = 170  # TODO(aselle): multiplier for initial placement
   for op_index, op in enumerate(g["operators"] or []):
-
-    for tensor_input_position, tensor_index in enumerate(op["inputs"]):
-      if tensor_index not in first:
-        first[tensor_index] = ((op_index - 0.5 + 1) * pixel_mult,
-                               (tensor_input_position + 1) * width_mult)
-      edges.append({
-          "source": TensorName(tensor_index),
-          "target": OpName(op_index)
-      })
-    for tensor_output_position, tensor_index in enumerate(op["outputs"]):
-      if tensor_index not in second:
-        second[tensor_index] = ((op_index + 0.5 + 1) * pixel_mult,
-                                (tensor_output_position + 1) * width_mult)
-      edges.append({
-          "target": TensorName(tensor_index),
-          "source": OpName(op_index)
-      })
+    if op["inputs"] is not None:
+      for tensor_input_position, tensor_index in enumerate(op["inputs"]):
+        if tensor_index not in first:
+          first[tensor_index] = ((op_index - 0.5 + 1) * pixel_mult,
+                                 (tensor_input_position + 1) * width_mult)
+        edges.append({
+            "source": TensorName(tensor_index),
+            "target": OpName(op_index)
+        })
+    if op["outputs"] is not None:
+      for tensor_output_position, tensor_index in enumerate(op["outputs"]):
+        if tensor_index not in second:
+          second[tensor_index] = ((op_index + 0.5 + 1) * pixel_mult,
+                                  (tensor_output_position + 1) * width_mult)
+        edges.append({
+            "target": TensorName(tensor_index),
+            "source": OpName(op_index)
+        })
 
     nodes.append({
         "id": OpName(op_index),
@@ -419,21 +426,35 @@ def CreateDictFromFlatbuffer(buffer_data):
   return FlatbufferToDict(model, preserve_as_numpy=False)
 
 
-def CreateHtmlFile(tflite_input, html_output):
-  """Given a tflite model in `tflite_input` file, produce html description."""
+def create_html(tflite_input, input_is_filepath=True):  # pylint: disable=invalid-name
+  """Returns html description with the given tflite model.
+
+  Args:
+    tflite_input: TFLite flatbuffer model path or model object.
+    input_is_filepath: Tells if tflite_input is a model path or a model object.
+
+  Returns:
+    Dump of the given tflite model in HTML format.
+
+  Raises:
+    RuntimeError: If the input is not valid.
+  """
 
   # Convert the model into a JSON flatbuffer using flatc (build if doesn't
   # exist.
-  if not os.path.exists(tflite_input):
-    raise RuntimeError("Invalid filename %r" % tflite_input)
-  if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
-    with open(tflite_input, "rb") as file_handle:
-      file_data = bytearray(file_handle.read())
-    data = CreateDictFromFlatbuffer(file_data)
-  elif tflite_input.endswith(".json"):
-    data = json.load(open(tflite_input))
+  if input_is_filepath:
+    if not os.path.exists(tflite_input):
+      raise RuntimeError("Invalid filename %r" % tflite_input)
+    if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
+      with open(tflite_input, "rb") as file_handle:
+        file_data = bytearray(file_handle.read())
+      data = CreateDictFromFlatbuffer(file_data)
+    elif tflite_input.endswith(".json"):
+      data = json.load(open(tflite_input))
+    else:
+      raise RuntimeError("Input file was not .tflite or .json")
   else:
-    raise RuntimeError("Input file was not .tflite or .json")
+    data = CreateDictFromFlatbuffer(tflite_input)
   html = ""
   html += _CSS
   html += "<h1>TensorFlow Lite Model</h2>"
@@ -456,7 +477,7 @@ def CreateHtmlFile(tflite_input, html_output):
                               ("version", None)]
 
   # Update builtin code fields.
-  for idx, d in enumerate(data["operator_codes"]):
+  for d in data["operator_codes"]:
     d["builtin_code"] = max(d["builtin_code"], d["deprecated_builtin_code"])
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
@@ -507,8 +528,7 @@ def CreateHtmlFile(tflite_input, html_output):
 
   html += "</body></html>\n"
 
-  with open(html_output, "w") as output_file:
-    output_file.write(html)
+  return html
 
 
 def main(argv):
@@ -518,7 +538,9 @@ def main(argv):
   except IndexError:
     print("Usage: %s <input tflite> <output html>" % (argv[0]))
   else:
-    CreateHtmlFile(tflite_input, html_output)
+    html = create_html(tflite_input)
+    with open(html_output, "w") as output_file:
+      output_file.write(html)
 
 
 if __name__ == "__main__":

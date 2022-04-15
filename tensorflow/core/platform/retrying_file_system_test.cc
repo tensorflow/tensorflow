@@ -86,7 +86,7 @@ class MockWritableFile : public WritableFile {
     return calls_.ConsumeNextCall("Name");
   }
   Status Sync() override { return calls_.ConsumeNextCall("Sync"); }
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     return calls_.ConsumeNextCall("Tell");
   }
 
@@ -172,8 +172,8 @@ class MockFileSystem : public FileSystem {
   }
 
   Status DeleteRecursively(const string& dirname, TransactionToken* token,
-                           int64* undeleted_files,
-                           int64* undeleted_dirs) override {
+                           int64_t* undeleted_files,
+                           int64_t* undeleted_dirs) override {
     return calls_.ConsumeNextCall("DeleteRecursively");
   }
 
@@ -736,7 +736,7 @@ TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
 
   TF_EXPECT_OK(fs.DeleteRecursively("gs://path/dir", nullptr, &undeleted_files,
                                     &undeleted_dirs));
@@ -749,7 +749,7 @@ TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
 
   const auto& status = fs.DeleteRecursively("gs://path/dir", nullptr,
                                             &undeleted_files, &undeleted_dirs);

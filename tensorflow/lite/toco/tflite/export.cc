@@ -670,8 +670,10 @@ tensorflow::Status Export(
       return tensorflow::errors::InvalidArgument(
           "Quantized type not recognized");
     }
-    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
-                                            quantized_type) != kTfLiteOk) {
+    if (::tflite::optimize::QuantizeWeights(
+            &q_builder, input_model, quantized_type,
+            !params.disable_per_channel,
+            ::tflite::optimize::QuantizerType::OLD_QUANTIZER) != kTfLiteOk) {
       return tensorflow::errors::InvalidArgument(
           "Quantize weights transformation failed.");
     }

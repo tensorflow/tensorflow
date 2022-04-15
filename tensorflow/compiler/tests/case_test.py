@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for case statements in XLA."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops

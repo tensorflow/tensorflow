@@ -16,10 +16,18 @@
 
 add_mlir_library(MLIRMhloUtils
   broadcast_utils.cc
+  codegen_utils.cc
   convert_op_folder.cc
   cycle_detector.cc
   hlo_utils.cc
 
   LINK_LIBS PUBLIC
+  MLIRArithmetic
+  MLIRFunc
+  MLIRIR
+  MLIRLLVMIR
+  MLIRMemRef
+  MLIRPass
+  MLIRShape
   MLIRSupport
   )

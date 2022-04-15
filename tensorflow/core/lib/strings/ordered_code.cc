@@ -444,7 +444,7 @@ static int Log2Floor64(uint64 n) {
 #endif
 
 // Calculates the encoding length in bytes of the signed number n.
-static inline int SignedEncodingLength(int64 n) {
+static inline int SignedEncodingLength(int64_t n) {
   return kBitsToLength[Log2Floor64(n < 0 ? ~n : n) + 1];
 }
 
@@ -463,7 +463,7 @@ static uint64 LoadBigEndian64(const char* src) {
   return result;
 }
 
-void OrderedCode::WriteSignedNumIncreasing(string* dest, int64 val) {
+void OrderedCode::WriteSignedNumIncreasing(string* dest, int64_t val) {
   const uint64 x = val < 0 ? ~val : val;
   if (x < 64) {  // fast path for encoding length == 1
     *dest += kLengthToHeaderBits[1][0] ^ val;
@@ -485,7 +485,7 @@ void OrderedCode::WriteSignedNumIncreasing(string* dest, int64 val) {
   dest->append(begin, len);
 }
 
-bool OrderedCode::ReadSignedNumIncreasing(StringPiece* src, int64* result) {
+bool OrderedCode::ReadSignedNumIncreasing(StringPiece* src, int64_t* result) {
   if (src->empty()) return false;
   const uint64 xor_mask = (!((*src)[0] & 0x80)) ? ~0ULL : 0ULL;
   const unsigned char first_byte = (*src)[0] ^ (xor_mask & 0xff);

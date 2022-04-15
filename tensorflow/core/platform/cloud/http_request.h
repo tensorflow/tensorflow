@@ -108,7 +108,7 @@ class HttpRequest {
   /// Note: because GCS is available over HTTPS, we cannot replace the hostname
   /// in the URI with an IP address, as that will cause the certificate check
   /// to fail.
-  virtual void AddResolveOverride(const string& hostname, int64 port,
+  virtual void AddResolveOverride(const string& hostname, int64_t port,
                                   const string& ip_addr) = 0;
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.

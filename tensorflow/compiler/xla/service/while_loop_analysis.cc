@@ -49,32 +49,43 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 // If all of instr's operands are either constants or have the form
 //   get-tuple-element(gte_operand, N)
 // for the same value N, returns N.  Otherwise, returns nullopt.
-static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
-                                          const HloInstruction* gte_operand) {
+static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
+                                            const HloInstruction* gte_operand) {
   VLOG(2) << "GetGTEOperandIndex(" << instr->ToString() << ", "
           << gte_operand->ToString() << ")";
 
-  // Among the operands of `instr`, find one that is a get-tuple-element op.
-  auto gte_it = c_find_if(instr->operands(), [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kGetTupleElement;
-  });
-  if (gte_it == instr->operands().end()) {
-    VLOG(2) << "instr does not have a gte operand.";
-    return nullopt;
-  }
-
   // All operands of `instr` must be either constants or of the form
   //   get-tuple-element(gte_operand, tuple_idx)
-  // for the same value tuple_idx.
-  int64 tuple_idx = (*gte_it)->tuple_index();
+  // for the same value tuple_idx. We also support the case where GTE feeds a
+  // copy that is then used.
+  optional<int64_t> tuple_idx;
   for (const HloInstruction* operand : instr->operands()) {
-    if (!Match(operand, m::Constant()) &&
-        !Match(operand,
-               m::GetTupleElement(m::Op().Is(gte_operand), tuple_idx))) {
-      VLOG(2)
-          << "instr uses something other than a constant or gte(gte_operand, "
-          << tuple_idx << "): " << operand->ToString();
+    if (Match(operand, m::Constant())) {
+      continue;
+    }
+    auto possibly_gte_operand = operand;
+
+    if (operand->opcode() == HloOpcode::kCopy) {
+      possibly_gte_operand = operand->operand(0);
+    }
+
+    if (possibly_gte_operand->opcode() != HloOpcode::kGetTupleElement) {
       return nullopt;
+    }
+
+    if (!Match(possibly_gte_operand,
+               m::GetTupleElement(m::Op().Is(gte_operand)))) {
+      return nullopt;
+    }
+
+    int64_t operand_tuple_idx = possibly_gte_operand->tuple_index();
+    // This is the first GTE we are seeing. Set tuple_idx.
+    if (!tuple_idx.has_value()) {
+      tuple_idx = operand_tuple_idx;
+    } else {
+      if (operand_tuple_idx != tuple_idx) {
+        return nullopt;
+      }
     }
   }
   return tuple_idx;
@@ -111,7 +122,7 @@ std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
   //  find all paths between x and y,
   //  each paths should satisfy the above listed criterion
   //  index that x and y used is added as a aux variable index
-  std::map<int64, const HloInstruction*> extractions;
+  std::map<int64_t, const HloInstruction*> extractions;
   for (const HloInstruction* indx_instr : while_body_param->users()) {
     if (indx_instr->opcode() != HloOpcode::kGetTupleElement) {
       continue;
@@ -137,8 +148,8 @@ std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
     VLOG(2) << "While body root is not a tuple:" << while_body_root->ToString();
     return aux_ind_gte;
   }
-  int64 index = -1;
-  std::map<int64, const HloInstruction*> insertions;
+  int64_t index = -1;
+  std::map<int64_t, const HloInstruction*> insertions;
   for (const HloInstruction* operand : while_body_root->operands()) {
     index++;
     if (!operand->IsConstant()) {
@@ -156,7 +167,7 @@ std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
     return aux_ind_gte;
   }
 
-  std::map<int64, std::pair<const HloInstruction*, const HloInstruction*>>
+  std::map<int64_t, std::pair<const HloInstruction*, const HloInstruction*>>
       candidate_pairs;
   for (; index >= 0; --index) {
     const HloInstruction *ext, *inst;
@@ -238,7 +249,7 @@ std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
 //   root = tuple(..., inc, ...)  // inc is N'th operand of tuple().
 //
 // If so, returns N.  Otherwise, returns nullopt.
-optional<int64> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
+optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   VLOG(2) << "Finding induction variable for loop "
           << while_op->ToShortString();
@@ -252,7 +263,7 @@ optional<int64> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_param = while_cond->parameter_instruction(0);
-  optional<int64> indvar_tuple_idx =
+  optional<int64_t> indvar_tuple_idx =
       GetGTEOperandIndex(while_cond_root, while_cond_param);
   if (!indvar_tuple_idx) {
     VLOG(2) << "Induction variable not found in loop condition: "
@@ -277,7 +288,7 @@ optional<int64> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
 
   auto* while_body_inc = while_body_root->operand(*indvar_tuple_idx);
   auto* while_body_param = while_body->parameter_instruction(0);
-  optional<int64> while_body_indvar_tuple_idx =
+  optional<int64_t> while_body_indvar_tuple_idx =
       GetGTEOperandIndex(while_body_inc, while_body_param);
   if (!while_body_indvar_tuple_idx) {
     VLOG(2)
@@ -305,34 +316,34 @@ optional<int64> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   return indvar_tuple_idx;
 }
 
-// Converts the given literal to a scalar int64, if possible.
+// Converts the given literal to a scalar int64_t, if possible.
 //
 // Fails if the literal is not an integral type or if the value it contains
-// cannot be represented in an int64.
-static optional<int64> LiteralAsScalarInt64(const Literal& l) {
+// cannot be represented in an int64_t.
+static optional<int64_t> LiteralAsScalarInt64(const Literal& l) {
   if (!ShapeUtil::IsEffectiveScalar(l.shape())) {
     VLOG(2) << "literal is not an effective scalar: " << l.ToString();
     return nullopt;
   }
   switch (l.shape().element_type()) {
     case S8:
-      return l.GetFirstElement<int8>();
+      return l.GetFirstElement<int8_t>();
     case S16:
-      return l.GetFirstElement<int16>();
+      return l.GetFirstElement<int16_t>();
     case S32:
-      return l.GetFirstElement<int32>();
+      return l.GetFirstElement<int32_t>();
     case S64:
-      return l.GetFirstElement<int64>();
+      return l.GetFirstElement<int64_t>();
     case U8:
-      return l.GetFirstElement<uint8>();
+      return l.GetFirstElement<uint8_t>();
     case U16:
-      return l.GetFirstElement<uint16>();
+      return l.GetFirstElement<uint16_t>();
     case U32:
-      return l.GetFirstElement<uint32>();
+      return l.GetFirstElement<uint32_t>();
     case U64: {
-      uint64 v = l.GetFirstElement<uint64>();
-      if (v > static_cast<uint64>(std::numeric_limits<int64>::max())) {
-        VLOG(2) << "uint64 literal is out of range for int64: " << v;
+      uint64_t v = l.GetFirstElement<uint64_t>();
+      if (v > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+        VLOG(2) << "uint64_t literal is out of range for int64_t: " << v;
         return nullopt;
       }
       return v;
@@ -344,12 +355,12 @@ static optional<int64> LiteralAsScalarInt64(const Literal& l) {
 }
 
 // Computes a + b, returning nullopt if it overflows.
-optional<int64> CheckedAdd(int64 a, int64 b) {
+optional<int64_t> CheckedAdd(int64_t a, int64_t b) {
   // Overflow occurred iff `a` and `b` have the same sign and `a + b` has a
   // different sign, see Hacker's Delignt 2nd Ed. pp 28.
-  uint64 aa = absl::bit_cast<uint64>(a);
-  uint64 bb = absl::bit_cast<uint64>(b);
-  int64 result = absl::bit_cast<int64>(aa + bb);
+  uint64_t aa = absl::bit_cast<uint64_t>(a);
+  uint64_t bb = absl::bit_cast<uint64_t>(b);
+  int64_t result = absl::bit_cast<int64_t>(aa + bb);
   if (a >= 0 == b >= 0 && result >= 0 != a >= 0) {
     return nullopt;
   }
@@ -357,10 +368,10 @@ optional<int64> CheckedAdd(int64 a, int64 b) {
 }
 
 // Computes a - b, returning nullopt if it overflows.
-optional<int64> CheckedSubtract(int64 a, int64 b) {
-  uint64 aa = absl::bit_cast<uint64>(a);
-  uint64 bb = absl::bit_cast<uint64>(b);
-  int64 result = absl::bit_cast<int64>(aa - bb);
+optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
+  uint64_t aa = absl::bit_cast<uint64_t>(a);
+  uint64_t bb = absl::bit_cast<uint64_t>(b);
+  int64_t result = absl::bit_cast<int64_t>(aa - bb);
   // Overflow occurred iff `a` and `b` have different signs and the sign of
   // `a - b` is the same as that of `b`, see Hacker's Delight 2nd Ed. pp 29.
   if (a >= 0 != b >= 0 && result >= 0 == b >= 0) {
@@ -374,14 +385,14 @@ optional<int64> CheckedSubtract(int64 a, int64 b) {
 //  - the while condition does `i < N` or `i <= N`, and
 //  - the while body does `i++`.
 // If so, it's trivial to compute the loop bound.
-static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
-                                                 int64 indvar_tuple_idx,
-                                                 const Literal& indvar_init) {
+static optional<int64_t> PatternMatchLoopTripCount(HloInstruction* while_op,
+                                                   int64_t indvar_tuple_idx,
+                                                   const Literal& indvar_init) {
   // First, find the scalar constant K that `i` is initialized to.
-  optional<int64> indvar_init_val = LiteralAsScalarInt64(indvar_init);
+  optional<int64_t> indvar_init_val = LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
     VLOG(2) << "Pattern-match failed: induction variable init is not a "
-               "constant scalar representable as an int64: "
+               "constant scalar representable as an int64_t: "
             << indvar_init.ToString();
     return nullopt;
   }
@@ -415,13 +426,13 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
                "op(i, N) or op(N, i).";
     return nullopt;
   }
-  // Note: If this succeeds, the constant `N` is representable as an int64 --
-  // that is, if it's an XLA U64, it fits within an int64.
-  optional<int64> while_cond_bound_val =
+  // Note: If this succeeds, the constant `N` is representable as an int64_t --
+  // that is, if it's an XLA U64, it fits within an int64_t.
+  optional<int64_t> while_cond_bound_val =
       LiteralAsScalarInt64(while_cond_bound->literal());
   if (!while_cond_bound_val) {
     VLOG(2) << "Pattern-match failed: while condition induction variable is "
-               "not a constant scalar representable as an int64.";
+               "not a constant scalar representable as an int64_t.";
     return nullopt;
   }
 
@@ -432,10 +443,10 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i < N: "
             << while_cond_root->ToString();
-    optional<int64> trips =
+    optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
     if (trips) {
-      return std::max(int64{0}, *trips);
+      return std::max(int64_t{0}, *trips);
     } else {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
       return nullopt;
@@ -449,7 +460,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i <= N: "
             << while_cond_root->ToString();
-    optional<int64> trips =
+    optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
@@ -460,7 +471,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    return std::max<int64>(0, *trips);
+    return std::max<int64_t>(0, *trips);
   }
 
   VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "
@@ -468,8 +479,8 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
   return nullopt;
 }
 
-optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
-                                          int64 max_brute_force_iters) {
+optional<int64_t> ComputeWhileLoopTripCount(HloInstruction* while_op,
+                                            int64_t max_brute_force_iters) {
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
   // The loop's induction variable is found at
@@ -477,7 +488,7 @@ optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
   //   get-tuple-elem(comp->parameter_instruction(0), *indvar_tuple_idx),
   //
   // where comp is while_op->while_body() or while_op->while_condition().
-  optional<int64> indvar_tuple_idx = GetLoopInductionVarTupleIdx(while_op);
+  optional<int64_t> indvar_tuple_idx = GetLoopInductionVarTupleIdx(while_op);
   if (!indvar_tuple_idx) {
     return nullopt;
   }
@@ -512,7 +523,7 @@ optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_indvar = NonConstantOperand(while_cond_root);
 
-  for (int64 trip_count = 0; trip_count != max_brute_force_iters + 1;
+  for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
     StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
         while_cond_root, {{while_cond_indvar, &indvar_iter_val}});
@@ -557,7 +568,8 @@ static HloInstruction* GetOnlyGTE(HloInstruction* inst) {
   return user;
 }
 
-optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
+optional<int64_t> ComputeWhileLoopTripCountUpperBound(
+    HloInstruction* while_op) {
   // If we know the exact trip count, it's also the upper bound.
   auto exact_trip_count = ComputeWhileLoopTripCount(while_op);
   if (exact_trip_count) {
@@ -595,7 +607,7 @@ optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
     return nullopt;
   }
 
-  int64 indvar_index = cond_gte->tuple_index();
+  int64_t indvar_index = cond_gte->tuple_index();
   auto* while_body_indvar = while_body_root->operand(indvar_index);
   if (while_body_indvar->opcode() != HloOpcode::kConstant) {
     VLOG(3) << "While body does not set the IV to a constant: "
@@ -618,8 +630,8 @@ optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
   }
 
   Literal cond_result_pred = std::move(eval_result.ValueOrDie());
-  CHECK(ShapeUtil::Equal(cond_result_pred.shape(),
-                         ShapeUtil::MakeShape(PRED, {})));
+  CHECK(Shape::Equal().IgnoreLayout()(cond_result_pred.shape(),
+                                      ShapeUtil::MakeShape(PRED, {})));
 
   // Per the explanation above, if the evaluated condition returns false, the
   // loop executes at most once.

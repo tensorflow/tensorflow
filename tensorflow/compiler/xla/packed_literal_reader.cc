@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -59,10 +58,10 @@ StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
   Literal result(literal_shape);
   result.PopulateWithValue(std::numeric_limits<float>::quiet_NaN());
 
-  int64 elements = ShapeUtil::ElementsIn(shape);
+  int64_t elements = ShapeUtil::ElementsIn(shape);
   absl::Span<const float> field = result.data<float>();
   char* data = absl::bit_cast<char*>(field.data());
-  uint64 bytes = elements * sizeof(float);
+  uint64_t bytes = elements * sizeof(float);
   absl::string_view sp;
   auto s = file_->Read(offset_, bytes, &sp, data);
   offset_ += sp.size();

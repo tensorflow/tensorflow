@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SHAPE_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -39,7 +39,7 @@ class Shape {
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
 
-  Shape(PrimitiveType element_type, absl::Span<const int64> dimensions,
+  Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
         absl::Span<const bool> dynamic_dimensions,
         std::vector<Shape> tuple_shapes)
       : element_type_(element_type),
@@ -53,11 +53,11 @@ class Shape {
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
-  string ToString(bool print_layout = false) const;
+  std::string ToString(bool print_layout = false) const;
 
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
-  int64 rank() const {
+  int64_t rank() const {
     DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
@@ -100,7 +100,7 @@ class Shape {
 
   // Removes the given dimension form the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
-  void DeleteDimension(int64 dim_to_delete);
+  void DeleteDimension(int64_t dim_to_delete);
 
   // The following methods mirror the protobuf generated code interface for the
   // message ShapeProto. This enabled easy migration of this data structure
@@ -114,9 +114,11 @@ class Shape {
 
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
-  int64 dimensions(int index) const { return dimensions_.at(index); }
-  void set_dimensions(int index, int64 value) { dimensions_.at(index) = value; }
-  void add_dimensions(int64 value) {
+  int64_t dimensions(int index) const { return dimensions_.at(index); }
+  void set_dimensions(int index, int64_t value) {
+    dimensions_.at(index) = value;
+  }
+  void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
     dynamic_dimensions_.push_back(false);
   }
@@ -124,8 +126,10 @@ class Shape {
     dimensions_.clear();
     dynamic_dimensions_.clear();
   }
-  absl::Span<const int64> dimensions() const { return dimensions_; }
-  absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
+  absl::Span<const int64_t> dimensions() const { return dimensions_; }
+  absl::Span<int64_t> mutable_dimensions() {
+    return absl::MakeSpan(dimensions_);
+  }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
   // tuple shapes.
@@ -149,7 +153,7 @@ class Shape {
   // Recursively clear dynamic dimension of a shape.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
-      for (int64 i = 0; i < dynamic_dimensions_.size(); ++i) {
+      for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
         dynamic_dimensions_[i] = false;
       }
       return;
@@ -171,9 +175,11 @@ class Shape {
     clear_layout();
   }
 
-  string SerializeAsString() const { return ToProto().SerializeAsString(); }
-  string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  string DebugString() const { return ToProto().DebugString(); }
+  std::string SerializeAsString() const {
+    return ToProto().SerializeAsString();
+  }
+  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  std::string DebugString() const { return ToProto().DebugString(); }
 
   // Equal is a configurable functor to check the equality of two shapes.
   //
@@ -244,10 +250,25 @@ class Shape {
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
 
+  template <typename H, bool kIsLayoutSensitive = true>
+  static H Hash(H h, const Shape& s) {
+    if (s.IsTuple()) {
+      for (const Shape& subshape : s.tuple_shapes_) {
+        h = Shape::Hash<H, kIsLayoutSensitive>(std::move(h), subshape);
+      }
+      return H::combine(std::move(h), s.tuple_shapes_size());
+    }
+    h = H::combine(std::move(h), s.element_type_, s.dimensions_,
+                   s.dynamic_dimensions_);
+    if (kIsLayoutSensitive) {
+      h = H::combine(std::move(h), s.layout_);
+    }
+    return std::move(h);
+  }
+
   template <typename H>
   friend H AbslHashValue(H h, const Shape& s) {
-    return H::combine(std::move(h), s.element_type_, s.dimensions_,
-                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+    return Shape::Hash(std::move(h), s);
   }
 
  private:
@@ -257,7 +278,7 @@ class Shape {
   // The array bounds of the dimensions. This is nonempty only for array
   // shapes. For a dynamically-sized dimension, the respective value in this
   // vector is an inclusive upper limit of the array bound.
-  absl::InlinedVector<int64, 6> dimensions_;
+  absl::InlinedVector<int64_t, 6> dimensions_;
 
   // This vector is the same size as 'dimensions_' and indicates whether the
   // respective dimension is dynamically sized.
@@ -282,7 +303,7 @@ class ProgramShape {
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // The following methods mirror the protobuf generated code interface for the
   // message ProgramShapeProto. This enabled easy migration of this data
@@ -308,37 +329,39 @@ class ProgramShape {
 
   // Methods for accessing and manipulating the names of the parameters.
   int parameter_names_size() const { return parameter_names_.size(); }
-  const string& parameter_names(int index) const {
+  const std::string& parameter_names(int index) const {
     return parameter_names_.at(index);
   }
-  void set_parameter_names(int index, const string& value) {
+  void set_parameter_names(int index, const std::string& value) {
     parameter_names_.at(index) = value;
   }
-  string* mutable_parameter_names(int index) {
+  std::string* mutable_parameter_names(int index) {
     return &parameter_names_.at(index);
   }
-  void add_parameter_names(const string& value) {
+  void add_parameter_names(const std::string& value) {
     parameter_names_.push_back(value);
   }
-  string* add_parameter_names() {
+  std::string* add_parameter_names() {
     parameter_names_.push_back("");
     return &parameter_names_.back();
   }
   void clear_parameter_names() { parameter_names_.clear(); }
-  const std::vector<string>& parameter_names() const {
+  const std::vector<std::string>& parameter_names() const {
     return parameter_names_;
   }
-  std::vector<string>* mutable_parameter_names() { return &parameter_names_; }
+  std::vector<std::string>* mutable_parameter_names() {
+    return &parameter_names_;
+  }
 
-  string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  string DebugString() const { return ToProto().DebugString(); }
+  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  std::string DebugString() const { return ToProto().DebugString(); }
 
  private:
   // The shapes of the parameters of the computation represented by this object.
   std::vector<Shape> parameters_;
 
   // The names of the parameters of the computation represented by this object.
-  std::vector<string> parameter_names_;
+  std::vector<std::string> parameter_names_;
 
   // The shape of the result of the computation represented by this object.
   Shape result_;

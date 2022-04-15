@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+
 #include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -23,63 +25,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name) {
-  switch (mode) {
-    case TrtPrecisionMode::FP32:
-      *name = "FP32";
-      break;
-    case TrtPrecisionMode::FP16:
-      *name = "FP16";
-      break;
-    case TrtPrecisionMode::INT8:
-      *name = "INT8";
-      break;
-    default:
-      *name = "UNKNOWN";
-      return errors::OutOfRange("Unknown precision mode");
-  }
-  return Status::OK();
-}
-
-Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
-  if (name == "FP32") {
-    *mode = TrtPrecisionMode::FP32;
-  } else if (name == "FP16") {
-    *mode = TrtPrecisionMode::FP16;
-  } else if (name == "INT8") {
-    *mode = TrtPrecisionMode::INT8;
-  } else {
-    return errors::InvalidArgument("Invalid precision mode name: ", name);
-  }
-  return Status::OK();
-}
-
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-
-string DebugString(const nvinfer1::DimensionType type) {
-  switch (type) {
-    case nvinfer1::DimensionType::kSPATIAL:
-      return "kSPATIAL";
-    case nvinfer1::DimensionType::kCHANNEL:
-      return "kCHANNEL";
-    case nvinfer1::DimensionType::kINDEX:
-      return "kINDEX";
-    case nvinfer1::DimensionType::kSEQUENCE:
-      return "kSEQUENCE";
-    default:
-      return StrCat(static_cast<int>(type), "=unknown");
-  }
-}
-
 string DebugString(const nvinfer1::Dims& dims) {
   string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
-  for (int i = 0; i < dims.nbDims; ++i) {
+  for (int i = 0; i < std::max(dims.nbDims, 0); ++i) {
     StrAppend(&out, dims.d[i]);
-    if (VLOG_IS_ON(2)) {
-      StrAppend(&out, "[", DebugString(dims.type[i]), "],");
-    } else {
-      StrAppend(&out, ",");
-    }
+    StrAppend(&out, ",");
   }
   StrAppend(&out, ")");
   return out;
@@ -95,6 +45,8 @@ string DebugString(const DataType tf_type) {
       return "DT_INT32";
     case DT_INT8:
       return "DT_INT8";
+    case DT_BOOL:
+      return "DT_BOOL";
     default:
       return "Unknow TF DataType";
   }
@@ -110,15 +62,11 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
       return "kINT8";
     case nvinfer1::DataType::kINT32:
       return "kINT32";
+    case nvinfer1::DataType::kBOOL:
+      return "kBOOL";
     default:
       return "Invalid TRT data type";
   }
-}
-
-string DebugString(const TrtPrecisionMode mode) {
-  string mode_str;
-  TF_CHECK_OK(TrtPrecisionModeToName(mode, &mode_str));
-  return StrCat("TrtPrecisionMode::", mode_str);
 }
 
 string DebugString(const nvinfer1::Permutation& permutation, int len) {
@@ -128,6 +76,14 @@ string DebugString(const nvinfer1::Permutation& permutation, int len) {
   }
   StrAppend(&out, ")");
   return out;
+}
+
+string DebugString(const ITensorProxyPtr& tensor) {
+  return StrCat(
+      tensor->is_trt_tensor() ? "nvinfer1::ITensor(@" : "SimpleItensor(@",
+      reinterpret_cast<uintptr_t>(&tensor), ", name=", tensor->getName(),
+      ", dtype=", DebugString(tensor->getType()),
+      ", dims=", DebugString(tensor->getDimensions()), ")");
 }
 
 string DebugString(const nvinfer1::ITensor& tensor) {
@@ -187,19 +143,9 @@ Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
   const int n_inputs = network->getNbInputs();
   input_shapes->resize(n_inputs);
   for (int i = 0; i < n_inputs; i++) {
-    const nvinfer1::ITensor* input = network->getInput(i);
-    const nvinfer1::Dims input_dim = input->getDimensions();
-    TF_RETURN_IF_ERROR(TrtDimsToTensorShape(input_dim, &input_shapes->at(i)));
-  }
-  return Status::OK();
-}
-Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                            TensorShape* shape,
-                            absl::optional<int> batch_size) {
-  TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), shape));
-  if (batch_size) {
-    shape->InsertDim(0, batch_size.value());
+    const ITensorProxyPtr input = network->getInput(i);
+    TF_RETURN_IF_ERROR(DimsAdapter(input->getDimensions())
+                           .PartialTensorShape(&input_shapes->at(i)));
   }
   return Status::OK();
 }
@@ -215,6 +161,11 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
     case DT_INT32:
       *trt_type = nvinfer1::DataType::kINT32;
       break;
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    case DT_BOOL:
+      *trt_type = nvinfer1::DataType::kBOOL;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Unsupported tensorflow data type ",
                                      DataTypeString(tf_type));
@@ -233,6 +184,11 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
     case nvinfer1::DataType::kINT32:
       *tf_type = DT_INT32;
       break;
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+      *tf_type = DT_BOOL;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Invalid TRT data type");
   }
@@ -250,47 +206,9 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   // following getNbBindings() / K bindings are used by profile number 1 etc."
   // Therefore, to get the number of input tensors, we need to divide by the
   // the number of profiles.
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   int n_profiles = engine->getNbOptimizationProfiles();
-#else
-  int n_profiles = 1;
-#endif
   return n_input / n_profiles;
 }
-
-string ProfileStrategyToName(const ProfileStrategy strategy) {
-  switch (strategy) {
-    case ProfileStrategy::kRange:
-      return "Range";
-    case ProfileStrategy::kOptimal:
-      return "Optimal";
-    case ProfileStrategy::kRangeOptimal:
-      return "Range+Optimal";
-    case ProfileStrategy::kImplicitBatchModeCompatible:
-      return "ImplicitBatchModeCompatible";
-  }
-  return "Unknown";
-}
-
-Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy) {
-  string name_lowercase(name);
-  std::transform(name.begin(), name.end(), name_lowercase.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  if (name_lowercase == "range") {
-    *strategy = ProfileStrategy::kRange;
-  } else if (name_lowercase == "optimal") {
-    *strategy = ProfileStrategy::kOptimal;
-  } else if (name_lowercase == "range+optimal") {
-    *strategy = ProfileStrategy::kRangeOptimal;
-  } else if (name_lowercase == "implicitbatchmodecompatible") {
-    *strategy = ProfileStrategy::kImplicitBatchModeCompatible;
-  } else {
-    return errors::InvalidArgument("Invalid profile strategy: ", name);
-  }
-  return Status::OK();
-}
-
-#endif
 
 absl::string_view GetDeviceName(const Node* node) {
   if (node->has_assigned_device_name()) {
@@ -333,3 +251,5 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

@@ -45,26 +45,26 @@ using RowMajorMatrix =
     Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 using MatrixXfRowMajor = RowMajorMatrix<float>;
-using MatrixXi64RowMajor = RowMajorMatrix<int64>;
+using MatrixXi64RowMajor = RowMajorMatrix<int64_t>;
 
 // Ideally this should be computed by dividing L3 cache size by the number of
 // physical CPUs. Since there isn't a portable method to do this, we are using
 // a conservative estimate here.
-const int64 kDefaultL3CachePerCpu = 1 << 20;
+const int64_t kDefaultL3CachePerCpu = 1 << 20;
 
 // These values were determined by performing a parameter sweep on the
 // NearestNeighborsOp benchmark.
-const int64 kNearestNeighborsCentersMaxBlockSize = 1024;
-const int64 kNearestNeighborsPointsMinBlockSize = 16;
+const int64_t kNearestNeighborsCentersMaxBlockSize = 1024;
+const int64_t kNearestNeighborsPointsMinBlockSize = 16;
 
 // Returns the smallest multiple of a that is not smaller than b.
-int64 NextMultiple(int64 a, int64 b) {
-  const int64 remainder = b % a;
+int64_t NextMultiple(int64_t a, int64_t b) {
+  const int64_t remainder = b % a;
   return remainder == 0 ? b : (b + a - remainder);
 }
 
 // Returns a / b rounded up to the next higher integer.
-int64 CeilOfRatio(int64 a, int64 b) { return (a + b - 1) / b; }
+int64_t CeilOfRatio(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
 }  // namespace
 
@@ -98,14 +98,14 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
         TensorShapeUtils::IsScalar(num_retries_per_sample_tensor.shape()),
         InvalidArgument("Input num_retries_per_sample should be a scalar."));
 
-    const int64 num_points = points_tensor.dim_size(0);
-    const int64 point_dimensions = points_tensor.dim_size(1);
-    const int64 num_to_sample = num_to_sample_tensor.scalar<int64>()();
-    const int64 seed = seed_tensor.scalar<int64>()();
-    const int64 num_retries_per_sample = [&]() {
-      const int64 value = num_retries_per_sample_tensor.scalar<int64>()();
+    const int64_t num_points = points_tensor.dim_size(0);
+    const int64_t point_dimensions = points_tensor.dim_size(1);
+    const int64_t num_to_sample = num_to_sample_tensor.scalar<int64_t>()();
+    const int64_t seed = seed_tensor.scalar<int64_t>()();
+    const int64_t num_retries_per_sample = [&]() {
+      const int64_t value = num_retries_per_sample_tensor.scalar<int64_t>()();
       return value >= 0 ? value
-                        : 2 + static_cast<int64>(std::log(num_to_sample));
+                        : 2 + static_cast<int64_t>(std::log(num_to_sample));
     }();
 
     OP_REQUIRES(context, num_points > 0,
@@ -130,12 +130,12 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     Eigen::Map<MatrixXfRowMajor> sampled_points(
         output_sampled_points_tensor->matrix<float>().data(), num_to_sample,
         point_dimensions);
-    std::unordered_set<int64> sampled_indices;
+    std::unordered_set<int64_t> sampled_indices;
 
     random::PhiloxRandom random(seed);
     random::SimplePhilox rng(&random);
 
-    auto add_one_point = [&](int64 from, int64 to) {
+    auto add_one_point = [&](int64_t from, int64_t to) {
       from = std::min(from, num_points - 1);
       sampled_points.row(to) = points.row(from);
       sampled_indices.insert(from);
@@ -149,7 +149,7 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
 
     auto draw_one_sample = [&]() -> int64 {
       if (sampled_indices.empty()) return rng.Uniform64(num_points);
-      int64 index = 0;
+      int64_t index = 0;
       do {
         // If v is drawn from Uniform[0, distances.sum()), then
         // Prob[cumsum(distances)(i - 1) <= v < cumsum(distances)(i)] is
@@ -164,7 +164,7 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     };
 
     auto sample_one_point = [&]() {
-      const int64 sampled_index = draw_one_sample();
+      const int64_t sampled_index = draw_one_sample();
       min_distances = min_distances.cwiseMin(GetHalfSquaredDistancesToY(
           points, points_half_squared_norm, points.row(sampled_index),
           points_half_squared_norm(sampled_index)));
@@ -174,9 +174,9 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     auto sample_one_point_with_retries = [&]() {
       Eigen::VectorXf best_new_min_distances(num_points);
       float best_potential = std::numeric_limits<float>::infinity();
-      int64 best_sampled_index = 0;
+      int64_t best_sampled_index = 0;
       for (int i = 1 + num_retries_per_sample; i > 0; --i) {
-        const int64 sampled_index = draw_one_sample();
+        const int64_t sampled_index = draw_one_sample();
         Eigen::VectorXf new_min_distances =
             min_distances.cwiseMin(GetHalfSquaredDistancesToY(
                 points, points_half_squared_norm, points.row(sampled_index),
@@ -192,15 +192,15 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
       return best_sampled_index;
     };
 
-    for (int64 i = 0; i < num_to_sample; ++i) {
+    for (int64_t i = 0; i < num_to_sample; ++i) {
       if (i > 0) {
         std::partial_sum(min_distances.data(),
                          min_distances.data() + num_points,
                          min_distances_cumsum.data());
       }
-      int64 next = num_retries_per_sample == 0
-                       ? sample_one_point()
-                       : sample_one_point_with_retries();
+      int64_t next = num_retries_per_sample == 0
+                         ? sample_one_point()
+                         : sample_one_point_with_retries();
       add_one_point(next, i);
     }
   }
@@ -241,8 +241,8 @@ class KMC2ChainInitializationOp : public OpKernel {
                 InvalidArgument("Input distances should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(seed_tensor.shape()),
                 InvalidArgument("Input seed should be a scalar."));
-    const int64 num_points = distances_tensor.dim_size(0);
-    const int64 seed = seed_tensor.scalar<int64>()();
+    const int64_t num_points = distances_tensor.dim_size(0);
+    const int64_t seed = seed_tensor.scalar<int64_t>()();
     OP_REQUIRES(context, num_points > 0,
                 InvalidArgument("Expected distances_tensor.size() > 0."));
 
@@ -251,10 +251,10 @@ class KMC2ChainInitializationOp : public OpKernel {
 
     auto distances = distances_tensor.flat<float>();
     // Set the initial state of the Markov chain to be the first candidate.
-    int64 selected_index = 0;
+    int64_t selected_index = 0;
     float selected_distance = distances(selected_index);
     // Build a Markov chain of length num_points.
-    for (int64 i = 1; i < num_points; ++i) {
+    for (int64_t i = 1; i < num_points; ++i) {
       const float candidate_distance = distances(i);
       // Set the next state of the Markov chain to be the candidate with
       // probability min(1, candidate_distance/selected_distance).
@@ -268,7 +268,7 @@ class KMC2ChainInitializationOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}),
                                             &output_sampled_index_tensor));
-    auto output = output_sampled_index_tensor->scalar<int64>();
+    auto output = output_sampled_index_tensor->scalar<int64_t>();
     // Return the last state of the Markov chain as the new center.
     output() = selected_index;
   }
@@ -299,10 +299,10 @@ class NearestNeighborsOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_tensor.shape()),
                 InvalidArgument("Input k should be a scalar."));
 
-    const int64 num_points = points_tensor.dim_size(0);
-    const int64 point_dimensions = points_tensor.dim_size(1);
-    const int64 num_centers = centers_tensor.dim_size(0);
-    const int64 center_dimensions = centers_tensor.dim_size(1);
+    const int64_t num_points = points_tensor.dim_size(0);
+    const int64_t point_dimensions = points_tensor.dim_size(1);
+    const int64_t num_centers = centers_tensor.dim_size(0);
+    const int64_t center_dimensions = centers_tensor.dim_size(1);
 
     OP_REQUIRES(context, num_points > 0,
                 InvalidArgument("Expected points.rows() > 0."));
@@ -315,7 +315,8 @@ class NearestNeighborsOp : public OpKernel {
         points_tensor.matrix<float>().data(), num_points, point_dimensions);
     const Eigen::Map<const MatrixXfRowMajor> centers(
         centers_tensor.matrix<float>().data(), num_centers, center_dimensions);
-    const int64 k = std::min<int64>(num_centers, k_tensor.scalar<int64>()());
+    const int64_t k =
+        std::min<int64_t>(num_centers, k_tensor.scalar<int64_t>()());
 
     Tensor* output_nearest_center_indices_tensor;
     Tensor* output_nearest_center_distances_tensor;
@@ -329,7 +330,7 @@ class NearestNeighborsOp : public OpKernel {
     if (k == 0) return;
 
     Eigen::Map<MatrixXi64RowMajor> nearest_center_indices(
-        output_nearest_center_indices_tensor->matrix<int64>().data(),
+        output_nearest_center_indices_tensor->matrix<int64_t>().data(),
         num_points, k);
     Eigen::Map<MatrixXfRowMajor> nearest_center_distances(
         output_nearest_center_distances_tensor->matrix<float>().data(),
@@ -352,19 +353,19 @@ class NearestNeighborsOp : public OpKernel {
     //    are reduced to a set of k nearest centers as soon as possible. This
     //    decreases total memory I/O.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-    const int64 num_threads = worker_threads.num_threads;
+    const int64_t num_threads = worker_threads.num_threads;
     // This kernel might be configured to use fewer than the total number of
     // available CPUs on the host machine. To avoid destructive interference
     // with other jobs running on the host machine, we must only use a fraction
     // of total available L3 cache. Unfortunately, we cannot query the host
     // machine to get the number of physical CPUs. So, we use a fixed per-CPU
     // budget and scale it by the number of CPUs available to this operation.
-    const int64 total_memory_budget =
+    const int64_t total_memory_budget =
         kDefaultL3CachePerCpu * port::NumSchedulableCPUs();
     // Compute the number of blocks into which rows of points must be split so
     // that the distance matrix and the block of points can fit in cache. One
     // row of points will yield a vector of distances to each center in a block.
-    const int64 bytes_per_row =
+    const int64_t bytes_per_row =
         (std::min(kNearestNeighborsCentersMaxBlockSize,
                   num_centers) /* centers in a block */
          + point_dimensions /* coordinates of one point */) *
@@ -372,28 +373,28 @@ class NearestNeighborsOp : public OpKernel {
     // The memory needed for storing the centers being processed. This is shared
     // by all workers. Adding slack to the number of threads to avoid incorrect
     // cache eviction when a new block of centers is loaded.
-    const int64 bytes_for_centers =
+    const int64_t bytes_for_centers =
         std::min(num_centers,
                  (num_threads + 2) * kNearestNeighborsCentersMaxBlockSize) *
         point_dimensions * sizeof(float);
     // The memory budget available for workers to store their distance matrices.
-    const int64 available_memory_budget =
+    const int64_t available_memory_budget =
         total_memory_budget - bytes_for_centers;
     // That memory budget is shared by all threads.
-    const int64 rows_per_block =
-        std::max<int64>(kNearestNeighborsPointsMinBlockSize,
-                        available_memory_budget / num_threads / bytes_per_row);
+    const int64_t rows_per_block = std::max<int64_t>(
+        kNearestNeighborsPointsMinBlockSize,
+        available_memory_budget / num_threads / bytes_per_row);
     // Divide rows into almost uniformly-sized units of work that are small
     // enough for the memory budget (rows_per_block). Round up to a multiple of
     // the number of threads.
-    const int64 num_units =
+    const int64_t num_units =
         NextMultiple(num_threads, CeilOfRatio(num_points, rows_per_block));
-    auto work = [&](int64 start, int64 limit) {
+    auto work = [&](int64_t start, int64_t limit) {
       for (; start < limit; ++start) {
-        const int64 start_row = num_points * start / num_units;
-        const int64 limit_row = num_points * (start + 1) / num_units;
+        const int64_t start_row = num_points * start / num_units;
+        const int64_t limit_row = num_points * (start + 1) / num_units;
         DCHECK_LE(limit_row, num_points);
-        const int64 num_rows = limit_row - start_row;
+        const int64_t num_rows = limit_row - start_row;
         auto points_shard = points.middleRows(start_row, num_rows);
         const Eigen::VectorXf points_half_squared_norm =
             0.5 * points_shard.rowwise().squaredNorm();
@@ -408,11 +409,11 @@ class NearestNeighborsOp : public OpKernel {
       }
     };
 
-    const int64 units_per_thread = num_units / num_threads;
+    const int64_t units_per_thread = num_units / num_threads;
     BlockingCounter counter(num_threads - 1);
-    for (int64 i = 1; i < num_threads; ++i) {
-      const int64 start = i * units_per_thread;
-      const int64 limit = start + units_per_thread;
+    for (int64_t i = 1; i < num_threads; ++i) {
+      const int64_t start = i * units_per_thread;
+      const int64_t limit = start + units_per_thread;
       worker_threads.workers->Schedule([work, &counter, start, limit]() {
         work(start, limit);
         counter.DecrementCount();
@@ -424,7 +425,7 @@ class NearestNeighborsOp : public OpKernel {
 
  private:
   static void FindKNearestCenters(
-      int64 k, const Eigen::Ref<const MatrixXfRowMajor>& points,
+      int64_t k, const Eigen::Ref<const MatrixXfRowMajor>& points,
       const Eigen::Ref<const Eigen::VectorXf>& points_half_squared_norm,
       const Eigen::Ref<const MatrixXfRowMajor>& centers,
       const Eigen::Ref<const Eigen::VectorXf>& centers_half_squared_norm,
@@ -445,19 +446,19 @@ class NearestNeighborsOp : public OpKernel {
   }
 
   static void FindKNearestCentersOneBlock(
-      int64 k, const Eigen::Ref<const MatrixXfRowMajor>& points,
+      int64_t k, const Eigen::Ref<const MatrixXfRowMajor>& points,
       const Eigen::Ref<const Eigen::VectorXf>& points_half_squared_norm,
       const Eigen::Ref<const MatrixXfRowMajor>& centers,
       const Eigen::Ref<const Eigen::VectorXf>& centers_half_squared_norm,
       Eigen::Ref<MatrixXi64RowMajor> nearest_center_indices,
       Eigen::Ref<MatrixXfRowMajor> nearest_center_distances) {
     DCHECK_LE(k, centers.rows());
-    const int64 num_points = points.rows();
+    const int64_t num_points = points.rows();
     const MatrixXfRowMajor inner_product = points * centers.transpose();
     // Find nearest neighbors.
     if (k == 1) {
       for (int i = 0; i < num_points; ++i) {
-        int64 index;
+        int64_t index;
         nearest_center_distances(i, 0) =
             2.0 *
             (points_half_squared_norm(i) +
@@ -467,8 +468,8 @@ class NearestNeighborsOp : public OpKernel {
       }
     } else {
       // Select k nearest centers for each point.
-      using Center = std::pair<float, int64>;
-      const int64 num_centers = centers.rows();
+      using Center = std::pair<float, int64_t>;
+      const int64_t num_centers = centers.rows();
       gtl::TopN<Center, std::less<Center>> selector(k);
       std::unique_ptr<std::vector<Center>> nearest_centers;
       for (int i = 0; i < num_points; ++i) {
@@ -492,19 +493,19 @@ class NearestNeighborsOp : public OpKernel {
   }
 
   static void FindKNearestCentersBlockwise(
-      int64 k, const Eigen::Ref<const MatrixXfRowMajor>& points,
+      int64_t k, const Eigen::Ref<const MatrixXfRowMajor>& points,
       const Eigen::Ref<const Eigen::VectorXf>& points_half_squared_norm,
       const Eigen::Ref<const MatrixXfRowMajor>& centers,
       const Eigen::Ref<const Eigen::VectorXf>& centers_half_squared_norm,
       Eigen::Ref<MatrixXi64RowMajor> nearest_center_indices,
       Eigen::Ref<MatrixXfRowMajor> nearest_center_distances) {
-    const int64 num_points = points.rows();
-    const int64 num_centers = centers.rows();
+    const int64_t num_points = points.rows();
+    const int64_t num_centers = centers.rows();
     DCHECK_LE(k, num_centers);
     DCHECK_GT(num_centers, kNearestNeighborsCentersMaxBlockSize);
     // Store nearest neighbors with first block of centers directly into the
     // output matrices.
-    int64 out_k = std::min(k, kNearestNeighborsCentersMaxBlockSize);
+    int64_t out_k = std::min(k, kNearestNeighborsCentersMaxBlockSize);
     FindKNearestCentersOneBlock(
         out_k, points, points_half_squared_norm,
         centers.topRows(kNearestNeighborsCentersMaxBlockSize),
@@ -514,14 +515,14 @@ class NearestNeighborsOp : public OpKernel {
     // update the output matrices.
     MatrixXi64RowMajor block_nearest_center_indices(num_points, k);
     MatrixXfRowMajor block_nearest_center_distances(num_points, k);
-    Eigen::Matrix<int64, 1, Eigen::Dynamic> merged_indices(k);
+    Eigen::Matrix<int64_t, 1, Eigen::Dynamic> merged_indices(k);
     Eigen::Matrix<float, 1, Eigen::Dynamic> merged_distances(k);
-    for (int64 centers_start = kNearestNeighborsCentersMaxBlockSize;
+    for (int64_t centers_start = kNearestNeighborsCentersMaxBlockSize;
          centers_start < num_centers;
          centers_start += kNearestNeighborsCentersMaxBlockSize) {
-      const int64 centers_block_size = std::min(
+      const int64_t centers_block_size = std::min(
           kNearestNeighborsCentersMaxBlockSize, num_centers - centers_start);
-      const int64 block_k = std::min(k, centers_block_size);
+      const int64_t block_k = std::min(k, centers_block_size);
       FindKNearestCentersOneBlock(
           block_k, points, points_half_squared_norm,
           centers.middleRows(centers_start, centers_block_size),
@@ -541,7 +542,7 @@ class NearestNeighborsOp : public OpKernel {
         for (int i = 0; i < num_points; ++i) {
           // Merge and accumulate top-k list from block_nearest_center_indices
           // into nearest_center_indices.
-          for (int64 j_out = 0, j_block = 0, j_merged = 0;
+          for (int64_t j_out = 0, j_block = 0, j_merged = 0;
                (j_out < out_k || j_block < block_k) && j_merged < k;
                ++j_merged) {
             const float distance_out =

@@ -44,4 +44,8 @@ tf_module {
     name: "partitioners"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "rpc"
+    mtype: "<type \'module\'>"
+  }
 }

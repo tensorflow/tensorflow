@@ -60,8 +60,8 @@ class DebugIO {
   static const char* const kMemoryURLScheme;
 
   static Status PublishDebugMetadata(
-      const int64 global_step, const int64 session_run_index,
-      const int64 executor_step_index, const std::vector<string>& input_names,
+      const int64_t global_step, const int64_t session_run_index,
+      const int64_t executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_nodes,
       const std::unordered_set<string>& debug_urls);
@@ -279,7 +279,7 @@ class DebugGrpcChannel {
   // Returns:
   //   OK Status iff connection is successfully established before timeout,
   //   otherwise return an error Status.
-  Status Connect(const int64 timeout_micros);
+  Status Connect(const int64_t timeout_micros);
 
   // Write an Event proto to the debug gRPC stream.
   //
@@ -419,7 +419,7 @@ class DebugGrpcIO {
   static void ClearEnabledWatchKeys();
 
   static mutex streams_mu_;
-  static int64 channel_connection_timeout_micros_;
+  static int64_t channel_connection_timeout_micros_;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;

@@ -37,16 +37,13 @@ namespace xla {
 constexpr int kMinCudaComputeCapabilityMajor = 3;
 constexpr int kMinCudaComputeCapabilityMinor = 5;
 
-// Minimum supported AMDGPU ISA version is 803.
-constexpr int kMinAMDGPUISAVersion = 803;
-
 // The name of the interpreter platform.
 constexpr char kInterpreter[] = "interpreter";
 
 namespace {
 
-string CanonicalPlatformName(const string& platform_name) {
-  string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
+std::string CanonicalPlatformName(const std::string& platform_name) {
+  std::string lowercase_platform_name = absl::AsciiStrToLower(platform_name);
   // "cpu" and "host" mean the same thing.
   if (lowercase_platform_name == "cpu") {
     return "host";
@@ -107,17 +104,17 @@ PlatformUtil::GetSupportedPlatforms() {
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  string platforms_string = absl::StrJoin(
+  std::string platforms_string = absl::StrJoin(
       platforms, ", ",
-      [](string* out, const se::Platform* p) { out->append(p->Name()); });
+      [](std::string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
       "must specify platform because more than one platform (except for the "
-      "interpreter platform) found: %s",
+      "interpreter platform) found: %s.",
       platforms_string);
 }
 
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
-    const string& platform_name) {
+    const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithName(
                           CanonicalPlatformName(platform_name)));
@@ -131,31 +128,26 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
   const auto& description = executor->GetDeviceDescription();
   if (executor->platform()->id() == se::cuda::kCudaPlatformId) {
     // CUDA devices must have a minimum compute capability.
-    int major_version, minor_version;
-    if (description.cuda_compute_capability(&major_version, &minor_version)) {
-      if (major_version < kMinCudaComputeCapabilityMajor ||
-          (major_version == kMinCudaComputeCapabilityMajor &&
-           minor_version < kMinCudaComputeCapabilityMinor)) {
-        LOG(INFO) << "StreamExecutor cuda device ("
-                  << executor->device_ordinal() << ") is of "
-                  << "insufficient compute capability: "
-                  << kMinCudaComputeCapabilityMajor << "."
-                  << kMinCudaComputeCapabilityMinor << " required, "
-                  << "device is " << major_version << "." << minor_version;
-        return false;
-      }
+    se::CudaComputeCapability cc = description.cuda_compute_capability();
+    if (!cc.IsAtLeast(kMinCudaComputeCapabilityMajor,
+                      kMinCudaComputeCapabilityMinor)) {
+      LOG(INFO) << "StreamExecutor cuda device (" << executor->device_ordinal()
+                << ") is of "
+                << "insufficient compute capability: "
+                << kMinCudaComputeCapabilityMajor << "."
+                << kMinCudaComputeCapabilityMinor << " required, "
+                << "device is " << cc.ToString();
+      return false;
     }
   } else if (executor->platform()->id() == se::rocm::kROCmPlatformId) {
-    int isa_version = 0;
-    if (description.rocm_amdgpu_isa_version(&isa_version)) {
-      if (isa_version < kMinAMDGPUISAVersion) {
-        LOG(INFO) << "StreamExecutor ROCM device ("
-                  << executor->device_ordinal() << ") is of "
-                  << "obsolete AMDGPU ISA version: "
-                  << "gfx" << kMinAMDGPUISAVersion << " required, "
-                  << "device is gfx" << isa_version;
-        return false;
-      }
+    auto rocm_compute_capability = description.rocm_compute_capability();
+    if (!rocm_compute_capability.is_supported_gfx_version()) {
+      LOG(INFO) << "StreamExecutor ROCM device (" << executor->device_ordinal()
+                << ") is of unsupported "
+                << "AMDGPU version : " << rocm_compute_capability.gfx_version()
+                << ". The supported AMDGPU versions are "
+                << rocm_compute_capability.supported_gfx_versions_str() << ".";
+      return false;
     }
   }
   return true;
@@ -198,9 +190,7 @@ PlatformUtil::GetStreamExecutors(
       }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
-        se::StreamExecutorConfig config;
-        config.ordinal = i;
-        auto executor_status = platform->GetExecutor(config);
+        auto executor_status = platform->ExecutorForDevice(i);
         if (executor_status.ok()) {
           se::StreamExecutor* executor = executor_status.ValueOrDie();
           if (IsDeviceSupported(executor)) {

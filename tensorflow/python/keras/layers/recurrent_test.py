@@ -34,11 +34,11 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_impl
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -1291,7 +1291,7 @@ class RNNTest(keras_parameterized.TestCase):
         recurrent_activation='sigmoid',
         implementation=2)
     tf_lstm_cell_output = _run_cell(
-        rnn_cell.LSTMCell,
+        rnn_cell_impl.LSTMCell,
         use_peepholes=True,
         initializer=init_ops.ones_initializer)
     self.assertNotAllClose(first_implementation_output, no_peephole_output)

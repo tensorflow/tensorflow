@@ -36,23 +36,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
+#include "tensorflow/lite/examples/label_image/log.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
-#include "tensorflow/lite/tools/evaluation/utils.h"
-
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/delegate.h"
-#endif
-
-#include "tensorflow/lite/examples/label_image/log.h"
 
 namespace tflite {
 namespace label_image {
@@ -60,48 +52,94 @@ namespace label_image {
 double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
 using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
-using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+using ProvidedDelegateList = tflite::tools::ProvidedDelegateList;
 
 class DelegateProviders {
  public:
-  DelegateProviders()
-      : delegates_list_(tflite::tools::GetRegisteredDelegateProviders()) {
-    for (const auto& delegate : delegates_list_) {
-      params_.Merge(delegate->DefaultParams());
-    }
+  DelegateProviders() : delegate_list_util_(&params_) {
+    delegate_list_util_.AddAllDelegateParams();
+    delegate_list_util_.AppendCmdlineFlags(flags_);
+
+    // Remove the "help" flag to avoid printing "--help=false"
+    params_.RemoveParam("help");
+    delegate_list_util_.RemoveCmdlineFlag(flags_, "help");
   }
 
   // Initialize delegate-related parameters from parsing command line arguments,
   // and remove the matching arguments from (*argc, argv). Returns true if all
   // recognized arg values are parsed correctly.
   bool InitFromCmdlineArgs(int* argc, const char** argv) {
-    std::vector<tflite::Flag> flags;
-    for (const auto& delegate : delegates_list_) {
-      auto delegate_flags = delegate->CreateFlags(&params_);
-      flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
+    // Note if '--help' is in argv, the Flags::Parse return false,
+    // see the return expression in Flags::Parse.
+    return Flags::Parse(argc, argv, flags_);
+  }
+
+  // According to passed-in settings `s`, this function sets corresponding
+  // parameters that are defined by various delegate execution providers. See
+  // lite/tools/delegates/README.md for the full list of parameters defined.
+  void MergeSettingsIntoParams(const Settings& s) {
+    // Parse settings related to GPU delegate.
+    // Note that GPU delegate does support OpenCL. 'gl_backend' was introduced
+    // when the GPU delegate only supports OpenGL. Therefore, we consider
+    // setting 'gl_backend' to true means using the GPU delegate.
+    if (s.gl_backend) {
+      if (!params_.HasParam("use_gpu")) {
+        LOG(WARN) << "GPU delegate execution provider isn't linked or GPU "
+                     "delegate isn't supported on the platform!";
+      } else {
+        params_.Set<bool>("use_gpu", true);
+        // The parameter "gpu_inference_for_sustained_speed" isn't available for
+        // iOS devices.
+        if (params_.HasParam("gpu_inference_for_sustained_speed")) {
+          params_.Set<bool>("gpu_inference_for_sustained_speed", true);
+        }
+        params_.Set<bool>("gpu_precision_loss_allowed", s.allow_fp16);
+      }
     }
 
-    const bool parse_result = Flags::Parse(argc, argv, flags);
-    if (!parse_result) {
-      std::string usage = Flags::Usage(argv[0], flags);
-      LOG(ERROR) << usage;
+    // Parse settings related to NNAPI delegate.
+    if (s.accel) {
+      if (!params_.HasParam("use_nnapi")) {
+        LOG(WARN) << "NNAPI delegate execution provider isn't linked or NNAPI "
+                     "delegate isn't supported on the platform!";
+      } else {
+        params_.Set<bool>("use_nnapi", true);
+        params_.Set<bool>("nnapi_allow_fp16", s.allow_fp16);
+      }
     }
-    return parse_result;
+
+    // Parse settings related to Hexagon delegate.
+    if (s.hexagon_delegate) {
+      if (!params_.HasParam("use_hexagon")) {
+        LOG(WARN) << "Hexagon delegate execution provider isn't linked or "
+                     "Hexagon delegate isn't supported on the platform!";
+      } else {
+        params_.Set<bool>("use_hexagon", true);
+        params_.Set<bool>("hexagon_profiling", s.profiling);
+      }
+    }
+
+    // Parse settings related to XNNPACK delegate.
+    if (s.xnnpack_delegate) {
+      if (!params_.HasParam("use_xnnpack")) {
+        LOG(WARN) << "XNNPACK delegate execution provider isn't linked or "
+                     "XNNPACK delegate isn't supported on the platform!";
+      } else {
+        params_.Set<bool>("use_xnnpack", true);
+        params_.Set<bool>("num_threads", s.number_of_threads);
+      }
+    }
   }
 
   // Create a list of TfLite delegates based on what have been initialized (i.e.
   // 'params_').
-  TfLiteDelegatePtrMap CreateAllDelegates() const {
-    TfLiteDelegatePtrMap delegates_map;
-    for (const auto& delegate : delegates_list_) {
-      auto ptr = delegate->CreateTfLiteDelegate(params_);
-      // It's possible that a delegate of certain type won't be created as
-      // user-specified benchmark params tells not to.
-      if (ptr == nullptr) continue;
-      LOG(INFO) << delegate->GetName() << " delegate created.";
-      delegates_map.emplace(delegate->GetName(), std::move(ptr));
-    }
-    return delegates_map;
+  std::vector<ProvidedDelegateList::ProvidedDelegate> CreateAllDelegates()
+      const {
+    return delegate_list_util_.CreateAllRankedDelegates();
+  }
+
+  std::string GetHelpMessage(const std::string& cmdline) const {
+    return Flags::Usage(cmdline, flags_);
   }
 
  private:
@@ -109,87 +147,12 @@ class DelegateProviders {
   // flags.
   tflite::tools::ToolParams params_;
 
-  const tflite::tools::DelegateProviderList& delegates_list_;
+  // A helper to create TfLite delegates.
+  ProvidedDelegateList delegate_list_util_;
+
+  // Contains valid flags
+  std::vector<tflite::Flag> flags_;
 };
-
-TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
-#if defined(__ANDROID__)
-  TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
-  gpu_opts.inference_preference =
-      TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-  gpu_opts.inference_priority1 =
-      s->allow_fp16 ? TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY
-                    : TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  return evaluation::CreateGPUDelegate(&gpu_opts);
-#else
-  return evaluation::CreateGPUDelegate();
-#endif
-}
-
-TfLiteDelegatePtrMap GetDelegates(Settings* s,
-                                  const DelegateProviders& delegate_providers) {
-  // TODO(b/169681115): deprecate delegate creation path based on "Settings" by
-  // mapping settings to DelegateProvider's parameters.
-  TfLiteDelegatePtrMap delegates;
-  if (s->gl_backend) {
-    auto delegate = CreateGPUDelegate(s);
-    if (!delegate) {
-      LOG(INFO) << "GPU acceleration is unsupported on this platform.";
-    } else {
-      LOG(INFO) << "Use GPU acceleration.";
-      delegates.emplace("GPU", std::move(delegate));
-    }
-  }
-
-  if (s->accel) {
-    StatefulNnApiDelegate::Options options;
-    options.allow_fp16 = s->allow_fp16;
-    auto delegate = evaluation::CreateNNAPIDelegate(options);
-    if (!delegate) {
-      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
-    } else {
-      LOG(INFO) << "Use NNAPI acceleration.";
-      delegates.emplace("NNAPI", std::move(delegate));
-    }
-  }
-
-  if (s->hexagon_delegate) {
-    const std::string libhexagon_path("/data/local/tmp");
-    auto delegate =
-        evaluation::CreateHexagonDelegate(libhexagon_path, s->profiling);
-
-    if (!delegate) {
-      LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
-    } else {
-      LOG(INFO) << "Use Hexagon acceleration.";
-      delegates.emplace("Hexagon", std::move(delegate));
-    }
-  }
-
-  if (s->xnnpack_delegate) {
-    auto delegate = evaluation::CreateXNNPACKDelegate(s->number_of_threads);
-    if (!delegate) {
-      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
-    } else {
-      LOG(INFO) << "Use XNNPACK acceleration.";
-      delegates.emplace("XNNPACK", std::move(delegate));
-    }
-  }
-
-  // Independent of above delegate creation options that are specific to this
-  // binary, we use delegate providers to create TFLite delegates. Delegate
-  // providers have been used in TFLite benchmark/evaluation tools and testing
-  // so that we have a single and more comprehensive set of command line
-  // arguments for delegate creation.
-  TfLiteDelegatePtrMap delegates_from_providers =
-      delegate_providers.CreateAllDelegates();
-  for (auto& name_and_delegate : delegates_from_providers) {
-    delegates.emplace("Delegate_Provider_" + name_and_delegate.first,
-                      std::move(name_and_delegate.second));
-  }
-
-  return delegates;
-}
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -223,11 +186,11 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e,
   //      5.352, Node   5, OpCode   4, DEPTHWISE_CONV_2D
 
   LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
-            << (e->end_timestamp_us - e->begin_timestamp_us) / 1000.0
-            << ", Subgraph " << std::setw(3) << std::setprecision(3)
-            << subgraph_index << ", Node " << std::setw(3)
-            << std::setprecision(3) << op_index << ", OpCode " << std::setw(3)
-            << std::setprecision(3) << registration.builtin_code << ", "
+            << (e->elapsed_time) / 1000.0 << ", Subgraph " << std::setw(3)
+            << std::setprecision(3) << subgraph_index << ", Node "
+            << std::setw(3) << std::setprecision(3) << op_index << ", OpCode "
+            << std::setw(3) << std::setprecision(3) << registration.builtin_code
+            << ", "
             << EnumNameBuiltinOperator(
                    static_cast<BuiltinOperator>(registration.builtin_code));
 }
@@ -299,14 +262,15 @@ void RunInference(Settings* settings,
     LOG(INFO) << "number of outputs: " << outputs.size();
   }
 
-  auto delegates_ = GetDelegates(settings, delegate_providers);
-  for (const auto& delegate : delegates_) {
-    if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
+  auto delegates = delegate_providers.CreateAllDelegates();
+  for (auto& delegate : delegates) {
+    const auto delegate_name = delegate.provider->GetName();
+    if (interpreter->ModifyGraphWithDelegate(std::move(delegate.delegate)) !=
         kTfLiteOk) {
-      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      LOG(ERROR) << "Failed to apply " << delegate_name << " delegate.";
       exit(-1);
     } else {
-      LOG(INFO) << "Applied " << delegate.first << " delegate.";
+      LOG(INFO) << "Applied " << delegate_name << " delegate.";
     }
   }
 
@@ -351,12 +315,10 @@ void RunInference(Settings* settings,
   interpreter->SetProfiler(profiler.get());
 
   if (settings->profiling) profiler->StartProfiling();
-  if (settings->loop_count > 1) {
-    for (int i = 0; i < settings->number_of_warmup_runs; i++) {
-      if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(ERROR) << "Failed to invoke tflite!";
-        exit(-1);
-      }
+  for (int i = 0; i < settings->number_of_warmup_runs; i++) {
+    if (interpreter->Invoke() != kTfLiteOk) {
+      LOG(ERROR) << "Failed to invoke tflite!";
+      exit(-1);
     }
   }
 
@@ -432,27 +394,33 @@ void RunInference(Settings* settings,
     const int index = result.second;
     LOG(INFO) << confidence << ": " << index << " " << labels[index];
   }
+
+  // Destory the interpreter earlier than delegates objects.
+  interpreter.reset();
 }
 
-void display_usage() {
+void display_usage(const DelegateProviders& delegate_providers) {
   LOG(INFO)
-      << "label_image\n"
-      << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
-      << "--count, -c: loop interpreter->Invoke() for certain times\n"
-      << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
-      << "--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android\n"
-      << "--input_mean, -b: input mean\n"
-      << "--input_std, -s: input standard deviation\n"
-      << "--image, -i: image_name.bmp\n"
-      << "--labels, -l: labels for the model\n"
-      << "--tflite_model, -m: model_name.tflite\n"
-      << "--profiling, -p: [0|1], profiling or not\n"
-      << "--num_results, -r: number of results to show\n"
-      << "--threads, -t: number of threads\n"
-      << "--verbose, -v: [0|1] print more information\n"
-      << "--warmup_runs, -w: number of warmup runs\n"
-      << "--xnnpack_delegate, -x [0:1]: xnnpack delegate\n";
+      << "\n"
+      << delegate_providers.GetHelpMessage("label_image")
+      << "\t--accelerated, -a: [0|1] use Android NNAPI or not\n"
+      << "\t--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or "
+         "not\n"
+      << "\t--count, -c: loop interpreter->Invoke() for certain times\n"
+      << "\t--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
+      << "\t--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android\n"
+      << "\t--input_mean, -b: input mean\n"
+      << "\t--input_std, -s: input standard deviation\n"
+      << "\t--image, -i: image_name.bmp\n"
+      << "\t--labels, -l: labels for the model\n"
+      << "\t--tflite_model, -m: model_name.tflite\n"
+      << "\t--profiling, -p: [0|1], profiling or not\n"
+      << "\t--num_results, -r: number of results to show\n"
+      << "\t--threads, -t: number of threads\n"
+      << "\t--verbose, -v: [0|1] print more information\n"
+      << "\t--warmup_runs, -w: number of warmup runs\n"
+      << "\t--xnnpack_delegate, -x [0:1]: xnnpack delegate\n"
+      << "\t--help, -h: Print this help message\n";
 }
 
 int Main(int argc, char** argv) {
@@ -460,6 +428,7 @@ int Main(int argc, char** argv) {
   bool parse_result = delegate_providers.InitFromCmdlineArgs(
       &argc, const_cast<const char**>(argv));
   if (!parse_result) {
+    display_usage(delegate_providers);
     return EXIT_FAILURE;
   }
 
@@ -485,14 +454,14 @@ int Main(int argc, char** argv) {
         {"gl_backend", required_argument, nullptr, 'g'},
         {"hexagon_delegate", required_argument, nullptr, 'j'},
         {"xnnpack_delegate", required_argument, nullptr, 'x'},
+        {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv,
-                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:", long_options,
-                    &option_index);
+    c = getopt_long(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:h",
+                    long_options, &option_index);
 
     /* Detect the end of the options. */
     if (c == -1) break;
@@ -562,12 +531,14 @@ int Main(int argc, char** argv) {
       case 'h':
       case '?':
         /* getopt_long already printed an error message. */
-        display_usage();
+        display_usage(delegate_providers);
         exit(-1);
       default:
         exit(-1);
     }
   }
+
+  delegate_providers.MergeSettingsIntoParams(s);
   RunInference(&s, delegate_providers);
   return 0;
 }

@@ -13,8 +13,8 @@ cc_binary(
     deps = [
         "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/delegates/gpu/cl:gpu_api_delegate",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/testing:tflite_model_reader",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/time",
@@ -34,12 +34,26 @@ cc_binary(
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
         "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/testing:tflite_model_reader",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "memory_sharing_sample",
+    srcs = ["memory_sharing_sample.cc"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl:environment",
+        "//tensorflow/lite/delegates/gpu/cl:inference_context",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -50,8 +64,8 @@ cc_binary(
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
         "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/testing:tflite_model_reader",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/time",
     ],

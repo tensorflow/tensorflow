@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #include "tensorflow/c/experimental/ops/array_ops.h"
 
 #include "tensorflow/c/eager/abstract_context.h"
@@ -67,7 +70,7 @@ Status IdentityN(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
-  int num_retvals = input.size();
+  int num_retvals = output.size();
   return op_ptr->Execute(output, &num_retvals);
 }
 
@@ -99,11 +102,13 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   shape(t) ==> [2, 2, 3]
 //   ```
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             AbstractTensorHandle** output, const char* name) {
+             AbstractTensorHandle** output, DataType out_type,
+             const char* name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Shape", /*raw_device_name=*/nullptr));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrType("out_type", out_type));
   int num_retvals = 1;
   return op_ptr->Execute(absl::MakeSpan(output, 1), &num_retvals);
 }

@@ -57,6 +57,10 @@ extern const char* const kColocationAttrName;
 // String prefix applied to the operation name for colocation constraints.
 extern const char* const kColocationGroupPrefix;
 
+// Constants for host CPU staging op for TPUExecute.
+extern const char* const kTpuExecuteStagingOp;
+extern const char* const kTpuExecuteStagingNodeName;
+
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
 //
@@ -84,8 +88,8 @@ void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
-void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);
-void AddNodeAttr(StringPiece name, int64 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int32_t value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int64_t value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, float value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, double value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, bool value, NodeDef* node_def);
@@ -104,7 +108,7 @@ void AddNodeAttr(StringPiece name, gtl::ArraySlice<string> value,
                  NodeDef* node_def);
 void AddNodeAttr(StringPiece name, gtl::ArraySlice<int32> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64_t> value,
                  NodeDef* node_def);
 void AddNodeAttr(StringPiece name, gtl::ArraySlice<float> value,
                  NodeDef* node_def);
@@ -144,7 +148,7 @@ class AttrSlice {
   AttrSlice();  // Empty
   explicit AttrSlice(const AttrValueMap* a);
 
-  int size() const { return attrs_->size(); }
+  int size() const { return attrs()->size(); }
 
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
@@ -154,6 +158,8 @@ class AttrSlice {
   // Returns the attr_value for attr_name if found. Otherwise, returns a
   // NotFound status.
   Status Find(StringPiece attr_name, const AttrValue** attr_value) const;
+  Status FindByString(const std::string& attr_name,
+                      const AttrValue** attr_value) const;
 
   // Helper class to avoid allocations in EqualAttrs.
   // TODO(irving): Will go away once NodeInfo is used.
@@ -179,12 +185,18 @@ class AttrSlice {
   std::string SummarizeNode() const;
 
   // Iteration over all attrs
-  AttrValueMap::const_iterator begin() const { return attrs_->begin(); }
-  AttrValueMap::const_iterator end() const { return attrs_->end(); }
+  AttrValueMap::const_iterator begin() const { return attrs()->begin(); }
+  AttrValueMap::const_iterator end() const { return attrs()->end(); }
 
   std::string DebugString() const;
 
  private:
+  const AttrValueMap* attrs() const {
+    return ndef_ != nullptr ? &ndef_->attr() : attrs_;
+  }
+
+  Status CheckFind(StringPiece attr_name, const AttrValue* attr_value) const;
+
   const NodeDef* ndef_;
   const AttrValueMap* attrs_;
 };
@@ -200,7 +212,7 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    tstring* value);  // type: "tstring"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   int64* value);  // type: "int"
+                   int64_t* value);  // type: "int"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int32* value);  // type: "int"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -222,7 +234,7 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<tstring>* value);  // type "list(tstring)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   std::vector<int64>* value);  // type "list(int)"
+                   std::vector<int64_t>* value);  // type "list(int)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<int32>* value);  // type "list(int)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -269,9 +281,9 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::string* value);  // type: "string"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                    int64* value);  // type: "int"
+                    int64_t* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                    std::vector<int64>* value);  // type: "int"
+                    std::vector<int64_t>* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     int32* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -367,6 +379,10 @@ Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
 // Adds default values to *node_def for unspecified attrs from op_def.
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def);
 
+// Remove attributes from node_def when the value is the default from the
+// op_def.
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def);
+
 // Validates the syntax of a NodeDef provided externally.
 //
 // The following is an EBNF-style syntax for NodeDef objects. Note that
@@ -397,6 +413,12 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
 // in `to_match`.
 Status MaybeAddPrefixToColocationConstraints(
     const std::unordered_set<string>& match, StringPiece prefix,
+    NodeDef* node_def);
+
+// Updates the colocation constraint name with the one provided in the map (if
+// it exists in the map) for node_def.
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
     NodeDef* node_def);
 
 }  // namespace tensorflow

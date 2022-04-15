@@ -65,7 +65,7 @@ class DefaultEnvTest : public ::testing::Test {
   void SetUp() override { TF_CHECK_OK(env_->CreateDir(BaseDir())); }
 
   void TearDown() override {
-    int64 undeleted_files, undeleted_dirs;
+    int64_t undeleted_files, undeleted_dirs;
     TF_CHECK_OK(
         env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }
@@ -194,7 +194,7 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
   CreateTestFile(env_, child1_file1, 100);
   TF_EXPECT_OK(env_->CreateDir(child_dir2));
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   TF_EXPECT_OK(
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
@@ -209,7 +209,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
   // Try to delete a non-existent directory.
   const string parent_dir = io::JoinPath(BaseDir(), "root_dir");
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   Status s =
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs);
   EXPECT_EQ(error::Code::NOT_FOUND, s.code());
@@ -282,10 +282,10 @@ TEST_F(DefaultEnvTest, LocalFileSystem) {
 }
 
 TEST_F(DefaultEnvTest, SleepForMicroseconds) {
-  const int64 start = env_->NowMicros();
-  const int64 sleep_time = 1e6 + 5e5;
+  const int64_t start = env_->NowMicros();
+  const int64_t sleep_time = 1e6 + 5e5;
   env_->SleepForMicroseconds(sleep_time);
-  const int64 delta = env_->NowMicros() - start;
+  const int64_t delta = env_->NowMicros() - start;
 
   // Subtract 200 from the sleep_time for this check because NowMicros can
   // sometimes give slightly inconsistent values between the start and the
@@ -394,7 +394,7 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // offset.
   std::unique_ptr<WritableFile> file_to_append;
   TF_CHECK_OK(env->NewAppendableFile(filename, &file_to_append));
-  int64 pos;
+  int64_t pos;
   TF_CHECK_OK(file_to_append->Tell(&pos));
   ASSERT_EQ(4, pos);
 

@@ -54,7 +54,7 @@ Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 }
 }  // namespace
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
     absl::optional<xla::OpSharding> explicit_sharding,
     absl::optional<xla::OpMetadata> metadata) {
@@ -86,7 +86,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
   }
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
   const string& device_name = node_def.device();
   TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
@@ -98,7 +98,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
                    : absl::nullopt);
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata) {
   string device_name = node.assigned_device_name();
   if (device_name.empty()) {
@@ -113,7 +113,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
                    : absl::nullopt);
 }
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
     return tensorflow::errors::InvalidArgument(
@@ -150,7 +150,7 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
 
 namespace {
 
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
+StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
     const NodeDef& node_def, bool add_metadata, const char* attribute) {
   if (!HasNodeAttr(node_def, attribute)) {
     return absl::optional<xla::OpSharding>();

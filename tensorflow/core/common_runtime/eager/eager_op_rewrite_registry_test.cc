@@ -39,7 +39,11 @@ class TestEagerOpRewrite : public EagerOpRewrite {
 
 int TestEagerOpRewrite::count_ = 0;
 
-REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, TestEagerOpRewrite);
+// Register two rewriter passes during the PRE_EXECUTION phase
+REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, 10000,
+                 TestEagerOpRewrite);
+REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, 10001,
+                 TestEagerOpRewrite);
 
 TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
   EXPECT_EQ(0, TestEagerOpRewrite::count_);
@@ -54,7 +58,7 @@ TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
   EXPECT_EQ(Status::OK(),
             EagerOpRewriteRegistry::Global()->RunRewrite(
                 EagerOpRewriteRegistry::PRE_EXECUTION, &orig_op, &out_op));
-  EXPECT_EQ(1, TestEagerOpRewrite::count_);
+  EXPECT_EQ(2, TestEagerOpRewrite::count_);
   EXPECT_EQ("NoOp", out_op->Name());
   ctx->Unref();
 }

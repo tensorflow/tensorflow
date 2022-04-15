@@ -193,12 +193,15 @@ Once an issue is reported, TensorFlow uses the following disclosure process:
   that require mitigation before publication, those projects will be notified.
 * An advisory is prepared (but not published) which details the problem and
   steps for mitigation.
-* Wherever possible, fixes are prepared for the last minor release of the two
-  latest major releases, as well as the master branch. We will attempt to
-  commit these fixes as soon as possible, and as close together as
-  possible.
+* The vulnerability is fixed and potential workarounds are identified.
+* Wherever possible, the fix is also prepared for the branches corresponding to
+  all releases of TensorFlow at most one year old. We will attempt to commit
+  these fixes as soon as possible, and as close together as possible.
 * Patch releases are published for all fixed released versions, a
   notification is sent to discuss@tensorflow.org, and the advisory is published.
+
+Note that we mostly do patch releases for security reasons and each version of
+TensorFlow is supported for only 1 year after the release.
 
 Past security advisories are listed below. We credit reporters for identifying
 security issues, although we keep your name confidential if you request it.

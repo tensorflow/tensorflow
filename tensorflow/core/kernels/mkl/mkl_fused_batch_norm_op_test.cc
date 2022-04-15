@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -344,6 +345,8 @@ class FusedBatchNormOpTest : public OpsTestBase {
   }
 
   void VerifyFusedBatchNormGradWithConv2D(const float epsilon) {
+#ifdef ENABLE_MKL
+    // This test only runs with MKL blocked format.
     const GraphRunnerGrad run =
         [this](const Tensor& input, const Tensor& filter,
                const Tensor& y_backprop, const Tensor& scale,
@@ -468,6 +471,7 @@ class FusedBatchNormOpTest : public OpsTestBase {
         };
 
     CommonTestUtilities<T>::VerifyTensorsCloseForGrad(epsilon, run, run_mkl);
+#endif  // ENABLE_MKL
   }
 };
 

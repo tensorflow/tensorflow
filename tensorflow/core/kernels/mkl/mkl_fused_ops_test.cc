@@ -945,7 +945,7 @@ class FilterCacheTest : public OpsTestBase {
       test::ExpectTensorEqual<T>(expected, output);
     }
 
-    // TODO(bhavanis): For now, we rely on internal performance tests to
+    // TODO(intel-tf): For now, we rely on internal performance tests to
     // determine if filter data is being cached and reused.
     // However, we still need to add a check here to determine if this is
     // still the case by inspecting the contents of the persistent tensor.
@@ -1098,6 +1098,12 @@ class MklFusedMatMulOpTest : public OpsTestBase {
             next_op = ops::Tanh(root.WithOpName(last_op), next_op);
           }
 
+          if (std::find(fused_ops.begin(), fused_ops.end(), "Sigmoid") !=
+              fused_ops.end()) {
+            last_op = "with_Sigmoid";
+            next_op = ops::Sigmoid(root.WithOpName(last_op), next_op);
+          }
+
           if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
               fused_ops.end()) {
             last_op = "with_add";
@@ -1177,6 +1183,15 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndTanh) {
                           {"BiasAdd", "Tanh"});
 }
 
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndSigmoid) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "Sigmoid"});
+}
+
 TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndAdd) {
   const int batch = 3;
   const int input_channel = 4;
@@ -1202,6 +1217,7 @@ REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
                             WithBiasAndElu,        //
                             WithBiasAndTanh,       //
                             WithBiasAndLeakyRelu,  //
+                            WithBiasAndSigmoid,    //
                             WithBiasAndAdd);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
@@ -1253,7 +1269,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
   }
 
   TF_EXPECT_OK(InitOp());
-  // The tensor shape of (1,3) is selected to allow the mkldnn expected
+  // The tensor shape of (1,3) is selected to allow the oneDNN expected
   // weight format to be made as OI rather than IO for BS > 1
   // A matrix is:
   // |  1 |  2 |  3 |
@@ -1337,19 +1353,9 @@ class BiasCacheTest : public OpsTestBase {
             .Input(FakeInput(DT_FLOAT))  // Max-filter
             .Input(FakeInput(DT_FLOAT))  // Min-output
             .Input(FakeInput(DT_FLOAT))  // Max-output
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKL second tensor
             .Attr("Tinput", DT_QUINT8)
             .Attr("Tfilter", DT_QINT8)
             .Attr("Tbias", DT_FLOAT)
-            .Attr("T", DT_QINT8)
             .Attr("out_type", DT_QUINT8)
             .Attr("data_format", "NHWC")
             .Attr("strides", {1, stride, stride, 1})
@@ -1370,25 +1376,14 @@ class BiasCacheTest : public OpsTestBase {
     AddInputFromArray<float>(max_filter.shape(), max_filter.flat<float>());
     AddInputFromArray<float>(min_output.shape(), min_output.flat<float>());
     AddInputFromArray<float>(max_output.shape(), max_output.flat<float>());
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
 
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare outputs to expected results
     const Tensor& output = *GetOutput(0);
-    const Tensor& output_layout = *GetOutput(3);
-    CommonTestUtilities<quint8> conv_comp;
-    conv_comp.ConvertAndCompareIntegral(dtype, output, output_layout, expected);
+    test::ExpectTensorEqual<quint8>(expected, output);
 
-    // TODO(wenxi): For now, we rely on internal performance tests to
+    // TODO(intel-tf): For now, we rely on internal performance tests to
     // determine if filter data is being cached and reused.
     // However, we still need to add a check here to determine if this is
     // still the case by inspecting the contents of the persistent tensor.
@@ -1396,10 +1391,7 @@ class BiasCacheTest : public OpsTestBase {
 
     // Compare output to expected results
     const Tensor& output_new = *GetOutput(0);
-    const Tensor& output_layout_new = *GetOutput(3);
-    CommonTestUtilities<quint8> conv_comp_new;
-    conv_comp_new.ConvertAndCompareIntegral(dtype, output_new,
-                                            output_layout_new, expected);
+    test::ExpectTensorEqual<quint8>(expected, output_new);
   }
 };
 

@@ -14,16 +14,11 @@
 # ==============================================================================
 """Test for the internal ops used by tfdbg v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
@@ -31,6 +26,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -238,8 +234,6 @@ class DebugIdentityV2OpUninitializedWriterTest(
 
   @test_util.run_in_graph_and_eager_modes
   def testInvokingDebugIdentityV2OpBeforeCreatingDebugEventsWriterWorks(self):
-    if not compat.forward_compatible(2020, 6, 24):
-      self.skipTest("Functionality currently not supported.")
     circular_buffer_size = 3
 
     @def_function.function
@@ -290,9 +284,11 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
   def testDebugNumericSummaryV2OpReduceInfNanThreeSlots(self):
 
     def debug_summary(x):
-      return self.evaluate(gen_debug_ops.debug_numeric_summary_v2(
-          x, tensor_debug_mode=(
-              debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS)))
+      return self.evaluate(
+          gen_debug_ops.debug_numeric_summary_v2(
+              x,
+              tensor_debug_mode=(
+                  debug_event_pb2.TensorDebugMode.REDUCE_INF_NAN_THREE_SLOTS)))
 
     self.assertAllEqual(
         debug_summary(constant_op.constant([])), [0.0, 0.0, 0.0])
@@ -453,6 +449,29 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     tensor_2, tensor_id_2 = debug_summary(c)
     self.assertAllEqual(tensor_1, tensor_2)
     self.assertEqual(tensor_id_1, tensor_id_2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDebugNumericSummaryV2OpDeterminism(self):
+    x = np.zeros([100, 100, 50], dtype=np.float64)
+    x = constant_op.constant(x)
+    modes = (
+        debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+        debug_event_pb2.TensorDebugMode.FULL_HEALTH,
+        )
+    for mode in modes:
+      debug_mode = debug_event_pb2.TensorDebugMode.Name(mode)
+      with test_util.deterministic_ops():
+        if test_util.is_gpu_available(cuda_only=True):
+          with self.assertRaisesRegex(
+              errors_impl.UnimplementedError, "Determinism is not yet "
+              "supported for DebugNumericSummaryV2 when tensor_debug_mode is "
+              + debug_mode + "."):
+            self.evaluate(
+                gen_debug_ops.debug_numeric_summary_v2(
+                    x,
+                    tensor_debug_mode=mode,
+                    tensor_id=x._id,
+                    output_dtype=dtypes.float64))
 
   @test_util.run_in_graph_and_eager_modes
   def testDebugNumericSummaryV2OpConciseHealthSmall(self):
@@ -703,7 +722,11 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     self.assertAllEqual(tensor, expected)
     x[0, 0, 0] = np.nan
     tensor, tensor_id = debug_summary(constant_op.constant(x))
-    expected = [tensor_id, -1, 1,] + tensor_counts(x)
+    expected = [
+        tensor_id,
+        -1,
+        1,
+    ] + tensor_counts(x)
     self.assertAllEqual(tensor, expected)
     x = np.zeros([9701], dtype=np.float64)
     x[9700] = np.nan

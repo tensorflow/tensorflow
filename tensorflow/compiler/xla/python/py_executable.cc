@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_executable.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
@@ -138,6 +141,10 @@ PyExecutable::ExecuteShardedOnLocalDevices(
 StatusOr<std::vector<std::shared_ptr<HloModule>>> PyExecutable::HloModules()
     const {
   return executable_->GetHloModules();
+}
+
+void PyExecutable::KeepAlive(py::object obj) {
+  keepalives_.push_back(std::move(obj));
 }
 
 }  // namespace xla

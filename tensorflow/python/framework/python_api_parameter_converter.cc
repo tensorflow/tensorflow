@@ -400,7 +400,7 @@ bool ConvertInputsWithTypeListAttr(
 ABSL_MUST_USE_RESULT
 bool InferLengthAttributes(const absl::Span<PyObject*> params,
                            const PythonAPIInfo& api_info,
-                           std::vector<int64>& inferred_length_attrs) {
+                           std::vector<int64_t>& inferred_length_attrs) {
   for (int i = 0; i < api_info.inputs_with_number_attrs().size(); ++i) {
     const auto& inputs = api_info.inputs_with_number_attrs()[i];
     DCHECK(!inputs.tensor_list_params.empty());

@@ -13,26 +13,27 @@
 # limitations under the License.
 # ==============================================================================
 """ShardedVariable class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import math
+from typing import Sequence
+import weakref
+
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
@@ -145,13 +146,14 @@ class MinSizePartitioner(Partitioner):
         an estimate of how large each string is.
     """
     if min_shard_bytes < 1:
-      raise ValueError('min_shard_bytes must be positive, got: %r' %
-                       min_shard_bytes)
+      raise ValueError('Argument `min_shard_bytes` must be positive. '
+                       f'Received: {min_shard_bytes}')
     if max_shards < 1:
-      raise ValueError('max_shards must be positive, got: %r' % max_shards)
+      raise ValueError('Argument `max_shards` must be positive. '
+                       f'Received: {max_shards}')
     if bytes_per_string < 1:
-      raise ValueError('bytes_per_string must be positive, got: %r' %
-                       bytes_per_string)
+      raise ValueError('Argument `bytes_per_string` must be positive. '
+                       f'Received: {bytes_per_string}')
     self._min_shard_bytes = min_shard_bytes
     self._max_shards = max_shards
     self._bytes_per_string = bytes_per_string
@@ -204,13 +206,14 @@ class MaxSizePartitioner(Partitioner):
         an estimate of how large each string is.
     """
     if max_shard_bytes < 1:
-      raise ValueError('max_shard_bytes must be positive, got: %r' %
-                       max_shard_bytes)
+      raise ValueError('Argument `max_shard_bytes` must be positive. '
+                       f'Received {max_shard_bytes}')
     if max_shards and max_shards < 1:
-      raise ValueError('max_shards must be positive, got: %r' % max_shards)
+      raise ValueError('Argument `max_shards` must be positive. '
+                       f'Received {max_shards}')
     if bytes_per_string < 1:
-      raise ValueError('bytes_per_string must be positive, got: %r' %
-                       bytes_per_string)
+      raise ValueError('Argument `bytes_per_string` must be positive. '
+                       f'Received: {bytes_per_string}')
 
     self._max_shard_bytes = max_shard_bytes
     self._max_shards = max_shards
@@ -252,7 +255,7 @@ class ShardedVariableMixin(trackable.Trackable):
   """Mixin for ShardedVariable."""
 
   # TODO(b/170877138): Remove this mixin once fixed. This mixin is required
-  # since TPUShardedVariable can't be a CompositeTensor.
+  # since TPUEmbeddingVariable can't be a CompositeTensor.
 
   def __init__(self, variables, name='ShardedVariable'):
     """Treats `variables` as shards of a larger Variable.
@@ -280,28 +283,34 @@ class ShardedVariableMixin(trackable.Trackable):
     self._variables = variables
     self._name = name
 
-    first_var = variables[0]
-
-    if any(not isinstance(v, variables_lib.Variable) for v in variables):
-      raise ValueError(
-          'Expected a list of `Variable`s, found: {}'.format(variables))
+    if not isinstance(variables, Sequence) or not variables or any(
+        not isinstance(v, variables_lib.Variable) for v in variables):
+      raise TypeError('Argument `variables` should be a non-empty list of '
+                      f'`variables.Variable`s. Received {variables}')
 
     var_dtypes = {v.dtype for v in variables}
     if len(var_dtypes) > 1:
       raise ValueError(
-          'All `Variable`s must have the same dtype, found: {}'.format(
-              [v.dtype for v in variables]))
+          'All elements in argument `variables` must have the same dtype. '
+          f'Received dtypes: {[v.dtype for v in variables]}')
+
+    first_var = variables[0]
     self._dtype = first_var.dtype
 
     # All variables must have the same shape for axes > 0.
     higher_dim_shapes = {tuple(v.shape.as_list()[1:]) for v in variables}
     if len(higher_dim_shapes) > 1:
       raise ValueError(
-          'All `Variables`s must have the same shapes except for the first '
-          'axis, found {}'.format([v.shape for v in variables]))
+          'All elements in argument `variables` must have the same shapes '
+          'except for the first axis. '
+          f'Received shapes: {[v.shape for v in variables]}')
     first_dim = sum(int(v.shape.as_list()[0]) for v in variables)
     self._shape = tensor_shape.TensorShape([first_dim] +
                                            first_var.shape.as_list()[1:])
+
+    for v in variables:
+      v._sharded_container = weakref.ref(self)
+
     self._var_offsets = [
         [0 for _ in range(len(first_var.shape))] for _ in range(len(variables))
     ]
@@ -312,16 +321,20 @@ class ShardedVariableMixin(trackable.Trackable):
 
     save_slice_info = [v._get_save_slice_info() for v in variables]  # pylint: disable=protected-access
     if any(slice_info is not None for slice_info in save_slice_info):
-      raise ValueError('`SaveSliceInfo` should not be set for `Variable`s. '
-                       '`ShardedVariable` will infer `SaveSliceInfo` according '
-                       'to the order of the `Variable`s in the list passed to '
-                       'the constructor. Found {}'.format(save_slice_info))
+      raise ValueError(
+          '`SaveSliceInfo` should not be set for all elements in argument '
+          '`variables`. `ShardedVariable` will infer `SaveSliceInfo` according '
+          'to the order of the elements `variables`. '
+          f'Received save slice info {save_slice_info}')
 
     # We create an uninitialized saving_variable with the full shape, which can
     # be later captured in signatures so that the signatures can treat this
     # ShardedVariable as one single variable.
     self._saving_variable = resource_variable_ops.UninitializedVariable(
-        shape=self._shape, dtype=self._dtype, name=self._name)
+        shape=self._shape, dtype=self._dtype, name=self._name,
+        trainable=self._variables[0].trainable,
+        synchronization=variables_lib.VariableSynchronization.NONE,
+        aggregation=variables_lib.VariableAggregation.NONE)
 
   def __iter__(self):
     """Return an iterable for accessing the underlying sharded variables."""
@@ -385,7 +398,8 @@ class ShardedVariableMixin(trackable.Trackable):
       if s < 0:
         s += self._shape[0]
       if s < 0 or s >= self._shape[0]:
-        raise IndexError('slice index %d of dimension 0 out of bounds.' % s)
+        raise IndexError(
+            f'ShardedVariable: slice index {s} of dimension 0 out of bounds.')
       for i in range(len(self._variables)):
         if i == len(self._variables) - 1 or (s > self._var_offsets[i][0] and
                                              s < self._var_offsets[i + 1][0]):
@@ -494,9 +508,9 @@ class ShardedVariableMixin(trackable.Trackable):
 
   @property
   def _type_spec(self):
-    return ShardedVariableSpec(*(
-        resource_variable_ops.VariableSpec(v.shape, v.dtype)
-        for v in self._variables))
+    return ShardedVariableSpec(
+        *(resource_variable_ops.VariableSpec(v.shape, v.dtype)
+          for v in self._variables))
 
   @property
   def variables(self):
@@ -537,6 +551,158 @@ class ShardedVariableMixin(trackable.Trackable):
           array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()))
     return self
 
+  def _decompose_indices(self, indices):
+    """Decompose a global 1D indices into a list of per-variable indices."""
+    if indices.shape.rank != 1:
+      raise ValueError(
+          'ShardedVariable: indices must be 1D Tensor for sparse operations. '
+          f'Received shape: {indices.shape}')
+
+    base = self._shape[0] // len(self._variables)
+    extra = self._shape[0] % len(self._variables)
+
+    # Assert that sharding conforms to "div" sharding
+    expect_first_dim = [base] * len(self._variables)
+    for i in range(extra):
+      expect_first_dim[i] = expect_first_dim[i] + 1
+    actual_first_dim = [v.shape.as_list()[0] for v in self._variables]
+    if expect_first_dim != actual_first_dim:
+      raise NotImplementedError(
+          'scater_xxx ops are not supported in ShardedVariale that does not '
+          'conform to "div" sharding')
+
+    # For index that falls into the partition that has extra 1, assignment is
+    # `index // (base + 1)` (no less than `(indices - extra) // base`)
+    # For index that falls into the partition that doesn't has extra 1,
+    # assignment is `(indices - extra) // base` (no less than
+    # `indices // (base + 1)`)
+    #
+    # Example:
+    #   base = 10, extra = 2, partitions: [0, 11), [11, 22), [22, 32)
+    #   index = 10 -> partition_assigment = 0
+    #   index = 22 -> partition_assiment = 2
+    partition_assignments = math_ops.maximum(indices // (base + 1),
+                                             (indices - extra) // base)
+    local_indices = array_ops.where(partition_assignments < extra,
+                                    indices % (base + 1),
+                                    (indices - extra) % base)
+    # For whatever reason `dynamic_partition` only supports int32
+    partition_assignments = math_ops.cast(partition_assignments, dtypes.int32)
+    per_var_indices = data_flow_ops.dynamic_partition(local_indices,
+                                                      partition_assignments,
+                                                      len(self._variables))
+
+    return per_var_indices, partition_assignments
+
+  def _decompose_indexed_slices(self, indexed_slices):
+    """Decompose a global `IndexedSlices` into a list of per-variable ones."""
+    per_var_indices, partition_assignments = self._decompose_indices(
+        indexed_slices.indices)
+    per_var_values = data_flow_ops.dynamic_partition(indexed_slices.values,
+                                                     partition_assignments,
+                                                     len(self._variables))
+
+    return [
+        indexed_slices_lib.IndexedSlices(
+            values=per_var_values[i], indices=per_var_indices[i])
+        for i in range(len(self._variables))
+    ]
+
+  # ==================== scatter ops implementations ======================== #
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_add."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_add(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_div."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_div(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_max."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_max(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_min."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_min(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_mul."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_mul(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_sub."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_sub(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_update."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_update(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.batch_scatter_update."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.batch_scatter_update(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  # ================== scatter ops implementations END ====================== #
+
+  def sparse_read(self, indices, name=None):
+    """Implements tf.Variable.sparse_read."""
+    per_var_indices, _ = self._decompose_indices(indices)
+    result = []
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      result.append(v.sparse_read(per_var_indices[i], name=new_name))
+    return array_ops.concat(result, axis=0)
+
   def _gather_saveables_for_checkpoint(self):
     """Return a `Saveable` for each shard. See `Trackable`."""
 
@@ -568,10 +734,39 @@ class ShardedVariableMixin(trackable.Trackable):
       resource_map.update(v_resource_map)
     obj_map[self] = ShardedVariable([obj_map[self._saving_variable]],
                                     name=self.name)
-
     return obj_map, resource_map
 
+  @property
+  def _unique_id(self):
+    # String-replace to ensure uniqueness for checkpoint tracking
+    return self.variables[0]._unique_id.replace('part_0', 'sharded')  # pylint: disable=protected-access
 
+  @property
+  def _distribute_strategy(self):
+    return self.variables[0]._distribute_strategy  # pylint: disable=protected-access
+
+  @property
+  def _shared_name(self):
+    return self._name
+
+  @property
+  def is_sharded_variable(self):
+    return True
+
+  def numpy(self):
+    """Copies the values in this ShardedVariable to a NumPy array.
+
+    First converts to a single Tensor using the registered conversion function,
+    which concatenates the shards, then uses Tensor.numpy() to convert to
+    a NumPy array.
+
+    Returns:
+      A NumPy array of the same shape and dtype.
+    """
+    return _var_to_tensor(self).numpy()
+
+
+@tf_export('__internal__.distribute.ShardedVariable', v1=[])
 class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
   """A container for `Variables` that should be treated as shards.
 
@@ -622,9 +817,44 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return ShardedVariableSpec(*(
-        resource_variable_ops.VariableSpec(v.shape, v.dtype)
-        for v in self._variables))
+    return ShardedVariableSpec(
+        *(resource_variable_ops.VariableSpec(v.shape, v.dtype)
+          for v in self._variables))
+
+  @classmethod
+  def _overload_all_operators(cls):
+    """Register overloads for all operators."""
+    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+      if operator == '__getitem__':
+        continue
+
+      cls._overload_operator(operator)
+
+  @classmethod
+  def _overload_operator(cls, operator):
+    """Delegate an operator overload to `ops.Tensor`."""
+    tensor_operator = getattr(ops.Tensor, operator)
+
+    def _operator(v, *args, **kwargs):
+      return tensor_operator(_var_to_tensor(v), *args, **kwargs)
+
+    setattr(cls, operator, _operator)
+
+  def __tf_experimental_restore_capture__(self, concrete_function,
+                                          internal_capture):
+    # Avoid restoring captures for functions that use ShardedVariable - the
+    # layer will be recreated during Keras model loading
+    # TODO(jmullenbach): support loading models with ShardedVariables using
+    # tf.saved_model.load
+    return None
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    return True
+
+  def _write_object_proto(self, proto, options):
+    resource_variable_ops.write_object_proto_for_resource_variable(
+        self._saving_variable, proto, options, enforce_naming=False)
 
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
@@ -660,6 +890,8 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(ShardedVariable, _var_to_tensor)
 
+ShardedVariable._overload_all_operators()  # pylint: disable=protected-access
+
 
 # Override the behavior of embedding_lookup(sharded_variable, ...)
 @dispatch.dispatch_for_types(embedding_ops.embedding_lookup, ShardedVariable)
@@ -674,21 +906,3 @@ def embedding_lookup(params,
   return embedding_ops.embedding_lookup(params.variables, ids,
                                         partition_strategy, name,
                                         validate_indices, max_norm)
-
-
-def _raise_when_load(_):
-  # We don't have serialization and deserialization mechanisms for
-  # `ShardedVariable` in 2.x style save/load yet.
-  raise ValueError('Loading `ShardedVariable` is not supported')
-
-
-revived_types.register_revived_type(
-    '_tf_distribute_sharded_variable',
-    lambda obj: isinstance(obj, ShardedVariable),
-    versions=[
-        revived_types.VersionedTypeRegistration(
-            object_factory=_raise_when_load,
-            version=0,
-            min_producer_version=0,
-            min_consumer_version=0)
-    ])

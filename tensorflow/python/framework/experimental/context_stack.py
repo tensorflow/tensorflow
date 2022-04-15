@@ -14,10 +14,6 @@
 # ==============================================================================
 """Thread-local context manager stack."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 from tensorflow.python.framework.experimental import thread_local_stack

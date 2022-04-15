@@ -13,15 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Format tensors (ndarrays) for screen display and navigation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import re
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
@@ -273,7 +268,7 @@ def _annotate_ndarray_lines(
       else:
         if curr_dim > 0:
           curr_indices[curr_dim - 1] += 1
-          for k in xrange(curr_dim, ndims):
+          for k in range(curr_dim, ndims):
             curr_indices[k] = 0
 
   return annotations
@@ -348,7 +343,7 @@ def locate_tensor_element(formatted, indices):
 
   batch_pos = 0  # Current position in the batch.
 
-  for r in xrange(len(lines)):
+  for r in range(len(lines)):
     if r not in annot:
       continue
 
@@ -536,7 +531,7 @@ def numeric_summary(tensor):
     return debugger_cli_common.RichTextLines([
         "No numeric summary available due to empty tensor."])
   elif (np.issubdtype(tensor.dtype, np.floating) or
-        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.complexfloating) or
         np.issubdtype(tensor.dtype, np.integer)):
     counts = [
         ("nan", np.sum(np.isnan(tensor))),
@@ -559,7 +554,7 @@ def numeric_summary(tensor):
           ("std", np.std(valid_array))]
       output.extend(_counts_summary(stats, skip_zeros=False))
     return output
-  elif tensor.dtype == np.bool:
+  elif tensor.dtype == np.bool_:
     counts = [
         ("False", np.sum(tensor == 0)),
         ("True", np.sum(tensor > 0)),]

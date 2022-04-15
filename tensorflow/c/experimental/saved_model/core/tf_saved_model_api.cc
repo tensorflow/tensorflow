@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -188,6 +189,26 @@ Status TFSavedModelAPI::GetFunction(const std::string& function_path,
   return Status();
 }
 
+Status TFSavedModelAPI::GetFunctions(
+    int node_id,
+    absl::flat_hash_map<std::string, ConcreteFunction*>* functions) {
+  const auto& nodes = bundle_.saved_object_graph().nodes();
+  if (node_id >= nodes.size()) {
+    return errors::OutOfRange(
+        "node_id ", node_id,
+        " not found.  Maximum node ID: ", nodes.size() - 1);
+  }
+  const SavedObject* current_node = &nodes.Get(node_id);
+  for (const auto& child : current_node->children()) {
+    ConcreteFunction* concrete_fn;
+    Status status = GetFunction(child.local_name(), &concrete_fn);
+    if (status.ok()) {
+      (*functions)[child.local_name()] = concrete_fn;
+    }
+  }
+  return Status();
+}
+
 Status TFSavedModelAPI::GetSignatureDefFunction(
     const std::string& signature_def_key, SignatureDefFunction** function) {
   auto signatures_iter =
@@ -225,6 +246,8 @@ Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
   *variable = variables_iter->second.get();
   return Status();
 }
+
+SavedModelV2Bundle* TFSavedModelAPI::GetBundle() { return &this->bundle_; }
 
 TFSavedModelAPI::TFSavedModelAPI(const std::string& directory,
                                  SavedModelV2Bundle bundle,

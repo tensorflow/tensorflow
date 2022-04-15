@@ -133,6 +133,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "eigh_tridiagonal"
+    argspec: "args=[\'alpha\', \'beta\', \'eigvals_only\', \'select\', \'select_range\', \'tol\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'a\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "eigvals"
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -270,6 +274,6 @@ tf_module {
   }
   member_method {
     name: "tridiagonal_solve"
-    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\'], "
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\', \'partial_pivoting\', \'perturb_singular\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\', \'True\', \'False\'], "
   }
 }

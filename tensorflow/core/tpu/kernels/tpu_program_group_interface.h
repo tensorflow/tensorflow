@@ -53,9 +53,8 @@ class TpuProgramGroupInterface {
   // Logs program memory summary.
   virtual bool LogProgramMemorySummary() = 0;
 
-  // Logs TPU Compilation statistics.
-  virtual Status LogCompilationStats(const TpuCompilationCacheKey& key,
-                                     absl::Duration duration) = 0;
+  // Program fingerprints.
+  virtual const std::string& fingerprint(int index) const = 0;
 
   // Hlo metadatas. The pointers can only be used as long as the cache entry is
   // referenced.

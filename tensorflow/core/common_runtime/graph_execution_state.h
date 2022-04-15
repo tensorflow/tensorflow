@@ -54,7 +54,7 @@ struct GraphExecutionStateOptions {
 struct ClientGraph {
   explicit ClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib,
                        DataTypeVector feed_types, DataTypeVector fetch_types,
-                       int64 collective_graph_key)
+                       int64_t collective_graph_key)
       : flib_def(std::move(flib)),
         graph(flib_def.get()),
         feed_types(std::move(feed_types)),
@@ -66,7 +66,7 @@ struct ClientGraph {
   Graph graph;
   DataTypeVector feed_types;
   DataTypeVector fetch_types;
-  int64 collective_graph_key;
+  int64_t collective_graph_key;
 };
 
 // GraphExecutionState is responsible for generating an
@@ -147,6 +147,9 @@ class GraphExecutionState {
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
   const Graph* full_graph() { return graph_; }
+
+  // The original graph.
+  GraphDef* original_graph_def() { return original_graph_def_.get(); }
 
   // The original function library of this graph.
   const FunctionLibraryDefinition& flib_def() const { return *flib_def_; }

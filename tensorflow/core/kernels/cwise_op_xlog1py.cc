@@ -16,13 +16,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
+
 REGISTER5(BinaryOp, CPU, "Xlog1py", functor::xlog1py, float, Eigen::half,
           double, complex64, complex128);
 
-
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER5(BinaryOp, GPU, "Xlog1py", functor::xlog1py, float, Eigen::half,
           double, complex64, complex128);
-#endif  // GOOGLE_CUDA
+#endif
+#endif
 
 }  // namespace tensorflow

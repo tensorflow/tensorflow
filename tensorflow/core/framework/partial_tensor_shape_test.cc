@@ -259,7 +259,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
   // Empty made partial shapes should still be fully defined
-  const int64 dims[1] = {};
+  const int64_t dims[1] = {};
   PartialTensorShape shape;
   EXPECT_FALSE(shape.IsFullyDefined());
   TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 0, &shape));
@@ -268,7 +268,7 @@ TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeFull) {
   // Check that arrays are copied through correctly
-  const int64 dims[3] = {7, -1, 2};
+  const int64_t dims[3] = {7, -1, 2};
   PartialTensorShape shape;
   TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 3, &shape));
   ASSERT_EQ(shape.dims(), 3);
@@ -279,7 +279,7 @@ TEST(PartialTensorShapeTest, MakePartialShapeFull) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeInvalid) {
   // Check that arrays are copied through correctly
-  const int64 dims[3] = {7, -2, 2};
+  const int64_t dims[3] = {7, -2, 2};
   PartialTensorShape shape;
   EXPECT_EQ(error::INVALID_ARGUMENT,
             PartialTensorShape::MakePartialShape(dims, 3, &shape).code());

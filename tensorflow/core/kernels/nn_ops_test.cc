@@ -57,10 +57,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void SetConstOp(const string& name, std::initializer_list<int64> dims,
+static void SetConstOp(const string& name, std::initializer_list<int64_t> dims,
                        DataType data_type, NodeDef* node) {
   Tensor tensor(data_type, TensorShape(dims));
-  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < tensor.NumElements(); ++i) {
     switch (data_type) {
       case DT_FLOAT:
         tensor.flat<float>()(i) = i / 10.0f;
@@ -83,7 +83,7 @@ static void SetConstSizesOp(const string& name, const std::vector<int32>& sizes,
   TensorShape shape;
   shape.AddDim(sizes.size());
   Tensor tensor(DT_INT32, shape);
-  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < tensor.NumElements(); ++i) {
     tensor.flat<int32>()(i) = sizes[i];
   }
   TF_CHECK_OK(NodeDefBuilder(name, "Const")
@@ -110,8 +110,9 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
                          bool use_gpu, DataType data_type,
                          const string& label) {
   if (!IsGoogleCudaEnabled() && use_gpu) {
-    state.SetLabel(
-        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
     return;
   }
   state.SetLabel(label);
@@ -125,27 +126,27 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
 
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
-  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
   TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
                                     &out_rows, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
                                     &out_cols, &pad_cols));
   // Counting the number of floating point operations (both MUL and ADD)
-  int64 num_ops = 0;
+  int64_t num_ops = 0;
   if (op == CONV_OP_FORWARD) {
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X IN_DEPTH X PATCH_ROW X PATH_COL X OUT_DEPTH
     // We multiply by two since there are multiplications and additions.
-    num_ops = static_cast<int64>(batch * in_depth * out_depth) *
-              static_cast<int64>(filter_rows * filter_cols) *
-              static_cast<int64>(out_rows * out_cols) * 2;
+    num_ops = static_cast<int64_t>(batch * in_depth * out_depth) *
+              static_cast<int64_t>(filter_rows * filter_cols) *
+              static_cast<int64_t>(out_rows * out_cols) * 2;
   } else {
     // Backward computation:
     // BATCH x IN_ROW X IN_COL X IN_DEPTH X PATCH_ROW X PATCH_COL X OUT_DEPTH
     // We multiply by two since there are multiplications and additions.
-    num_ops = static_cast<int64>(batch * in_depth * out_depth) *
-              static_cast<int64>(filter_rows * filter_cols) *
-              static_cast<int64>(rows * cols) * 2;
+    num_ops = static_cast<int64_t>(batch * in_depth * out_depth) *
+              static_cast<int64_t>(filter_rows * filter_cols) *
+              static_cast<int64_t>(rows * cols) * 2;
   }
 
   SetConstOp("input", {batch, rows, cols, in_depth}, data_type,
@@ -166,7 +167,7 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
 
   TensorShape paddings_shape({4, 2});
   Tensor paddings_tensor(DT_INT32, paddings_shape);
-  for (int64 i = 0; i < paddings_tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < paddings_tensor.NumElements(); ++i) {
     paddings_tensor.flat<int32>()(i) = 0;
   }
   TF_CHECK_OK(NodeDefBuilder("paddings", "Const")
@@ -519,8 +520,9 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
                                   int stride, Padding padding, bool use_gpu,
                                   const string& label) {
   if (!IsGoogleCudaEnabled() && use_gpu) {
-    state.SetLabel(
-        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
     return;
   }
   state.SetLabel(label);
@@ -534,21 +536,21 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
 
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
-  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
   TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
                                     &out_rows, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
                                     &out_cols, &pad_cols));
 
-  int64 num_ops = 0;
+  int64_t num_ops = 0;
   if (op == DEPTHWISE_CONV_OP_FWD) {
     // Counting the number of floating point operations (both MUL and ADD)
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X FLTR_ROW X FLTR_COL X DEPTH_MULT X IN_DEPTH
     // We multiply by two since there are multiplications and additions.
-    num_ops = static_cast<int64>(batch * out_rows * out_cols) *
-              static_cast<int64>(filter_rows * filter_cols) *
-              static_cast<int64>(in_depth * depth_multiplier) * 2;
+    num_ops = static_cast<int64_t>(batch * out_rows * out_cols) *
+              static_cast<int64_t>(filter_rows * filter_cols) *
+              static_cast<int64_t>(in_depth * depth_multiplier) * 2;
   } else {
     // Backward computation: both input and filter backprop take the same
     // amount of computation:
@@ -557,9 +559,9 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
     // We divide by stride squared to approximate the affect of decreasing
     // number of bprop output points per bprop input point with increasing
     // stride.
-    num_ops = (static_cast<int64>(batch * rows * cols) *
-               static_cast<int64>(filter_rows * filter_cols) *
-               static_cast<int64>(in_depth * depth_multiplier) * 2) /
+    num_ops = (static_cast<int64_t>(batch * rows * cols) *
+               static_cast<int64_t>(filter_rows * filter_cols) *
+               static_cast<int64_t>(in_depth * depth_multiplier) * 2) /
               (stride * stride);
   }
 
@@ -938,7 +940,7 @@ static void BM_AvgPoolBk(::testing::benchmark::State& state, int batch_size,
 
   gtl::InlinedVector<TensorValue, 4> inputs;
 
-  int64 out_height, out_width, pad_rows, pad_cols;
+  int64_t out_height, out_width, pad_rows, pad_cols;
   TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
                                     &out_height, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
@@ -1124,9 +1126,16 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
                          int rows, int cols, int depth, int kernel_rows,
                          int kernel_cols, int stride, Padding padding,
                          int num_threads, bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+
   auto root = Scope::NewRootScope().ExitOnError();
 
-  int64 out_height, out_width, pad_rows, pad_cols;
+  int64_t out_height, out_width, pad_rows, pad_cols;
   TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
                                     &out_height, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
@@ -1352,6 +1361,13 @@ static void BM_ImageNetSoftmaxFwd(::testing::benchmark::State& state,
                                   int batch_size, int node_depth,
                                   int num_threads, bool use_gpu,
                                   const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({batch_size, node_depth}));
@@ -1398,6 +1414,14 @@ BM_ImageNetSoftmaxFwd(8192, 32768, 1, true, "softmax128");
 
 static void BM_TopK(::testing::benchmark::State& state, int rows, int cols,
                     int k, int num_threads, bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+  state.SetLabel(label);
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({rows, cols}));

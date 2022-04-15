@@ -1,0 +1,1734 @@
+node {
+  name: "variable"
+  op: "VarHandleOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "tpu_subgraph_OdRLXX9sF5U"
+  op: "tpu_subgraph_OdRLXX9sF5U"
+  input: "const"
+  input: "variable"
+  input: "variable"
+}
+node {
+  name: "ConfigureDistributedTPU"
+  op: "ConfigureDistributedTPU"
+  device: "/device:TPU_SYSTEM:0"
+  attr {
+    key: "compilation_failure_closes_chips"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "embedding_config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "enable_whole_mesh_compilations"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "is_global_init"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "tpu_embedding_config"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "tf_example"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/sparse_keys"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/dense_keys"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "x"
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/ragged_keys"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2"
+  op: "ParseExampleV2"
+  input: "tf_example"
+  input: "ParseExample/ParseExampleV2/names"
+  input: "ParseExample/ParseExampleV2/sparse_keys"
+  input: "ParseExample/ParseExampleV2/dense_keys"
+  input: "ParseExample/ParseExampleV2/ragged_keys"
+  input: "ParseExample/Const"
+  attr {
+    key: "Tdense"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "dense_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "num_sparse"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "ragged_split_types"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "ragged_value_types"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "sparse_types"
+    value {
+      list {
+      }
+    }
+  }
+}
+node {
+  name: "a/Initializer/Const"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@a"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.5
+      }
+    }
+  }
+}
+node {
+  name: "a"
+  op: "VarHandleOp"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@a"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "a"
+    }
+  }
+}
+node {
+  name: "a/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "a"
+}
+node {
+  name: "a/Assign"
+  op: "AssignVariableOp"
+  input: "a"
+  input: "a/Initializer/Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "a/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "a"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "b/Initializer/Const"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@b"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "b"
+  op: "VarHandleOp"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@b"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "b"
+    }
+  }
+}
+node {
+  name: "b/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "b"
+}
+node {
+  name: "b/Assign"
+  op: "AssignVariableOp"
+  input: "b"
+  input: "b/Initializer/Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "b/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "b"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "batch/BatchFunction"
+  op: "BatchFunction"
+  input: "ParseExample/ParseExampleV2"
+  input: "a"
+  input: "b"
+  attr {
+    key: "Tcaptured"
+    value {
+      list {
+        type: DT_RESOURCE
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "allowed_batch_sizes"
+    value {
+      list {
+        i: 8
+      }
+    }
+  }
+  attr {
+    key: "batch_timeout_micros"
+    value {
+      i: 100000
+    }
+  }
+  attr {
+    key: "batching_queue"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "enable_large_batch_splitting"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "__inference_computation_38"
+      }
+    }
+  }
+  attr {
+    key: "max_batch_size"
+    value {
+      i: 8
+    }
+  }
+  attr {
+    key: "max_enqueued_batches"
+    value {
+      i: 3
+    }
+  }
+  attr {
+    key: "num_batch_threads"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "batch/"
+    }
+  }
+}
+node {
+  name: "y"
+  op: "Identity"
+  input: "batch/BatchFunction"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "/tmp/original/export/assets/foo.txt"
+      }
+    }
+  }
+}
+node {
+  name: "filename_tensor/initial_value"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "foo.txt"
+      }
+    }
+  }
+}
+node {
+  name: "filename_tensor"
+  op: "VariableV2"
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "filename_tensor/Assign"
+  op: "Assign"
+  input: "filename_tensor"
+  input: "filename_tensor/initial_value"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@filename_tensor"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "filename_tensor/read"
+  op: "Identity"
+  input: "filename_tensor"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@filename_tensor"
+      }
+    }
+  }
+}
+node {
+  name: "Assign/value"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "foo.txt"
+      }
+    }
+  }
+}
+node {
+  name: "Assign"
+  op: "Assign"
+  input: "filename_tensor"
+  input: "Assign/value"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@filename_tensor"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "init"
+  op: "NoOp"
+  input: "^a/Assign"
+  input: "^b/Assign"
+}
+node {
+  name: "init_1"
+  op: "NoOp"
+  input: "^a/Assign"
+  input: "^b/Assign"
+}
+node {
+  name: "group_deps"
+  op: "NoOp"
+  input: "^Assign"
+  input: "^init_1"
+}
+node {
+  name: "save/filename/input"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "model"
+      }
+    }
+  }
+}
+node {
+  name: "save/filename"
+  op: "PlaceholderWithDefault"
+  input: "save/filename/input"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "save/Const"
+  op: "PlaceholderWithDefault"
+  input: "save/filename"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "save/StaticRegexFullMatch"
+  op: "StaticRegexFullMatch"
+  input: "save/Const"
+  device: "/device:CPU:*"
+  attr {
+    key: "pattern"
+    value {
+      s: "^s3://.*"
+    }
+  }
+}
+node {
+  name: "save/Const_1"
+  op: "Const"
+  device: "/device:CPU:*"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: ".part"
+      }
+    }
+  }
+}
+node {
+  name: "save/Const_2"
+  op: "Const"
+  device: "/device:CPU:*"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "_temp/part"
+      }
+    }
+  }
+}
+node {
+  name: "save/Select"
+  op: "Select"
+  input: "save/StaticRegexFullMatch"
+  input: "save/Const_1"
+  input: "save/Const_2"
+  device: "/device:CPU:*"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+}
+node {
+  name: "save/StringJoin"
+  op: "StringJoin"
+  input: "save/Const"
+  input: "save/Select"
+  device: "/device:CPU:*"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "separator"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "save/num_shards"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "save/ShardedFilename/shard"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "save/ShardedFilename"
+  op: "ShardedFilename"
+  input: "save/StringJoin"
+  input: "save/ShardedFilename/shard"
+  input: "save/num_shards"
+  device: "/device:CPU:0"
+}
+node {
+  name: "save/SaveV2/tensor_names"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        string_val: "a"
+        string_val: "b"
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2/shape_and_slices"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        string_val: ""
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2"
+  op: "SaveV2"
+  input: "save/ShardedFilename"
+  input: "save/SaveV2/tensor_names"
+  input: "save/SaveV2/shape_and_slices"
+  input: "a/Read/ReadVariableOp"
+  input: "b/Read/ReadVariableOp"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/control_dependency"
+  op: "Identity"
+  input: "save/ShardedFilename"
+  input: "^save/SaveV2"
+  device: "/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@save/ShardedFilename"
+      }
+    }
+  }
+}
+node {
+  name: "save/MergeV2Checkpoints/checkpoint_prefixes"
+  op: "Pack"
+  input: "save/ShardedFilename"
+  input: "^save/control_dependency"
+  device: "/device:CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "save/MergeV2Checkpoints"
+  op: "MergeV2Checkpoints"
+  input: "save/MergeV2Checkpoints/checkpoint_prefixes"
+  input: "save/Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "delete_old_dirs"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "save/Identity"
+  op: "Identity"
+  input: "save/Const"
+  input: "^save/MergeV2Checkpoints"
+  input: "^save/control_dependency"
+  device: "/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+}
+node {
+  name: "save/RestoreV2/tensor_names"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        string_val: "a"
+        string_val: "b"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2/shape_and_slices"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        string_val: ""
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2"
+  op: "RestoreV2"
+  input: "save/Const"
+  input: "save/RestoreV2/tensor_names"
+  input: "save/RestoreV2/shape_and_slices"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/Identity_1"
+  op: "Identity"
+  input: "save/RestoreV2"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "save/AssignVariableOp"
+  op: "AssignVariableOp"
+  input: "a"
+  input: "save/Identity_1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "save/Identity_2"
+  op: "Identity"
+  input: "save/RestoreV2:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "save/AssignVariableOp_1"
+  op: "AssignVariableOp"
+  input: "b"
+  input: "save/Identity_2"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "save/restore_shard"
+  op: "NoOp"
+  input: "^save/AssignVariableOp"
+  input: "^save/AssignVariableOp_1"
+}
+node {
+  name: "save/restore_all"
+  op: "NoOp"
+  input: "^save/restore_shard"
+}
+library {
+  function {
+    signature {
+      name: "__inference_computation_38"
+      input_arg {
+        name: "unknown"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "tpupartitionedcall_a"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      input_arg {
+        name: "tpupartitionedcall_b"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      output_arg {
+        name: "identity"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+      control_output: "TPUOrdinalSelector"
+    }
+    node_def {
+      name: "TPUOrdinalSelector"
+      op: "TPUOrdinalSelector"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+            }
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "TPUOrdinalSelector"
+      }
+    }
+    node_def {
+      name: "TPUPartitionedCall"
+      op: "TPUPartitionedCall"
+      input: "unknown"
+      input: "tpupartitionedcall_a"
+      input: "tpupartitionedcall_b"
+      input: "TPUOrdinalSelector:device_ordinals:0"
+      attr {
+        key: "Tin"
+        value {
+          list {
+            type: DT_FLOAT
+            type: DT_RESOURCE
+            type: DT_RESOURCE
+          }
+        }
+      }
+      attr {
+        key: "Tout"
+        value {
+          list {
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              unknown_rank: true
+            }
+          }
+        }
+      }
+      attr {
+        key: "f"
+        value {
+          func {
+            name: "tpu_subgraph_OdRLXX9sF5U"
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "TPUPartitionedCall"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "TPUPartitionedCall:output:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              unknown_rank: true
+            }
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^TPUOrdinalSelector"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "NoOp"
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    attr {
+      key: "_input_shapes"
+      value {
+        list {
+          shape {
+            unknown_rank: true
+          }
+          shape {
+          }
+          shape {
+          }
+        }
+      }
+    }
+    control_ret {
+      key: "TPUOrdinalSelector"
+      value: "TPUOrdinalSelector"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+                unknown_rank: true
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "0"
+          }
+        }
+      }
+    }
+  }
+  function {
+    signature {
+      name: "tpu_subgraph_OdRLXX9sF5U"
+      input_arg {
+        name: "input0_placeholder"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "mul_readvariableop_placeholder"
+        type: DT_RESOURCE
+      }
+      input_arg {
+        name: "add_readvariableop_placeholder"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "output_0_shard_0"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+    }
+    node_def {
+      name: "input0"
+      op: "TPUReplicatedInput"
+      input: "input0_placeholder"
+      attr {
+        key: "N"
+        value {
+          i: 1
+        }
+      }
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "index"
+        value {
+          i: 0
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "input0"
+      }
+    }
+    node_def {
+      name: "cluster/pivot"
+      op: "NoOp"
+      attr {
+        key: "_pivot_for_cluster"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "cluster/pivot"
+      }
+    }
+    node_def {
+      name: "TPUReplicateMetadata"
+      op: "TPUReplicateMetadata"
+      input: "^cluster/pivot"
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      attr {
+        key: "num_replicas"
+        value {
+          i: 1
+        }
+      }
+      attr {
+        key: "use_spmd_for_xla_partitioning"
+        value {
+          b: true
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "TPUReplicateMetadata"
+      }
+    }
+    node_def {
+      name: "replicated_input_0"
+      op: "Identity"
+      input: "input0:output:0"
+      input: "^TPUReplicateMetadata"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_tpu_input_identity"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "replicated_input_0"
+      }
+    }
+    node_def {
+      name: "Mul/ReadVariableOp"
+      op: "ReadVariableOp"
+      input: "mul_readvariableop_placeholder"
+      input: "^TPUReplicateMetadata"
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Mul/ReadVariableOp"
+      }
+    }
+    node_def {
+      name: "Mul"
+      op: "Mul"
+      input: "Mul/ReadVariableOp:value:0"
+      input: "replicated_input_0:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Mul"
+      }
+    }
+    node_def {
+      name: "Add/ReadVariableOp"
+      op: "ReadVariableOp"
+      input: "add_readvariableop_placeholder"
+      input: "^TPUReplicateMetadata"
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Add/ReadVariableOp"
+      }
+    }
+    node_def {
+      name: "Add"
+      op: "Add"
+      input: "Mul:z:0"
+      input: "Add/ReadVariableOp:value:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Add"
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^cluster/pivot"
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "NoOp"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "Add:z:0"
+      device: "/device:TPU_REPLICATED_CORE:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_tpu_output_identity"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_tpu_replicate"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    node_def {
+      name: "TPUCompilationResult"
+      op: "TPUCompilationResult"
+      input: "^TPUReplicateMetadata"
+      attr {
+        key: "_tpu_compilation_status"
+        value {
+          s: "cluster"
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "TPUCompilationResult"
+      }
+    }
+    node_def {
+      name: "output0"
+      op: "TPUReplicatedOutput"
+      input: "Identity:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "num_replicas"
+        value {
+          i: 1
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "output0"
+      }
+    }
+    node_def {
+      name: "output_0_shard_0_0"
+      op: "Identity"
+      input: "output0:outputs:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "output_0_shard_0"
+      }
+    }
+    ret {
+      key: "output_0_shard_0"
+      value: "output_0_shard_0_0:output:0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+                unknown_rank: true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+versions {
+  producer: 728
+  min_consumer: 12
+}

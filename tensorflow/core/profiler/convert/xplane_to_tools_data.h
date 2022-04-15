@@ -21,15 +21,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Convert multiple XSpaces in <xspace_paths> to tool specific data.
+// Convert XSpace proto to a tool specific data. Pass in additional
+// filenames to fall back in case proto does not contain hostnames field.
 // Return the serialized string of tool specific data and whether the conversion
 // is successful.
 std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
-    const std::vector<std::string>& xspace_paths,
+    const std::vector<XSpace>& xspaces,
+    const std::vector<std::string>& filenames,
     const absl::string_view tool_name);
 
 }  // namespace profiler

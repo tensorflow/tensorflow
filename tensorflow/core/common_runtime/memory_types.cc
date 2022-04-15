@@ -115,7 +115,7 @@ Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
 // is only used on a TensorFlow graph that is gonna to be executed in
 // a single tf device (hence within a single process).
 static string GetTensorName(const Edge* edge) {
-  static std::atomic<int64> counter(0);
+  static std::atomic<int64_t> counter(0);
   return strings::StrCat("memtype_", counter.fetch_add(1), "_",
                          edge->src()->name());
 }

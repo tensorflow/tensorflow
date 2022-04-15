@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -46,7 +47,7 @@ class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the
   // beginning of the function, if it is non empty and has a block.
-  explicit MlirHloBuilder(mlir::FuncOp func)
+  explicit MlirHloBuilder(mlir::func::FuncOp func)
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
         loc_(builder_.getUnknownLoc()) {}
@@ -112,17 +113,17 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> ConvGeneralDilatedInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
-      absl::Span<const int64> window_strides,
-      absl::Span<const std::pair<int64, int64>> padding,
-      absl::Span<const int64> lhs_dilation,
-      absl::Span<const int64> rhs_dilation,
+      absl::Span<const int64_t> window_strides,
+      absl::Span<const std::pair<int64_t, int64_t>> padding,
+      absl::Span<const int64_t> lhs_dilation,
+      absl::Span<const int64_t> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count, int64 batch_group_count,
+      int64_t feature_group_count, int64_t batch_group_count,
       const PrecisionConfig* precision_config) override;
 
   StatusOr<XlaOp> FftInternal(const Shape& shape, XlaOp operand,
                               FftType fft_type,
-                              absl::Span<const int64> fft_length) override;
+                              absl::Span<const int64_t> fft_length) override;
 
   StatusOr<XlaOp> TriangularSolveInternal(
       const Shape& shape, XlaOp a, XlaOp b,
@@ -132,40 +133,42 @@ class MlirHloBuilder : public XlaBuilder {
                                    bool lower) override;
 
   StatusOr<XlaOp> CustomCallInternal(
-      const string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape, const string& opaque,
+      const std::string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape, const std::string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
-      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal) override;
+      const Literal* literal, absl::optional<Window> window,
+      absl::optional<ConvolutionDimensionNumbers> dnums,
+      CustomCallSchedule schedule, CustomCallApiVersion api_version) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,
       const XlaComputation& computation,
-      absl::Span<const int64> dimensions_to_reduce) override;
+      absl::Span<const int64_t> dimensions_to_reduce) override;
 
   StatusOr<XlaOp> ReduceWindowInternal(const Shape& shape, XlaOp operand,
                                        XlaOp init_value,
                                        const XlaComputation& computation,
                                        Window window) override;
 
-  XlaOp Iota(const Shape& shape, int64 iota_dimension) override;
+  XlaOp Iota(const Shape& shape, int64_t iota_dimension) override;
 
   StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
                                              XlaOp operand) override;
 
   StatusOr<XlaOp> TransposeInternal(
       const Shape& shape, XlaOp operand,
-      absl::Span<const int64> permutation) override;
+      absl::Span<const int64_t> permutation) override;
 
   StatusOr<XlaOp> RevInternal(const Shape& shape, XlaOp operand,
-                              absl::Span<const int64> dimensions) override;
+                              absl::Span<const int64_t> dimensions) override;
 
   StatusOr<XlaOp> SortInternal(const Shape& shape,
                                absl::Span<const XlaOp> operands,
                                const XlaComputation& comparator,
-                               int64 dimension, bool is_stable) override;
+                               int64_t dimension, bool is_stable) override;
 
   StatusOr<XlaOp> WhileInternal(const Shape& shape,
                                 const XlaComputation& condition,
@@ -179,7 +182,7 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> GatherInternal(
       const Shape& shape, XlaOp input, XlaOp start_indices,
       const GatherDimensionNumbers& dimension_numbers,
-      absl::Span<const int64> slice_sizes, bool indices_are_sorted) override;
+      absl::Span<const int64_t> slice_sizes, bool indices_are_sorted) override;
 
   StatusOr<XlaOp> ScatterInternal(
       const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
@@ -188,7 +191,8 @@ class MlirHloBuilder : public XlaBuilder {
       bool unique_indices) override;
 
   StatusOr<XlaOp> SetDimensionSizeInternal(const Shape& shape, XlaOp operand,
-                                           XlaOp val, int64 dimension) override;
+                                           XlaOp val,
+                                           int64_t dimension) override;
 
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
@@ -198,7 +202,7 @@ class MlirHloBuilder : public XlaBuilder {
                                           XlaOp initial_state) override;
 
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
-                                  int64 inferred_dimension) override;
+                                  int64_t inferred_dimension) override;
 
   StatusOr<XlaOp> DotGeneralInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs,
@@ -207,7 +211,7 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
-      absl::Span<const int64> broadcast_dimensions) override;
+      absl::Span<const int64_t> broadcast_dimensions) override;
 
   StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                                  absl::Span<const XlaOp> operands) override;
@@ -226,26 +230,26 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> InfeedWithTokenInternal(const Shape& infeed_instruction_shape,
                                           XlaOp token,
-                                          const string& config) override;
+                                          const std::string& config) override;
   StatusOr<XlaOp> OutfeedWithTokenInternal(
       XlaOp operand, XlaOp token, const Shape& shape_with_layout,
-      const string& outfeed_config) override;
+      const std::string& outfeed_config) override;
 
   StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,
                                       absl::Span<const XlaOp> operands,
-                                      int64 dimension) override;
+                                      int64_t dimension) override;
 
   StatusOr<XlaOp> GetTupleElementInternal(const Shape& shape, XlaOp tuple_data,
-                                          int64 index) override;
+                                          int64_t index) override;
 
   StatusOr<XlaOp> SliceInternal(const Shape& shape, XlaOp operand,
-                                absl::Span<const int64> start_indices,
-                                absl::Span<const int64> limit_indices,
-                                absl::Span<const int64> strides) override;
+                                absl::Span<const int64_t> start_indices,
+                                absl::Span<const int64_t> limit_indices,
+                                absl::Span<const int64_t> strides) override;
 
   StatusOr<XlaOp> DynamicSliceInternal(
       const Shape& shape, XlaOp operand, absl::Span<const XlaOp> start_indices,
-      absl::Span<const int64> slice_sizes) override;
+      absl::Span<const int64_t> slice_sizes) override;
 
   StatusOr<XlaOp> DynamicUpdateSliceInternal(
       const Shape& shape, XlaOp operand, XlaOp update,
@@ -265,12 +269,13 @@ class MlirHloBuilder : public XlaBuilder {
       llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
 
   Status ImportComputation(const HloModuleProto& computation,
-                           mlir::Region* region);
+                           mlir::Region* region,
+                           bool flatten_region_arg_tuple = false);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;
 
-  absl::flat_hash_map<int64, std::unique_ptr<Shape>> handle_to_shape_;
+  absl::flat_hash_map<int64_t, std::unique_ptr<Shape>> handle_to_shape_;
 };
 
 }  // namespace xla

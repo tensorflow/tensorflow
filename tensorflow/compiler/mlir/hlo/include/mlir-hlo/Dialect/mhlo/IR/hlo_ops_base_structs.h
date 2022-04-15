@@ -15,16 +15,17 @@ limitations under the License.
 
 // This file defines structures used in MHLO and LMHLO.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Identifier.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 
 // Order matters, this .inc header is not self-contained, and relies on the
 // #includes above.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H

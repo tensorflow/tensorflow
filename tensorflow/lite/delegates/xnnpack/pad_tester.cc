@@ -91,24 +91,23 @@ void PadTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  float* default_input_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->inputs()[0]);
+  float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data,
                 default_input_data + ComputeSize(InputShape()),
                 std::ref(input_rng));
 
-  float* delegate_input_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->inputs()[0]);
+  float* delegate_input_data =
+      delegate_interpreter->typed_input_tensor<float>(0);
   std::copy(default_input_data, default_input_data + ComputeSize(InputShape()),
             delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
 
-  float* default_output_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->outputs()[0]);
-  float* delegate_output_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->outputs()[0]);
+  float* default_output_data =
+      default_interpreter->typed_output_tensor<float>(0);
+  float* delegate_output_data =
+      delegate_interpreter->typed_output_tensor<float>(0);
 
   for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
     ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
@@ -131,7 +130,7 @@ std::vector<char> PadTester::CreateTfLiteModel() const {
       CreateBuffer(builder,
                    builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(paddings.data()),
-                       sizeof(float) * paddings.size())),
+                       sizeof(int32_t) * paddings.size())),
   }};
 
   const std::vector<int32_t> output_shape = OutputShape();

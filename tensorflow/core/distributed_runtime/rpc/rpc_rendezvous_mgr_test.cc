@@ -61,7 +61,7 @@ class DummyWorker : public TestWorkerInterface {
       // Simulate a random delay for RPC. This is needed to fill the entire
       // object buffer in `RpcRecvTensorFreeList` and trigger the destruction of
       // RPC call objects.
-      const int64 t_us = random::New64() % 100 * 1000;
+      const int64_t t_us = random::New64() % 100 * 1000;
       Env::Default()->SleepForMicroseconds(t_us);
       done(Status::OK());
     });
@@ -82,6 +82,10 @@ class DummyWorkerCache : public WorkerCacheInterface {
   }
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
+  Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
     return errors::Unimplemented("Unimplemented.");
   }
   bool GetDeviceLocalityNonBlocking(const string& device,
@@ -137,7 +141,7 @@ class RpcRendezvousMgrTest : public ::testing::Test {
 };
 
 TEST_F(RpcRendezvousMgrTest, LocalSendRecv) {
-  const int64 step_id = 123;
+  const int64_t step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
@@ -162,7 +166,7 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   {  // Explicit Abort().
-    const int64 step_id = 123;
+    const int64_t step_id = 123;
     RemoteRendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
     SchedClosure([this, rendez]() {
@@ -176,7 +180,7 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
     EXPECT_TRUE(errors::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
   }
   {  // Cleanup causes Abort().
-    const int64 step_id = 321;
+    const int64_t step_id = 321;
     RemoteRendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
     SchedClosure([this, step_id]() {
@@ -196,7 +200,7 @@ TEST_F(RpcRendezvousMgrTest, LocalCancel) {
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   auto* cm = new CancellationManager();
-  const int64 step_id = 123;
+  const int64_t step_id = 123;
   RemoteRendezvous* rendez = rmgr_.Find(step_id);
   core::ScopedUnref unref(rendez);
   Notification n;
@@ -220,7 +224,7 @@ TEST_F(RpcRendezvousMgrTest, CancelAfterReceived) {
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   auto* cm = new CancellationManager();
-  const int64 step_id = 123;
+  const int64_t step_id = 123;
   RemoteRendezvous* rendez = rmgr_.Find(step_id);
   core::ScopedUnref unref(rendez);
   Notification n;
@@ -256,7 +260,7 @@ class DummyDeviceContext : public DeviceContext {
 TEST_F(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
   DummyDeviceContext* dc = new DummyDeviceContext(123);
 
-  const int64 step_id = 123;
+  const int64_t step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
@@ -288,7 +292,7 @@ TEST_F(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
 }
 
 TEST_F(RpcRendezvousMgrTest, RemoteRecvOne) {
-  const int64 step_id = 123;
+  const int64_t step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:worker/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
@@ -307,7 +311,7 @@ TEST_F(RpcRendezvousMgrTest, RemoteRecvOne) {
 }
 
 TEST_F(RpcRendezvousMgrTest, RemoteRecvAsyncMany) {
-  const int64 step_id = 123;
+  const int64_t step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:worker/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));

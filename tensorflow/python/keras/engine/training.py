@@ -22,8 +22,8 @@ import warnings
 import weakref
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
@@ -74,7 +74,6 @@ from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -88,11 +87,6 @@ try:
   import h5py
 except ImportError:
   h5py = None
-
-try:
-  import yaml
-except ImportError:
-  yaml = None
 # pylint: enable=g-import-not-at-top
 
 
@@ -160,6 +154,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   model = tf.keras.Model(inputs=inputs, outputs=outputs)
   ```
 
+  Note: Only dicts, lists, and tuples of input tensors are supported. Nested
+  inputs are not supported (e.g. lists of list or dicts of dict).
+
   2 - By subclassing the `Model` class: in that case, you should define your
   layers in `__init__` and you should implement the model's forward pass
   in `call`.
@@ -226,7 +223,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
     self._is_model_for_instrumentation = True
-    base_layer.keras_api_gauge.get_cell('model').set(True)
 
     # Special case for Subclassed Functional Model, which we couldn't detect
     # when __new__ is called. We only realize it is a functional model when it
@@ -263,7 +259,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                 other_kwargs))
       return
 
-    base_layer.keras_api_gauge.get_cell('Model subclass').set(True)
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
@@ -337,15 +332,14 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       return
 
     if all(
-        isinstance(v, (base_layer.Layer,
-                       data_structures.TrackableDataStructure)) or
+        isinstance(v, (base_layer.Layer, variables.Variable)) or
         base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:
         raise RuntimeError(
             'It looks like you are subclassing `Model` and you '
-            'forgot to call `super(YourClass, self).__init__()`.'
+            'forgot to call `super().__init__()`.'
             ' Always start with this line.')
 
     super(Model, self).__setattr__(name, value)
@@ -466,7 +460,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Args:
-        inputs: A tensor or list of tensors.
+        inputs: Input tensor, or dict/list/tuple of input tensors.
         training: Boolean or boolean scalar tensor, indicating whether to run
           the `Network` in training mode or inference mode.
         mask: A mask or list of masks. A mask can be
@@ -501,12 +495,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           categorical crossentropy where shape = `[batch_size, d0, .. dN-1]`.
           y_pred = predicted values with shape = `[batch_size, d0, .. dN]`. It
           returns a weighted loss float tensor. If a custom `Loss` instance is
-          used and reduction is set to NONE, return value has the shape
-          [batch_size, d0, .. dN-1] ie. per-sample or per-timestep loss values;
-          otherwise, it is a scalar. If the model has multiple outputs, you can
-          use a different loss on each output by passing a dictionary or a list
-          of losses. The loss value that will be minimized by the model will
-          then be the sum of all individual losses.
+          used and reduction is set to `None`, return value has the shape
+          `[batch_size, d0, .. dN-1]` i.e. per-sample or per-timestep loss
+          values; otherwise, it is a scalar. If the model has multiple outputs,
+          you can use a different loss on each output by passing a dictionary
+          or a list of losses. The loss value that will be minimized by the
+          model will then be the sum of all individual losses, unless
+          `loss_weights` is specified.
         metrics: List of metrics to be evaluated by the model during training
           and testing. Each of this can be a string (name of a built-in
           function), function or a `tf.keras.metrics.Metric` instance. See
@@ -514,16 +509,16 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           function is any callable with the signature `result = fn(y_true,
           y_pred)`. To specify different metrics for different outputs of a
           multi-output model, you could also pass a dictionary, such as
-            `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
-              You can also pass a list (len = len(outputs)) of lists of metrics
-              such as `metrics=[['accuracy'], ['accuracy', 'mse']]` or
-              `metrics=['accuracy', ['accuracy', 'mse']]`. When you pass the
-              strings 'accuracy' or 'acc', we convert this to one of
-              `tf.keras.metrics.BinaryAccuracy`,
-              `tf.keras.metrics.CategoricalAccuracy`,
-              `tf.keras.metrics.SparseCategoricalAccuracy` based on the loss
-              function used and the model output shape. We do a similar
-              conversion for the strings 'crossentropy' and 'ce' as well.
+          `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
+          You can also pass a list to specify a metric or a list of metrics
+          for each output, such as `metrics=[['accuracy'], ['accuracy', 'mse']]`
+          or `metrics=['accuracy', ['accuracy', 'mse']]`. When you pass the
+          strings 'accuracy' or 'acc', we convert this to one of
+          `tf.keras.metrics.BinaryAccuracy`,
+          `tf.keras.metrics.CategoricalAccuracy`,
+          `tf.keras.metrics.SparseCategoricalAccuracy` based on the loss
+          function used and the model output shape. We do a similar
+          conversion for the strings 'crossentropy' and 'ce' as well.
         loss_weights: Optional list or dictionary specifying scalar coefficients
           (Python floats) to weight the loss contributions of different model
           outputs. The loss value that will be minimized by the model will then
@@ -533,7 +528,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               outputs. If a dict, it is expected to map output names (strings)
               to scalar coefficients.
         weighted_metrics: List of metrics to be evaluated and weighted by
-          sample_weight or class_weight during training and testing.
+          `sample_weight` or `class_weight` during training and testing.
         run_eagerly: Bool. Defaults to `False`. If `True`, this `Model`'s
           logic will not be wrapped in a `tf.function`. Recommended to leave
           this as `None` unless your `Model` cannot be run inside a
@@ -556,7 +551,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss` or `metrics`.
     """
-    base_layer.keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       if 'experimental_steps_per_execution' in kwargs:
         logging.warning('The argument `steps_per_execution` is no longer '
@@ -618,6 +612,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.train_function = None
     self.test_function = None
     self.predict_function = None
+    # Used to cache the `tf.function`'ed `train_function` to be logged in
+    # TensorBoard, since the original `train_function` is not necessarily
+    # a `tf.function` (e.g., with ParameterServerStrategy, the `train_function`
+    # is a scheduling of the actual training function to a remote worker).
+    self.train_tf_function = None
 
     # Used to cache `trainable` attr of `Layer`s for `fit`.
     self._compiled_trainable_state = self._get_trainable_state()
@@ -870,6 +869,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if not self.run_eagerly:
       train_function = def_function.function(
           train_function, experimental_relax_shapes=True)
+      self.train_tf_function = train_function
 
     self.train_function = train_function
 
@@ -1027,9 +1027,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
             When passing an infinitely repeating dataset, you must specify the
-            `steps_per_epoch` argument. This argument is not supported with
-            array inputs. `steps_per_epoch=None` is not supported when using
-            `tf.distribute.experimental.ParameterServerStrategy`.
+            `steps_per_epoch` argument. If `steps_per_epoch=-1` the training
+            will run indefinitely with an infinitely repeating dataset.
+            This argument is not supported with array inputs.
+            When using `tf.distribute.experimental.ParameterServerStrategy`:
+              * `steps_per_epoch=None` is not supported.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
@@ -1104,7 +1106,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: In case of mismatch between the provided input data
             and what the model expects or when the input data is empty.
     """
-    base_layer.keras_api_gauge.get_cell('fit').set(True)
     # Legacy graph support is contained in `training_v1.Model`.
     version_utils.disallow_legacy_graph('Model', 'fit')
     self._assert_compile_was_called()
@@ -1340,6 +1341,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           test_function, experimental_relax_shapes=True)
 
     self.test_function = test_function
+
+    if self._cluster_coordinator:
+      self.test_function = lambda iterator: self._cluster_coordinator.schedule(  # pylint: disable=g-long-lambda
+          test_function, args=(iterator,))
+
     return self.test_function
 
   def evaluate(self,
@@ -1436,7 +1442,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         RuntimeError: If `model.evaluate` is wrapped in `tf.function`.
         ValueError: in case of invalid arguments.
     """
-    base_layer.keras_api_gauge.get_cell('evaluate').set(True)
     version_utils.disallow_legacy_graph('Model', 'evaluate')
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
@@ -1446,8 +1451,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       raise TypeError('Invalid keyword arguments: %s' % (kwargs,))
 
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
-      raise NotImplementedError('`model.evaluate` is not yet supported with '
-                                '`ParameterServerStrategy`.')
+      self._cluster_coordinator = cluster_coordinator.ClusterCoordinator(
+          self.distribute_strategy)
 
     with self.distribute_strategy.scope():
       # Use cached evaluation data only when it's called in `Model.fit`
@@ -1659,9 +1664,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `Model.fit` and `Model.evaluate`, so inputs must be unambiguous for all
     three methods.
 
-    `Model.predict` is not yet supported with
-    `tf.distribute.experimental.ParameterServerStrategy`.
-
     Returns:
         Numpy array(s) of predictions.
 
@@ -1672,14 +1674,23 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    base_layer.keras_api_gauge.get_cell('predict').set(True)
     version_utils.disallow_legacy_graph('Model', 'predict')
     self._check_call_args('predict')
     _disallow_inside_tf_function('predict')
 
+    # TODO(yashkatariya): Cache model on the coordinator for faster prediction.
+    # If running under PSS, then swap it with OneDeviceStrategy so that
+    # execution will run on the coordinator.
+    original_pss_strategy = None
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
-      raise NotImplementedError('`model.predict` is not yet supported with '
-                                '`ParameterServerStrategy`.')
+      original_pss_strategy = self.distribute_strategy
+      self._distribution_strategy = None
+
+    # Cluster coordinator is set by `.fit()` and `.evaluate()` which is not
+    # needed in `.predict()` because all the predictions happen on the
+    # coordinator/locally.
+    if self._cluster_coordinator:
+      self._cluster_coordinator = None
 
     outputs = None
     with self.distribute_strategy.scope():
@@ -1688,8 +1699,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if (self._in_multi_worker_mode() or _is_tpu_multi_host(
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
-          options = dataset_ops.Options()
-          data_option = distribute_options.AutoShardPolicy.DATA
+          options = options_lib.Options()
+          data_option = options_lib.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:
@@ -1747,6 +1758,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
+
+    # If originally PSS strategy was used, then replace it back since predict
+    # is running under `OneDeviceStrategy` after the swap and once its done
+    # we need to replace it back to PSS again.
+    if original_pss_strategy is not None:
+      self._distribution_strategy = original_pss_strategy
+
     return tf_utils.sync_to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
@@ -2311,24 +2329,30 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         # streaming restore for any variables created in the future.
         trackable_utils.streaming_restore(status=status, session=session)
       status.assert_nontrivial_match()
-      return status
-    if h5py is None:
-      raise ImportError(
-          '`load_weights` requires h5py when loading weights from HDF5.')
-    if not self._is_graph_network and not self.built:
-      raise ValueError(
-          'Unable to load weights saved in HDF5 format into a subclassed '
-          'Model which has not created its variables yet. Call the Model '
-          'first, then load the weights.')
-    self._assert_weights_created()
-    with h5py.File(filepath, 'r') as f:
-      if 'layer_names' not in f.attrs and 'model_weights' in f:
-        f = f['model_weights']
-      if by_name:
-        hdf5_format.load_weights_from_hdf5_group_by_name(
-            f, self.layers, skip_mismatch=skip_mismatch)
-      else:
-        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+    else:
+      status = None
+      if h5py is None:
+        raise ImportError(
+            '`load_weights` requires h5py when loading weights from HDF5.')
+      if not self._is_graph_network and not self.built:
+        raise ValueError(
+            'Unable to load weights saved in HDF5 format into a subclassed '
+            'Model which has not created its variables yet. Call the Model '
+            'first, then load the weights.')
+      self._assert_weights_created()
+      with h5py.File(filepath, 'r') as f:
+        if 'layer_names' not in f.attrs and 'model_weights' in f:
+          f = f['model_weights']
+        if by_name:
+          hdf5_format.load_weights_from_hdf5_group_by_name(
+              f, self.layers, skip_mismatch=skip_mismatch)
+        else:
+          hdf5_format.load_weights_from_hdf5_group(f, self.layers)
+
+    # Perform any layer defined finalization of the layer state.
+    for layer in self.layers:
+      layer.finalize_state()
+    return status
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -2387,6 +2411,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.
 
+    Note: Since TF 2.6, this method is no longer supported and will raise a
+    RuntimeError.
+
     To load a network from a yaml save file, use
     `keras.models.model_from_yaml(yaml_string, custom_objects={})`.
 
@@ -2402,12 +2429,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         A YAML string.
 
     Raises:
-        ImportError: if yaml module is not found.
+        RuntimeError: announces that the method poses a security risk
     """
-    if yaml is None:
-      raise ImportError(
-          'Requires yaml module installed (`pip install pyyaml`).')
-    return yaml.dump(self._updated_config(), **kwargs)
+    raise RuntimeError(
+        'Method `model.to_yaml()` has been removed due to security risk of '
+        'arbitrary code execution. Please use `model.to_json()` instead.'
+    )
 
   def reset_states(self):
     for layer in self.layers:
@@ -2707,26 +2734,29 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
-  def _list_functions_for_serialization(self, serialization_cache):
-    # SavedModel needs to ignore the execution functions.
-    train_function = self.train_function
-    test_function = self.test_function
-    predict_function = self.predict_function
-    self.train_function = None
-    self.test_function = None
-    self.predict_function = None
-    functions = super(
-        Model, self)._list_functions_for_serialization(serialization_cache)
-    self.train_function = train_function
-    self.test_function = test_function
-    self.predict_function = predict_function
-    return functions
+  def _trackable_children(self, save_type='checkpoint', **kwargs):
+    if save_type == 'savedmodel':
+      # SavedModel needs to ignore the execution functions.
+      train_function = self.train_function
+      test_function = self.test_function
+      predict_function = self.predict_function
+      train_tf_function = self.train_tf_function
+      self.train_function = None
+      self.test_function = None
+      self.predict_function = None
+      self.train_tf_function = None
+
+    children = super(Model, self)._trackable_children(save_type, **kwargs)
+
+    if save_type == 'savedmodel':
+      self.train_function = train_function
+      self.test_function = test_function
+      self.predict_function = predict_function
+      self.train_tf_function = train_tf_function
+
+    return children
 
   def _should_eval(self, epoch, validation_freq):
-    if self._cluster_coordinator:
-      raise NotImplementedError(
-          'Evaluation in `model.fit` with '
-          '`ParameterServerStrategy` is not yet supported.')
     epoch = epoch + 1  # one-index the user-facing epoch.
     if isinstance(validation_freq, int):
       return epoch % validation_freq == 0

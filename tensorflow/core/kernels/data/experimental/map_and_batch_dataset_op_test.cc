@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/map_and_batch_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,7 +25,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
   template <typename T>
   MapAndBatchDatasetParams(
       T input_dataset_params, std::vector<Tensor> other_arguments,
-      int64 batch_size, int64 num_parallel_calls, bool drop_remainder,
+      int64_t batch_size, int64_t num_parallel_calls, bool drop_remainder,
       FunctionDefHelper::AttrValueWrapper func,
       std::vector<FunctionDef> func_lib, DataTypeVector type_arguments,
       bool preserve_cardinality, DataTypeVector output_dtypes,
@@ -48,9 +48,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override {
     std::vector<Tensor> inputs = other_arguments_;
-    inputs.emplace_back(CreateTensor<int64>(TensorShape({}), {batch_size_}));
+    inputs.emplace_back(CreateTensor<int64_t>(TensorShape({}), {batch_size_}));
     inputs.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_}));
+        CreateTensor<int64_t>(TensorShape({}), {num_parallel_calls_}));
     inputs.emplace_back(CreateTensor<bool>(TensorShape({}), {drop_remainder_}));
     return inputs;
   }
@@ -71,12 +71,12 @@ class MapAndBatchDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {MapAndBatchDatasetOp::kFunc, func_},
-        {MapAndBatchDatasetOp::kTarguments, type_arguments_},
-        {MapAndBatchDatasetOp::kOutputShapes, output_shapes_},
-        {MapAndBatchDatasetOp::kOutputTypes, output_dtypes_},
-        {MapAndBatchDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"preserve_cardinality", preserve_cardinality_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 
@@ -88,8 +88,8 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
  private:
   std::vector<Tensor> other_arguments_;
-  int64 batch_size_;
-  int64 num_parallel_calls_;
+  int64_t batch_size_;
+  int64_t num_parallel_calls_;
   bool drop_remainder_;
   FunctionDefHelper::AttrValueWrapper func_;
   std::vector<FunctionDef> func_lib_;
@@ -244,26 +244,26 @@ MapAndBatchDatasetParams InvalidBatchSizeMapAndBatchDatasetParams() {
 std::vector<GetNextTestCase<MapAndBatchDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/MapAndBatchDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 4}, {8, 12}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 4}, {8, 12}})},
           {/*dataset_params=*/MapAndBatchDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 4}, {8, 12}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 4}, {8, 12}})},
           {/*dataset_params=*/MapAndBatchDatasetParams3(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({2}), {0, 8}),
-            CreateTensor<int64>(TensorShape({2}), {16, 24}),
-            CreateTensor<int64>(TensorShape({1}), {32})}},
+           {CreateTensor<int64_t>(TensorShape({2}), {0, 8}),
+            CreateTensor<int64_t>(TensorShape({2}), {16, 24}),
+            CreateTensor<int64_t>(TensorShape({1}), {32})}},
           {/*dataset_params=*/MapAndBatchDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 4}, {8, 12}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 4}, {8, 12}})},
           {/*dataset_params=*/MapAndBatchDatasetParams5(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 8}, {16, 24}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 8}, {16, 24}})},
           {/*dataset_params=*/MapAndBatchDatasetParams6(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({2}), {0, 8}),
-            CreateTensor<int64>(TensorShape({2}), {16, 24}),
-            CreateTensor<int64>(TensorShape({1}), {32})}}};
+           {CreateTensor<int64_t>(TensorShape({2}), {0, 8}),
+            CreateTensor<int64_t>(TensorShape({2}), {16, 24}),
+            CreateTensor<int64_t>(TensorShape({1}), {32})}}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
@@ -376,31 +376,31 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/MapAndBatchDatasetParams1(),
            /*breakpoints=*/{0, 1, 4},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 4}, {8, 12}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 4}, {8, 12}})},
           {/*dataset_params=*/MapAndBatchDatasetParams2(),
            /*breakpoints=*/{0, 1, 4},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 4}, {8, 12}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 4}, {8, 12}})},
           {/*dataset_params=*/MapAndBatchDatasetParams3(),
            /*breakpoints=*/{0, 1, 4},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({2}), {0, 8}),
-            CreateTensor<int64>(TensorShape({2}), {16, 24}),
-            CreateTensor<int64>(TensorShape({1}), {32})}},
+           {CreateTensor<int64_t>(TensorShape({2}), {0, 8}),
+            CreateTensor<int64_t>(TensorShape({2}), {16, 24}),
+            CreateTensor<int64_t>(TensorShape({1}), {32})}},
           {/*dataset_params=*/MapAndBatchDatasetParams4(),
            /*breakpoints=*/{0, 1, 4},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 4}, {8, 12}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 4}, {8, 12}})},
           {/*dataset_params=*/MapAndBatchDatasetParams5(),
            /*breakpoints=*/{0, 1, 4},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({2}), {{0, 8}, {16, 24}})},
+           CreateTensors<int64_t>(TensorShape({2}), {{0, 8}, {16, 24}})},
           {/*dataset_params=*/MapAndBatchDatasetParams6(),
            /*breakpoints=*/{0, 1, 4},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({2}), {0, 8}),
-            CreateTensor<int64>(TensorShape({2}), {16, 24}),
-            CreateTensor<int64>(TensorShape({1}), {32})}}};
+           {CreateTensor<int64_t>(TensorShape({2}), {0, 8}),
+            CreateTensor<int64_t>(TensorShape({2}), {16, 24}),
+            CreateTensor<int64_t>(TensorShape({1}), {32})}}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(MapAndBatchDatasetOpTest,

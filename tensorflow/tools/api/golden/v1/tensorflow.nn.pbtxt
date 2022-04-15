@@ -1,12 +1,24 @@
 path: "tensorflow.nn"
 tf_module {
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "rnn_cell"
     mtype: "<type \'module\'>"
   }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "approx_max_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "approx_min_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
   }
   member_method {
     name: "atrous_conv2d"
@@ -126,7 +138,7 @@ tf_module {
   }
   member_method {
     name: "ctc_greedy_decoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\', \'blank_index\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ctc_loss"
@@ -354,7 +366,7 @@ tf_module {
   }
   member_method {
     name: "silu"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "softmax"
@@ -406,7 +418,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "tanh"

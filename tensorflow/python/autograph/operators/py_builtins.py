@@ -17,10 +17,6 @@
 List of built-in functions: https://docs.python.org/3/library/functions.html
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import inspect
 
@@ -48,7 +44,6 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 
-
 # TODO(b/145618471): Remove this dependency.
 # Lazy import to work around circular dependencies
 input_lib = lazy_loader.LazyLoader(
@@ -57,7 +52,6 @@ input_lib = lazy_loader.LazyLoader(
 parallel_ops = lazy_loader.LazyLoader(
     'parallel_ops', globals(),
     'tensorflow.python.ops.parallel_for.control_flow_ops')
-
 
 UNSPECIFIED = object()
 
@@ -130,10 +124,6 @@ def super_in_original_context(f, args, caller_fn_scope):
     The result of calling `f` as if it was called in the frame indicated by
       `caller_fn_scope`.
   """
-
-  # Python 2 doesn't support implicit argument super variants.
-  if six.PY2:
-    return f(*args)
 
   # Only the no-arg call is desugared.
   if args:
@@ -337,6 +327,70 @@ def _py_print(*objects, **kwargs):
   print(*objects, **kwargs)
 
 
+def min_(*args, **kwargs):
+  if any(tensor_util.is_tf_type(s) for s in args):
+    return _tf_min(*args, **kwargs)
+  return _py_min(*args, **kwargs)
+
+
+def _tf_min(*args, **kwargs):
+  if len(kwargs):
+    kwargs_tuple = tuple(set(kwargs.keys()))
+    raise ValueError('These keyword arguments are '
+                     'currently not supported: {}'.format(kwargs_tuple))
+  if len(args) == 1:
+    rank = args[0].shape.rank
+    if rank == 0:
+      return args[0]
+    if rank == 1:
+      return math_ops.reduce_min(*args, axis=0)
+    raise ValueError('min(arg) currently support only tensor with rank 1, '
+                     'but got a tensor with rank {}'.format(rank))
+  for arg in args:
+    rank = arg.shape.rank
+    if rank != 0:
+      raise ValueError('min(arg1, arg2, *args) currently support '
+                       'only scalar tensor, but got a tensor '
+                       'with shape {}'.format(rank))
+  return math_ops.reduce_min(args, axis=0)
+
+
+def _py_min(*args, **kwargs):
+  return min(*args, **kwargs)
+
+
+def max_(*args, **kwargs):
+  if any(tensor_util.is_tf_type(s) for s in args):
+    return _tf_max(*args, **kwargs)
+  return _py_max(*args, **kwargs)
+
+
+def _tf_max(*args, **kwargs):
+  if len(kwargs):
+    kwargs_tuple = tuple(set(kwargs.keys()))
+    raise ValueError('These keyword arguments are '
+                     'currently not supported: {}'.format(kwargs_tuple))
+  if len(args) == 1:
+    rank = args[0].shape.rank
+    if rank == 0:
+      return args[0]
+    if rank == 1:
+      return math_ops.reduce_max(*args, axis=0)
+    raise ValueError('max(arg) currently support only tensor with rank 1, '
+                     'but got a tensor with rank {}'.format(rank))
+  for arg in args:
+    rank = arg.shape.rank
+    if rank != 0:
+      raise ValueError('max(arg1, arg2, *args) currently support '
+                       'only scalar tensor, but got a tensor '
+                       'with shape {}'.format(rank))
+  return math_ops.reduce_max(args, axis=0)
+
+
+def _py_max(*args, **kwargs):
+  return max(*args, **kwargs)
+
+
 def _tf_py_func_print(objects, kwargs):
   """Overload of print_ as a py_func implementation."""
   override_kwargs = {k: v for k, v in kwargs.items() if v is not UNSPECIFIED}
@@ -347,12 +401,10 @@ def _tf_py_func_print(objects, kwargs):
 
   def print_wrapper(*vals):
     vals = tuple(v.numpy() if tensor_util.is_tf_type(v) else v for v in vals)
-    if not six.PY2:
-      # TensorFlow doesn't seem to generate Unicode when passing strings to
-      # py_func. This causes the print to add a "b'" wrapper to the output,
-      # which is probably never what you want.
-      vals = tuple(
-          v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
+    # TensorFlow doesn't seem to generate Unicode when passing strings to
+    # py_func. This causes the print to add a "b'" wrapper to the output,
+    # which is probably never what you want.
+    vals = tuple(v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
     six.print_(*vals, **override_kwargs)
 
   return py_func.wrap_py_func(
@@ -393,8 +445,8 @@ def _py_range(start_or_stop, stop, step):
 def enumerate_(s, start=0):
   if isinstance(s, dataset_ops.DatasetV2):
     return _tf_dataset_enumerate(s, start)
-  if isinstance(
-      s, (input_lib.DistributedIterator, input_lib.DistributedDataset)):
+  if isinstance(s,
+                (input_lib.DistributedIterator, input_lib.DistributedDataset)):
     raise NotImplementedError(
         'use a for loop over the dataset and keep a separate counter')
   return _py_enumerate(s, start)
@@ -491,7 +543,7 @@ def _verify_structure_compatible(input_name, spec_name, input_, spec):
     spec_name: A name to use for `spec` in error messages.
     input_: Any, value to verify. May, but doesn't need to, be a structure.
     spec: Any, value that `input_` must be compatible with. May, but doesn't
-        need to, be a structure.
+      need to, be a structure.
 
   Raises:
     ValueError if the two types have been determined not to be compatible.
@@ -514,10 +566,10 @@ def next_tf_iterator(iterator, default=UNSPECIFIED):
     # a runtime exception.
     return next(iterator)
   opt_iterate = iterator.get_next_as_optional()
-  _verify_structure_compatible(
-      'the default argument', 'the iterate', default, iterator.element_spec)
-  return control_flow_ops.cond(
-      opt_iterate.has_value(), opt_iterate.get_value, lambda: default)
+  _verify_structure_compatible('the default argument', 'the iterate', default,
+                               iterator.element_spec)
+  return control_flow_ops.cond(opt_iterate.has_value(), opt_iterate.get_value,
+                               lambda: default)
 
 
 def next_py(iterator, default=UNSPECIFIED):
@@ -639,9 +691,6 @@ def _py_sorted(iterable, key, reverse):
 SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
                       filter, any, all, sorted)
 
-if six.PY2:
-  SUPPORTED_BUILTINS += (xrange,)
-
 BUILTIN_FUNCTIONS_MAP = {
     'abs': abs_,
     'any': any_,
@@ -656,6 +705,5 @@ BUILTIN_FUNCTIONS_MAP = {
     'print': print_,
     'range': range_,
     'sorted': sorted_,
-    'xrange': range_,
     'zip': zip_,
 }

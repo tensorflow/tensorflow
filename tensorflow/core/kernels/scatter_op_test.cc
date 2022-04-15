@@ -110,7 +110,7 @@ TEST_F(ScatterUpdateOpTest, Simple_Two64) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int64>(TensorShape({3}), {0, 4, 2});
+  AddInputFromArray<int64_t>(TensorShape({3}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   TF_ASSERT_OK(RunOpKernel());
@@ -309,7 +309,7 @@ void BM_ScatterHelper(::testing::benchmark::State& state, int embedding_size,
   for (auto i : state) {
     Status s = bm.RunOpKernel();
   }
-  state.SetItemsProcessed((static_cast<int64>(kNumUpdates) * embedding_size) *
+  state.SetItemsProcessed((static_cast<int64_t>(kNumUpdates) * embedding_size) *
                           state.iterations());
 }
 
@@ -321,7 +321,7 @@ void BM_ScatterUpdateInt32(::testing::benchmark::State& state) {
 void BM_ScatterUpdateInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterHelper<int64>(state, embedding_size, "ScatterUpdate");
+  BM_ScatterHelper<int64_t>(state, embedding_size, "ScatterUpdate");
 }
 
 void BM_ScatterAddInt32(::testing::benchmark::State& state) {
@@ -338,7 +338,7 @@ void BM_ScatterAddInt32Large(::testing::benchmark::State& state) {
 void BM_ScatterAddInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterHelper<int64>(state, embedding_size, "ScatterAdd");
+  BM_ScatterHelper<int64_t>(state, embedding_size, "ScatterAdd");
 }
 
 void BM_ScatterMulInt32(::testing::benchmark::State& state) {
@@ -349,7 +349,7 @@ void BM_ScatterMulInt32(::testing::benchmark::State& state) {
 void BM_ScatterMulInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterHelper<int64>(state, embedding_size, "ScatterMul");
+  BM_ScatterHelper<int64_t>(state, embedding_size, "ScatterMul");
 }
 
 void BM_ScatterDivInt32(::testing::benchmark::State& state) {
@@ -360,7 +360,7 @@ void BM_ScatterDivInt32(::testing::benchmark::State& state) {
 void BM_ScatterDivInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterHelper<int64>(state, embedding_size, "ScatterDiv");
+  BM_ScatterHelper<int64_t>(state, embedding_size, "ScatterDiv");
 }
 
 void BM_ScatterMinInt32(::testing::benchmark::State& state) {
@@ -371,7 +371,7 @@ void BM_ScatterMinInt32(::testing::benchmark::State& state) {
 void BM_ScatterMinInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterHelper<int64>(state, embedding_size, "ScatterMin");
+  BM_ScatterHelper<int64_t>(state, embedding_size, "ScatterMin");
 }
 
 void BM_ScatterMaxInt32(::testing::benchmark::State& state) {
@@ -382,7 +382,7 @@ void BM_ScatterMaxInt32(::testing::benchmark::State& state) {
 void BM_ScatterMaxInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterHelper<int64>(state, embedding_size, "ScatterMax");
+  BM_ScatterHelper<int64_t>(state, embedding_size, "ScatterMax");
 }
 
 BENCHMARK(BM_ScatterUpdateInt32)

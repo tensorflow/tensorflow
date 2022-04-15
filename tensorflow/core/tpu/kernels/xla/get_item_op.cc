@@ -51,9 +51,9 @@ class GetItemXlaOp : public XlaOpKernel {
       operands.push_back(const_zero);
     }
 
-    std::vector<int64> dims = {0};
-    std::vector<int64> slice_sizes = {1};
-    std::vector<int64> out_sizes = {};
+    std::vector<int64_t> dims = {0};
+    std::vector<int64_t> slice_sizes = {1};
+    std::vector<int64_t> out_sizes = {};
     for (int i = 1; i < data_shape.dims(); i++) {
       dims.push_back(i);
       auto size = data_shape.dim_size(i);

@@ -33,10 +33,6 @@ bazel-bin/tensorflow/python/tools/freeze_graph \
 You can also look at freeze_graph_test.py for an example of how to use it.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import re
 import sys

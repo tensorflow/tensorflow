@@ -11,12 +11,13 @@ graph.
 *   [Control flow](control_flow.md)
 *   [Functions and function calls](functions.md)
 *   [Error handling](error_handling.md)
+*   [Operator semantics](operators.md)
 *   [Limitations](limitations.md)
 *   [Common errors](common_errors.md)
 
-For more information on AutoGraph, see the following articles:
+Also see:
 
-*   [AutoGraph guide](https://www.tensorflow.org/guide/function)
-*   [tf.function tutorial](https://www.tensorflow.org/tutorials/customization/performance)
-*   [Eager guide](https://www.tensorflow.org/guide/eager)
 *   [AutoGraph blog post](https://medium.com/tensorflow/autograph-converts-python-into-tensorflow-graphs-b2a871f87ec7)
+*   [AutoGraph deep dive](https://www.youtube.com/watch?v=NIEgzljyDyI)
+*   [tf.function guide](https://www.tensorflow.org/guide/function)
+*   [Intro to TF graphs](https://www.tensorflow.org/guide/intro_to_graphs)

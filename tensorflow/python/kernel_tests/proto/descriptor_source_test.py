@@ -15,10 +15,6 @@
 # =============================================================================
 """Tests for proto ops reading descriptors from other sources."""
 # Python3 preparedness imports.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.kernel_tests.proto import descriptor_source_test_base as test_base
 from tensorflow.python.ops import proto_ops
 from tensorflow.python.platform import test

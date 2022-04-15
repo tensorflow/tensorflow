@@ -31,6 +31,9 @@ namespace dnn {
 // A helper class to convert C/C++ types to the proper enums.
 template <typename T>
 struct ToDataType;
+
+// Note: If you add a new specialization below, make sure to add the
+// corresponding definition in stream_executor/dnn.cc.
 template <>
 struct ToDataType<float> {
   static constexpr DataType value = DataType::kFloat;
@@ -42,6 +45,10 @@ struct ToDataType<double> {
 template <>
 struct ToDataType<Eigen::half> {
   static constexpr DataType value = DataType::kHalf;
+};
+template <>
+struct ToDataType<Eigen::bfloat16> {
+  static constexpr DataType value = DataType::kBF16;
 };
 template <>
 struct ToDataType<tensorflow::int8> {

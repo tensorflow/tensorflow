@@ -20,9 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/checkpoint_callback_manager.h"
 #include "tensorflow/core/kernels/save_restore_tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -98,6 +100,7 @@ class SaveV2 : public OpKernel {
     const Tensor& shape_and_slices = context->input(2);
     ValidateInputs(true /* is save op */, context, prefix, tensor_names,
                    shape_and_slices);
+    if (!context->status().ok()) return;
 
     const int kFixedInputs = 3;  // Prefix, tensor names, shape_and_slices.
     const int num_tensors = static_cast<int>(tensor_names.NumElements());
@@ -156,6 +159,25 @@ class SaveV2 : public OpKernel {
     }
     OP_REQUIRES_OK(context, writer.Finish());
     VLOG(1) << "Done BundleWriter, prefix_string: " << prefix_string;
+
+    ResourceMgr* resource_manager = context->resource_manager();
+    if (resource_manager != nullptr) {
+      checkpoint::CheckpointCallbackManager* checkpoint_callback_manager;
+      OP_REQUIRES_OK(
+          context,
+          resource_manager
+              ->LookupOrCreate<checkpoint::CheckpointCallbackManager>(
+                  resource_manager->default_container(),
+                  std::string(
+                      checkpoint::kCheckpointCallbackManagerResourceName),
+                  &checkpoint_callback_manager,
+                  [](checkpoint::CheckpointCallbackManager** out) {
+                    *out = new checkpoint::CheckpointCallbackManager();
+                    return Status::OK();
+                  }));
+      checkpoint_callback_manager->Save(prefix_string);
+      checkpoint_callback_manager->Unref();
+    }
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SaveV2").Device(DEVICE_CPU), SaveV2);
@@ -177,6 +199,7 @@ class RestoreV2 : public OpKernel {
                                         " expected dtypes."));
     ValidateInputs(false /* not save op */, context, prefix, tensor_names,
                    shape_and_slices);
+    if (!context->status().ok()) return;
 
     const string& prefix_string = prefix.scalar<tstring>()();
 
@@ -203,6 +226,25 @@ class RestoreV2 : public OpKernel {
     // If found, invokes the V2 reader.
     OP_REQUIRES_OK(context, RestoreTensorsV2(context, prefix, tensor_names,
                                              shape_and_slices, dtypes_));
+
+    ResourceMgr* resource_manager = context->resource_manager();
+    if (resource_manager != nullptr) {
+      checkpoint::CheckpointCallbackManager* checkpoint_callback_manager;
+      OP_REQUIRES_OK(
+          context,
+          resource_manager
+              ->LookupOrCreate<checkpoint::CheckpointCallbackManager>(
+                  resource_manager->default_container(),
+                  std::string(
+                      checkpoint::kCheckpointCallbackManagerResourceName),
+                  &checkpoint_callback_manager,
+                  [](checkpoint::CheckpointCallbackManager** out) {
+                    *out = new checkpoint::CheckpointCallbackManager();
+                    return Status::OK();
+                  }));
+      checkpoint_callback_manager->Restore(prefix_string);
+      checkpoint_callback_manager->Unref();
+    }
   }
 
  private:

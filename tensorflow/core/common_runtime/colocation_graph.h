@@ -278,12 +278,17 @@ class ColocationGraph {
 
   Status ColocateResourceOrRefEdge(const Node* src, const Node* dst);
 
+  // Adds colocation constraints to data types known not to support copying.
+  Status ColocateUncopiableTypeEdges(
+      std::unordered_set<Node*>* inspection_required);
+
   // Updates this ColocationGraph by making sure that all nodes
   // touching resource and/or ref tensors are colocated.
   // As it iterates over the edges, fills the `inspection_required` set with
   // the nodes that
   // PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired
   // deems as requiring deep inspection by placer. This is an optimization.
+  // TODO(mdan): Deprecate in favor of ColocateUncopiableTypeEdges.
   Status ColocateResourceAndRefEdges(
       std::unordered_set<Node*>* inspection_required);
 
@@ -367,7 +372,6 @@ class ColocationGraph {
 
   const Graph& graph_;
   const FunctionStack stack_;
-  const FunctionLibraryDefinition& flib_def_;
   std::vector<Member> members_;
   InspectingPlacer inspecting_placer_;
   PlacerInspectionRequiredOpChecker inspection_required_checker_;

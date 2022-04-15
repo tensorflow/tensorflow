@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -45,15 +45,27 @@ namespace TFL {
 
 namespace {
 class DefaultQuantParamsPass
-    : public PassWrapper<DefaultQuantParamsPass, FunctionPass> {
+    : public PassWrapper<DefaultQuantParamsPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DefaultQuantParamsPass)
+
   explicit DefaultQuantParamsPass(double default_min, double default_max,
                                   bool is_signed)
       : default_min_(default_min),
         default_max_(default_max),
         is_signed_(is_signed) {}
 
-  void runOnFunction() override;
+  void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-default-quant";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Apply quantization with default quantization parameter";
+  }
 
  private:
   // Whether the value is used as a bias input of another op. Here we assume
@@ -91,8 +103,8 @@ class DefaultQuantParamsPass
 };
 }  // namespace
 
-void DefaultQuantParamsPass::runOnFunction() {
-  FuncOp func = getFunction();
+void DefaultQuantParamsPass::runOnOperation() {
+  FuncOp func = getOperation();
   OpBuilder builder(func);
 
   std::vector<Value> activation_values;
@@ -109,10 +121,10 @@ void DefaultQuantParamsPass::runOnFunction() {
   }
 
   func.walk([&](Operation *op) {
-    if (op->hasTrait<OpTrait::IsTerminator>() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op))
+    if (quant::IsOpNotQuantizable(op) ||
+        op->getParentOfType<TFL::CustomTfOp>()) {
       return;
+    }
 
     for (auto res : op->getResults()) {
       if (UsedAsBias(res)) {
@@ -231,13 +243,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
 }
 
 // Registers this pass with default values, only for test
-static PassRegistration<DefaultQuantParamsPass> pass(
-    "tfl-default-quant",
-    "Apply quantization with default quantization parameter", [] {
-      return CreateDefaultQuantParamsPass(/*default_min=*/-1.0,
-                                          /*default_max=*/1.0,
-                                          /*is_signed=*/false);
-    });
+static PassRegistration<DefaultQuantParamsPass> pass([] {
+  return CreateDefaultQuantParamsPass(/*default_min=*/-1.0,
+                                      /*default_max=*/1.0,
+                                      /*is_signed=*/false);
+});
 
 }  // namespace TFL
 }  // namespace mlir

@@ -293,8 +293,6 @@ message ObjectDetectionParams {
   // Model's outputs should be same as a TFLite-compatible SSD model.
   // Refer:
   // https://www.tensorflow.org/lite/models/object_detection/overview#output
-  // TODO(b/133772912): Generalize support for other types of object detection
-  // models.
   optional TfliteInferenceParams inference_params = 1;
   // Optional. Used to match ground-truth categories with model output.
   // SSD Mobilenet V1 Model trained on COCO assumes class 0 is background class

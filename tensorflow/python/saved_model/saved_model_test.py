@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import six
 
@@ -1372,7 +1368,7 @@ class SavedModelTest(SavedModelTestBase):
     # OpKernel registered to handle T = double.
     sess = session.Session(graph=ops.Graph())
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "No OpKernel was registered.*DOUBLE"):
+                                "(?s)No OpKernel was registered.*DOUBLE"):
       loader.load(sess, ["foo"], export_dir)
 
 

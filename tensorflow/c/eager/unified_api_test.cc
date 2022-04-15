@@ -90,7 +90,7 @@ Status TestTensorShape2x4(AbstractContext* ctx,
     return errors::InvalidArgument(
         "Tensor expected to have rank 2 found rank: ", shape.dims());
   }
-  int64 dim_sizes[] = {2, 4};
+  int64_t dim_sizes[] = {2, 4};
   for (int i = 0; i < shape.dims(); i++) {
     if (shape.dim_size(i) != dim_sizes[i]) {
       return errors::InvalidArgument("Dim ", i, " expected to be of size ",
@@ -170,7 +170,7 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
   {
     tracing::TracingTensorHandle* x_raw = nullptr;
     PartialTensorShape shape;
-    int64 dim_sizes[] = {2, -1};
+    int64_t dim_sizes[] = {2, -1};
     Status s = PartialTensorShape::MakePartialShape(dim_sizes, 2, &shape);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(

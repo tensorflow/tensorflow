@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
-#include <unordered_map>
+#include <algorithm>
+#include <string>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -29,17 +31,17 @@ void MetricTableReport::AddEntry(Entry entry) {
   entries_.push_back(std::move(entry));
 }
 
-void MetricTableReport::SetMetricName(string metric_name) {
+void MetricTableReport::SetMetricName(std::string metric_name) {
   metric_name_ = std::move(metric_name);
 }
 
-void MetricTableReport::SetEntryName(string entry_name) {
+void MetricTableReport::SetEntryName(std::string entry_name) {
   entry_name_ = std::move(entry_name);
 }
 
 void MetricTableReport::SetShowAllEntries() {
-  max_entries_to_show_ = std::numeric_limits<int64>::max();
-  max_entries_per_category_to_show_ = std::numeric_limits<int64>::max();
+  max_entries_to_show_ = std::numeric_limits<int64_t>::max();
+  max_entries_per_category_to_show_ = std::numeric_limits<int64_t>::max();
   max_metric_proportion_to_show_ = 1.1;  // more than 100%
 }
 
@@ -47,7 +49,7 @@ void MetricTableReport::SetShowCategoryTable() { show_category_table_ = true; }
 
 void MetricTableReport::SetShowEntryTable() { show_entry_table_ = true; }
 
-string MetricTableReport::MakeReport(double expected_metric_sum) {
+std::string MetricTableReport::MakeReport(double expected_metric_sum) {
   expected_metric_sum_ = expected_metric_sum;
   report_.clear();
 
@@ -78,12 +80,12 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
   // Write something to the log normally to get the date-time and file prefix.
   LOG(INFO) << "Writing report to log.";
 
-  int64 pos = 0;
-  const string report = MakeReport(expected_metric_sum);
+  int64_t pos = 0;
+  const std::string report = MakeReport(expected_metric_sum);
   const int report_size = report.size();
   while (pos < report_size) {
-    int64 end_of_line = report.find('\n', pos);
-    const int64 _npos = string::npos;
+    int64_t end_of_line = report.find('\n', pos);
+    const int64_t _npos = std::string::npos;
     if (end_of_line == _npos) {
       end_of_line = report.size();
     }
@@ -100,7 +102,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 std::vector<MetricTableReport::Category> MetricTableReport::MakeCategories(
     const std::vector<Entry>* entries) {
   // Create the categories using a category_text -> category map.
-  std::unordered_map<string, Category> category_map;
+  absl::flat_hash_map<std::string, Category> category_map;
   for (const Entry& entry : *entries) {
     Category& category = category_map[entry.category_text];
     category.metric_sum += entry.metric;
@@ -141,7 +143,7 @@ void MetricTableReport::AppendCategoryTable() {
   AppendLine();
 
   double metric_sum = UnaccountedMetric();
-  int64 categories_shown = 0;
+  int64_t categories_shown = 0;
   for (const auto& category : categories) {
     if (categories_shown >= max_entries_to_show_ ||
         metric_sum / expected_metric_sum_ > max_metric_proportion_to_show_) {
@@ -151,7 +153,7 @@ void MetricTableReport::AppendCategoryTable() {
     metric_sum += category.metric_sum;
 
     // Show the category.
-    string text = category.category_text;
+    std::string text = category.category_text;
     if (text.empty()) {
       text = "[no category]";
     }
@@ -161,25 +163,25 @@ void MetricTableReport::AppendCategoryTable() {
 
     // Show the top entries in the category.
     const char* const kIndentPrefix = "                              * ";
-    int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
-                                            category.entries.size());
-    const int64 category_entries_size = category.entries.size();
+    int64_t entries_to_show = std::min<int64_t>(
+        max_entries_per_category_to_show_, category.entries.size());
+    const int64_t category_entries_size = category.entries.size();
     if (category_entries_size == entries_to_show + 1) {
       // May as well show the last entry on the line that would otherwise say
       // that there is a single entry not shown.
       ++entries_to_show;
     }
-    for (int64 i = 0; i < entries_to_show; ++i) {
+    for (int64_t i = 0; i < entries_to_show; ++i) {
       AppendLine(kIndentPrefix, MetricPercent(category.entries[i]->metric), " ",
                  category.entries[i]->short_text);
     }
-    const int64 remaining_entries = category.entries.size() - entries_to_show;
+    const int64_t remaining_entries = category.entries.size() - entries_to_show;
     if (remaining_entries > 0) {
       AppendLine(kIndentPrefix, "... (", remaining_entries, " more ",
                  entry_name_, ")");
     }
   }
-  const int64 remaining_categories = categories.size() - categories_shown;
+  const int64_t remaining_categories = categories.size() - categories_shown;
   if (remaining_categories > 0) {
     AppendTableRow(
         absl::StrCat("... (", remaining_categories, " more categories)"),
@@ -193,7 +195,7 @@ void MetricTableReport::AppendEntryTable() {
   AppendLine();
 
   double metric_sum = UnaccountedMetric();
-  int64 entries_shown = 0;
+  int64_t entries_shown = 0;
   for (const auto& entry : entries_) {
     if (entries_shown >= max_entries_to_show_ ||
         metric_sum / expected_metric_sum_ > max_metric_proportion_to_show_) {
@@ -202,13 +204,13 @@ void MetricTableReport::AppendEntryTable() {
     ++entries_shown;
     metric_sum += entry.metric;
 
-    string text = entry.text;
+    std::string text = entry.text;
     if (text.empty()) {
       text = "[no entry text]";
     }
     AppendTableRow(text, entry.metric, metric_sum);
   }
-  const int64 remaining_entries = entries_.size() - entries_shown;
+  const int64_t remaining_entries = entries_.size() - entries_shown;
   if (remaining_entries > 0) {
     AppendTableRow(
         absl::StrCat("... (", remaining_entries, " more ", entry_name_, ")"),
@@ -216,22 +218,23 @@ void MetricTableReport::AppendEntryTable() {
   }
 }
 
-void MetricTableReport::AppendTableRow(const string& text, const double metric,
+void MetricTableReport::AppendTableRow(const std::string& text,
+                                       const double metric,
                                        const double running_metric_sum) {
   // This is the widest metric number possible, assuming non-negative metrics,
   // so align to that width.
-  const int64 max_metric_string_size =
+  const int64_t max_metric_string_size =
       MetricString(expected_metric_sum_).size();
-  string metric_string = MetricString(metric);
+  std::string metric_string = MetricString(metric);
 
   // Don't try to make a gigantic string and crash if expected_metric_sum_ is
   // wrong somehow.
-  int64 padding_len = 1;
-  const int64 metric_string_size = metric_string.size();
+  int64_t padding_len = 1;
+  const int64_t metric_string_size = metric_string.size();
   if (max_metric_string_size >= metric_string_size) {
     padding_len += max_metric_string_size - metric_string.size();
   }
-  string padding(padding_len, ' ');
+  std::string padding(padding_len, ' ');
   AppendLine(padding, metric_string, " (", MetricPercent(metric), " Σ",
              MetricPercent(running_metric_sum), ")   ", text);
 }
@@ -244,13 +247,13 @@ double MetricTableReport::UnaccountedMetric() {
   return expected_metric_sum_ - metric_sum;
 }
 
-string MetricTableReport::MetricString(double metric) {
+std::string MetricTableReport::MetricString(double metric) {
   // Round to integer and stringify.
-  string s1 = absl::StrCat(std::llround(metric));
+  std::string s1 = absl::StrCat(std::llround(metric));
 
   // Code below commafies the string, e.g. "1234" becomes "1,234".
   absl::string_view sp1(s1);
-  string output;
+  std::string output;
   // Copy leading non-digit characters unconditionally.
   // This picks up the leading sign.
   while (!sp1.empty() && !absl::ascii_isdigit(sp1[0])) {
@@ -258,7 +261,7 @@ string MetricTableReport::MetricString(double metric) {
     sp1.remove_prefix(1);
   }
   // Copy rest of input characters.
-  for (int64 i = 0, end = sp1.size(); i < end; ++i) {
+  for (int64_t i = 0, end = sp1.size(); i < end; ++i) {
     if (i > 0 && (sp1.size() - i) % 3 == 0) {
       output.push_back(',');
     }
@@ -267,7 +270,7 @@ string MetricTableReport::MetricString(double metric) {
   return output;
 }
 
-string MetricTableReport::MetricPercent(double metric) {
+std::string MetricTableReport::MetricPercent(double metric) {
   return absl::StrFormat("%5.2f%%", metric / expected_metric_sum_ * 100.0);
 }
 

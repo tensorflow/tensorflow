@@ -135,7 +135,7 @@ TEST(IsSingleGpuGraph, ReturnsFalseForMultiGpuGraph) {
   EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
 }
 
-xla::StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
+StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
     const Scope& scope, FunctionLibraryDefinition* flib_def = nullptr) {
   FunctionDefLibrary flib;
   FunctionLibraryDefinition flib_def_local(OpRegistry::Global(), flib);

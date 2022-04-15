@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for test file generation for speech commands."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.examples.speech_commands import generate_streaming_test_wav

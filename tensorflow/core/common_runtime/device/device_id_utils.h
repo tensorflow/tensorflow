@@ -78,7 +78,7 @@ class DeviceIdUtil {
       const std::vector<string> order_str =
           str_util::Split(visible_device_list, ',');
       for (const string& platform_device_id_str : order_str) {
-        int32 platform_device_id;
+        int32_t platform_device_id;
         if (!strings::safe_strto32(platform_device_id_str,
                                    &platform_device_id)) {
           return errors::InvalidArgument(

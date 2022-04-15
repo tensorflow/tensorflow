@@ -128,6 +128,8 @@ struct TestCase {
     std::vector<int> expected_output;
   };
   std::vector<CurrentIdAndOutput> subtests;
+
+  std::vector<std::vector<int>> participating_device_groups;
   bool expected_failure;
 
   std::string ToString() const;
@@ -171,6 +173,7 @@ std::vector<TestCase> GetTestCases() {
         {33, {33, 44, 55}},
         {44, {33, 44, 55}},
       },
+      {{33, 44, 55}},          // participating device groups
       false                    // expected_failure
     },
 
@@ -187,6 +190,7 @@ std::vector<TestCase> GetTestCases() {
         {34, {34, 45, 56}},
         {45, {34, 45, 56}},
       },
+      {{33, 44, 55}, {34, 45, 56}},    // participating device groups
       false                            // expected_failure
     },
 
@@ -202,6 +206,7 @@ std::vector<TestCase> GetTestCases() {
         // 44 is r1, so it should give {r1, r2}.
         {44, {44, 55}},
       },
+      {{ 33 }, {44, 55}},    // participating device groups
       false                  // expected_failure
     },
 
@@ -219,6 +224,7 @@ std::vector<TestCase> GetTestCases() {
         // 45 is r1p1, so should get r1p1 and r2p1.
         {45, {45, 56}},
       },
+      {{33}, {34}, {44, 55}, {45, 56}},  // participating device groups
       false                              // expected_failure
     },
   };
@@ -242,7 +248,9 @@ std::vector<TestCase> GetTestCases() {
         {47, {46, 47}},
         {58, {57, 58}},
       },
-      false                        // expected_failure
+      {{33, 34}, {44, 45}, {55, 56},
+       {35, 36}, {46, 47}, {57, 58}},  // participating device groups
+      false                            // expected_failure
     }
   };
 
@@ -258,10 +266,10 @@ std::vector<TestCase> GetTestCases() {
         {33, {33, 34}},
         // 34 is r0p1, so should get r0 from all partitions.
         {34, {33, 34}},
-        // 45 is r1p1, so should get r1, r2
+        // 45 is r1p1, so should get r1, r2 from all partitions.
         {45, {44, 45, 55, 56}},
-                                 // from all partitons.
       },
+      {{33, 34}, {44, 45, 55, 56}},   // participating device groups
       false
     },
 
@@ -276,6 +284,7 @@ std::vector<TestCase> GetTestCases() {
         {34, {33, 34, 44, 45, 55, 56}},
         {56, {33, 34, 44, 45, 55, 56}},
       },
+      {{33, 34, 44, 45, 55, 56}},        // participating device groups
       false                              // expected_failure
     },
   };
@@ -303,6 +312,7 @@ std::vector<TestCase> GetTestCases() {
         {55, {45, 55, 56}},
         {56, {45, 55, 56}},
       },
+      {{33}, {34, 44}, {45, 55, 56}},  // participating device groups
       false                            // expected_failure
     },
     {
@@ -313,6 +323,7 @@ std::vector<TestCase> GetTestCases() {
       {           // subtests
         {33, {33}},
       },
+      {{33}},      // participating device groups
       true         // expected_failure
     },
   };
@@ -327,6 +338,7 @@ std::vector<TestCase> GetTestCases() {
       {                     // subtests
         {33, {}},
       },
+      {{33, 44, 55}},       // participating device groups
       true                  // expected_failure
     },
   };
@@ -381,15 +393,16 @@ TEST_P(GetParticipatingDevicesTest, Test) {
                       return group;
                     });
 
+  StatusOr<CollectiveOpGroupMode> group_mode =
+      GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
+
+  if (!group_mode.ok()) {
+    EXPECT_TRUE(tc.expected_failure);
+    return;
+  }
+
   // Execute each sub-test.
   for (const TestCase::CurrentIdAndOutput &subtest : tc.subtests) {
-    StatusOr<CollectiveOpGroupMode> group_mode =
-        GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
-    if (!group_mode.ok()) {
-      EXPECT_TRUE(tc.expected_failure);
-      continue;
-    }
-
     StatusOr<std::vector<GlobalDeviceId>> actual =
         GetParticipatingDevices(GlobalDeviceId(subtest.current_id),
                                 device_assignment, replica_groups, *group_mode);
@@ -403,6 +416,30 @@ TEST_P(GetParticipatingDevicesTest, Test) {
                       [](int id) { return GlobalDeviceId(id); });
     EXPECT_EQ(*actual, expected);
   }
+
+  StatusOr<std::vector<std::vector<GlobalDeviceId>>> actual_device_groups =
+      GetParticipatingDevicesGroups(device_assignment, replica_groups,
+                                    *group_mode);
+
+  if (!actual_device_groups.ok()) {
+    EXPECT_TRUE(tc.expected_failure);
+    return;
+  }
+
+  std::vector<std::vector<GlobalDeviceId>> expect_device_groups;
+  expect_device_groups.reserve(tc.participating_device_groups.size());
+
+  for (auto subgroup : tc.participating_device_groups) {
+    std::vector<GlobalDeviceId> subgroup_device_ids;
+    subgroup_device_ids.reserve(subgroup.size());
+    absl::c_transform(subgroup, std::back_inserter(subgroup_device_ids),
+                      [](int id) { return GlobalDeviceId(id); });
+
+    expect_device_groups.push_back(subgroup_device_ids);
+  }
+
+  EXPECT_THAT(*actual_device_groups,
+              testing::UnorderedElementsAreArray(expect_device_groups));
 }
 
 INSTANTIATE_TEST_SUITE_P(GetParticipatingDevices, GetParticipatingDevicesTest,

@@ -35,7 +35,7 @@ class FuzzCheckNumerics : public FuzzSession {
     const float* float_data = reinterpret_cast<const float*>(data);
 
     Tensor input_tensor(tensorflow::DT_FLOAT,
-                        TensorShape({static_cast<int64>(num_floats)}));
+                        TensorShape({static_cast<int64_t>(num_floats)}));
     auto flat_tensor = input_tensor.flat<float>();
     for (size_t i = 0; i < num_floats; i++) {
       flat_tensor(i) = float_data[i];

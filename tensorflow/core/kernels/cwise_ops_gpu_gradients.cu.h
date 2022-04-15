@@ -43,8 +43,11 @@ struct SimpleBinaryFunctor<GPUDevice, Functor> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in1,
                   typename Functor::tin_type in2) {
-    To32Bit(out).device(d) =
-        To32Bit(in1).binaryExpr(in2, typename Functor::func());
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in1_32) {
+          out32.device(d) = in1_32.binaryExpr(in2, typename Functor::func());
+        },
+        out, in1);
   }
 };
 

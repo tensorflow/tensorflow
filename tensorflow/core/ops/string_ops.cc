@@ -80,6 +80,21 @@ REGISTER_OP("StringToHashBucketFast")
     .Attr("num_buckets: int >= 1")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("_TensorToHashBucketFast")
+    .Input("input: T")
+    .Output("output: int64")
+    .Attr("T: {int8, uint8, int16, uint16, int32, uint32, int64, uint64}")
+    .Attr("num_buckets: int >= 1")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Internal operation which is a composition of converting the tensor to a string
+tensor (AsString) and then calling hash functions (StringToHashBucketFast):
+reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
+expected to create these operators.
+)doc");
+
 REGISTER_OP("StringToHashBucketStrong")
     .Input("input: string")
     .Output("output: int64")
@@ -114,9 +129,7 @@ REGISTER_OP("UnsortedSegmentJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr(
-        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
-        "bool, variant}")
+    .Attr("T: {realnumbertype, complex64, complex128, bool, variant}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -139,7 +152,7 @@ REGISTER_OP("StringFormat")
 
       std::vector<std::string> split_template;
       split_template = absl::StrSplit(template_, placeholder);
-      int64 num_placeholders = split_template.size() - 1;
+      int64_t num_placeholders = split_template.size() - 1;
       if (c->num_inputs() != num_placeholders) {
         return errors::InvalidArgument(strings::StrCat(
             "num placeholders in template and num inputs must match: ",
@@ -266,7 +279,7 @@ REGISTER_OP("Substr")
         TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
       }
       // Check that dimensions are equal
-      for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
+      for (int32_t i = 0; i < c->Rank(pos_shape); ++i) {
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
         DimensionHandle len_dim = c->Dim(len_shape, i);
         if (c->Value(pos_dim) != c->Value(len_dim)) {

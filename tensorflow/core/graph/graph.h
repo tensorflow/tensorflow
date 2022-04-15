@@ -38,6 +38,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -101,13 +102,16 @@ class Node {
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  NodeDef* mutable_def();
+
   // input and output types
   int32 num_inputs() const;
-  DataType input_type(int32 i) const;
+  DataType input_type(int32_t i) const;
   const DataTypeVector& input_types() const;
 
   int32 num_outputs() const;
-  DataType output_type(int32 o) const;
+  DataType output_type(int32_t o) const;
   const DataTypeVector& output_types() const;
 
   // The device requested by the user.  For the actual assigned device,
@@ -135,6 +139,7 @@ class Node {
   // Sets 'original_node_names' field of this node's DebugInfo proto to
   // 'names'.
   void set_original_node_names(const std::vector<string>& names);
+  void set_original_func_names(const std::vector<string>& names);
 
   // Read only access to attributes
   AttrSlice attrs() const;
@@ -204,6 +209,10 @@ class Node {
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
 
+  bool IsDistributedCommunication() const {
+    return op_def().is_distributed_communication();
+  }
+
   template <typename T>
   void AddAttr(const std::string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
@@ -253,7 +262,19 @@ class Node {
     return stack_trace_;
   }
 
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
+  // Erases type information from the node.
+  void ClearTypeInfo();
+
+  // Called after an incident non-control edge has changed. Does nothing if not
+  // all input edges are defined.
+  void RunForwardTypeInference();
+
  private:
+  // TODO(mdan): Drop this.
   friend class Graph;
   Node();
 
@@ -269,10 +290,6 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
-
-  // Called after an attr has changed. Decides whether we need to update some
-  // property of the node (stored in props_).
-  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const std::string& name);
 
@@ -355,6 +372,7 @@ class Node {
 struct NodeDebugInfo {
   const std::string name;
   std::vector<string> original_node_names;
+  std::vector<string> original_func_names;
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
@@ -518,6 +536,9 @@ class Graph {
 
   ~Graph();
 
+  // Clone the current graph into a new one.
+  std::unique_ptr<Graph> Clone();
+
   static const int kControlSlot;
 
   // The GraphDef version range of this graph (see graph.proto).
@@ -528,6 +549,9 @@ class Graph {
   // input/output types for the node. *this owns the returned instance.
   // Returns nullptr and sets *status on error.
   Node* AddNode(NodeDef node_def, Status* status);
+
+  // Same as above, but using StatusOr. This method is always preferred.
+  StatusOr<Node*> AddNode(NodeDef node_def);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
@@ -540,6 +564,10 @@ class Graph {
   void RemoveNode(Node* node);
 
   void Copy(const Graph& src);
+
+  // Removes all nodes from this graph, including all edges from or to them.
+  // No Node* references to the Graph are valid post.
+  void Clear();
 
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
@@ -660,6 +688,9 @@ class Graph {
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
+  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
+  FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
+
   void CheckDeviceNameIndex(int index) {
     DCHECK_GE(index, 0);
     DCHECK_LT(index, static_cast<int>(device_names_.size()));
@@ -721,10 +752,6 @@ class Graph {
     return construction_context_;
   }
 
-  void SetNodeType(StringPiece name, const FullTypeDef& type);
-
-  void NodeType(StringPiece name, FullTypeDef** result);
-
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -751,31 +778,8 @@ class Graph {
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
 
-  // Types table.
-  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
-  std::unordered_set<TypeRef, TypeHasher> types_;
-
-  // Experimental.
-  // Map from node node names to their outputs' FullType. Typically, the values
-  // in this map are identical to those in types_, but that is not enforced or
-  // guaranteed.
-  //
-  // The full type specification combines a Tensor's dtype, tensor_shape,
-  // variant_val, etc. into a unified representation.
-  // This definition may only contain concrete types (for example,
-  // Tensor<TypeVar<'T'>> is not a valid node type).
-  //
-  // Presently, FullType duplicates any information found in `dtype`. When set,
-  // it is always consistent with `dtype`. Eventually, `dtype` will be merged
-  // with FullType.
-  //
-  // For example, if a TensorProto has `dtype=DT_INT32`, then
-  // `full_type=FT_TENSOR[FT_INT32]`.
-  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
-  std::unordered_map<string, TypeRef> node_name_to_out_type_;
-
   // Number of nodes alive.
-  int64 num_nodes_ = 0;
+  int64_t num_nodes_ = 0;
 
   // Map from edge ids to allocated edges.  edges_[id] may be nullptr if
   // the edge with that id was removed from the graph.
@@ -868,6 +872,10 @@ inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
+}
+
+inline bool IsDistributedCommunication(const Node* n) {
+  return n->IsDistributedCommunication();
 }
 
 // NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see

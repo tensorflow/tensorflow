@@ -27,6 +27,11 @@ namespace hlo {
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
                                        mlir::Type new_type) {
   auto old_type = getElementTypeOrSelf(elements);
+  // TODO(kramerb): Add support when MLIR can represent const complex tensors.
+  if (old_type.isa<mlir::ComplexType>() || new_type.isa<mlir::ComplexType>()) {
+    return {};
+  }
+
   size_t bit_width = new_type.isBF16() ? 64 : new_type.getIntOrFloatBitWidth();
 
   if (old_type.isa<mlir::FloatType>()) {
@@ -35,7 +40,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
     using func_type = mlir::APInt(const llvm::APFloat&);
     if (auto newFloatType = new_type.dyn_cast<mlir::FloatType>()) {
       // Float -> Float
-      return elements.mapValues(
+      return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
           new_type, llvm::function_ref<func_type>(
                         [&newFloatType](const llvm::APFloat& floatVal) {
                           llvm::APFloat newDouble(
@@ -48,7 +53,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
                         }));
     }
     // Float -> Int
-    return elements.mapValues(
+    return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
         new_type, llvm::function_ref<func_type>(
                       [&bit_width](const llvm::APFloat& floatVal) {
                         return llvm::APInt(
@@ -66,7 +71,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
   bool is_bool = old_type.isInteger(1);
   if (auto newFloatType = new_type.dyn_cast<mlir::FloatType>()) {
     // Int -> Float
-    return elements.mapValues(
+    return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
         new_type, llvm::function_ref<func_type>([&newFloatType, &is_bool](
                                                     const llvm::APInt& intVal) {
           int64_t val = is_bool ? intVal.getZExtValue() : intVal.getSExtValue();
@@ -79,7 +84,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
   }
   // new_type is Integer
   // Int -> Int
-  return elements.mapValues(
+  return elements.cast<DenseIntOrFPElementsAttr>().mapValues(
       new_type, llvm::function_ref<func_type>([&bit_width, &is_bool](
                                                   const llvm::APInt& intVal) {
         int64_t val = is_bool ? intVal.getZExtValue() : intVal.getSExtValue();

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Core module for TensorFlow distribution objects and helpers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util import deprecation
 
 

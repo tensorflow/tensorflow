@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Helpers to get device context."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 def enclosing_tpu_context():
   pass

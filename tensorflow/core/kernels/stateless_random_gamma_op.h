@@ -27,8 +27,8 @@ namespace functor {
 template <typename Device, typename T>
 struct StatelessRandomGammaFunctor {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64 num_samples, int64 num_alphas,
-                     int64 samples_per_alpha,
+                     int64_t num_samples, int64_t num_alphas,
+                     int64_t samples_per_alpha,
                      const random::PhiloxRandom& random, T* samples_flat);
 };
 

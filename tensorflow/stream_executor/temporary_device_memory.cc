@@ -56,7 +56,7 @@ bool TemporaryDeviceMemoryBase::IsAllocated() const {
 
 TemporaryDeviceMemoryBase::TemporaryDeviceMemoryBase(
     Stream* parent, DeviceMemoryBase device_memory,
-    uint64 allocation_generation)
+    uint64_t allocation_generation)
     : device_memory_(device_memory),
       allocation_generation_(allocation_generation),
       parent_(parent) {

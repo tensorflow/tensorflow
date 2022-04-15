@@ -98,10 +98,13 @@ class Conv2DTransposeTest(keras_parameterized.TestCase):
                              input_shape=(2, 5, 6, 3))
 
     input_data = np.arange(48).reshape((1, 4, 4, 3)).astype(np.float32)
-    expected_output = np.float32([[192, 228, 192, 228],
-                                  [336, 372, 336, 372],
-                                  [192, 228, 192, 228],
-                                  [336, 372, 336, 372]]).reshape((1, 4, 4, 1))
+    # pylint: disable=too-many-function-args
+    expected_output = np.float32([
+        [192, 228, 192, 228],
+        [336, 372, 336, 372],
+        [192, 228, 192, 228],
+        [336, 372, 336, 372]
+    ]).reshape((1, 4, 4, 1))
     testing_utils.layer_test(keras.layers.Conv2DTranspose,
                              input_data=input_data,
                              kwargs={'filters': 1,

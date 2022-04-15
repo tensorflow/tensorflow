@@ -23,9 +23,6 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-# Install realpath
-sudo apt-get install realpath
-
 # Update the version string to nightly
 if [ -n "${IS_NIGHTLY}" ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly
@@ -45,8 +42,9 @@ if [ -n "${IS_NIGHTLY}" ]; then
 fi
 
 # Upload to go/tf-sizetracker
-python3 ./tensorflow/tools/ci_build/sizetrack_helper.py \
-  --team tensorflow_libtensorflow \
-  --artifact_id ubuntu_cpu_nightly \
-  --upload \
-  --artifact "$(find lib_package -iname "libtensorflow*.tar.gz" -not -iname "*jni*" | head -n 1)"
+# TODO(191668861): Re-enable once issue is resolved.
+# python3 ./tensorflow/tools/ci_build/sizetrack_helper.py \
+#   --team tensorflow_libtensorflow \
+#   --artifact_id ubuntu_cpu_nightly \
+#   --upload \
+#   --artifact "$(find lib_package -iname "libtensorflow*.tar.gz" -not -iname "*jni*" | head -n 1)"

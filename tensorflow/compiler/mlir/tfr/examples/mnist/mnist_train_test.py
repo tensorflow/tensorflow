@@ -33,7 +33,7 @@ class MnistTrainTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(strategy=strategies))
   def testMnistTrain(self, strategy):
     accuracy = mnist_train.main(strategy)
-    self.assertGreater(accuracy, 0.75, 'accuracy sanity check')
+    self.assertGreater(accuracy, 0.7, 'accuracy sanity check')
 
 
 if __name__ == '__main__':

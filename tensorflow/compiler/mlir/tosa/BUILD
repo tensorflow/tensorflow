@@ -4,7 +4,7 @@
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
@@ -14,7 +14,6 @@ package(
 
 package_group(
     name = "internal",
-    includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/mlir/...",
     ],
@@ -38,18 +37,21 @@ filegroup(
     compatible_with = get_compatible_with_cloud(),
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tosa_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-pass-decls -name LegalizeTosa",
+            [
+                "-gen-pass-decls",
+                "-name=LegalizeTosa",
+            ],
             "transforms/passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/passes.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
@@ -61,7 +63,10 @@ cc_library(
         "transforms/passes.h.inc",
     ],
     compatible_with = get_compatible_with_cloud(),
-    deps = ["@llvm-project//mlir:Pass"],
+    deps = [
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
 )
 
 cc_library(
@@ -80,29 +85,33 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tosa_legalize_tf_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "transforms/tf_legalize_patterns.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tf_legalize_patterns.td",
-    td_srcs = [
+    deps = [
         ":tosa_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -125,32 +134,32 @@ cc_library(
         ":passes_header",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tosa_legalize_tfl_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-rewriters",
+            ["-gen-rewriters"],
             "transforms/tfl_legalize_patterns.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tfl_legalize_patterns.td",
-    td_srcs = [
+    deps = [
         ":tosa_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -160,6 +169,7 @@ cc_library(
         "tfl_passes.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
+        "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
     ],
     hdrs = [
@@ -172,14 +182,45 @@ cc_library(
         ":legalize_common",
         ":passes_header",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_tfl_passes",
+    srcs = [
+        "tf_tfl_passes.cc",
+        "transforms/legalize_tf_tfl.cc",
+    ],
+    hdrs = [
+        "tf_tfl_passes.h",
+        "transforms/passes.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [":friends"],
+    deps = [
+        ":legalize_common",
+        ":passes_header",
+        ":tf_passes",
+        ":tfl_passes",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
 )

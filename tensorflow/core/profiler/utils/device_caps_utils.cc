@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -46,16 +47,19 @@ void SetDeviceCaps(const DeviceCapabilities& caps, XPlane* plane) {
                             GetStatTypeStr(StatType::kDevCapComputeCapMinor)),
                         caps.compute_capability().minor());
   }
+  xplane.AddStatValue(
+      *xplane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kDevVendor)),
+      caps.device_vendor());
 }
 
 DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
   DeviceCapabilities caps;
-  XPlaneVisitor xplane(&plane);
+  XPlaneVisitor xplane = CreateTfXPlaneVisitor(&plane);
   xplane.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
     if (!stat.Type().has_value()) return;
     switch (stat.Type().value()) {
       case StatType::kDevCapClockRateKHz:
-        caps.set_clock_rate_in_ghz(stat.IntOrUintValue() * 1000000.0);
+        caps.set_clock_rate_in_ghz(stat.IntOrUintValue() / 1000000.0);
         break;
       case StatType::kDevCapCoreCount:
         caps.set_num_cores(stat.IntOrUintValue());
@@ -71,6 +75,9 @@ DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
         break;
       case StatType::kDevCapComputeCapMinor:
         caps.mutable_compute_capability()->set_minor(stat.IntOrUintValue());
+        break;
+      case StatType::kDevVendor:
+        caps.set_device_vendor(std::string(stat.StrOrRefValue()));
         break;
     }
   });

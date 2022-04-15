@@ -163,11 +163,11 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
 
 string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
   // input_shape string -> (static defined count, run count, run_micros)
-  std::map<string, std::tuple<int64, int64, int64>> input_shapes_attr;
+  std::map<string, std::tuple<int64_t, int64_t, int64_t>> input_shapes_attr;
   for (int i = 0; i < proto.graph_nodes_size(); ++i) {
     const GraphNodeProto& gnode = proto.graph_nodes(i);
     // Convert and sort by input_idx.
-    std::map<int, std::vector<int64>> input_shapes;
+    std::map<int, std::vector<int64_t>> input_shapes;
     for (const auto& inp : gnode.input_shapes()) {
       input_shapes[inp.first] = ShapeProtoToVec(inp.second);
     }
@@ -197,9 +197,9 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
     return "";
   }
 
-  std::vector<std::pair<string, std::tuple<int64, int64, int64>>>
+  std::vector<std::pair<string, std::tuple<int64_t, int64_t, int64_t>>>
       shape_count_vec(input_shapes_attr.begin(), input_shapes_attr.end());
-  std::sort(
+  std::stable_sort(
       shape_count_vec.begin(), shape_count_vec.end(),
       [](const std::pair<const string, std::tuple<int64, int64, int64>>& a,
          const std::pair<const string, std::tuple<int64, int64, int64>>& b) {
@@ -209,7 +209,7 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
   std::vector<string> input_types;
   input_types.reserve(shape_count_vec.size());
   for (const auto& s : shape_count_vec) {
-    std::tuple<int64, int64, int64> t = s.second;
+    std::tuple<int64_t, int64_t, int64_t> t = s.second;
     input_types.push_back(absl::StrFormat(
         "%s\t(run*%d|defined*%d)\texec_time: %s", s.first, std::get<1>(t),
         std::get<0>(t), FormatTime(std::get<2>(t))));

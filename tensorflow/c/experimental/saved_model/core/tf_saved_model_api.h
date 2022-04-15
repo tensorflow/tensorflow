@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
@@ -57,6 +58,10 @@ class TFSavedModelAPI : public SavedModelAPI {
   Status GetFunction(const std::string& function_path,
                      ConcreteFunction** function) override;
 
+  Status GetFunctions(
+      int node_id,
+      absl::flat_hash_map<std::string, ConcreteFunction*>* functions) override;
+
   Status GetSignatureDefFunction(const std::string& signature_def_key,
                                  SignatureDefFunction** function) override;
 
@@ -69,6 +74,8 @@ class TFSavedModelAPI : public SavedModelAPI {
   ~TFSavedModelAPI() override = default;
 
   Status GetVariable(const std::string& variable_path, Variable** variable);
+
+  SavedModelV2Bundle* GetBundle() override;
 
  private:
   TFSavedModelAPI(const std::string& directory, SavedModelV2Bundle bundle,

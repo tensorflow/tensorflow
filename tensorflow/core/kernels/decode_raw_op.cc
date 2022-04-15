@@ -16,11 +16,13 @@ limitations under the License.
 // See docs in ../ops/parse_ops.cc.
 
 #include <algorithm>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
@@ -40,9 +42,9 @@ class DecodeRawOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const auto& input = context->input(0);
-    int64 str_size = -1;
+    int64_t str_size = -1;
     auto flat_in = input.flat<tstring>();
-    for (int64 i = 0; i < flat_in.size(); ++i) {
+    for (int64_t i = 0; i < flat_in.size(); ++i) {
       const tstring& in_str = flat_in(i);
       if (str_size == -1) {
         str_size = in_str.size();
@@ -67,7 +69,7 @@ class DecodeRawOp : public OpKernel {
         errors::InvalidArgument("Input to DecodeRaw has length ", str_size,
                                 " that is not a multiple of ", sizeof(T),
                                 ", the size of ", DataTypeString(out_type_)));
-    const int64 added_dim = str_size / sizeof(T);
+    const int64_t added_dim = str_size / sizeof(T);
     out_shape.AddDim(added_dim);
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
@@ -79,7 +81,7 @@ class DecodeRawOp : public OpKernel {
     // If the data is already in the host's byte order, or if the width of the
     // output type is a single byte, we can copy the memory directly.
     if (!convert_data_endianness_ || sizeof(T) == 1) {
-      for (int64 i = 0; i < flat_in.size(); ++i) {
+      for (int64_t i = 0; i < flat_in.size(); ++i) {
         const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
         memcpy(out_data, in_data, str_size);
         out_data += added_dim;
@@ -87,7 +89,7 @@ class DecodeRawOp : public OpKernel {
     } else {
       // Otherwise, the data is not in the host's byte order, and rather than a
       // direct copy, we need to reverse the byte ordering of each element.
-      int64 element_size;
+      int64_t element_size;
       if (out_type_ == DT_COMPLEX64 || out_type_ == DT_COMPLEX128) {
         // For Complex data type, real and imaginary parts need to be swapped
         // separately
@@ -95,7 +97,7 @@ class DecodeRawOp : public OpKernel {
       } else {
         element_size = sizeof(T);
       }
-      for (int64 i = 0; i < flat_in.size(); ++i) {
+      for (int64_t i = 0; i < flat_in.size(); ++i) {
         const char* in_data_bytes =
             reinterpret_cast<const char*>(flat_in(i).data());
         char* out_data_bytes = reinterpret_cast<char*>(out_data);
@@ -133,10 +135,11 @@ REGISTER(uint16);
 REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
-REGISTER(int64);
+REGISTER(int64_t);
 REGISTER(bool);
 REGISTER(complex64);
 REGISTER(complex128);
+REGISTER(bfloat16);
 
 #undef REGISTER
 

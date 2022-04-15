@@ -14,16 +14,11 @@
 # ==============================================================================
 """Tests and benchmarks for the ResNet50 model, executed eagerly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import os
 import tempfile
 import time
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.client import device_lib
@@ -312,13 +307,13 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       num_iters = 30
       with tf.device(device):
         images, _ = resnet50_test_util.random_batch(batch_size, data_format)
-        for _ in xrange(num_burn):
+        for _ in range(num_burn):
           model(images, training=False).cpu()
         if execution_mode:
           context.async_wait()
         gc.collect()
         start = time.time()
-        for _ in xrange(num_iters):
+        for _ in range(num_iters):
           model(images, training=False).cpu()
         if execution_mode:
           context.async_wait()
@@ -365,7 +360,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         num_iters = 10
         with tf.device(device):
           iterator = make_iterator((images, labels))
-          for _ in xrange(num_burn):
+          for _ in range(num_burn):
             (images, labels) = iterator.next()
             apply_grads(model, optimizer,
                         compute_gradients(model, images, labels))
@@ -375,7 +370,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           gc.collect()
 
           start = time.time()
-          for _ in xrange(num_iters):
+          for _ in range(num_iters):
             (images, labels) = iterator.next()
             apply_grads(model, optimizer,
                         compute_gradients(model, images, labels))

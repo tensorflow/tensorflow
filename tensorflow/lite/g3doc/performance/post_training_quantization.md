@@ -65,11 +65,53 @@ dataset to calibrate them. This dataset can be a small subset (around ~100-500
 samples) of the training or validation data. Refer to the
 `representative_dataset()` function below.
 
+From TensorFlow 2.7 version, you can specify the representative dataset through
+a [signature](/lite/guide/signatures) as the following example:
+
+<pre>
+def representative_dataset():
+  for data in dataset:
+    yield {
+      "image": data.image,
+      "bias": data.bias,
+    }
+</pre>
+
+If there are more than one signature in the given TensorFlow model, you can
+specify the multiple dataset by specifying the signature keys:
+
+<pre>
+def representative_dataset():
+  # Feed data set for the "encode" signature.
+  for data in encode_signature_dataset:
+    yield (
+      "encode", {
+        "image": data.image,
+        "bias": data.bias,
+      }
+    )
+
+  # Feed data set for the "decode" signature.
+  for data in decode_signature_dataset:
+    yield (
+      "decode", {
+        "image": data.image,
+        "hint": data.hint,
+      },
+    )
+</pre>
+
+You can generate the representative dataset by providing an input tensor list:
+
 <pre>
 def representative_dataset():
   for data in tf.data.Dataset.from_tensor_slices((images)).batch(1).take(100):
     yield [tf.dtypes.cast(data, tf.float32)]
 </pre>
+
+Since TensorFlow 2.7 version, we recommend using the signature-based approach
+over the input tensor list-based approach because the input tensor ordering can
+be easily flipped.
 
 For testing purposes, you can use a dummy dataset as follows:
 

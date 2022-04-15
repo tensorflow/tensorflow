@@ -14,10 +14,6 @@
 # ==============================================================================
 """Long tests for Multinomial."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -41,7 +37,7 @@ class MultinomialTest(test.TestCase):
           seed=15)
       for _ in range(100):
         x = self.evaluate(samples)
-        indices, counts = np.unique(x, return_counts=True)
+        indices, counts = np.unique(x, return_counts=True)  # pylint: disable=unexpected-keyword-arg
         for index, count in zip(indices, counts):
           if index in counts_by_indices.keys():
             counts_by_indices[index] += count
@@ -59,7 +55,7 @@ class MultinomialTest(test.TestCase):
           seed=15)
       for _ in range(100):
         x = self.evaluate(samples)
-        indices, counts = np.unique(x, return_counts=True)
+        indices, counts = np.unique(x, return_counts=True)  # pylint: disable=unexpected-keyword-arg
         for index, count in zip(indices, counts):
           if index in counts_by_indices.keys():
             counts_by_indices[index] += count
@@ -82,7 +78,7 @@ class MultinomialTest(test.TestCase):
       # really should fit in 12GB of memory...
       for _ in range(100):
         x = self.evaluate(samples)
-        indices, counts = np.unique(x, return_counts=True)
+        indices, counts = np.unique(x, return_counts=True)  # pylint: disable=unexpected-keyword-arg
         for index, count in zip(indices, counts):
           if index in counts_by_indices.keys():
             counts_by_indices[index] += count

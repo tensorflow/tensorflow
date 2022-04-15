@@ -29,13 +29,20 @@ Status TpuCompileOpKernelImpl::Compile(
     const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const XLA_TpuMeshState* mesh_state,
     const std::vector<TensorShape>& arg_shapes,
+    const TpuCompilationCacheKey* key,
     TpuProgramGroupInterface* tpu_program_group) {
   TF_ASSIGN_OR_RETURN(
       TpuCompilationRequestProto compilation_request,
       CreateTpuCompilationRequest(computation, metadata_, arg_shapes));
 
-  return TpuProgramGroup::CompileAndBuild(compilation_request, mesh_state,
-                                          tpu_program_group);
+  Status s = TpuProgramGroup::CompileAndBuild(compilation_request, mesh_state,
+                                              tpu_program_group);
+  TF_RETURN_IF_ERROR(RegisterXLAFingerprints(
+      arg_shapes, tpu_program_group,
+      computation.index() == 0
+          ? mlir_module_fingerprint_
+          : compilation_request.metadata().function_library_fingerprint()));
+  return s;
 }
 
 class TpuCompileOpImplFactory : public CompileOpImplFactory {

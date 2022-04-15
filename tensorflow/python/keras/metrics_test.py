@@ -208,7 +208,7 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(m2.dtype, dtypes.float32)
     self.assertEqual(len(m2.variables), 2)
 
-  @testing_utils.run_v2_only
+  @keras_parameterized.run_all_keras_modes
   def test_function_wrapped_reset_state(self):
     m = metrics.Mean(name='my_mean')
 
@@ -1998,7 +1998,7 @@ class CustomMetricsTest(test.TestCase):
     y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
                                    [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
 
-    update_op = btp_obj.update_state(y_true, y_pred)
+    update_op = btp_obj.update_state(y_true, y_pred)  # pylint: disable=assignment-from-no-return
     self.evaluate(update_op)
     result = btp_obj.result()
     self.assertEqual(7, self.evaluate(result))

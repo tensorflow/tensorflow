@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 #define THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 
+#include "mlir/IR/BuiltinOps.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -56,6 +57,11 @@ MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const FunctionLibraryDefinition* function_library,
     absl::optional<tensorflow::ConfigProto> config_proto,
     bool uses_uninitialized_resource_args, bool record_stats = false);
+
+static inline MlirBridgeRolloutPolicy GetMlirBridge2ndPhaseRolloutPolicy(
+    mlir::ModuleOp module) {
+  return MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis;
+}
 
 }  // namespace tensorflow
 

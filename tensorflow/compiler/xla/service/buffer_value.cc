@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -33,8 +32,6 @@ BufferValue::BufferValue(HloInstruction* instruction, const ShapeIndex& index,
   is_tuple_ = shape.IsTuple();
 }
 
-BufferValue::~BufferValue() {}
-
 std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
   out << buffer.ToString();
   return out;
@@ -45,7 +42,7 @@ std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
   LogicalBufferProto::Location proto;
   proto.set_computation_name(instruction.parent()->name());
   proto.set_instruction_name(instruction.name());
-  for (const int64 index_entry : index) {
+  for (const int64_t index_entry : index) {
     proto.add_shape_index(index_entry);
   }
   return proto;

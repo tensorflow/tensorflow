@@ -1,7 +1,0 @@
-path: "tensorflow.keras.datasets.boston_housing"
-tf_module {
-  member_method {
-    name: "load_data"
-    argspec: "args=[\'path\', \'test_split\', \'seed\'], varargs=None, keywords=None, defaults=[\'boston_housing.npz\', \'0.2\', \'113\'], "
-  }
-}

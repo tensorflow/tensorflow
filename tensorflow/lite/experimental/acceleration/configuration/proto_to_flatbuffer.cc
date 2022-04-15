@@ -59,6 +59,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_EDGETPU;
     case proto::Delegate::EDGETPU_CORAL:
       return Delegate_EDGETPU_CORAL;
+    case proto::Delegate::CORE_ML:
+      return Delegate_CORE_ML;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -114,6 +116,36 @@ GPUBackend ConvertGPUBackend(proto::GPUBackend backend) {
   return GPUBackend_UNSET;
 }
 
+GPUInferenceUsage ConvertGPUInferenceUsage(
+    proto::GPUInferenceUsage preference) {
+  switch (preference) {
+    case proto::GPUInferenceUsage::GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER:
+      return GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+    case proto::GPUInferenceUsage::GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED:
+      return GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
+  }
+  TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                  "Unexpected value for GPUInferenceUsage: %d", preference);
+  return GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+}
+
+GPUInferencePriority ConvertGPUInferencePriority(
+    proto::GPUInferencePriority priority) {
+  switch (priority) {
+    case proto::GPUInferencePriority::GPU_PRIORITY_AUTO:
+      return GPUInferencePriority_GPU_PRIORITY_AUTO;
+    case proto::GPUInferencePriority::GPU_PRIORITY_MAX_PRECISION:
+      return GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION;
+    case proto::GPUInferencePriority::GPU_PRIORITY_MIN_LATENCY:
+      return GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY;
+    case proto::GPUInferencePriority::GPU_PRIORITY_MIN_MEMORY_USAGE:
+      return GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE;
+  }
+  TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                  "Unexpected value for GPUInferencePriority: %d", priority);
+  return GPUInferencePriority_GPU_PRIORITY_AUTO;
+}
+
 EdgeTpuPowerState ConvertEdgeTpuPowerState(proto::EdgeTpuPowerState state) {
   switch (state) {
     case proto::EdgeTpuPowerState::UNDEFINED_POWERSTATE:
@@ -165,7 +197,11 @@ Offset<NNAPISettings> ConvertNNAPISettings(const proto::NNAPISettings& settings,
       /*allow_dynamic_dimensions=*/
       settings.allow_dynamic_dimensions(),
       /*allow_fp16_precision_for_fp32=*/
-      settings.allow_fp16_precision_for_fp32());
+      settings.allow_fp16_precision_for_fp32(),
+      /*use_burst_computation=*/
+      settings.use_burst_computation(),
+      /*support_library_handle=*/
+      settings.support_library_handle());
 }
 
 Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,
@@ -174,7 +210,13 @@ Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,
       *builder,
       /*is_precision_loss_allowed=*/settings.is_precision_loss_allowed(),
       /*enable_quantized_inference=*/settings.enable_quantized_inference(),
-      ConvertGPUBackend(settings.force_backend()));
+      ConvertGPUBackend(settings.force_backend()),
+      ConvertGPUInferencePriority(settings.inference_priority1()),
+      ConvertGPUInferencePriority(settings.inference_priority2()),
+      ConvertGPUInferencePriority(settings.inference_priority3()),
+      ConvertGPUInferenceUsage(settings.inference_preference()),
+      /*cache_directory=*/builder->CreateString(settings.cache_directory()),
+      /*model_token=*/builder->CreateString(settings.model_token()));
 }
 
 Offset<HexagonSettings> ConvertHexagonSettings(
@@ -191,6 +233,28 @@ Offset<XNNPackSettings> ConvertXNNPackSettings(
     const proto::XNNPackSettings& settings, FlatBufferBuilder* builder) {
   return CreateXNNPackSettings(*builder,
                                /*num_threads=*/settings.num_threads());
+}
+
+Offset<CoreMLSettings> ConvertCoreMLSettings(
+    const proto::CoreMLSettings& settings, FlatBufferBuilder* builder) {
+  tflite::CoreMLSettings_::EnabledDevices enabled_devices =
+      tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL;
+  switch (settings.enabled_devices()) {
+    case proto::CoreMLSettings::DEVICES_ALL:
+      enabled_devices = tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL;
+      break;
+    case proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE:
+      enabled_devices =
+          tflite::CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+      break;
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Invalid devices enum: %d",
+                      settings.enabled_devices());
+  }
+
+  return CreateCoreMLSettings(
+      *builder, enabled_devices, settings.coreml_version(),
+      settings.max_delegated_partitions(), settings.min_nodes_per_partition());
 }
 
 Offset<CPUSettings> ConvertCPUSettings(const proto::CPUSettings& settings,
@@ -256,7 +320,10 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
   return CreateEdgeTpuSettings(
       *builder, ConvertEdgeTpuPowerState(settings.inference_power_state()),
       inactive_power_configs, settings.inference_priority(),
-      edgetpu_device_spec, model_token);
+      edgetpu_device_spec, model_token,
+      static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
+          settings.float_truncation_type()),
+      static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()));
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
@@ -275,11 +342,45 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertGPUSettings(settings.gpu_settings(), builder),
       ConvertHexagonSettings(settings.hexagon_settings(), builder),
       ConvertXNNPackSettings(settings.xnnpack_settings(), builder),
+      ConvertCoreMLSettings(settings.coreml_settings(), builder),
       ConvertCPUSettings(settings.cpu_settings(), builder),
       /*max_delegated_partitions=*/settings.max_delegated_partitions(),
       ConvertEdgeTpuSettings(settings.edgetpu_settings(), builder),
       ConvertCoralSettings(settings.coral_settings(), builder),
       ConvertFallbackSettings(settings.fallback_settings(), builder));
+}
+
+Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,
+                                   FlatBufferBuilder* builder) {
+  return CreateModelFile(*builder, builder->CreateString(model_file.filename()),
+                         model_file.fd(), model_file.offset(),
+                         model_file.length());
+}
+
+Offset<BenchmarkStoragePaths> ConvertBenchmarkStoragePaths(
+    const proto::BenchmarkStoragePaths& storage_paths,
+    FlatBufferBuilder* builder) {
+  return CreateBenchmarkStoragePaths(
+      *builder, builder->CreateString(storage_paths.storage_file_path()),
+      builder->CreateString(storage_paths.data_directory_path()));
+}
+
+Offset<MinibenchmarkSettings> ConvertMinibenchmarkSettings(
+    const proto::MinibenchmarkSettings& settings, FlatBufferBuilder* builder) {
+  Offset<Vector<Offset<TFLiteSettings>>> settings_to_test = 0;
+  std::vector<Offset<TFLiteSettings>> settings_to_test_vec;
+  if (settings.settings_to_test_size() > 0) {
+    for (const auto& one : settings.settings_to_test()) {
+      settings_to_test_vec.push_back(ConvertTfliteSettings(one, builder));
+    }
+    settings_to_test =
+        builder->CreateVector<Offset<TFLiteSettings>>(settings_to_test_vec);
+  }
+
+  return CreateMinibenchmarkSettings(
+      *builder, settings_to_test,
+      ConvertModelFile(settings.model_file(), builder),
+      ConvertBenchmarkStoragePaths(settings.storage_paths(), builder));
 }
 
 const ComputeSettings* ConvertFromProto(
@@ -288,7 +389,16 @@ const ComputeSettings* ConvertFromProto(
       *builder, ConvertExecutionPreference(proto_settings.preference()),
       ConvertTfliteSettings(proto_settings.tflite_settings(), builder),
       builder->CreateString(proto_settings.model_namespace_for_statistics()),
-      builder->CreateString(proto_settings.model_identifier_for_statistics()));
+      builder->CreateString(proto_settings.model_identifier_for_statistics()),
+      ConvertMinibenchmarkSettings(proto_settings.settings_to_test_locally(),
+                                   builder));
+  return flatbuffers::GetTemporaryPointer(*builder, settings);
+}
+
+const MinibenchmarkSettings* ConvertFromProto(
+    const proto::MinibenchmarkSettings& proto_settings,
+    flatbuffers::FlatBufferBuilder* builder) {
+  auto settings = ConvertMinibenchmarkSettings(proto_settings, builder);
   return flatbuffers::GetTemporaryPointer(*builder, settings);
 }
 

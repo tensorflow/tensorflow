@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 
+#include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -27,7 +28,7 @@ namespace xla {
 
 class WhileLoopInvariantCodeMotion : public HloModulePass {
  public:
-  using ShapeSizeFunction = std::function<int64(const Shape&)>;
+  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
   // If `hoist_constants` is true then constants are always hoisted out of while
   // loop bodies.  Otherwise they are only hoisted out if they enable other
   // non-trivial computations to be hoisted out.
@@ -35,15 +36,30 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   // Setting `hoist_constants` to false can be help if LICM is run in the mid
   // level HLO pipeline because hoisting constants out of while loop bodies can
   // break optimizations like constant folding.
-  // Setting `hoist_size_inflating_ops` to false will forbid hoisting
-  // instructions where the size of the output(s) is larger than the size of the
-  // input(s). This is useful on platforms on which it's important to prevent
-  // blow-ups in memory size.
+  //
+  // Setting `hoist_other` and `hoist_reshapes` to false can be used to hoist
+  // only constants. If provided, `hoist_size_inflation_ratio` will forbid
+  // hoisting instructions where the ratio of the size of the output(s) to the
+  // input(s) is larger than hoist_size_inflation_ratio. This is useful on
+  // platforms on which it's important to prevent blow-ups in memory size.
+  //
+  // If `hoist_reshapes` is true, then reshapes are allowed to be hoisted out of
+  // while loop body by themselves. Otherwise, they are only hoisted out if they
+  // enable other non-trivial computations to be hoisted out.
+  //
+  // Setting `hoist_reshapes` to false can be useful when LICM is run in the
+  // mid level HLO pipeline because the reshapes will often get fused with
+  // consumer instructions, and won't cost anything if not hoisted. However,
+  // any stand alone reshapes after fusion will benefit from hoisting.
   explicit WhileLoopInvariantCodeMotion(
-      bool hoist_constants = false, bool hoist_size_inflating_ops = true,
+      bool hoist_constants = false, bool hoist_reshapes = false,
+      bool hoist_other = true,
+      absl::optional<float> hoist_size_inflation_ratio = absl::nullopt,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
       : hoist_constants_(hoist_constants),
-        hoist_size_inflating_ops_(hoist_size_inflating_ops),
+        hoist_reshapes_(hoist_reshapes),
+        hoist_other_(hoist_other),
+        hoist_size_inflation_ratio_(hoist_size_inflation_ratio),
         shape_size_function_(shape_size_function) {}
   ~WhileLoopInvariantCodeMotion() override = default;
 
@@ -55,10 +71,12 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
  private:
   bool NotWorthHoistingIndividually(const HloInstruction& instruction);
   StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
-      HloInstruction* while_instr);
+      HloInstruction* while_instr, BoundNonLinearCompilerAnalysis* allowance);
 
   bool hoist_constants_;
-  bool hoist_size_inflating_ops_;
+  bool hoist_reshapes_;
+  bool hoist_other_;
+  absl::optional<float> hoist_size_inflation_ratio_;
   ShapeSizeFunction shape_size_function_;
 };
 }  // namespace xla

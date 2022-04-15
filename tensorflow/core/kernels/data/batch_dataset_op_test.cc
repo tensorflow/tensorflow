@@ -11,7 +11,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include <string>
+
+#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
@@ -119,28 +124,28 @@ BatchDatasetParams InvalidBatchSizeBatchDatasetParams() {
 std::vector<GetNextTestCase<BatchDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/BatchDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams3(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-            CreateTensor<int64>(TensorShape({1}), {9})}},
+           {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8}),
+            CreateTensor<int64_t>(TensorShape({1}), {9})}},
           {/*dataset_params=*/BatchDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({3}),
-                                {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
+           CreateTensors<int64_t>(TensorShape({3}),
+                                  {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/BatchDatasetParams5(),
            /*expected_outputs=*/{}},
           {/*dataset_params=*/BatchDatasetParams6(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({10}),
-                                {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
+           CreateTensors<int64_t>(TensorShape({10}),
+                                  {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
 
           {/*dataset_params=*/BatchDatasetParams7(),
            /*expected_outputs=*/{}}};
@@ -247,34 +252,34 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/BatchDatasetParams1(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams2(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({4}),
-                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+           CreateTensors<int64_t>(
+               TensorShape({4}), {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
           {/*dataset_params=*/BatchDatasetParams3(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-            CreateTensor<int64>(TensorShape({1}), {9})}},
+           {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8}),
+            CreateTensor<int64_t>(TensorShape({1}), {9})}},
           {/*dataset_params=*/BatchDatasetParams4(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-            CreateTensor<int64>(TensorShape({3}), {6, 7, 8})}},
+           {CreateTensor<int64_t>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64_t>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64_t>(TensorShape({3}), {6, 7, 8})}},
           {/*dataset_params=*/BatchDatasetParams5(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/BatchDatasetParams6(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape({10}),
-                                {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
+           {CreateTensor<int64_t>(TensorShape({10}),
+                                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
           {/*dataset_params=*/BatchDatasetParams7(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/{}}};
@@ -287,6 +292,95 @@ TEST_F(BatchDatasetOpTest, InvalidBatchSize) {
   auto batch_dataset_params = InvalidBatchSizeBatchDatasetParams();
   EXPECT_EQ(Initialize(batch_dataset_params).code(),
             tensorflow::error::INVALID_ARGUMENT);
+}
+
+// TODO(b/222556529) when Const has type constructor, remove the following
+REGISTER_OP("BatchDatasetOpTest>ConstTypeCtor")
+    .Output("output: dtype")
+    .Attr("value: tensor")
+    .Attr("dtype: type")
+    .SetTypeConstructor(full_type::Unary(TFT_TENSOR, "dtype"));
+
+// Adds identity notes to all outputs of this node
+static void add_identity_nodes(Node* node, Graph& graph,
+                               std::vector<Node*>& identity_nodes) {
+  for (int i = 0; i < node->num_outputs(); i++) {
+    Node* new_node;
+    std::string name = absl::StrCat("Identity", i);
+    TF_EXPECT_OK(NodeBuilder(name, "Identity")
+                     .Attr("T", node->output_type(i))
+                     .Input(node, i)
+                     .Finalize(&graph, &new_node));
+    identity_nodes.push_back(new_node);
+  }
+}
+
+// Runs type inference pass on graph
+static Status type_inference(Graph& graph) {
+  GraphOptimizationPassOptions opt_options;
+  std::unique_ptr<Graph> graph_ptr(new Graph(OpRegistry::Global()));
+  graph_ptr->Copy(graph);
+  opt_options.graph = &graph_ptr;
+  opt_options.flib_def = graph.mutable_flib_def();
+  ForwardTypeInferencePass pass;
+  return pass.Run(opt_options);
+}
+
+TEST(BatchDatsetOpTest, TypeInference) {
+  Graph graph(OpRegistry::Global());
+  Node* input_dataset;
+  Node* batch_size;
+  Node* drop_remainder;
+  Node* batch_dataset_v2;
+  FullTypeDef input_dataset_t;
+  protobuf::TextFormat::Parser parser;
+  CHECK(parser.ParseFromString(
+      R"pb(type_id: TFT_PRODUCT
+           args {
+             type_id: TFT_DATASET
+             args {
+               type_id: TFT_PRODUCT
+               args {
+                 type_id: TFT_RAGGED
+                 args { type_id: TFT_STRING }
+               }
+             }
+           })pb",
+      &input_dataset_t));
+  TensorProto tensor_proto;
+  TF_EXPECT_OK(NodeBuilder("input_dataset", "Const")
+                   .Attr("value", tensor_proto)
+                   .Attr("dtype", DT_VARIANT)
+                   .Finalize(&graph, &input_dataset));
+  (*input_dataset->mutable_def()->mutable_experimental_type()) =
+      input_dataset_t;
+  // TODO(b/222556529) when Const has type constructor, use Const
+  TF_EXPECT_OK(NodeBuilder("batch_size", "BatchDatasetOpTest>ConstTypeCtor")
+                   .Attr("value", tensor_proto)
+                   .Attr("dtype", DT_INT64)
+                   .Finalize(&graph, &batch_size));
+  // TODO(b/222556529) when Const has type constructor, use Const
+  TF_EXPECT_OK(NodeBuilder("drop_remainder", "BatchDatasetOpTest>ConstTypeCtor")
+                   .Attr("value", tensor_proto)
+                   .Attr("dtype", DT_BOOL)
+                   .Finalize(&graph, &drop_remainder));
+  TF_EXPECT_OK(NodeBuilder("BatchDatasetV2", "BatchDatasetV2")
+                   .Attr("output_types", {DT_VARIANT})
+                   .Attr("output_shapes", {TensorShape({1})})
+                   .Input(input_dataset)
+                   .Input(batch_size)
+                   .Input(drop_remainder)
+                   .Finalize(&graph, &batch_dataset_v2));
+
+  std::vector<Node*> identity_nodes;
+  add_identity_nodes(batch_dataset_v2, graph, identity_nodes);
+  TF_EXPECT_OK(type_inference(graph));
+  EXPECT_TRUE(full_type::IsEqual(identity_nodes[0]->def().experimental_type(),
+                                 input_dataset_t))
+      << "fulltype is\n"
+      << identity_nodes[0]->def().experimental_type().DebugString()
+      << "\nexpected\n"
+      << input_dataset_t.DebugString();
 }
 
 }  // namespace

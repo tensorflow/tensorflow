@@ -152,7 +152,7 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   TF_RETURN_IF_ERROR(ComputeTransitiveFanin(graph_, item.fetch, &train_nodes));
   LOG(INFO) << "Number of training nodes: " << train_nodes.size();
 
-  const NodeDef* dequeue_node;
+  const NodeDef* dequeue_node = nullptr;
   for (const auto& train_node : train_nodes) {
     if (IsDequeueOp(*train_node)) {
       dequeue_node = train_node;
@@ -268,11 +268,6 @@ Status AutoParallel::Optimize(Cluster* cluster, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(Initialize(item));
   BuildGraph(output);
   return Status::OK();
-}
-
-void AutoParallel::Feedback(Cluster* cluster, const GrapplerItem& item,
-                            const GraphDef& optimize_output, double result) {
-  // TODO(yaozhang): Add feedback.
 }
 
 }  // end namespace grappler

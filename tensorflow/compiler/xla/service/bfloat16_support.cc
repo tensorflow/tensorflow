@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla {
 
 bool BFloat16Support::SupportsBF16Operand(const HloInstruction& hlo,
-                                          int64 operand_index) const {
+                                          int64_t operand_index) const {
   switch (hlo.opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
@@ -30,6 +30,7 @@ bool BFloat16Support::SupportsBF16Operand(const HloInstruction& hlo,
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
       CHECK_EQ(operand_index, 0);
@@ -49,6 +50,7 @@ bool BFloat16Support::SupportsBF16Output(const HloInstruction& hlo) const {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
       return hlo.shape().element_type() == BF16;
@@ -67,6 +69,7 @@ bool BFloat16Support::SupportsMixedPrecisions(const HloInstruction& hlo) const {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     default:
       break;
@@ -76,7 +79,7 @@ bool BFloat16Support::SupportsMixedPrecisions(const HloInstruction& hlo) const {
 
 /* static */
 bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
-    const HloInstruction& hlo, int64 operand_index) {
+    const HloInstruction& hlo, int64_t operand_index) {
   switch (hlo.opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAllGather:
@@ -98,6 +101,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kSort:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kBitcast:
       return hlo.shape().element_type() ==
@@ -118,7 +122,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
         if (inst->opcode() == HloOpcode::kParameter) {
           continue;
         }
-        for (int64 i = 0; i < inst->operand_count(); ++i) {
+        for (int64_t i = 0; i < inst->operand_count(); ++i) {
           if (!EffectiveOperandPrecisionIsOutputPrecision(*inst, i)) {
             return false;
           }
@@ -133,7 +137,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
 }
 
 bool BFloat16Support::EffectiveOperandPrecisionIsBF16(
-    const HloInstruction& hlo, int64 operand_index) const {
+    const HloInstruction& hlo, int64_t operand_index) const {
   return false;
 }
 

@@ -20,37 +20,21 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "mkldnn.hpp"
-#include "tensorflow/core/framework/numeric_op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/mkl_util.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-using mkldnn::convolution_backward_weights;
-using mkldnn::memory;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+using dnnl::convolution_backward_weights;
+using dnnl::memory;
+using dnnl::prop_kind;
+using dnnl::stream;
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-using ConvBwdFilterDesc = mkldnn::convolution_backward_weights::desc;
-using ConvBwdFilterPd = mkldnn::convolution_backward_weights::primitive_desc;
+using ConvBwdFilterDesc = dnnl::convolution_backward_weights::desc;
+using ConvBwdFilterPd = dnnl::convolution_backward_weights::primitive_desc;
 
 struct MklConvBwdFilterParams {
   memory::dims src_dims;
@@ -105,7 +89,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
                const T* diff_bias_data, const T* diff_dst_data,
                std::shared_ptr<stream> bwd_filter_stream) {
 #ifndef ENABLE_ONEDNN_OPENMP
-    // TODO: Create a common function and avoid the duplicate code
+    // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_filter_stream);
     context_.diff_filter_mem->set_data_handle(
@@ -159,11 +143,11 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for Conv2D backward filter op.
   struct ConvBwdFilterContext {
-    // MKL-DNN memory for inputs and outputs.
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> diff_filter_mem;
-    std::shared_ptr<mkldnn::memory> diff_bias_mem;
-    std::shared_ptr<mkldnn::memory> diff_dst_mem;
+    // oneDNN memory for inputs and outputs.
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> diff_filter_mem;
+    std::shared_ptr<dnnl::memory> diff_bias_mem;
+    std::shared_ptr<dnnl::memory> diff_dst_mem;
 
     // Primitive descriptor and descriptor for convolution backward filter.
     std::shared_ptr<ConvBwdFilterPd> bwd_filter_pd;
@@ -174,17 +158,17 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
     std::shared_ptr<ConvFwdDesc> fwd_desc;
 
     // Convolution backward filter primitive.
-    std::shared_ptr<mkldnn::primitive> conv_bwd_filter;
+    std::shared_ptr<dnnl::primitive> conv_bwd_filter;
 
     // Memory descriptors: forward & backward share the same memory descriptors
-    std::shared_ptr<mkldnn::memory::desc> src_md;
-    std::shared_ptr<mkldnn::memory::desc> diff_filter_md;
-    std::shared_ptr<mkldnn::memory::desc> diff_bias_md;
-    std::shared_ptr<mkldnn::memory::desc> diff_dst_md;
+    std::shared_ptr<dnnl::memory::desc> src_md;
+    std::shared_ptr<dnnl::memory::desc> diff_filter_md;
+    std::shared_ptr<dnnl::memory::desc> diff_bias_md;
+    std::shared_ptr<dnnl::memory::desc> diff_dst_md;
 
-    // MKL-DNN pipeline for executing primitives.
-    std::shared_ptr<mkldnn::stream> bwd_filter_stream;
-    std::vector<mkldnn::primitive> bwd_filter_primitives;
+    // oneDNN pipeline for executing primitives.
+    std::shared_ptr<dnnl::stream> bwd_filter_stream;
+    std::vector<dnnl::primitive> bwd_filter_primitives;
     std::vector<MemoryArgsMap> bwd_filter_primitives_args;
 
     ConvBwdFilterContext()
@@ -208,7 +192,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           MklTensorFormatToMklDnnDataFormat(convBwdFilterDims.tf_fmt);
     } else {
       // Create memory descriptors for convolution backward filter without any
-      // specific format so that MKL-DNN can pick an appropriate one depending
+      // specific format so that oneDNN can pick an appropriate one depending
       // on the input parameters.
       user_data_fmt = memory::format_tag::any;
     }
@@ -229,7 +213,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
 
     // Create descriptor and primitive descriptor for convolution forward.
     context_.fwd_desc.reset(new ConvFwdDesc(
-        prop_kind::forward, mkldnn::algorithm::convolution_direct,
+        prop_kind::forward, dnnl::algorithm::convolution_direct,
         *context_.src_md, *context_.diff_filter_md, *context_.diff_dst_md,
         convBwdFilterDims.strides, convBwdFilterDims.dilations,
         convBwdFilterDims.padding_left, convBwdFilterDims.padding_right));
@@ -238,14 +222,14 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
     // Create descriptor and primitive descriptor for convolution bwd filter.
     if (!convBwdFilterDims.diff_bias_dims.empty()) {
       context_.bwd_filter_desc.reset(new ConvBwdFilterDesc(
-          mkldnn::algorithm::convolution_direct, *context_.src_md,
+          dnnl::algorithm::convolution_direct, *context_.src_md,
           *context_.diff_filter_md, *context_.diff_bias_md,
           *context_.diff_dst_md, convBwdFilterDims.strides,
           convBwdFilterDims.dilations, convBwdFilterDims.padding_left,
           convBwdFilterDims.padding_right));
     } else {
       context_.bwd_filter_desc.reset(new ConvBwdFilterDesc(
-          mkldnn::algorithm::convolution_direct, *context_.src_md,
+          dnnl::algorithm::convolution_direct, *context_.src_md,
           *context_.diff_filter_md, *context_.diff_dst_md,
           convBwdFilterDims.strides, convBwdFilterDims.dilations,
           convBwdFilterDims.padding_left, convBwdFilterDims.padding_right));
@@ -273,17 +257,17 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
       context_.conv_bwd_filter.reset(
           new convolution_backward_weights(*context_.bwd_filter_pd));
       context_.bwd_filter_primitives_args.push_back(
-          {{MKLDNN_ARG_SRC, *context_.src_mem},
-           {MKLDNN_ARG_DIFF_WEIGHTS, *context_.diff_filter_mem},
-           {MKLDNN_ARG_DIFF_BIAS, *context_.diff_bias_mem},
-           {MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem}});
+          {{DNNL_ARG_SRC, *context_.src_mem},
+           {DNNL_ARG_DIFF_WEIGHTS, *context_.diff_filter_mem},
+           {DNNL_ARG_DIFF_BIAS, *context_.diff_bias_mem},
+           {DNNL_ARG_DIFF_DST, *context_.diff_dst_mem}});
     } else {
       context_.conv_bwd_filter.reset(
           new convolution_backward_weights(*context_.bwd_filter_pd));
       context_.bwd_filter_primitives_args.push_back(
-          {{MKLDNN_ARG_SRC, *context_.src_mem},
-           {MKLDNN_ARG_DIFF_WEIGHTS, *context_.diff_filter_mem},
-           {MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem}});
+          {{DNNL_ARG_SRC, *context_.src_mem},
+           {DNNL_ARG_DIFF_WEIGHTS, *context_.diff_filter_mem},
+           {DNNL_ARG_DIFF_DST, *context_.diff_dst_mem}});
     }
     context_.bwd_filter_primitives.push_back(*context_.conv_bwd_filter);
   }
@@ -420,12 +404,14 @@ class MklConvCustomBackpropFilterOp
       memory::dims fwd_dst_dims, fwd_dst_dims_tf_order;
 
       // Get forward convolution parameters.
+      bool is_grouped_convolution = false;
       MklDnnConvUtil conv_util(context, this->strides_, this->padding_,
                                this->data_format_, this->dilations_);
       conv_util.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_dst_dims_tf_order, &fwd_dst_dims,
-          &padding_left, &padding_right, false, is_depthwise);
+          &padding_left, &padding_right, &is_grouped_convolution, false,
+          is_depthwise);
       if (!context->status().ok()) return;
 
       bool is_conv2d = (this->strides_.size() == 4);
@@ -453,7 +439,7 @@ class MklConvCustomBackpropFilterOp
       memory::dims diff_bias_dims = {};
       int64 depth = 0;
       if (bias_enabled) {
-        TensorShape obp_tf_shape = GetTfShape(context, 2);
+        TensorShape obp_tf_shape = GetTfShape(context, 2, native_format);
         depth = (this->data_format_ == FORMAT_NCHW)
                     ? obp_tf_shape.dim_size(1)
                     : obp_tf_shape.dim_size(is_conv2d ? 3 : 4);
@@ -461,13 +447,13 @@ class MklConvCustomBackpropFilterOp
       }
 
       // The default dilation factor for each dimension is 1 in TF and
-      // 0 in MKL-DNN.
+      // 0 in oneDNN.
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
       MklConvBwdFilterParams convBwdFilterDims(
           fwd_src_dims, fwd_filter_dims, diff_bias_dims, diff_dst_dims, strides,
           tf_fmt, native_format, dilations, padding_left, padding_right);
 
-      // MKL-DNN allocates large buffers when a conv gradient filter primitive
+      // oneDNN allocates large buffers when a conv gradient filter primitive
       // is created. So we don't cache conv backward primitives when the env
       // variable TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is set to true.
       bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
@@ -483,7 +469,7 @@ class MklConvCustomBackpropFilterOp
       diff_filter_mkl_shape.SetMklTensor(false);
 
       if (is_conv2d) {
-        if (!is_depthwise) {
+        if (!is_depthwise && !is_grouped_convolution) {
           // Conv2D: output_dims_mkl_order is in OIHW format.
           TensorShape diff_filter_tf_shape(
               {diff_filter_dims[MklDnnDims::Dim_H],
@@ -493,9 +479,9 @@ class MklConvCustomBackpropFilterOp
           AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
                                     diff_filter_tf_shape, diff_filter_mkl_shape,
                                     native_format);
-        } else {
+        } else if (is_depthwise) {
           // Depthwise Conv2d: diff_filter_dims is GOIHW format.
-          //                  | TensorFlow       | MKLDNN
+          //                  | TensorFlow       | oneDNN
           // ----------------------------------------------------------------
           // filter_out_depth | depth_multiplier | depth_multiplier *
           //                  |                  | group_count
@@ -503,7 +489,7 @@ class MklConvCustomBackpropFilterOp
           // filter_in_depth  | in_depth         | in_depth / group_count
           // For depthwise convolution, we have group_count == in_depth.
           // So here G = original I, and I = 1.
-          // And the GOIHW is mkldnn format, here we try to extract the TF
+          // And the GOIHW is oneDNN format, here we try to extract the TF
           // format, TF format is HWIO, as G = original I, so here is HWGO.
           TensorShape diff_filter_tf_shape(
               {diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_H],
@@ -511,6 +497,22 @@ class MklConvCustomBackpropFilterOp
                diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_G],
                diff_filter_dims
                    [MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_O]});
+          AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
+                                    diff_filter_tf_shape, diff_filter_mkl_shape,
+                                    native_format);
+        } else {
+          // For group convolution, we have group_count == in_depth /
+          // filter_in_depth. So here G = in_depth / filter_in_depth, and
+          // O = original O / group_count.
+          // And the GOIHW is oneDNN format, here we try to extract the TF
+          // format, TF format is HWIO, here O is O * G.
+          TensorShape diff_filter_tf_shape(
+              {diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_H],
+               diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_W],
+               diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_I],
+               diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_O] *
+                   diff_filter_dims
+                       [MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_G]});
           AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
                                     diff_filter_tf_shape, diff_filter_mkl_shape,
                                     native_format);
@@ -560,7 +562,14 @@ class MklConvCustomBackpropFilterOp
       }
 
       DCHECK(!diff_filter_mkl_shape.IsMklTensor());
-      auto diff_filter_format = GetOutputFormat(mkl_fmt_tag);
+      // Output layout is Tensorflow's filter layout
+      //   Conv2D: HWIO;  Conv3D: DHWIO; Depthwise Conv: HWIGO; Group Conv:
+      //   HWIGO
+      auto diff_filter_format =
+          (is_depthwise || is_grouped_convolution)
+              ? memory::format_tag::hwigo
+              : ((this->strides_.size() == 4) ? memory::format_tag::hwio
+                                              : memory::format_tag::dhwio);
       auto diff_filter_md =
           memory::desc(diff_filter_dims, MklDnnType<T>(), diff_filter_format);
 
@@ -605,7 +614,7 @@ class MklConvCustomBackpropFilterOp
 
       // Delete primitive since it is not cached.
       if (do_not_cache) delete conv_bwd_filter;
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -656,21 +665,12 @@ class MklConvCustomBackpropFilterOp
     return filter_shape;
   }
 
-  // Get the shape of output (diff_filter) in MKL-DNN order.
+  // Get the shape of output (diff_filter) in oneDNN order.
   // Computes shape of output from input shape (fwd_input_dims)
   // and filter shape (fwd_filter_dims).
   const memory::dims& GetOutputDims(const memory::dims& fwd_input_dims,
                                     const memory::dims& fwd_filter_dims) {
     return fwd_filter_dims;
-  }
-
-  // Output layout is Tensorflow's filter layout
-  //   Conv2D: HWIO;  Conv3D: DHWIO; Depthwise Conv: HWIGO
-  memory::format_tag GetOutputFormat(const memory::format_tag data_format) {
-    return is_depthwise
-               ? memory::format_tag::hwigo
-               : ((this->strides_.size() == 4) ? memory::format_tag::hwio
-                                               : memory::format_tag::dhwio);
   }
 
   void AllocateOutputTensor(OpKernelContext* context,
@@ -704,7 +704,7 @@ class MklConvCustomBackpropFilterOp
     MklDnnShape bias_grad_mkl_shape;
     bias_grad_mkl_shape.SetMklTensor(false);
     AllocateOutputSetMklShape(context, 1, bias_grad_tensor, bias_grad_shape,
-                              bias_grad_mkl_shape);
+                              bias_grad_mkl_shape, native_format);
   }
 };
 
@@ -756,7 +756,13 @@ class MklConvCustomBackpropFilterOp
           .Device(DEVICE_CPU)                                            \
           .TypeConstraint<T>("T")                                        \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklNativeConv2DBackpropFilterWithBias")                     \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, true, false, true>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_FILTER_KERNELS);

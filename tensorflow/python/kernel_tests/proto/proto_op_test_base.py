@@ -16,10 +16,6 @@
 """Test case base for testing proto operations."""
 
 # Python3 preparedness imports.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes as ct
 import os
 

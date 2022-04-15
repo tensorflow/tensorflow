@@ -1,0 +1,48 @@
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+name: PyLint
+on:
+  pull_request:
+    paths:
+      - '**.py'
+
+jobs:
+  build:
+    name: PyLint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Get file changes
+      id: get_file_changes
+      uses: trilom/file-changes-action@v1.2.4
+      with:
+        output: ' '
+    - name: Report list of changed files
+      run: |
+        echo Changed files: ${{ steps.get_file_changes.outputs.files }}
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.9"
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint numpy wheel
+        pip install keras_preprocessing --no-deps
+    - name: Run PyLint on changed files
+      run: |
+        echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc

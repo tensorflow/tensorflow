@@ -23,6 +23,7 @@ limitations under the License.
 typedef __half2 half2;
 #endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -65,17 +66,17 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduction_axis{0};
-    Eigen::array<int, 2> rest_by_one({rest_size, 1});
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > rest_by_one;
     rest_by_one.set(0, rest_size);
-#endif
+
+    OP_REQUIRES(
+        context, !OpDeterminismRequired(),
+        errors::Unimplemented(
+            "A deterministic GPU implementation of fused batch-norm backprop,"
+            " when training is disabled, is not currently available."));
 
     // offset_backprop  = sum(y_backprop)
     // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
@@ -107,15 +108,6 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
 
 template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
-
-template <class T>
-void SetNanFunctor<T>::operator()(const Eigen::GpuDevice& d,
-                                  typename TTypes<T>::Flat out) {
-  To32Bit(out).device(d) =
-      To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
-}
-
-template class SetNanFunctor<float>;
 
 // -------------------------------------------------------------------------- //
 // FusedBatchNormInferenceFunctor implementation.                             //

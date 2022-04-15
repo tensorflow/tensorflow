@@ -26,9 +26,9 @@ limitations under the License.
 namespace xla {
 namespace window_util {
 
-Window MakeWindow(absl::Span<const int64> sizes) {
+Window MakeWindow(absl::Span<const int64_t> sizes) {
   Window window;
-  for (int64 size : sizes) {
+  for (int64_t size : sizes) {
     auto* dimension = window.add_dimensions();
     dimension->set_size(size);
     dimension->set_stride(1);
@@ -38,8 +38,8 @@ Window MakeWindow(absl::Span<const int64> sizes) {
   return window;
 }
 
-Window MakeWindow(absl::Span<const int64> sizes,
-                  absl::Span<const int64> strides) {
+Window MakeWindow(absl::Span<const int64_t> sizes,
+                  absl::Span<const int64_t> strides) {
   Window window;
   CHECK_EQ(sizes.size(), strides.size());
   for (auto nb = 0; nb < sizes.size(); ++nb) {
@@ -52,9 +52,9 @@ Window MakeWindow(absl::Span<const int64> sizes,
   return window;
 }
 
-PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes) {
   PaddingConfig config;
-  for (int64 size : sizes) {
+  for (int64_t size : sizes) {
     auto* dimension = config.add_dimensions();
     dimension->set_edge_padding_low(size);
     dimension->set_edge_padding_high(size);
@@ -62,10 +62,10 @@ PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   return config;
 }
 
-/* static */ string ToString(const WindowDimension& dim) {
+/* static */ std::string ToString(const WindowDimension& dim) {
   using absl::StrAppend;
   using absl::StrCat;
-  string str = StrCat("(size=", dim.size());
+  std::string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
   }
@@ -88,14 +88,14 @@ PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   return str;
 }
 
-string ToString(const Window& window) {
+std::string ToString(const Window& window) {
   using absl::StrAppend;
   using absl::StrCat;
 
-  string str;
+  std::string str;
   const auto add_field =
       [&](const char* heading,
-          std::function<string(const WindowDimension&)> format) {
+          std::function<std::string(const WindowDimension&)> format) {
         StrAppend(&str, heading, "=");
         const char* prefix = "";
         for (const auto& window_dimension : window.dimensions()) {
@@ -231,7 +231,7 @@ bool HasOverlappingWindow(const Window& window) {
   return false;
 }
 
-int64 DilatedBound(int64 bound, int64 dilation) {
+int64_t DilatedBound(int64_t bound, int64_t dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
   if (bound == 0) {
@@ -245,7 +245,7 @@ int64 DilatedBound(int64 bound, int64 dilation) {
   return (bound - 1) * dilation + 1;
 }
 
-int64 StridedBound(int64 bound, int64 window_size, int64 stride) {
+int64_t StridedBound(int64_t bound, int64_t window_size, int64_t stride) {
   CHECK_GE(window_size, 0);
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);

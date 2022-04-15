@@ -1,7 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
@@ -114,7 +114,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -330,8 +330,10 @@ py_library(
         ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
-        "//tensorflow/python/debug:local_cli_wrapper",
-    ],
+        "//tensorflow/python/debug/wrappers:local_cli_wrapper",
+    ] + if_google([
+        "//tensorflow/core/tfrt/tfrt_session",
+    ]),
 )
 
 py_library(
@@ -355,9 +357,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "manual",
-        "no-internal-py3",
-        "nosan",
+        "noasan",  # asan disabled in b/222716501.
     ],
     deps = [
         ":saved_model_cli_lib",

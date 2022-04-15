@@ -30,8 +30,12 @@ namespace {
 using ops::Abs;
 using ops::Add;
 using ops::AddN;
+using ops::AddV2;
+using ops::Atan2;
 using ops::BatchMatMul;
+using ops::Cast;
 using ops::Const;
+using ops::Cumsum;
 using ops::Div;
 using ops::DivNoNan;
 using ops::MatMul;
@@ -46,9 +50,11 @@ using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
 using ops::SegmentSum;
+using ops::SelectV2;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -839,6 +845,15 @@ TEST_F(NaryGradTest, Add) {
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
+TEST_F(NaryGradTest, AddV2) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = AddV2(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
 TEST_F(NaryGradTest, Sub) {
   TensorShape x1_shape({3, 2, 5});
   TensorShape x2_shape({2, 5});
@@ -961,6 +976,86 @@ TEST_F(NaryGradTest, SegmentSum) {
   // the sum is always on the first dimension
   TensorShape y_shape({2, 4});
   RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+class CumsumGradTest
+    : public NaryGradTest,
+      public ::testing::WithParamInterface<std::tuple<bool, bool, int>> {};
+
+TEST_P(CumsumGradTest, CumsumGrad) {
+  int axis = std::get<2>(GetParam());
+
+  TensorShape shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  Cumsum::Attrs attrs;
+  attrs.exclusive_ = std::get<0>(GetParam());
+  attrs.reverse_ = std::get<1>(GetParam());
+  auto y = Cumsum(scope_, x, axis, attrs);
+  RunTest({x}, {shape}, {y}, {shape});
+}
+
+INSTANTIATE_TEST_SUITE_P(CumsumGrad, CumsumGradTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool(),
+                                            ::testing::Range(0, 2)));
+
+TEST_F(NaryGradTest, CastGrad) {
+  TensorShape shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_DOUBLE, Placeholder::Shape(shape));
+  auto y = Cast(scope_, x, DT_FLOAT);
+  TF_ASSERT_OK(scope_.status());
+  double max_error;
+  TF_ASSERT_OK((ComputeGradientError<double, float, double>(
+      scope_, {x}, {shape}, {y}, {shape}, &max_error)));
+  EXPECT_LT(max_error, 1e-3);
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = Where3(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Basic) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Broadcast) {
+  TensorShape x_shape({2, 3});
+  TensorShape y_shape({});
+  auto cond = Const<bool>(scope_, {{false, true, true}, {true, true, false}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(y_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, y_shape}, {z}, {x_shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Broadcast2) {
+  TensorShape x_shape({2, 3});
+  auto cond = Const<bool>(scope_, {{false}, {true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, x_shape}, {z}, {x_shape});
+}
+
+TEST_F(NaryGradTest, Atan2Grad) {
+  TensorShape shape({3, 2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Test with x2 = 1 + |x1| to avoid regions where the gradient
+  // is unstable and might cause problems for the numeric estimator.
+  auto x2 =
+      Div(scope_, x1, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x1)));
+  auto y = Atan2(scope_, x1, x2);
+  RunTest({x1}, {shape}, {y}, {shape});
 }
 
 }  // namespace

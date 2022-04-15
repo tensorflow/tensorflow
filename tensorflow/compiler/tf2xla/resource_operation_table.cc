@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -53,8 +54,10 @@ CreateResourceOpInfoMap() {
   add("AssignAddVariableOp"                  , kReadWrite, kVariable);
   add("AssignSubVariableOp"                  , kReadWrite, kVariable);
   add("AssignVariableOp"                     , kWrite,     kVariable);
+  add("AssignVariableXlaConcatND"            , kWrite,     kVariable);
   add("CollectiveReduceV2"                   , kRead,      kVariable);
   add("ReadVariableOp"                       , kRead,      kVariable);
+  add("ReadVariableXlaSplitND"               , kRead,      kVariable);
   add("ResourceApplyAdaMax"                  , kReadWrite, kVariable);
   add("ResourceApplyAdadelta"                , kReadWrite, kVariable);
   add("ResourceApplyAdagrad"                 , kReadWrite, kVariable);

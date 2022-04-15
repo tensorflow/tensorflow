@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -37,18 +39,24 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    // TODO(rmlarsen): add multithreading or interleaving.
-    for (int b = 0; b < batch_size; ++b) {
-      const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
-      OutType* output_ptr = output->data() + b * num_values;
-      for (int i = 0; i < num_values; ++i) {
-        output_ptr[i] =
-            std::upper_bound(sorted_inputs_ptr, sorted_inputs_ptr + num_inputs,
-                             values(i + b * num_values)) -
-            sorted_inputs_ptr;
+    auto work_fn = [&](int64_t first, int64_t last) {
+      for (int b = 0; b < batch_size; ++b) {
+        const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
+        OutType* output_ptr = output->data() + b * num_values;
+        for (int i = first; i < last; ++i) {
+          output_ptr[i] = std::upper_bound(sorted_inputs_ptr,
+                                           sorted_inputs_ptr + num_inputs,
+                                           values(i + b * num_values)) -
+                          sorted_inputs_ptr;
+        }
       }
-    }
-
+    };
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    thread::ThreadPool* thread_pool = worker_threads.workers;
+    const float kCostMultiplier = 1.f;  // Can be tuned to minimize overhead
+    int64_t cost_per_unit =
+        kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
+    thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
     return Status::OK();
   }
 };
@@ -60,18 +68,24 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    // TODO(rmlarsen): add multithreading or interleaving.
-    for (int b = 0; b < batch_size; ++b) {
-      const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
-      OutType* output_ptr = output->data() + b * num_values;
-      for (int i = 0; i < num_values; ++i) {
-        output_ptr[i] =
-            std::lower_bound(sorted_inputs_ptr, sorted_inputs_ptr + num_inputs,
-                             values(i + b * num_values)) -
-            sorted_inputs_ptr;
+    auto work_fn = [&](int64_t first, int64_t last) {
+      for (int b = 0; b < batch_size; ++b) {
+        const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
+        OutType* output_ptr = output->data() + b * num_values;
+        for (int i = first; i < last; ++i) {
+          output_ptr[i] = std::lower_bound(sorted_inputs_ptr,
+                                           sorted_inputs_ptr + num_inputs,
+                                           values(i + b * num_values)) -
+                          sorted_inputs_ptr;
+        }
       }
-    }
-
+    };
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    thread::ThreadPool* thread_pool = worker_threads.workers;
+    const float kCostMultiplier = 1.f;  // Can be tuned to minimize overhead
+    int64_t cost_per_unit =
+        kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
+    thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
     return Status::OK();
   }
 };
@@ -86,6 +100,10 @@ class UpperBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
+    // inputs must be at least a matrix
+    OP_REQUIRES(
+        ctx, sorted_inputs_t.shape().dims() >= 2,
+        errors::InvalidArgument("sorted input argument must be a matrix"));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
                 Status(error::INVALID_ARGUMENT,
@@ -127,6 +145,10 @@ class LowerBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
+    // inputs must be at least a matrix
+    OP_REQUIRES(
+        ctx, sorted_inputs_t.shape().dims() >= 2,
+        errors::InvalidArgument("sorted input argument must be a matrix"));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
                 Status(error::INVALID_ARGUMENT,
@@ -169,11 +191,11 @@ class LowerBoundOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("UpperBound")                      \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("UpperBound")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           UpperBoundOp<CPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
@@ -191,11 +213,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("UpperBound")                      \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("UpperBound")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           UpperBoundOp<GPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
@@ -213,11 +235,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("LowerBound")                      \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("LowerBound")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           LowerBoundOp<CPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
@@ -235,11 +257,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("LowerBound")                      \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("LowerBound")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           LowerBoundOp<GPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);

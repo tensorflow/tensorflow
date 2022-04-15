@@ -14,10 +14,6 @@
 # ==============================================================================
 """Operations for linear algebra."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -54,7 +50,8 @@ def eye(num_rows,
       if not isinstance(num_rows, compat.integral_types) or not isinstance(
           num_columns, compat.integral_types):
         raise TypeError(
-            'num_rows and num_columns must be positive integer values.')
+            'Arguments `num_rows` and `num_columns` must be positive integer '
+            f'values. Received: num_rows={num_rows}, num_columns={num_columns}')
       is_square = num_rows == num_columns
       diag_size = np.minimum(num_rows, num_columns)
 

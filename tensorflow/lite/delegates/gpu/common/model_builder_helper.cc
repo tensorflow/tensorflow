@@ -24,7 +24,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -122,8 +122,8 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
 absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
                                   Axis* axis) {
   const TfLiteIntArray* dims = tflite_tensor.dims;
-  if (index == -1) {
-    index = dims->size - 1;
+  if (index < 0) {
+    index = dims->size + index;
   }
   if (index < 0 || index >= dims->size) {
     return absl::OutOfRangeError("Index for axis out of range");
@@ -376,24 +376,6 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape) {
   shape->w = dimensions->data[2];
   shape->c = dimensions->data[3];
   return absl::OkStatus();
-}
-
-absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
-  switch (fused_activation) {
-    case kTfLiteActNone:
-    case kTfLiteActRelu:
-    case kTfLiteActReluN1To1:
-    case kTfLiteActRelu6:
-    case kTfLiteActTanh:
-    case kTfLiteActSigmoid:
-      return absl::OkStatus();
-    case kTfLiteActSignBit:
-      return absl::UnimplementedError(
-          "TfLiteFusedActivation.kTfLiteActSignBit");
-
-      // Do not add default; we want compilation error rather than run-time
-      // error.
-  }
 }
 
 // If there is fused activation present, then there will be another node created

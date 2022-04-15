@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -23,8 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Don't allocate too large `BatchedMap<T>` objects
+static int kMaxBatches = std::numeric_limits<int>::max();
+
 template <class T>
-using BatchedMap = std::vector<absl::flat_hash_map<int64, T>>;
+using BatchedMap = std::vector<absl::flat_hash_map<int64_t, T>>;
 
 namespace {
 // TODO(momernick): Extend this function to work with outputs of rank > 2.
@@ -46,9 +51,9 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int num_values,
   TF_RETURN_IF_ERROR(
       context->allocate_output(1, TensorShape({total_values}), &values));
 
-  auto output_indices = indices->matrix<int64>();
+  auto output_indices = indices->matrix<int64_t>();
   auto output_values = values->flat<T>();
-  int64 value_loc = 0;
+  int64_t value_loc = 0;
   for (int b = 0; b < num_batches; ++b) {
     const auto& per_batch_count = per_batch_counts[b];
     std::vector<std::pair<int, T>> pairs(per_batch_count.begin(),
@@ -69,12 +74,12 @@ Status OutputSparse(const BatchedMap<T>& per_batch_counts, int num_values,
   if (is_1d) {
     TF_RETURN_IF_ERROR(
         context->allocate_output(2, TensorShape({1}), &dense_shape));
-    dense_shape->flat<int64>().data()[0] = num_values;
+    dense_shape->flat<int64_t>().data()[0] = num_values;
   } else {
     TF_RETURN_IF_ERROR(
         context->allocate_output(2, TensorShape({2}), &dense_shape));
-    dense_shape->flat<int64>().data()[0] = num_batches;
-    dense_shape->flat<int64>().data()[1] = num_values;
+    dense_shape->flat<int64_t>().data()[0] = num_batches;
+    dense_shape->flat<int64_t>().data()[1] = num_values;
   }
 
   return Status::OK();
@@ -122,6 +127,9 @@ class DenseCount : public OpKernel {
 
     int num_batch_elements = 1;
     for (int i = 0; i < num_batch_dimensions; ++i) {
+      OP_REQUIRES(context, data.shape().dim_size(i) != 0,
+                  errors::InvalidArgument(
+                      "Invalid input: Shapes dimension cannot be 0."));
       num_batch_elements *= data.shape().dim_size(i);
     }
     int num_value_elements = data.shape().num_elements() / num_batch_elements;
@@ -182,6 +190,44 @@ class SparseCount : public OpKernel {
                 errors::InvalidArgument(
                     "Input indices must be a 2-dimensional tensor. Got: ",
                     indices.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(values.shape()),
+                errors::InvalidArgument("Input values must be a vector. Got: ",
+                                        values.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(shape.shape()),
+                errors::InvalidArgument("Input shape must be a vector. Got: ",
+                                        shape.shape().DebugString()));
+    OP_REQUIRES(context,
+                values.shape().dim_size(0) == indices.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "Number of values must match first dimension of indices.",
+                    "Got ", values.shape().dim_size(0),
+                    " values, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape.shape().dim_size(0) == indices.shape().dim_size(1),
+        errors::InvalidArgument(
+            "Number of dimensions must match second dimension of indices.",
+            "Got ", shape.shape().dim_size(0),
+            " dimensions, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(context, shape.NumElements() > 0,
+                errors::InvalidArgument(
+                    "The shape argument requires at least one element."));
+    // Validate indices: each index must be valid for the corresponding
+    // dimension. This could be possibly done better.
+    const auto indices_values = indices.matrix<int64_t>();
+    const auto shape_vector = shape.vec<int64_t>();
+    int num_values = values.NumElements();  // same as first dim of indices
+    int rank = indices.shape().dim_size(1);
+    for (int i = 0; i < num_values; ++i) {
+      for (int j = 0; j < rank; ++j) {
+        OP_REQUIRES(
+            context,
+            indices_values(i, j) >= 0 && indices_values(i, j) < shape_vector(j),
+            errors::InvalidArgument(
+                "Invalid index value at ", i, ": dimension ", j, " has value ",
+                indices_values(i, j), " which is not in [0, ", shape_vector(j),
+                ") (as given by dense shape ", shape.DebugString()));
+      }
+    }
 
     if (use_weights) {
       OP_REQUIRES(
@@ -192,21 +238,13 @@ class SparseCount : public OpKernel {
               "; values shape: ", values.shape().DebugString()));
     }
 
-    OP_REQUIRES(context, shape.NumElements() != 0,
-                errors::InvalidArgument(
-                    "The shape argument requires at least one element."));
-
     bool is_1d = shape.NumElements() == 1;
-    int num_batches = is_1d ? 1 : shape.flat<int64>()(0);
-    int num_values = values.NumElements();
+    int num_batches = is_1d ? 1 : shape_vector(0);
+    OP_REQUIRES(
+        context, 0 < num_batches && num_batches < kMaxBatches,
+        errors::InvalidArgument("Cannot allocate ", num_batches,
+                                " batches, is the dense shape too wide?"));
 
-    OP_REQUIRES(context, num_values == indices.shape().dim_size(0),
-                errors::InvalidArgument(
-                    "Number of values must match first dimension of indices.",
-                    "Got ", num_values,
-                    " values, indices shape: ", indices.shape().DebugString()));
-
-    const auto indices_values = indices.matrix<int64>();
     const auto values_values = values.flat<T>();
     const auto weight_values = weights.flat<W>();
 
@@ -276,7 +314,7 @@ class RaggedCount : public OpKernel {
               "; values shape: ", values.shape().DebugString()));
     }
 
-    const auto splits_values = splits.flat<int64>();
+    const auto splits_values = splits.flat<int64_t>();
     const auto values_values = values.flat<T>();
     const auto weight_values = weights.flat<W>();
     int num_batches = splits.NumElements() - 1;
@@ -331,7 +369,7 @@ class RaggedCount : public OpKernel {
 
 #define REGISTER_W(W_TYPE) \
   REGISTER(int32, W_TYPE)  \
-  REGISTER(int64, W_TYPE)
+  REGISTER(int64_t, W_TYPE)
 
 #define REGISTER(I_TYPE, W_TYPE)                                     \
                                                                      \

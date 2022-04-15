@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -44,18 +45,18 @@ class FillOp : public XlaOpKernel {
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         value_shape.DebugString()));
 
-    std::vector<int64> dims;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dims));
-    // Set dynamic dimension value to -1 so that we know which dimension is
-    // dynamic.
-    ctx->set_dynamic_dimension_is_minus_one(true);
-    std::vector<int64> dynamic_dims;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dynamic_dims));
+    std::vector<int64_t> dims;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntVector(
+                       "dims", &dims, xla::ValueInferenceMode::kUpperBound));
+    std::vector<bool> dynamic_dims;
+    OP_REQUIRES_OK(
+        ctx, ctx->ResolveInputDynamismIntoPredVector("dims", &dynamic_dims));
 
     auto output = xla::Broadcast(ctx->Input("value"), dims);
-    for (int64 i = 0; i < dims.size(); ++i) {
+    for (int64_t i = 0; i < dims.size(); ++i) {
       // If a dimension is dynamic, call set-dimension-size on the output.
-      if (dynamic_dims[i] == -1) {
+      if (dynamic_dims[i]) {
         auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
         dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
         dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);

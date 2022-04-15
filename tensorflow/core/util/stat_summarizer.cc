@@ -49,7 +49,7 @@ void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
                  << ns.output_size();
   } else {
     for (const auto& output : ns.output()) {
-      const int32 slot = output.slot();
+      const int32_t slot = output.slot();
       if ((slot < 0) || (slot >= ns.output_size())) {
         // This is not a hard error for Switch ops, so just pass.
         continue;
@@ -128,14 +128,8 @@ std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
 }  // namespace
 
 void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
-  int64 curr_total_us = 0;
-  int64 mem_total = 0;
-
-  int64 first_node_start_us =
-      (step_stats.dev_stats_size() > 0 &&
-       step_stats.dev_stats(0).node_stats_size() > 0)
-          ? step_stats.dev_stats(0).node_stats(0).all_start_micros()
-          : 0;
+  int64_t curr_total_us = 0;
+  int64_t mem_total = 0;
 
   int node_num = 0;
   for (const auto& ds : step_stats.dev_stats()) {
@@ -186,20 +180,19 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       }
 
       ++node_num;
-      const int64 curr_time = ns.all_end_rel_micros();
+      const int64_t curr_time = ns.all_end_rel_micros();
       curr_total_us += curr_time;
       auto output_result =
           outputs_.emplace(name, std::vector<TensorDescription>());
       std::vector<TensorDescription>* outputs = &(output_result.first->second);
 
-      int64_t start_us = (ns.all_start_micros() - first_node_start_us);
       int64_t rel_end_us = curr_time;
 
       // If this is the first pass, initialize some values.
       if (output_result.second) {
         outputs->resize(ns.output_size());
         for (const auto& output : ns.output()) {
-          const int32 slot = output.slot();
+          const int32_t slot = output.slot();
           if ((slot < 0) || (slot >= ns.output_size())) {
             // This is not a hard error for Switch ops, so just pass.
             continue;
@@ -208,13 +201,13 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
         }
       }
 
-      int64 curr_node_mem = 0;
+      int64_t curr_node_mem = 0;
       for (const auto& mem : ns.memory()) {
-        const int64 mem_usage = mem.total_bytes();
+        const int64_t mem_usage = mem.total_bytes();
         curr_node_mem += mem_usage;
       }
-      stats_calculator_->AddNodeStats(name, op_type, node_num, start_us,
-                                      rel_end_us, curr_node_mem);
+      stats_calculator_->AddNodeStats(name, op_type, node_num, rel_end_us,
+                                      curr_node_mem);
 
       mem_total += curr_node_mem;
 
@@ -229,10 +222,10 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
 void StatSummarizer::PrintOutputs() const {
   std::priority_queue<
-      std::pair<int64, const std::pair<const std::string, Detail>*>>
+      std::pair<int64_t, const std::pair<const std::string, Detail>*>>
       timings;
   for (const auto& entry : stats_calculator_->GetDetails()) {
-    timings.emplace(-entry.second.start_us.avg(), &entry);
+    timings.emplace(-entry.second.run_order, &entry);
   }
 
   LOG(INFO) << "============ Node output tensor sizes in run order ========";

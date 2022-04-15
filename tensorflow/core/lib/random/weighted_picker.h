@@ -54,7 +54,7 @@ class WeightedPicker {
   // Deterministically pick element x whose weight covers the
   // specified weight_index.
   // Returns -1 if weight_index is not in the range [ 0 .. total_weight()-1 ]
-  int PickAt(int32 weight_index) const;
+  int PickAt(int32_t weight_index) const;
 
   // Get the weight associated with an element
   // REQUIRES 0 <= index < N
@@ -63,7 +63,7 @@ class WeightedPicker {
   // Set the weight associated with an element
   // REQUIRES weight >= 0.0f
   // REQUIRES 0 <= index < N
-  void set_weight(int index, int32 weight);
+  void set_weight(int index, int32_t weight);
 
   // Get the total combined weight of all elements
   int32 total_weight() const;
@@ -72,7 +72,7 @@ class WeightedPicker {
   int num_elements() const;
 
   // Set weight of each element to "weight"
-  void SetAllWeights(int32 weight);
+  void SetAllWeights(int32_t weight);
 
   // Resizes the picker to N and
   // sets the weight of each element i to weight[i].
@@ -98,7 +98,7 @@ class WeightedPicker {
   // Repeated calls to Append() in order to grow the
   // picker to size X takes a total time of O(X lg(X)).
   // Consider using SetWeightsFromArray instead.
-  void Append(int32 weight);
+  void Append(int32_t weight);
 
  private:
   // We keep a binary tree with N leaves.  The "i"th leaf contains

@@ -93,7 +93,7 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
 
     auto in = context->input(0).flat<T>();
     const T* data = in.data();
-    const int64 size = in.size();
+    const int64_t size = in.size();
     // Check to see if any element of the tensor is NaN or Inf.
     int fp_props = std::accumulate(
         data, data + size, 0,
@@ -271,8 +271,9 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       checkForAnomalies(context, abnormal_detected_host_flat);
       done();
     };
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, std::move(check_cb));
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, std::move(check_cb));
   }
 
  protected:

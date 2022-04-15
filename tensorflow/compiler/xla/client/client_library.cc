@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -92,7 +94,7 @@ ClientLibrary::~ClientLibrary() = default;
   se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
   ClientLibrary& client_library = Singleton();
-  tensorflow::mutex_lock lock(client_library.service_mutex_);
+  absl::MutexLock lock(&client_library.service_mutex_);
 
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -129,7 +131,7 @@ ClientLibrary::~ClientLibrary() = default;
 /* static */ LocalService* ClientLibrary::GetXlaService(
     se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
-  tensorflow::mutex_lock lock(client_library.service_mutex_);
+  absl::MutexLock lock(&client_library.service_mutex_);
   auto it = client_library.local_instances_.find(platform->id());
   CHECK(it != client_library.local_instances_.end());
   return it->second->service.get();
@@ -138,7 +140,7 @@ ClientLibrary::~ClientLibrary() = default;
 /* static */ StatusOr<CompileOnlyClient*>
 ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
-  tensorflow::mutex_lock lock(client_library.service_mutex_);
+  absl::MutexLock lock(&client_library.service_mutex_);
 
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -163,7 +165,7 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
 
 /* static */ void ClientLibrary::DestroyLocalInstances() {
   ClientLibrary& client_library = Singleton();
-  tensorflow::mutex_lock lock(client_library.service_mutex_);
+  absl::MutexLock lock(&client_library.service_mutex_);
 
   client_library.local_instances_.clear();
   client_library.compile_only_instances_.clear();

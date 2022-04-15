@@ -335,6 +335,26 @@ TEST(BasicFlatBufferModel, TestSetNumThreads) {
                       reporter.error_messages());
 }
 
+TEST(BasicFlatBufferModel, TestSetNumThreadsWithMultipleSubgraphs) {
+  TestErrorReporter reporter;
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/2_subgraphs.bin", &reporter);
+  ASSERT_TRUE(model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder(*model, resolver);
+
+  ASSERT_EQ(builder.SetNumThreads(4), kTfLiteOk);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Check that each subgraph has the expected number of threads set.
+  for (int i = 0; i < interpreter->subgraphs_size(); ++i) {
+    EXPECT_EQ(interpreter->subgraph(i)->context()->recommended_num_threads, 4);
+  }
+}
+
 // Test that loading a model with TensorFlow ops fails when the flex delegate is
 // not linked into the target.
 TEST(FlexModel, FailureWithoutFlexDelegate) {
@@ -353,7 +373,7 @@ TEST(FlexModel, FailureWithoutFlexDelegate) {
 
   // As the flex ops weren't resolved implicitly by the flex delegate, runtime
   // allocation and execution will fail.
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteUnresolvedOps);
 }
 
 // This tests on a flatbuffer that defines a shape of 2 to be a memory mapped
@@ -503,6 +523,62 @@ TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
   ASSERT_TRUE(model2);
   // Check that we have read the runtime string correctly.
   ASSERT_EQ(model2->GetMinimumRuntime(), "1.5.0");
+}
+
+// Test reading all metadata from the model
+TEST(BasicFlatBufferModel, TestReadMetadataFromModel) {
+  // First read a model that doesn't have the runtime string.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  std::map<std::string, std::string> metadata = model1->ReadAllMetadata();
+  ASSERT_EQ(metadata.size(), 0);
+
+  // Read a model that has reduced precision support mask populated
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model_redux_precision.bin");
+  ASSERT_TRUE(model2);
+  // Check that we have read the runtime string correctly.
+  metadata = model2->ReadAllMetadata();
+  ASSERT_EQ(metadata["reduced_precision_support"], "fp16bf16accfp32");
+}
+
+TEST(BasicFlatBufferModel, TestReadMetadataFromContext) {
+  const std::string reduced_precision_meta_key = "reduced_precision_support";
+  // First read a model that doesn't have any metadata.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder1(*model1, resolver);
+  interpreter.reset();
+  ASSERT_EQ(builder1(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  const char* ptr = nullptr;
+  size_t bytes;
+  auto* context = interpreter->subgraph(0)->context();
+  ASSERT_EQ(context->GetModelMetadata(
+                context, reduced_precision_meta_key.c_str(), &ptr, &bytes),
+            kTfLiteError);
+
+  // This model has metadata mapped to kTfLiteReducedPrecisionKey.
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model_redux_precision.bin");
+  ASSERT_TRUE(model2);
+  InterpreterBuilder builder2(*model2, resolver);
+  interpreter.reset();
+  ASSERT_EQ(builder2(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  context = interpreter->subgraph(0)->context();
+  ASSERT_EQ(context->GetModelMetadata(
+                context, reduced_precision_meta_key.c_str(), &ptr, &bytes),
+            kTfLiteOk);
+  ASSERT_EQ(std::string(ptr, bytes), "fp16bf16accfp32");
+  ASSERT_EQ(context->GetModelMetadata(context, "unknown_key", &ptr, &bytes),
+            kTfLiteError);
 }
 
 // The test model has the following tensor encoded in the TACO format:
@@ -716,9 +792,3 @@ TEST(BasicFlatBufferModel, TestHandleModelWithWhileOpContainsForwardingInput) {
 // not here.
 
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

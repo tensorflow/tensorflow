@@ -31,9 +31,14 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
+
+// Returns the MLIR op name for the flatbuffer operator corresponding to
+// `op_code`.
+std::string GetMlirOpNameFromOpCode(const ::tflite::OperatorCodeT &op_code);
 
 // Returns the builtin op code for the given MLIR operation on success; emits
 // error and returns llvm::None on failure.

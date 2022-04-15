@@ -60,7 +60,7 @@ const T& SelectRandomItemUniform(std::default_random_engine* random,
 }
 }  // namespace
 
-GcsDnsCache::GcsDnsCache(Env* env, int64 refresh_rate_secs)
+GcsDnsCache::GcsDnsCache(Env* env, int64_t refresh_rate_secs)
     : env_(env), refresh_rate_secs_(refresh_rate_secs) {}
 
 void GcsDnsCache::AnnotateRequest(HttpRequest* request) {

@@ -33,7 +33,7 @@ namespace grappler {
 
 const char kConstantFoldingConst[] = "ConstantFolding";
 const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
-extern const int64 kMaxConstantSize;
+extern const int64_t kMaxConstantSize;
 
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
@@ -60,9 +60,6 @@ class ConstantFolding : public GraphOptimizer {
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
 
  private:
   bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
@@ -132,15 +129,15 @@ class ConstantFolding : public GraphOptimizer {
   Status FoldGraph(const GraphProperties& properties, GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
 
-  bool IsSimplifiableReshape(const NodeDef& node,
-                             const GraphProperties& properties) const;
-  Status SimplifyGraph(bool use_shape_info, GraphDef* optimized_graph,
-                       GraphProperties* properties,
+  Status IsSimplifiableReshape(const NodeDef& node,
+                               const GraphProperties& properties) const;
+  Status SimplifyGraph(GraphDef* optimized_graph, GraphProperties* properties,
                        absl::flat_hash_set<string>* nodes_to_not_simplify);
-  Status SimplifyNode(bool use_shape_info, NodeDef* node,
-                      GraphDef* optimized_graph, GraphProperties* properties);
+  Status SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
+                      GraphProperties* properties);
 
   Status RunOptimizationPass(Cluster* cluster, GrapplerItem* item,
+                             GraphProperties* properties,
                              GraphDef* optimized_graph);
 
   // Applies partial constant folding for Concat which is not commutative.

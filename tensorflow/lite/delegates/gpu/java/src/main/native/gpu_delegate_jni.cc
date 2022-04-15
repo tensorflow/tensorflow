@@ -29,7 +29,8 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
-    jboolean quantized_models_allowed, jint inference_preference) {
+    jboolean quantized_models_allowed, jint inference_preference,
+    jstring serialization_dir, jstring model_token) {
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
   if (precision_loss_allowed == JNI_TRUE) {
     options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
@@ -42,6 +43,18 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
   }
   options.inference_preference = static_cast<int32_t>(inference_preference);
+  if (serialization_dir) {
+    options.serialization_dir =
+        env->GetStringUTFChars(serialization_dir, /*isCopy=*/nullptr);
+  }
+  if (model_token) {
+    options.model_token =
+        env->GetStringUTFChars(model_token, /*isCopy=*/nullptr);
+  }
+  if (options.serialization_dir && options.model_token) {
+    options.experimental_flags |=
+        TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION;
+  }
   return reinterpret_cast<jlong>(TfLiteGpuDelegateV2Create(&options));
 }
 

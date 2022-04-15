@@ -52,6 +52,8 @@ port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetHipfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
 port::StatusOr<void*> GetRoctracerDsoHandle();
+port::StatusOr<void*> GetRocsolverDsoHandle();
+port::StatusOr<void*> GetHipsolverDsoHandle();
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 
@@ -86,6 +88,8 @@ port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetHipfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetRocsolverDsoHandle();
+port::StatusOr<void*> GetHipsolverDsoHandle();
 port::StatusOr<void*> GetRoctracerDsoHandle();
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();

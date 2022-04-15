@@ -55,12 +55,12 @@ StatusOr<Literal> InterpreterExecutable::Evaluate(
     const ServiceExecutableRunOptions* run_options,
     const HloComputation& computation, absl::Span<const Literal> arg_literals) {
   // Execute the graph using the HloEvaluator.
-  tensorflow::mutex_lock lock(evaluator_lock_);
+  absl::MutexLock lock(&evaluator_lock_);
   evaluator_->ResetVisitStates();
   return evaluator_->Evaluate(computation, arg_literals);
 }
 
-/*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64_t InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
   if (shape.IsOpaque()) {
     return sizeof(void*);
   }

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 const char* const kUsage = R"(
 This tool reads in an HloModule from a file, compiles it using the NVPTX
@@ -63,30 +65,34 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   gpu_device_info.block_dim_limit_y = 65535;
   gpu_device_info.block_dim_limit_z = 65535;
 
-  xla::gpu::CudaComputeCapability cuda_compute_capability;
-  cuda_compute_capability.cc_major = sm / 10;
-  cuda_compute_capability.cc_minor = sm % 10;
+  tensorflow::se::CudaComputeCapability cuda_compute_capability;
+  cuda_compute_capability.major = sm / 10;
+  cuda_compute_capability.minor = sm % 10;
+  tensorflow::se::RocmComputeCapability rocm_compute_capability("gfx908");
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
+  std::string platform_name = "CUDA";
+  stream_executor::Platform::Id platform_id =
+      stream_executor::cuda::kCudaPlatformId;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       xla::gpu::CompileModuleToLlvmIr(
                           hlo_module.get(), &llvm_context,
-                          /*target_triple=*/xla::gpu::nvptx::kTargetTriple,
-                          /*data_layout=*/xla::gpu::nvptx::kDataLayout,
-                          /*platform_name=*/"CUDA", gpu_device_info,
-                          cuda_compute_capability, /*pointer_size=*/8));
+                          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
+                          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
+                          /*platform_name=*/platform_name,
+                          /*platform_id=*/platform_id, gpu_device_info,
+                          cuda_compute_capability, rocm_compute_capability,
+                          /*pointer_size=*/8));
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);
   } else {
 #if GOOGLE_CUDA
-    std::pair<int, int> gpu_version = std::make_pair(
-        cuda_compute_capability.cc_major, cuda_compute_capability.cc_minor);
     std::string libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module->config());
-    TF_ASSIGN_OR_RETURN(
-        std::string ptx,
-        xla::gpu::nvptx::CompileToPtx(llvm_module.get(), gpu_version,
-                                      hlo_module->config(), libdevice_dir));
+    TF_ASSIGN_OR_RETURN(std::string ptx,
+                        xla::gpu::nvptx::CompileToPtx(
+                            llvm_module.get(), cuda_compute_capability,
+                            hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
     return {tensorflow::error::UNIMPLEMENTED,

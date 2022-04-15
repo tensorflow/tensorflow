@@ -16,13 +16,10 @@
 """For seeding individual ops based on a graph-level seed.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import weakref
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -82,6 +79,13 @@ def get_seed(op_seed):
       seeds = DEFAULT_GRAPH_SEED, _truncate_seed(op_seed)
     else:
       seeds = None, None
+
+  if seeds == (None, None) and config.is_op_determinism_enabled():
+    raise RuntimeError(  # pylint: disable=g-doc-exception
+        'Random ops require a seed to be set when determinism is enabled. '
+        'Please set a seed before running the op, e.g. by calling '
+        'tf.random.set_seed(1).')
+
   # Avoid (0, 0) as the C++ ops interpret it as nondeterminism, which would
   # be unexpected since Python docs say nondeterminism is (None, None).
   if seeds == (0, 0):
@@ -185,6 +189,14 @@ def set_random_seed(seed):
     print(sess2.run(b))  # generates 'B1'
     print(sess2.run(b))  # generates 'B2'
   ```
+
+  @compatibility(TF2)
+  'tf.compat.v1.set_random_seed' is compatible with eager mode. However,
+  in eager mode this API will set the global seed instead of the
+  graph-level seed of the default graph. In TF2 this API is changed to
+  [tf.random.set_seed]
+  (https://www.tensorflow.org/api_docs/python/tf/random/set_seed).
+  @end_compatibility
 
   Args:
     seed: integer.

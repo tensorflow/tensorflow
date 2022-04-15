@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_defun_op.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -47,7 +47,7 @@ struct MapDefunOp::ComputeOptions {
   OpInputList args;
   const std::vector<TensorShape> arg_shapes;
   OpInputList captured_inputs;
-  const int64 batch_size;
+  const int64_t batch_size;
   std::function<void(std::function<void()>)> runner;
 
   // Output of a compute call
@@ -59,7 +59,7 @@ struct MapDefunOp::ComputeOptions {
   // different output shape.
   ComputeOptions(OpKernelContext* ctx, OpInputList args,
                  OpInputList captured_inputs,
-                 std::vector<TensorShape> arg_shapes, int64 batch_size,
+                 std::vector<TensorShape> arg_shapes, int64_t batch_size,
                  const std::vector<PartialTensorShape>& output_shapes_attr,
                  int max_parallelism)
       : args(args),
@@ -84,7 +84,9 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
 
   ~MapFunctionCallFrame() override = default;
 
-  size_t num_args() const override { return compute_opts_->args.size(); }
+  size_t num_args() const override {
+    return compute_opts_->args.size() + compute_opts_->captured_inputs.size();
+  }
 
   size_t num_retvals() const override {
     return static_cast<size_t>(kernel_->num_outputs());
@@ -259,7 +261,7 @@ Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
   OpInputList captured_inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(kCapturedInputs, &captured_inputs));
 
-  int64 batch_size = arguments[0].dims() > 0 ? arguments[0].dim_size(0) : -1;
+  int64_t batch_size = arguments[0].dims() > 0 ? arguments[0].dim_size(0) : -1;
 
   for (size_t i = 0; i < arguments.size(); ++i) {
     if (arguments[i].dims() == 0) {

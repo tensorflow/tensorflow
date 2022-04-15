@@ -199,7 +199,7 @@ Status VerifyBodyInputAndOutputShapeMatch(
   return Status::OK();
 }
 
-xla::StatusOr<xla::XlaComputation> BuildWrappedCond(
+StatusOr<xla::XlaComputation> BuildWrappedCond(
     XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& cond) {
   xla::Shape cond_input_shape = cond.xla_input_shapes[0];
   std::unique_ptr<xla::XlaBuilder> cb =
@@ -210,7 +210,7 @@ xla::StatusOr<xla::XlaComputation> BuildWrappedCond(
   return cb->Build();
 }
 
-xla::StatusOr<xla::XlaComputation> BuildWrappedBody(
+StatusOr<xla::XlaComputation> BuildWrappedBody(
     XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& body,
     const std::vector<bool>& compile_time_const_arg_indices,
     int num_compile_time_const_args, bool has_token_input_output) {
@@ -350,6 +350,9 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler::CompilationResult body;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                 arguments, &body));
+  OP_REQUIRES_OK(
+      ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+               body));
 
   // We must use a static shape for parameters to an XLA compilation. However,
   // we may not know the shape of a resource if it is first
@@ -498,6 +501,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     if (has_token_input_output_ && i == num_inputs - 1) {
       // Set token input for this "while" op.
       std::vector<xla::XlaOp> token_inputs;
+      token_inputs.reserve(token_input_nodes_.size());
       for (const string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());
@@ -521,7 +525,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       if (input_shape != list_shape) {
         // Prepare dynamic dimensions for element shapes.
         std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-        for (int64 i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+        for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
           std::vector<xla::XlaOp> dynamic_dims;
 
           const xla::Shape& shape = list_shape.tuple_shapes(i);
@@ -533,7 +537,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
             xla::XlaOp leading_dim_size = xla::GetDimensionSize(input, 0);
             dynamic_dims.push_back(leading_dim_size);
           } else {
-            int32 dim_size = shape.dimensions(0);
+            int32_t dim_size = shape.dimensions(0);
             dynamic_dims.push_back(
                 xla::ConstantR0<int32>(ctx->builder(), dim_size));
           }
@@ -541,13 +545,13 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           // Set dynamic dimension size to 0 for element value. Inside the while
           // loop, TensorlistSetItem will properly set the element shape's
           // dynamic dimension.
-          for (int64 dim = 1; dim < shape.dimensions_size(); ++dim) {
-            int32 dim_size = shape.dimensions(dim);
+          for (int64_t dim = 1; dim < shape.dimensions_size(); ++dim) {
+            int32_t dim_size = shape.dimensions(dim);
             if (shape.is_dynamic_dimension(dim)) {
               dim_size = 0;
             }
             dynamic_dims.push_back(
-                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+                xla::ConstantR0<int32_t>(ctx->builder(), dim_size));
           }
           list_dynamic_dims.push_back(dynamic_dims);
         }
@@ -567,12 +571,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Building while loop";
 
   // Wraps the condition in a computation that unpacks the output tuple.
-  xla::StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
+  StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
   OP_REQUIRES_OK(ctx, cond_result.status());
   xla::XlaComputation wrapped_cond = std::move(cond_result.ValueOrDie());
 
   // Remove compile time const args from the list of body outputs.
-  xla::StatusOr<xla::XlaComputation> body_result =
+  StatusOr<xla::XlaComputation> body_result =
       BuildWrappedBody(ctx, body, compile_time_const_arg_indices,
                        num_compile_time_const_args, has_token_input_output_);
   OP_REQUIRES_OK(ctx, body_result.status());

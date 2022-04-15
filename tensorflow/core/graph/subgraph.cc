@@ -245,7 +245,7 @@ Status RecvFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
           .Attr("send_device", device_info().name())
           .Attr("recv_device", device_info().name())
           .Attr("send_device_incarnation",
-                static_cast<int64>(device_info().incarnation()))
+                static_cast<int64_t>(device_info().incarnation()))
           .Attr("client_terminated", true)
           .Finalize(g, out_node, /*consume=*/true));
 
@@ -283,7 +283,7 @@ Status SendFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
           .Attr("send_device", device_info().name())
           .Attr("recv_device", device_info().name())
           .Attr("send_device_incarnation",
-                static_cast<int64>(device_info().incarnation()))
+                static_cast<int64_t>(device_info().incarnation()))
           .Attr("client_terminated", true)
           .Finalize(g, out_node, /*consume=*/true));
   (*out_node)->set_assigned_device_name(device_info().name());

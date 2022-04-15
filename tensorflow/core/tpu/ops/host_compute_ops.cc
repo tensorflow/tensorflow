@@ -67,10 +67,10 @@ REGISTER_OP("XlaHostCompute")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       const AttrValue* graph;
-      TF_RETURN_IF_ERROR(c->attrs().Find("shape_inference_graph", &graph));
+      TF_RETURN_IF_ERROR(c->GetAttr("shape_inference_graph", &graph));
       if (graph->func().name().empty()) {
         const AttrValue* shapes;
-        TF_RETURN_IF_ERROR(c->attrs().Find("shapes", &shapes));
+        TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
         if (shapes->list().shape_size() != c->num_outputs()) {
           return errors::InvalidArgument(
               "_XlaHostCompute has ", c->num_outputs(),
@@ -108,7 +108,7 @@ REGISTER_OP("XlaRecvFromHost")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       const AttrValue* shape_attr;
-      TF_RETURN_IF_ERROR(c->attrs().Find("shape", &shape_attr));
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_attr));
       if (!shape_attr->has_shape()) {
         return errors::InvalidArgument(
             "XlaRecvFromHost op does not have valid \"Toutput\" attr.");

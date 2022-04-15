@@ -67,7 +67,7 @@ class StringToNumberOp : public OpKernel {
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);
-REGISTER(int64);
+REGISTER(int64_t);
 #undef REGISTER
 
 }  // namespace tensorflow

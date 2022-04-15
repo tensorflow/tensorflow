@@ -62,7 +62,7 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
     }
 
     if (s.ok()) {
-      int64 recv_bytes = to_tensor->TotalBytes();
+      int64_t recv_bytes = to_tensor->TotalBytes();
       CHECK_EQ(recv_bytes, hook->prod_value->TotalBytes());
       MemCpyAsync(hook->prod_ctx,    // src DeviceContext
                   to_device_ctx,     // dst DeviceContext
@@ -107,7 +107,7 @@ void CollectiveRemoteAccessLocal::PostToPeer(
 }
 
 void CollectiveRemoteAccessLocal::CheckPeerHealth(const string& peer_task,
-                                                  int64 timeout_in_ms,
+                                                  int64_t timeout_in_ms,
                                                   const StatusCallback& done) {
   // Assume local devices are always healthy.
   done(errors::Internal(
@@ -136,14 +136,14 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
   // the OpKernelContext does not supply a DeviceContext.  It's assumed
   // that all nodes use the default context.
   if (src_dev_ctx == nullptr && src_device_type == DEVICE_GPU) {
-    const DeviceBase::GpuDeviceInfo* dev_info =
-        src_dev->tensorflow_gpu_device_info();
+    const DeviceBase::AcceleratorDeviceInfo* dev_info =
+        src_dev->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     src_dev_ctx = dev_info->default_context;
   }
   if (dst_dev_ctx == nullptr && dst_device_type == DEVICE_GPU) {
-    const DeviceBase::GpuDeviceInfo* dev_info =
-        src_dev->tensorflow_gpu_device_info();
+    const DeviceBase::AcceleratorDeviceInfo* dev_info =
+        src_dev->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     dst_dev_ctx = dev_info->default_context;
   }
@@ -154,7 +154,7 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
                        src_dev_ctx, dst_dev_ctx, src_dev, dst_dev, src_attr,
                        dst_attr, src, dst, dev_to_dev_stream_index, done);
   } else {
-    int64 bytes = src->TotalBytes();
+    int64_t bytes = src->TotalBytes();
     DCHECK_EQ(dst->TotalBytes(), bytes);
     memcpy(DMAHelper::base(dst), DMAHelper::base(src), bytes);
     done(Status::OK());

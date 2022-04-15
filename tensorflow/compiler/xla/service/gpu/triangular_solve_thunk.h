@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace xla {
 namespace gpu {
@@ -40,10 +40,13 @@ class TriangularSolveThunk : public Thunk {
  public:
   TriangularSolveThunk(ThunkInfo thunk_info,
                        const TriangularSolveOptions& options,
+                       se::GpuAsmOpts asm_opts,
                        const BufferAllocation::Slice& a_buffer,
                        const BufferAllocation::Slice& b_buffer,
-                       PrimitiveType type, int64 batch_size, int64 m, int64 n,
-                       int64 a_batch_stride, int64 b_batch_stride);
+                       const BufferAllocation::Slice& temp_buffer,
+                       PrimitiveType type, int64_t batch_size, int64_t m,
+                       int64_t n, int64_t a_batch_stride,
+                       int64_t b_batch_stride);
 
   TriangularSolveThunk(const TriangularSolveThunk&) = delete;
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
@@ -51,6 +54,7 @@ class TriangularSolveThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  se::GpuAsmOpts asm_opts_;
   const se::blas::UpperLower uplo_;
   const se::blas::Side side_;
   const se::blas::Diagonal unit_diagonal_;
@@ -58,13 +62,14 @@ class TriangularSolveThunk : public Thunk {
 
   const BufferAllocation::Slice a_buffer_;
   const BufferAllocation::Slice b_buffer_;
+  const BufferAllocation::Slice temp_buffer_;
 
   const PrimitiveType type_;
-  const int64 batch_size_;
-  const int64 m_;
-  const int64 n_;
-  const int64 a_batch_stride_;
-  const int64 b_batch_stride_;
+  const int64_t batch_size_;
+  const int64_t m_;
+  const int64_t n_;
+  const int64_t a_batch_stride_;
+  const int64_t b_batch_stride_;
 };
 
 }  // namespace gpu

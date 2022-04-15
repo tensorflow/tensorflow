@@ -28,7 +28,7 @@ void XfeedManager::Reset() {
 }
 
 void XfeedQueueManager::Reset() {
-  tensorflow::mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   CHECK(current_buffer_ == nullptr);
   for (auto buffer : enqueued_buffers_) {
     buffer->Done(ShapeUtil::MakeNil());
@@ -38,7 +38,7 @@ void XfeedQueueManager::Reset() {
 
 void XfeedQueueManager::EnqueueBuffersAtomically(
     absl::Span<XfeedBuffer* const> buffers) {
-  tensorflow::mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   bool was_empty = enqueued_buffers_.empty();
   for (XfeedBuffer* b : buffers) {
     VLOG(3) << "Enqueueing " << queue_name_ << " buffer (of " << buffers.size()
@@ -50,15 +50,15 @@ void XfeedQueueManager::EnqueueBuffersAtomically(
     // immediately trying and failing to acquire mu_, but seems
     // preferable to the alternative of notifying outside the lock
     // on every enqueue.
-    cv_.notify_one();
+    cv_.Signal();
   }
 }
 
 XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
-  tensorflow::mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   VLOG(3) << "Waiting for an available buffer.";
   while (enqueued_buffers_.empty()) {
-    cv_.wait(l);
+    cv_.Wait(&mu_);
   }
   VLOG(3) << "A buffer is available!";
   CHECK(current_buffer_ == nullptr);
@@ -67,12 +67,12 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
   return current_buffer_;
 }
 
-void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
+void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
                                              StatusOr<Shape> shape) {
   VLOG(3) << "Releasing buffer with shape: "
           << (shape.ok() ? ShapeUtil::HumanString(shape.ValueOrDie())
                          : "<error status>");
-  tensorflow::mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   CHECK(current_buffer_ != nullptr);
   CHECK_EQ(length, current_buffer_->length());
   CHECK_EQ(data, current_buffer_->data());
@@ -80,11 +80,11 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
   current_buffer_ = nullptr;
 }
 
-int64 GetByteSizeRequirement(const Shape& shape, int64 pointer_size) {
+int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
   if (shape.is_static() || shape.IsTuple()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }
-  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
 }
 

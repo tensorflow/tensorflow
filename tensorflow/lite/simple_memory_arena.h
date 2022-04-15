@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -106,6 +107,23 @@ class SimpleMemoryArena {
   std::intptr_t BasePointer() const {
     return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
   }
+
+  // Dumps the memory allocation information of this memory arena (which could
+  // be differentiated from others by the `name`) against the specified op node
+  // execution plan (i.e. `execution_plan`) for the purpose of debugging.
+  // Note: in order to have minimal binary increase caused by this debug info
+  // dump implementation for the TfLite library, and allow users to plug-in
+  // their own memory planner debugger, we have utilized weak symbols to meet
+  // these two requirementsements. By default, there is no debugging info
+  // dumped. To override this, provide a strong defintion of
+  // tflite::DumpArenaInfo(...) whose weak defintion is in
+  // simple_memory_arena.cc. TfLite provides a sample one as
+  // "lite:simple_memory_arena_debug_dump". When this dep is added to the
+  // program, calling this function will output information of this memory arena
+  // about tenosrs and ops, such as memory arena utilization rate, live tensors
+  // at each op etc.
+  void DumpDebugInfo(const std::string& name,
+                     const std::vector<int>& execution_plan) const;
 
  private:
   bool committed_;

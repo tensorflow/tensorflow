@@ -24,38 +24,34 @@ namespace {
 using ::testing::ElementsAre;
 
 TEST(TfliteDriverTest, SimpleTest) {
-  std::unique_ptr<TestRunner> runner(new TfLiteDriver());
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver);
 
   runner->SetModelBaseDir("tensorflow/lite");
-  runner->LoadModel("testdata/multi_add.bin");
+  runner->LoadModel("testdata/multi_add.bin", "serving_default");
   ASSERT_TRUE(runner->IsValid());
 
-  ASSERT_THAT(runner->GetInputs(), ElementsAre(0, 1, 2, 3));
-  ASSERT_THAT(runner->GetOutputs(), ElementsAre(5, 6));
+  ASSERT_THAT(runner->GetOutputNames(), ElementsAre("x", "y"));
 
-  for (int i : {0, 1, 2, 3}) {
+  for (const auto& i : {"a", "b", "c", "d"}) {
     runner->ReshapeTensor(i, "1,2,2,1");
   }
   ASSERT_TRUE(runner->IsValid());
 
   runner->AllocateTensors();
 
-  runner->SetInput(0, "0.1,0.2,0.3,0.4");
-  runner->SetInput(1, "0.001,0.002,0.003,0.004");
-  runner->SetInput(2, "0.001,0.002,0.003,0.004");
-  runner->SetInput(3, "0.01,0.02,0.03,0.04");
+  runner->ResetTensor("c");
+  runner->Invoke({{"a", "0.1,0.2,0.3,0.4"},
+                  {"b", "0.001,0.002,0.003,0.004"},
+                  {"d", "0.01,0.02,0.03,0.04"}});
 
-  runner->ResetTensor(2);
-
-  runner->SetExpectation(5, "0.101,0.202,0.303,0.404");
-  runner->SetExpectation(6, "0.011,0.022,0.033,0.044");
-
-  runner->Invoke();
   ASSERT_TRUE(runner->IsValid());
 
-  ASSERT_TRUE(runner->CheckResults());
-  EXPECT_EQ(runner->ReadOutput(5), "0.101,0.202,0.303,0.404");
-  EXPECT_EQ(runner->ReadOutput(6), "0.011,0.022,0.033,0.044");
+  ASSERT_EQ(runner->ReadOutput("x"), "0.101,0.202,0.303,0.404");
+  ASSERT_EQ(runner->ReadOutput("y"), "0.011,0.022,0.033,0.044");
+
+  ASSERT_TRUE(runner->CheckResults(
+      {{"x", "0.101,0.202,0.303,0.404"}, {"y", "0.011,0.022,0.033,0.044"}},
+      /*expected_output_shapes=*/{}));
 }
 
 TEST(TfliteDriverTest, SingleAddOpTest) {
@@ -67,32 +63,54 @@ TEST(TfliteDriverTest, SingleAddOpTest) {
   runner->LoadModel("testdata/multi_add.bin");
   ASSERT_TRUE(runner->IsValid());
 
-  ASSERT_THAT(runner->GetInputs(), ElementsAre(0, 1, 2, 3));
-  ASSERT_THAT(runner->GetOutputs(), ElementsAre(5, 6));
-
-  for (int i : {0, 1, 2, 3}) {
+  for (const auto& i : {"a", "b", "c", "d"}) {
     runner->ReshapeTensor(i, "1,2,2,1");
   }
   ASSERT_TRUE(runner->IsValid());
 
   runner->AllocateTensors();
 
-  runner->SetInput(0, "0.1,0.2,0.3,0.4");
-  runner->SetInput(1, "0.001,0.002,0.003,0.004");
-  runner->SetInput(2, "0.001,0.002,0.003,0.004");
-  runner->SetInput(3, "0.01,0.02,0.03,0.04");
-
-  runner->ResetTensor(2);
-
-  runner->SetExpectation(5, "0.101,0.202,0.303,0.404");
-  runner->SetExpectation(6, "0.011,0.022,0.033,0.044");
-
-  runner->Invoke();
+  runner->ResetTensor("c");
+  runner->Invoke({{"a", "0.1,0.2,0.3,0.4"},
+                  {"b", "0.001,0.002,0.003,0.004"},
+                  {"d", "0.01,0.02,0.03,0.04"}});
   ASSERT_TRUE(runner->IsValid());
 
-  ASSERT_TRUE(runner->CheckResults());
-  EXPECT_EQ(runner->ReadOutput(5), "0.101,0.202,0.303,0.404");
-  EXPECT_EQ(runner->ReadOutput(6), "0.011,0.022,0.033,0.044");
+  ASSERT_TRUE(runner->CheckResults(
+      {{"x", "0.101,0.202,0.303,0.404"}, {"y", "0.011,0.022,0.033,0.044"}},
+      /*expected_output_shapes=*/{}));
+  EXPECT_EQ(runner->ReadOutput("x"), "0.101,0.202,0.303,0.404");
+  EXPECT_EQ(runner->ReadOutput("y"), "0.011,0.022,0.033,0.044");
+}
+
+TEST(TfliteDriverTest, AddOpWithNaNTest) {
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver(
+      /*delegate_type=*/TfLiteDriver::DelegateType::kNone,
+      /*reference_kernel=*/true));
+
+  runner->SetModelBaseDir("tensorflow/lite");
+  runner->LoadModel("testdata/multi_add.bin");
+  ASSERT_TRUE(runner->IsValid());
+
+  for (const auto& i : {"a", "b", "c", "d"}) {
+    runner->ReshapeTensor(i, "1,2,2,1");
+  }
+
+  ASSERT_TRUE(runner->IsValid());
+
+  runner->AllocateTensors();
+
+  runner->ResetTensor("c");
+  runner->Invoke({{"a", "0.1,nan,0.3,0.4"},
+                  {"b", "0.001,0.002,0.003,0.004"},
+                  {"d", "0.01,0.02,0.03,nan"}});
+  ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_TRUE(runner->CheckResults(
+      {{"x", "0.101,nan,0.303,0.404"}, {"y", "0.011,0.022,0.033,nan"}},
+      /*expected_output_shapes=*/{}));
+  EXPECT_EQ(runner->ReadOutput("x"), "0.101,nan,0.303,0.404");
+  EXPECT_EQ(runner->ReadOutput("y"), "0.011,0.022,0.033,nan");
 }
 
 TEST(TfliteDriverTest, AddQuantizedInt8Test) {
@@ -102,23 +120,16 @@ TEST(TfliteDriverTest, AddQuantizedInt8Test) {
   runner->LoadModel("testdata/add_quantized_int8.bin");
   ASSERT_TRUE(runner->IsValid());
 
-  ASSERT_THAT(runner->GetInputs(), ElementsAre(1));
-  ASSERT_THAT(runner->GetOutputs(), ElementsAre(2));
-
-  runner->ReshapeTensor(1, "1,2,2,1");
+  runner->ReshapeTensor("a", "1,2,2,1");
   ASSERT_TRUE(runner->IsValid());
 
   runner->AllocateTensors();
 
-  runner->SetInput(1, "1,1,1,1");
-
-  runner->SetExpectation(2, "0.0117,0.0117,0.0117,0.0117");
-
-  runner->Invoke();
+  runner->Invoke({{"a", "1,1,1,1"}});
   ASSERT_TRUE(runner->IsValid());
 
-  ASSERT_TRUE(runner->CheckResults());
-  EXPECT_EQ(runner->ReadOutput(2), "3,3,3,3");
+  ASSERT_TRUE(runner->CheckResults({{"x", "0.0117,0.0117,0.0117,0.0117"}}, {}));
+  EXPECT_EQ(runner->ReadOutput("x"), "3,3,3,3");
 }
 
 }  // namespace

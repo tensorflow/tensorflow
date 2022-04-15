@@ -42,10 +42,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/relu.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/resampler.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/tile.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/transpose_conv.h"
 
@@ -80,6 +82,7 @@ class Registry : public NodeShader {
     insert_op(Type::CONVOLUTION_2D, NewConvolutionNodeShader);
     insert_op(Type::CONVOLUTION_TRANSPOSED, NewConvolutionTransposedNodeShader);
     insert_op(Type::DEPTHWISE_CONVOLUTION, NewDepthwiseConvolutionNodeShader);
+    insert_op(Type::DEPTH_TO_SPACE, NewDepthToSpaceNodeShader);
     insert_op(Type::FULLY_CONNECTED, NewFullyConnectedNodeShader);
     insert_op(Type::LSTM, NewLstmNodeShader);
     insert_op(Type::MEAN, NewMeanNodeShader);
@@ -91,10 +94,12 @@ class Registry : public NodeShader {
     insert_op(Type::QUANTIZE_AND_DEQUANTIZE,
               NewQuantizeAndDequantizeNodeShader);
     insert_op(Type::RELU, NewReLUNodeShader);
+    insert_op(Type::RESAMPLER, NewResamplerNodeShader);
     insert_op(Type::RESIZE, NewResizeNodeShader);
     insert_op(Type::RESHAPE, NewReshapeNodeShader);
     insert_op(Type::SLICE, NewSliceNodeShader);
     insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
+    insert_op(Type::SPACE_TO_DEPTH, NewSpaceToDepthNodeShader);
     insert_op(Type::TILE, NewTileNodeShader);
 
     insert_elementwise_op(Type::ABS);

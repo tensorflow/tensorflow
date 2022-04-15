@@ -72,11 +72,11 @@ class Placer {
          const FunctionLibraryDefinition* flib_def, const DeviceSet* devices,
          const Device* default_local_device, bool allow_soft_placement,
          bool log_device_placement);
-
-  Placer(Graph* graph, const string& function_name, const DeviceSet* devices,
+  Placer(Graph* graph, const string& function_name,
+         const FunctionLibraryDefinition* flib_def, const DeviceSet* devices);
+  Placer(Graph* graph, const string& function_name,
+         const FunctionLibraryDefinition* flib_def, const DeviceSet* devices,
          const Device* default_local_device);
-
-  Placer(Graph* graph, const string& function_name, const DeviceSet* devices);
 
   ~Placer();
 

@@ -61,7 +61,7 @@ template <typename Tperm>
 Status SimplifyHelper(const Tensor& data, const Tensor& axis,
                       gtl::InlinedVector<bool, 4>& bitmap) {
   auto axis_vec = axis.flat<Tperm>();
-  for (int64 i = 0; i < axis.NumElements(); ++i) {
+  for (int64_t i = 0; i < axis.NumElements(); ++i) {
     Tperm index = axis_vec(i);
     if (index < -data.dims() || index >= data.dims()) {
       return errors::InvalidArgument("Invalid reduction dimension (", index,
@@ -86,7 +86,7 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
   if (axis.dtype() == DT_INT32) {
     TF_RETURN_IF_ERROR(SimplifyHelper<int32>(data, axis, bitmap));
   } else {
-    TF_RETURN_IF_ERROR(SimplifyHelper<int64>(data, axis, bitmap));
+    TF_RETURN_IF_ERROR(SimplifyHelper<int64_t>(data, axis, bitmap));
   }
   // Output tensor's dim sizes.
   out_shape_.clear();

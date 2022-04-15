@@ -21,7 +21,7 @@ limitations under the License.
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
     defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(__EMSCRIPTEN__)
+    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
 #include "tensorflow/core/platform/google/logging.h"  // IWYU pragma: export
 #else
 #include "tensorflow/core/platform/default/logging.h"  // IWYU pragma: export

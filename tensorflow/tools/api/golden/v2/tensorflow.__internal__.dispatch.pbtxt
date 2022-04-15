@@ -10,6 +10,6 @@ tf_module {
   }
   member_method {
     name: "add_dispatch_support"
-    argspec: "args=[\'target\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'target\', \'iterable_parameters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

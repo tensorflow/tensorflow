@@ -31,7 +31,8 @@ class CholeskyOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Cholesky").TypeConstraint("T", kFloatTypes), CholeskyOp);
+REGISTER_XLA_OP(Name("Cholesky").TypeConstraint("T", kFloatAndComplexTypes),
+                CholeskyOp);
 
 }  // namespace
 }  // namespace tensorflow

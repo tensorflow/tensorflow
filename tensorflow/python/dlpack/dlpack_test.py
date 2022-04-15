@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DLPack functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
 
 from tensorflow.python.dlpack import dlpack
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,7 +32,7 @@ int_dtypes = [
 ]
 float_dtypes = [np.float16, np.float32, np.float64]
 complex_dtypes = [np.complex64, np.complex128]
-dlpack_dtypes = int_dtypes + float_dtypes + [dtypes.bfloat16]
+dlpack_dtypes = int_dtypes + float_dtypes + [dtypes.bfloat16] + complex_dtypes
 
 testcase_shapes = [(), (1,), (2, 3), (2, 0), (0, 7), (4, 1, 2)]
 
@@ -92,20 +89,21 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
                            ".*a DLPack tensor may be consumed at most once.*",
                            ConsumeDLPackTensor)
 
+  def testDLPackFromWithoutContextInitialization(self):
+    tf_tensor = constant_op.constant(1)
+    dlcapsule = dlpack.to_dlpack(tf_tensor)
+    # Resetting the context doesn't cause an error.
+    context._reset_context()
+    _ = dlpack.from_dlpack(dlcapsule)
+
   def testUnsupportedTypeToDLPack(self):
 
     def UnsupportedQint16():
       tf_tensor = constant_op.constant([[1, 4], [5, 2]], dtype=dtypes.qint16)
       _ = dlpack.to_dlpack(tf_tensor)
 
-    def UnsupportedComplex64():
-      tf_tensor = constant_op.constant([[1, 4], [5, 2]], dtype=dtypes.complex64)
-      _ = dlpack.to_dlpack(tf_tensor)
-
     self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
                            UnsupportedQint16)
-    self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
-                           UnsupportedComplex64)
 
   def testMustPassTensorArgumentToDLPack(self):
     with self.assertRaisesRegex(

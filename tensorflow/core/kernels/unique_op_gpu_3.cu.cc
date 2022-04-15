@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/unique_op_gpu.cu.h"
@@ -21,16 +21,16 @@ limitations under the License.
 namespace tensorflow {
 
 // Register with int64 out_idx.
-#define REGISTER_UNIQUE_GPU(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                         \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          UniqueOpGPU<type, int64>);             \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
+#define REGISTER_UNIQUE_GPU(type)                                  \
+  REGISTER_KERNEL_BUILDER(Name("Unique")                           \
+                              .Device(DEVICE_GPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
+                          UniqueOpGPU<type, int64>);               \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")                 \
+                              .Device(DEVICE_GPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<int64_t>("out_idx"), \
                           UniqueOpGPU<type, int64>)
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_UNIQUE_GPU);
@@ -40,4 +40,4 @@ REGISTER_UNIQUE_GPU(bool);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

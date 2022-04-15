@@ -20,8 +20,10 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
@@ -36,11 +38,33 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
+
+std::vector<int64_t> ToMixedRadix(const int64_t n,
+                                  absl::Span<const int64_t> bounds) {
+  if (bounds.empty()) {
+    return {};
+  }
+
+  std::vector<int64_t> digits;
+  digits.reserve(bounds.size());
+  int64_t divisor = Product(bounds);
+  CHECK_GT(divisor, 0);
+  int64_t remainder = n % divisor;
+  for (const int64_t radix : bounds) {
+    CHECK_GT(radix, 0);
+    divisor /= radix;
+    CHECK_GT(divisor, 0);
+
+    // The divisor is always 1 for the last iteration.
+    digits.push_back(remainder / divisor);
+    remainder = remainder % divisor;
+  }
+  return digits;
+}
 
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
@@ -49,14 +73,14 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
                                        const char* file, int line,
                                        TimerStats* timer_stats)
-    : enabled_(enabled),
+    : label_(label),
       file_(file),
       line_(line),
-      label_(label),
-      timer_stats_(timer_stats) {
+      timer_stats_(timer_stats),
+      enabled_(enabled) {
   if (enabled_) {
     start_micros_ = tensorflow::Env::Default()->NowMicros();
   }
@@ -64,11 +88,11 @@ ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
 
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
-    uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    tensorflow::mutex_lock lock(stats.stats_mutex);
+    absl::MutexLock lock(&stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -101,38 +125,75 @@ Status AppendStatus(Status prior, absl::string_view context) {
                 absl::StrCat(prior.error_message(), ": ", context)};
 }
 
-string Reindent(absl::string_view original,
-                const absl::string_view indentation) {
-  std::vector<string> pieces =
+std::string Reindent(absl::string_view original,
+                     const absl::string_view indentation) {
+  std::vector<std::string> pieces =
       absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
-  return absl::StrJoin(pieces, "\n", [indentation](string* out, string s) {
-    absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
-  });
+  return absl::StrJoin(
+      pieces, "\n", [indentation](std::string* out, absl::string_view s) {
+        absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
+      });
 }
 
-string RoundTripFpToString(tensorflow::bfloat16 value) {
-  return absl::StrFormat("%.4g", static_cast<float>(value));
+template <typename FloatT>
+static void RoundTripNanPayload(FloatT value, std::string* result) {
+  const int kPayloadBits = NanPayloadBits<FloatT>();
+  if (std::isnan(value) && kPayloadBits > 0) {
+    auto rep = absl::bit_cast<
+        typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
+    auto payload = rep & NanPayloadBitMask<FloatT>();
+    if (payload != QuietNanWithoutPayload<FloatT>()) {
+      absl::StrAppendFormat(result, "(0x%x)", payload);
+    }
+  }
 }
 
-string RoundTripFpToString(Eigen::half value) {
-  return absl::StrFormat("%.5g", static_cast<float>(value));
+template <typename FloatT>
+static std::string GenericRoundTripFpToString(FloatT value) {
+  // TODO(majnemer): Remove this temporary variable once Eigen creates a symbol
+  // definition for `max_digits10`.
+  int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
+  return absl::StrFormat("%.*g", max_decimal_digits,
+                         static_cast<double>(value));
 }
 
-string RoundTripFpToString(float value) {
-  char buffer[tensorflow::strings::kFastToBufferSize];
-  tensorflow::strings::FloatToBuffer(value, buffer);
-  return buffer;
+std::string RoundTripFpToString(bfloat16 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
+  return result;
 }
 
-string RoundTripFpToString(double value) {
-  char buffer[tensorflow::strings::kFastToBufferSize];
-  tensorflow::strings::DoubleToBuffer(value, buffer);
-  return buffer;
+std::string RoundTripFpToString(half value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
+  return result;
 }
 
-PaddingConfig MakeNoPaddingConfig(int64 rank) {
+std::string RoundTripFpToString(float value) {
+  float parsed_result;
+  std::string result =
+      absl::StrFormat("%.*g", std::numeric_limits<float>::digits10, value);
+  if (!absl::SimpleAtof(result, &parsed_result) || parsed_result != value) {
+    result = GenericRoundTripFpToString(value);
+  }
+  RoundTripNanPayload(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(double value) {
+  double parsed_result;
+  std::string result =
+      absl::StrFormat("%.*g", std::numeric_limits<double>::digits10, value);
+  if (!absl::SimpleAtod(result, &parsed_result) || parsed_result != value) {
+    result = GenericRoundTripFpToString(value);
+  }
+  RoundTripNanPayload(value, &result);
+  return result;
+}
+
+PaddingConfig MakeNoPaddingConfig(int64_t rank) {
   PaddingConfig padding_config;
-  for (int64 dnum = 0; dnum < rank; ++dnum) {
+  for (int64_t dnum = 0; dnum < rank; ++dnum) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(0);
     dimension->set_edge_padding_high(0);
@@ -142,9 +203,9 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
 }
 
 PaddingConfig MakeEdgePaddingConfig(
-    absl::Span<const std::pair<int64, int64>> padding) {
+    absl::Span<const std::pair<int64_t, int64_t>> padding) {
   PaddingConfig padding_config;
-  for (const std::pair<int64, int64>& dim : padding) {
+  for (const std::pair<int64_t, int64_t>& dim : padding) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(dim.first);
     dimension->set_edge_padding_high(dim.second);
@@ -163,14 +224,14 @@ bool HasInteriorPadding(const PaddingConfig& config) {
 }
 
 namespace {
-string HumanReadableNumOps(double flops, double nanoseconds,
-                           absl::string_view op_prefix) {
+std::string HumanReadableNumOps(double flops, double nanoseconds,
+                                absl::string_view op_prefix) {
   if (nanoseconds == 0) {
     return absl::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
-  string throughput = tensorflow::strings::HumanReadableNum(
-      static_cast<int64>(nano_flops * 1e9));
+  std::string throughput = tensorflow::strings::HumanReadableNum(
+      static_cast<int64_t>(nano_flops * 1e9));
   absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
   if (absl::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
@@ -182,11 +243,12 @@ string HumanReadableNumOps(double flops, double nanoseconds,
 }
 }  // namespace
 
-string HumanReadableNumFlops(double flops, double nanoseconds) {
+std::string HumanReadableNumFlops(double flops, double nanoseconds) {
   return HumanReadableNumOps(flops, nanoseconds, "FL");
 }
 
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
+std::string HumanReadableNumTranscendentalOps(double trops,
+                                              double nanoseconds) {
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
@@ -198,8 +260,8 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
 
   // Protect calls with a mutex so we don't interleave calls to LogLines from
   // multiple threads.
-  static tensorflow::mutex log_lines_mu(tensorflow::LINKER_INITIALIZED);
-  tensorflow::mutex_lock lock(log_lines_mu);
+  static absl::Mutex log_lines_mu(absl::kConstInit);
+  absl::MutexLock lock(&log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {
@@ -209,7 +271,7 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
     }
     auto msg = text.substr(cur, eol - cur);
     tensorflow::internal::LogString(fname, lineno, sev,
-                                    string(msg.data(), msg.size()));
+                                    std::string(msg.data(), msg.size()));
     cur = eol + 1;
   }
 
@@ -219,23 +281,23 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   }
 }
 
-int64 Product(absl::Span<const int64> xs) {
-  return std::accumulate(xs.begin(), xs.end(), static_cast<int64>(1),
-                         std::multiplies<int64>());
+int64_t Product(absl::Span<const int64_t> xs) {
+  return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
+                         std::multiplies<int64_t>());
 }
 
-absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
-    absl::Span<const int64> a, absl::Span<const int64> b) {
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
+    absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
   CHECK_EQ(Product(a), Product(b));
-  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
+  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
-    for (int64 i = 0; i <= a.size(); ++i) {
+    for (int64_t i = 0; i <= a.size(); ++i) {
       bounds.emplace_back(i, i);
     }
     return bounds;
   }
-  int64 i = 0, j = 0, prior_i = -1, prior_j = -1;
+  int64_t i = 0, j = 0, prior_i = -1, prior_j = -1;
   while (i < a.size() && j < b.size() && a[i] == b[j]) {
     std::tie(prior_i, prior_j) = std::make_pair(i, j);
     bounds.emplace_back(i, j);
@@ -260,7 +322,7 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     return bounds;
   }
 
-  for (int64 partial_size_a = 1, partial_size_b = 1;;) {
+  for (int64_t partial_size_a = 1, partial_size_b = 1;;) {
     if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
       std::tie(prior_i, prior_j) = std::make_pair(i, j);
       bounds.emplace_back(i, j);
@@ -297,30 +359,54 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
 }
 
 ConvertedDimensionNumbers ConvertDimensionNumbers(
-    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
-    absl::Span<const int64> to_sizes) {
+    absl::Span<const int64_t> from_dimensions,
+    absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes) {
   ConvertedDimensionNumbers dimensions;
   auto common_factors = CommonFactors(from_sizes, to_sizes);
-  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+  for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
     bool any_present = false;
     bool all_present = true;
-    for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+    for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
          ++d) {
       const bool present = absl::c_linear_search(from_dimensions, d);
       any_present |= present;
       all_present &= present;
     }
     if (all_present) {
-      for (int64 d = common_factors[i].second; d < common_factors[i + 1].second;
-           ++d) {
+      for (int64_t d = common_factors[i].second;
+           d < common_factors[i + 1].second; ++d) {
         dimensions.to_dimensions.push_back(d);
       }
-      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+      for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         dimensions.transformed_from_dimensions.push_back(d);
       }
     } else if (any_present) {
-      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+      // Try to find if there is a to dimension that is like (from) [2,32] ->
+      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // into dimension 1 and 2 of the to sizes with a partial size of 2.
+      if (common_factors[i].first + 2 == common_factors[i + 1].first &&
+          absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {
+        int64_t from_size = from_sizes[common_factors[i + 1].first - 1];
+        bool has_to_dim = false;
+        for (int64_t to_dim = common_factors[i + 1].second - 1;
+             to_dim >= common_factors[i].second; --to_dim) {
+          const int64_t to_size = to_sizes[to_dim];
+          if (from_size % to_size == 0) {
+            has_to_dim = true;
+            from_size /= to_size;
+            dimensions.to_dimensions.push_back(to_dim);
+          } else {
+            break;
+          }
+        }
+        if (has_to_dim) {
+          dimensions.split_from_sizes.push_back(from_size);
+          dimensions.split_from_dimensions.push_back(common_factors[i].first +
+                                                     1);
+        }
+      }
+      for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         if (absl::c_linear_search(from_dimensions, d)) {
           dimensions.untransformed_from_dimensions.push_back(d);
@@ -328,9 +414,10 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     }
   }
+  absl::c_sort(dimensions.to_dimensions);
   return dimensions;
 }
-string SanitizeFileName(string file_name) {
+std::string SanitizeFileName(std::string file_name) {
   for (char& c : file_name) {
     if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {
       c = '_';

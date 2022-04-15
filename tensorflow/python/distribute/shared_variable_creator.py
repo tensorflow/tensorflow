@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utility to re-use variables created on first device on subsequent devices."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 _VARIABLE_UNIQUIFYING_REGEX = re.compile(r"_\d/")

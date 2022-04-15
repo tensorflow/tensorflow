@@ -40,10 +40,6 @@ See the [TFDBG](https://www.tensorflow.org/guide/debugger) guide.
 @@clear_gradient_debuggers
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-imports
 from tensorflow.python.debug.lib.debug_data import DebugDumpDir
 from tensorflow.python.debug.lib.debug_data import DebugTensorDatum

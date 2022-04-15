@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -30,6 +32,36 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+
+void ParseQualcommOpenClCompilerVersion(
+    const std::string& cl_driver_version,
+    AdrenoInfo::OpenClCompilerVersion* result) {
+  // Searching this part: "Compiler E031.**.**.**" where * is digit
+  const std::string start = "Compiler E031.";
+  size_t position = cl_driver_version.find(start);
+  if (position == std::string::npos) {
+    return;
+  }
+  const size_t main_part_length = 8;  // main part is **.**.**
+  if (position + start.length() + main_part_length >
+      cl_driver_version.length()) {
+    return;
+  }
+
+  const std::string main_part =
+      cl_driver_version.substr(position + start.length(), main_part_length);
+  if (!absl::ascii_isdigit(main_part[0]) ||
+      !absl::ascii_isdigit(main_part[1]) || main_part[2] != '.' ||
+      !absl::ascii_isdigit(main_part[3]) ||
+      !absl::ascii_isdigit(main_part[4]) || main_part[5] != '.' ||
+      !absl::ascii_isdigit(main_part[6]) ||
+      !absl::ascii_isdigit(main_part[7])) {
+    return;
+  }
+  result->major = (main_part[0] - '0') * 10 + (main_part[1] - '0');
+  result->minor = (main_part[3] - '0') * 10 + (main_part[4] - '0');
+  result->patch = (main_part[6] - '0') * 10 + (main_part[7] - '0');
+}
 
 template <>
 std::string GetDeviceInfo<std::string>(cl_device_id id, cl_device_info info) {
@@ -129,16 +161,23 @@ bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
 
-GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
+GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   GpuInfo info;
-  const auto device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
-  const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
-  const auto opencl_c_version =
+  info.opencl_info.platform_version =
+      GetPlatformInfo(platform_id, CL_PLATFORM_VERSION);
+  info.opencl_info.device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
+  info.opencl_info.vendor_name =
+      GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
+  info.opencl_info.opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  const std::string gpu_description =
-      absl::StrCat(device_name, " ", vendor_name, " ", opencl_c_version);
+  info.opencl_info.driver_version =
+      GetDeviceInfo<std::string>(id, CL_DRIVER_VERSION);
+  const std::string gpu_description = absl::StrCat(
+      info.opencl_info.device_name, " ", info.opencl_info.vendor_name, " ",
+      info.opencl_info.opencl_c_version);
   GetGpuInfoFromDeviceDescription(gpu_description, GpuApi::kOpenCl, &info);
-  info.opencl_info.cl_version = ParseCLVersion(opencl_c_version);
+  info.opencl_info.cl_version =
+      ParseCLVersion(info.opencl_info.opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
   info.opencl_info.supports_fp16 = false;
@@ -221,6 +260,31 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
+  info.opencl_info.base_addr_align_in_bits =
+      GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
+  info.opencl_info.image_pitch_alignment = 0;
+  if (info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
+      info.opencl_info.cl_version == OpenClVersion::kCl2_1 ||
+      info.opencl_info.cl_version == OpenClVersion::kCl2_2) {
+    info.opencl_info.image_pitch_alignment =
+        GetDeviceInfo<cl_uint>(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT);
+    info.opencl_info.image_base_address_alignment =
+        GetDeviceInfo<cl_uint>(id, CL_DEVICE_IMAGE_BASE_ADDRESS_ALIGNMENT);
+  } else if (info.SupportsExtension("cl_khr_image2d_from_buffer")) {
+    cl_uint result = 0;
+    auto status =
+        GetDeviceInfo(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT_KHR, &result);
+    if (status.ok()) {
+      info.opencl_info.image_pitch_alignment = result;
+    }
+    result = 0;
+    status =
+        GetDeviceInfo(id, CL_DEVICE_IMAGE_BASE_ADDRESS_ALIGNMENT_KHR, &result);
+    if (status.ok()) {
+      info.opencl_info.image_base_address_alignment = result;
+    }
+  }
+
   if (info.IsIntel()) {
     if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
       size_t sub_groups_count;
@@ -240,13 +304,19 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
       }
     }
   }
+  if (info.IsAdreno()) {
+    ParseQualcommOpenClCompilerVersion(info.opencl_info.driver_version,
+                                       &info.adreno_info.cl_compiler_version);
+  }
   return info;
 }
 
 }  // namespace
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {
+    : info_(GpuInfoFromDeviceID(id, platform_id)),
+      id_(id),
+      platform_id_(platform_id) {
   if (info_.IsAdreno() &&
       info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno630) {
     acceleration::AndroidInfo android_info;

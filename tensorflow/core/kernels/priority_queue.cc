@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/kernels/priority_queue.h"
+
 #include <deque>
 #include <queue>
 #include <vector>
@@ -22,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/priority_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/priority_queue_util.h"
@@ -33,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-PriorityQueue::PriorityQueue(int32 capacity,
+PriorityQueue::PriorityQueue(int32_t capacity,
                              const DataTypeVector& component_dtypes,
                              const std::vector<TensorShape>& component_shapes,
                              const string& name)
@@ -63,8 +64,8 @@ void PriorityQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
   DCHECK_GT(queues_[0].size(), 0);
   (*tuple).reserve(num_components());
   for (int i = 0; i < num_components(); ++i) {
-    PersistentTensor persistent_tensor = gtl::ConsumeTop(&queues_[i]).second;
-    (*tuple).push_back(*persistent_tensor.AccessTensor(ctx));
+    Tensor tensor = gtl::ConsumeTop(&queues_[i]).second;
+    (*tuple).push_back(tensor);
   }
 }
 
@@ -94,9 +95,9 @@ void PriorityQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
                     tuple[0].shape().DebugString()));
                 return kComplete;
               }
-              const int64 priority = tuple[0].scalar<int64>()();
+              const int64_t priority = tuple[0].scalar<int64_t>()();
               for (int i = 0; i < num_components(); ++i) {
-                queues_[i].emplace(priority, PersistentTensor(tuple[i]));
+                queues_[i].emplace(priority, tuple[i]);
               }
               return kComplete;
             } else {
@@ -116,20 +117,19 @@ void PriorityQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
 /* static */
 Status PriorityQueue::GetElementComponentFromBatch(
     const PriorityQueue::Tuple& tuple, int index, int component,
-    OpKernelContext* ctx, PersistentTensor* out_tensor) {
+    OpKernelContext* ctx, Tensor* out_element) {
   TensorShape element_shape(tuple[component].shape());
   element_shape.RemoveDim(0);
-  Tensor* element_access = nullptr;
-  TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-      tuple[component].dtype(), element_shape, out_tensor, &element_access));
   TF_RETURN_IF_ERROR(
-      batch_util::CopySliceToElement(tuple[component], element_access, index));
+      ctx->allocate_temp(tuple[component].dtype(), element_shape, out_element));
+  TF_RETURN_IF_ERROR(
+      batch_util::CopySliceToElement(tuple[component], out_element, index));
   return Status::OK();
 }
 
 void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
                                    DoneCallback callback) {
-  const int64 batch_size = tuple[0].dim_size(0);
+  const int64_t batch_size = tuple[0].dim_size(0);
   if (batch_size == 0) {
     callback();
     return;
@@ -145,8 +145,7 @@ void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
           batch_size, callback, ctx, cm, token,
-          [tuple, this,
-           ctx](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
                   errors::Cancelled("PriorityQueue '", name_, "' is closed."));
@@ -158,21 +157,20 @@ void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
               const int index =
                   tuple[0].dim_size(0) - attempt->elements_requested;
 
-              PersistentTensor priority_element;
+              Tensor priority_element;
               attempt->context->SetStatus(GetElementComponentFromBatch(
                   tuple, index, 0, attempt->context, &priority_element));
               if (!attempt->context->status().ok()) return kComplete;
-              Tensor* priority_tensor = priority_element.AccessTensor(ctx);
-              if (!TensorShapeUtils::IsScalar(priority_tensor->shape())) {
+              if (!TensorShapeUtils::IsScalar(priority_element.shape())) {
                 attempt->context->SetStatus(errors::InvalidArgument(
                     "Expected the priority element to be a scalar, but "
                     "received shape: ",
-                    priority_tensor->shape().DebugString()));
+                    priority_element.shape().DebugString()));
                 return kComplete;
               }
-              const int64 priority = priority_tensor->scalar<int64>()();
+              const int64_t priority = priority_element.scalar<int64_t>()();
               for (int i = 0; i < num_components(); ++i) {
-                PersistentTensor element;
+                Tensor element;
                 attempt->context->SetStatus(GetElementComponentFromBatch(
                     tuple, index, i, attempt->context, &element));
                 if (!attempt->context->status().ok()) return kComplete;
@@ -209,7 +207,7 @@ void PriorityQueue::TryDequeue(OpKernelContext* ctx,
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            const int32 s = queues_[0].size();
+            const int32_t s = queues_[0].size();
             if (closed_ && s == 0) {
               attempt->context->SetStatus(errors::OutOfRange(
                   "PriorityQueue '", name_, "' is closed and has ",
@@ -301,7 +299,7 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this, allow_small_batch](
               Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int32 s = queues_[0].size();
+            int32_t s = queues_[0].size();
             // Return OutOfRange if closed and there are fewer elements
             // available than requested.  *Unless* allow_small_batch
             // is true, in which case we return as many elements as

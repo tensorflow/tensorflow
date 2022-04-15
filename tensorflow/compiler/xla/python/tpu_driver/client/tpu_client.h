@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -38,7 +41,12 @@ limitations under the License.
 
 namespace xla {
 
-constexpr char kTpuPlatform[] = "tpu";
+inline const char* TpuPlatform() {
+  static constexpr char kTpuPlatform[] = "tpu";
+  return kTpuPlatform;
+}
+
+class PyTpuClient;
 
 class TpuDevice : public PjRtDevice {
  public:
@@ -50,10 +58,14 @@ class TpuDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
   PjRtClient* client() const override { return nullptr; }
+  PyTpuClient* tpu_client() const { return tpu_client_; }
+  void set_tpu_client(PyTpuClient* tpu_client) { tpu_client_ = tpu_client; }
 
   bool IsAddressable() const override { return false; }
 
@@ -73,6 +85,11 @@ class TpuDevice : public PjRtDevice {
     return Unimplemented("Outfeed not yet implemented via this API");
   }
 
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
  private:
   const int id_;
   const int process_index_;
@@ -80,10 +97,11 @@ class TpuDevice : public PjRtDevice {
   const std::string device_kind_ = "Cloud TPU";
   // Index of the core of the same chip.
   int core_on_chip_;
+  PyTpuClient* tpu_client_;
 };
 
 // Encapsulates the state of Python session with XLA.
-class PyTpuClient {
+class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
  public:
   // Initializes a local XLA client for `platform_name`. Returns an error if no
   // such platform exists, or if the platform has no visible devices.
@@ -117,7 +135,7 @@ class PyTpuClient {
   }
   int process_index() const { return process_index_; }
   const absl::string_view platform_name() const { return platform_name_; }
-  const absl::string_view platform_version() const { return "<unknown>"; }
+  const absl::string_view platform_version() const { return platform_version_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
     return Unimplemented("ChooseCompactLayoutForShape not implemented.");
@@ -133,6 +151,7 @@ class PyTpuClient {
 
  protected:
   std::string platform_name_;
+  std::string platform_version_;
   std::unique_ptr<tpu_driver::TpuDriver> driver_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
@@ -269,9 +288,9 @@ class PyTpuBuffer {
   // `child_buffers_` stores the child buffers; else, `device_buffer_` stores
   // the data content and `child_buffers_` is empty.
   mutable absl::Mutex mu_;
-  std::shared_ptr<TpuSharedBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<TpuSharedBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyTpuBuffer is destroyed.
@@ -284,7 +303,7 @@ class PyTpuBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ ABSL_GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -293,6 +312,12 @@ class PyTpuExecutable {
  public:
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
+
+  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileMlir(
+      mlir::ModuleOp module,
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
@@ -317,7 +342,7 @@ class PyTpuExecutable {
   int num_replicas() const { return device_assignment_.replica_count(); }
   int num_partitions() const { return device_assignment_.computation_count(); }
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64_t SizeOfGeneratedCodeInBytes() const {
     CHECK_GE(executables_.size(), 1);
     return executables_.begin()->second->size_in_bytes();
   }

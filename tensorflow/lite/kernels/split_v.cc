@@ -76,7 +76,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   } else if (size_splits->type == kTfLiteInt64) {
     GetSizeSplitsVector<int64_t>(size_splits, &size_splits_vector);
   } else {
-    context->ReportError(context, "size_splits only support type int32|int64.");
+    TF_LITE_KERNEL_LOG(context, "size_splits only support type int32|int64.");
     return kTfLiteError;
   }
 
@@ -88,26 +88,29 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
       if (minus_one_index == -1) {
         minus_one_index = i;
       } else {
-        context->ReportError(context,
-                             "The size_splits contains more than one -1.");
+        TF_LITE_KERNEL_LOG(context,
+                           "The size_splits contains more than one -1.");
+        return kTfLiteError;
       }
     } else {
       size_splits_sum += size_splits_vector.at(i);
     }
   }
 
+  TF_LITE_ENSURE(context, axis_value >= 0);
+  TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
   const int input_size = SizeOfDimension(input, axis_value);
 
   if (minus_one_index != -1) {
     if (size_splits_sum > input_size) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "The sum of size_splits must be less than the dimension of value.");
     } else {
       size_splits_vector[minus_one_index] = input_size - size_splits_sum;
     }
   } else if (size_splits_sum != input_size) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "The size_splits must sum to the dimension of value along axis.");
   }
@@ -205,8 +208,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(op_context.input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT_V

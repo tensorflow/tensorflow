@@ -83,7 +83,7 @@ void BM_Unique_INT32(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * dim *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * dim *
                           sizeof(int32));
 }
 
@@ -107,7 +107,7 @@ void BM_Unique_INT32_Repeat(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * dim * 200 *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * dim * 200 *
                           sizeof(int32));
 }
 
@@ -145,7 +145,7 @@ void BM_Unique_STRING(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * dim *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * dim *
                           sizeof(tstring));
 }
 

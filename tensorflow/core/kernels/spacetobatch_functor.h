@@ -51,17 +51,17 @@ namespace spacetobatch {
 
 template <typename InputType, typename OutputType>
 void SubtleMustCopyFlatHelper(const Tensor& t, OutputType* output) {
-  const int64 num_elements = t.shape().num_elements();
+  const int64_t num_elements = t.shape().num_elements();
   output->resize(num_elements);
   auto eigen_vec = t.flat<InputType>();
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     (*output)[i] = SubtleMustCopy(eigen_vec(i));
   }
 }
 
 // Copies flat contents of `t` to std::vector-like `*output`, which is resized
-// as needed.  `OutputType` may be either `std::vector<int64>` or
-// `gtl::InlinedVector<int64>`.
+// as needed.  `OutputType` may be either `std::vector<int64_t>` or
+// `gtl::InlinedVector<int64_t>`.
 //
 // Precondition: t.dtype() must be either DT_INT32 or DT_INT64.
 template <typename OutputType>
@@ -69,7 +69,7 @@ void SubtleMustCopyFlat(const Tensor& t, OutputType* output) {
   if (t.dtype() == DT_INT32) {
     SubtleMustCopyFlatHelper<int32, OutputType>(t, output);
   } else {
-    SubtleMustCopyFlatHelper<int64, OutputType>(t, output);
+    SubtleMustCopyFlatHelper<int64_t, OutputType>(t, output);
   }
 }
 
@@ -103,8 +103,8 @@ struct SpaceToBatchFunctor {
   Status operator()(
       const Device& d,
       typename TTypes<InputT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
-      const int64 block_shape[NUM_BLOCK_DIMS],
-      const int64 paddings[NUM_BLOCK_DIMS * 2],
+      const int64_t block_shape[NUM_BLOCK_DIMS],
+      const int64_t paddings[NUM_BLOCK_DIMS * 2],
       typename TTypes<OutputT, NUM_BLOCK_DIMS + 2>::Tensor batch_tensor);
 };
 

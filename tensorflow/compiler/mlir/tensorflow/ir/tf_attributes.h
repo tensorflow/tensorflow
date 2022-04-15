@@ -18,13 +18,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ATTRIBUTES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ATTRIBUTES_H_
 
-#include "llvm/ADT/StringRef.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "tensorflow/core/ir/types/dialect.h"
 
-#define GET_ATTRDEF_CLASSES
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h.inc"
+namespace mlir {
+namespace TF {
+
+// This all moved under tensorflow/core/ir/types and these using declaration are
+// to help with the transition.
+using mlir::tf_type::FuncAttr;         // NOLINT
+using mlir::tf_type::PlaceholderAttr;  // NOLINT
+using mlir::tf_type::ShapeAttr;        // NOLINT
+
+}  // end namespace TF
+}  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ATTRIBUTES_H_

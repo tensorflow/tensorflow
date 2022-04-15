@@ -34,7 +34,7 @@ namespace xla {
 namespace {
 class HloInputOutputAliasConfigTest : public HloTestBase {
  protected:
-  void expect_aliased(const ShapeIndex& output_index, int64 param_number,
+  void expect_aliased(const ShapeIndex& output_index, int64_t param_number,
                       const ShapeIndex& param_index,
                       const HloInputOutputAliasConfig& config) {
     absl::optional<ShapeIndex> aliased_output =
@@ -51,7 +51,7 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
     EXPECT_EQ(aliased_param->parameter_index, param_index);
   }
 
-  void expect_not_aliased(const ShapeIndex& output_index, int64 param_number,
+  void expect_not_aliased(const ShapeIndex& output_index, int64_t param_number,
                           const ShapeIndex& param_index,
                           const HloInputOutputAliasConfig& config) {
     absl::optional<ShapeIndex> aliased_output =
@@ -69,7 +69,7 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
 };
 
 TEST_F(HloInputOutputAliasConfigTest, SimpleAliasing) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -99,7 +99,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, SimpleAliasingWithTupleInput) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -137,7 +137,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, InputDoNotAliasTwice) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -166,7 +166,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, SizesMustMatch) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -191,7 +191,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, OutputDoNotAliasTwice) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {

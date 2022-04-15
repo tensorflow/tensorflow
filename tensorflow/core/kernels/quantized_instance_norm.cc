@@ -300,7 +300,6 @@ class QuantizedInstanceNorm : public OpKernel {
 
     typedef TTypes<float>::Tensor::Index Index;
 
-#if defined(EIGEN_HAS_INDEX_LIST)
     const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>>
         reduction_indices;
     Eigen::IndexList<Eigen::type2index<1>, Index, Index, Eigen::type2index<1>>
@@ -311,11 +310,6 @@ class QuantizedInstanceNorm : public OpKernel {
         expand_spec;
     expand_spec.set(0, N);
     expand_spec.set(3, C);
-#else
-    const Eigen::array<Index, 2> reduction_indices{1, 2};
-    const Eigen::array<Index, 4> broadcast_spec{1, H, W, 1};
-    const Eigen::array<Index, 4> expand_spec{N, 1, 1, C};
-#endif
 
     Eigen::Tensor<float, 2, Eigen::RowMajor> float_mean(N, C);
     Eigen::Tensor<float, 2, Eigen::RowMajor> float_variance(N, C);

@@ -58,11 +58,6 @@ class Permuter : public CollectiveImplementationInterface {
   Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) override;
 
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails*) override {
-    return Status::OK();
-  }
-
  private:
   std::shared_ptr<CollectiveContext> col_ctx_;
   const CollectiveParams* col_params_;  // Not owned

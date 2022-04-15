@@ -36,10 +36,36 @@ _TF_TENSORRT_HEADERS_V6 = [
     "NvInferRuntimeCommon.h",
     "NvInferPluginUtils.h",
 ]
+_TF_TENSORRT_HEADERS_V8 = [
+    "NvInfer.h",
+    "NvInferLegacyDims.h",
+    "NvInferImpl.h",
+    "NvUtils.h",
+    "NvInferPlugin.h",
+    "NvInferVersion.h",
+    "NvInferRuntime.h",
+    "NvInferRuntimeCommon.h",
+    "NvInferPluginUtils.h",
+]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
 _DEFINE_TENSORRT_SONAME_PATCH = "#define NV_TENSORRT_SONAME_PATCH"
+
+_TENSORRT_OSS_DUMMY_BUILD_CONTENT = """
+cc_library(
+  name = "nvinfer_plugin_nms",
+  visibility = ["//visibility:public"],
+)
+"""
+
+_TENSORRT_OSS_ARCHIVE_BUILD_CONTENT = """
+alias(
+  name = "nvinfer_plugin_nms",
+  actual = "@tensorrt_oss_archive//:nvinfer_plugin_nms",
+  visibility = ["//visibility:public"],
+)
+"""
 
 def _at_least_version(actual_version, required_version):
     actual = [int(v) for v in actual_version.split(".")]
@@ -47,6 +73,8 @@ def _at_least_version(actual_version, required_version):
     return actual >= required
 
 def _get_tensorrt_headers(tensorrt_version):
+    if _at_least_version(tensorrt_version, "8"):
+        return _TF_TENSORRT_HEADERS_V8
     if _at_least_version(tensorrt_version, "6"):
         return _TF_TENSORRT_HEADERS_V6
     return _TF_TENSORRT_HEADERS
@@ -68,6 +96,7 @@ def _create_dummy_repository(repository_ctx):
         "%{copy_rules}": "",
         "\":tensorrt_include\"": "",
         "\":tensorrt_lib\"": "",
+        "%{oss_rules}": _TENSORRT_OSS_DUMMY_BUILD_CONTENT,
     })
     _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
         "%{tensorrt_version}": "",
@@ -107,6 +136,7 @@ def _create_local_tensorrt_repository(repository_ctx):
         "BUILD": _tpl_path(repository_ctx, "BUILD"),
         "tensorrt/include/tensorrt_config.h": _tpl_path(repository_ctx, "tensorrt/include/tensorrt_config.h"),
         "tensorrt/tensorrt_config.py": _tpl_path(repository_ctx, "tensorrt/tensorrt_config.py"),
+        "plugin.BUILD": _tpl_path(repository_ctx, "plugin.BUILD"),
     }
 
     config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
@@ -135,17 +165,23 @@ def _create_local_tensorrt_repository(repository_ctx):
     ]
 
     tensorrt_static_path = _get_tensorrt_static_path(repository_ctx)
-    raw_static_library_names = _TF_TENSORRT_LIBS + ["nvrtc", "myelin_compiler", "myelin_executor", "myelin_pattern_library", "myelin_pattern_runtime"]
-    static_libraries = [lib_name(lib, cpu_value, trt_version, static = True) for lib in raw_static_library_names]
-    if tensorrt_static_path != None:
-        copy_rules = copy_rules + [
-            make_copy_files_rule(
-                repository_ctx,
-                name = "tensorrt_static_lib",
-                srcs = [tensorrt_static_path + library for library in static_libraries],
-                outs = ["tensorrt/lib/" + library for library in static_libraries],
-            ),
-        ]
+    if tensorrt_static_path:
+        tensorrt_static_path = tensorrt_static_path + "/"
+        if _at_least_version(trt_version, "8"):
+            raw_static_library_names = _TF_TENSORRT_LIBS
+        else:
+            raw_static_library_names = _TF_TENSORRT_LIBS + ["nvrtc", "myelin_compiler", "myelin_executor", "myelin_pattern_library", "myelin_pattern_runtime"]
+        static_library_names = ["%s_static" % name for name in raw_static_library_names]
+        static_libraries = [lib_name(lib, cpu_value, trt_version, static = True) for lib in static_library_names]
+        if tensorrt_static_path != None:
+            copy_rules = copy_rules + [
+                make_copy_files_rule(
+                    repository_ctx,
+                    name = "tensorrt_static_lib",
+                    srcs = [tensorrt_static_path + library for library in static_libraries],
+                    outs = ["tensorrt/lib/" + library for library in static_libraries],
+                ),
+            ]
 
     # Set up config file.
     repository_ctx.template(
@@ -158,7 +194,18 @@ def _create_local_tensorrt_repository(repository_ctx):
     repository_ctx.template(
         "BUILD",
         tpl_paths["BUILD"],
-        {"%{copy_rules}": "\n".join(copy_rules)},
+        {
+            "%{copy_rules}": "\n".join(copy_rules),
+        },
+    )
+
+    # Set up the plugins folder BUILD file.
+    repository_ctx.template(
+        "plugin/BUILD",
+        tpl_paths["plugin.BUILD"],
+        {
+            "%{oss_rules}": _TENSORRT_OSS_ARCHIVE_BUILD_CONTENT,
+        },
     )
 
     # Copy license file in non-remote build.
@@ -228,6 +275,7 @@ _ENVIRONS = [
     _TENSORRT_INSTALL_PATH,
     _TF_TENSORRT_VERSION,
     _TF_NEED_TENSORRT,
+    _TF_TENSORRT_STATIC_PATH,
     "TF_CUDA_PATHS",
 ]
 

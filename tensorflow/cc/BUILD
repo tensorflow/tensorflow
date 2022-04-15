@@ -53,6 +53,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -162,6 +163,7 @@ cc_library(
         ":data_flow_grad",
         ":functional_grad",
         ":image_grad",
+        ":linalg_grad",
         ":manip_grad",
         ":math_grad",
         ":nn_grad",
@@ -411,11 +413,59 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "grad_helper",
+    srcs = ["gradients/grad_helper.cc"],
+    hdrs = ["gradients/grad_helper.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+    ],
+)
+
+cc_library(
+    name = "linalg_grad",
+    srcs = ["gradients/linalg_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_helper",
+        ":grad_op_registry",
+        ":gradients",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_linalg_grad_test",
+    srcs = ["gradients/linalg_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":gradients",
+        ":linalg_grad",
+        ":testutil",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "math_grad",
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
+        ":grad_helper",
         ":grad_op_registry",
         ":gradients",
     ],
@@ -456,6 +506,7 @@ cc_library(
 tf_cc_test(
     name = "gradients_nn_grad_test",
     srcs = ["gradients/nn_grad_test.cc"],
+    tags = ["no_windows"],  # b/189986187
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -617,10 +668,21 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_gen_op_wrappers_cc(
+    name = "dataset_ops",
+    api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    op_lib_names = [
+        "dataset_ops",
+        "experimental_dataset_ops",
+    ],
+    pkg = "//tensorflow/core",
+)
+
+tf_gen_op_wrappers_cc(
     name = "cc_ops",
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
     deps_internal = [
         ":array_ops_internal",
+        ":dataset_ops_internal",
         ":math_ops_internal",
     ],
     op_lib_names = [
@@ -650,17 +712,24 @@ tf_gen_op_wrappers_cc(
         "ops/array_ops.h",
         "ops/const_op.h",
         "ops/math_ops.h",
+        "ops/dataset_ops.h",
+        "ops/experimental_dataset_ops.h",
+        "ops/resource_variable_ops.h",
         "ops/standard_ops.h",
     ],
     other_hdrs_internal = [
         "ops/array_ops_internal.h",
         "ops/math_ops_internal.h",
+        "ops/dataset_ops_internal.h",
+        "ops/experimental_dataset_ops_internal.h",
     ],
     pkg = "//tensorflow/core",
     deps = [
         ":array_ops",
         ":const_op",
+        ":dataset_ops",
         ":math_ops",
+        ":resource_variable_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
     ],

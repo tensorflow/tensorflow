@@ -46,14 +46,19 @@ Status DetermineArgumentLayoutsFromCompileOptions(
     std::vector<const Shape*>* argument_layout_pointers);
 
 // Executables can donate buffers so that buffers can be aliased from inputs
-// to outputs. This function returns the list of parameters that must be
+// to outputs. This function returns a sorted vector of parameters that must be
 // donated when executable is run. tuple_inputs reflects the option that
 // executable was compiled with.
-StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-    const HloModule& module, bool tuple_inputs);
+StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloModule& hlo_module, bool tuple_inputs);
 
 // Return max parallelism level.
 int DefaultThreadPoolSize();
+
+// Returns true if the striding of an array corresponds to a major-to-minor
+// layout.
+bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
+                           absl::Span<int64_t const> byte_strides);
 
 }  // namespace xla
 

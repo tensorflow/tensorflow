@@ -24,8 +24,8 @@ limitations under the License.
 namespace tensorflow {
 template <class T>
 float MklFloatForOneQuantizedLevel(float range_min, float range_max) {
-  int64 highest = static_cast<int64>(Eigen::NumTraits<T>::highest());
-  int64 lowest = static_cast<int64>(Eigen::NumTraits<T>::lowest());
+  int64 highest = static_cast<int64_t>(Eigen::NumTraits<T>::highest());
+  int64 lowest = static_cast<int64_t>(Eigen::NumTraits<T>::lowest());
 
   // Adjusting for having a symmetric range.
   // for example: for 8-bit [-127, 127] as opposed to [-128, 127].
@@ -45,8 +45,8 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
   const float b_float_for_one_quant_level =
       MklFloatForOneQuantizedLevel<T2>(min_b, max_b);
 
-  const int64 c_highest = static_cast<int64>(Eigen::NumTraits<T3>::highest());
-  const int64 c_lowest = static_cast<int64>(Eigen::NumTraits<T3>::lowest());
+  const int64 c_highest = static_cast<int64_t>(Eigen::NumTraits<T3>::highest());
+  const int64 c_lowest = static_cast<int64_t>(Eigen::NumTraits<T3>::lowest());
   const float c_float_for_one_quant_level =
       a_float_for_one_quant_level * b_float_for_one_quant_level;
 
@@ -63,8 +63,8 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
   DCHECK(min_b_vector.NumElements() == (*min_c_vector)->NumElements());
   DCHECK(max_b_vector.NumElements() == (*max_c_vector)->NumElements());
   size_t n_channel = min_b_vector.NumElements();
-  const int64 c_highest = static_cast<int64>(Eigen::NumTraits<T3>::highest());
-  const int64 c_lowest = static_cast<int64>(Eigen::NumTraits<T3>::lowest());
+  const int64 c_highest = static_cast<int64_t>(Eigen::NumTraits<T3>::highest());
+  const int64 c_lowest = static_cast<int64_t>(Eigen::NumTraits<T3>::lowest());
   const float* min_b = min_b_vector.flat<float>().data();
   const float* max_b = max_b_vector.flat<float>().data();
   float* min_c = (*min_c_vector)->flat<float>().data();
@@ -73,7 +73,7 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
 #ifdef ENABLE_ONEDNN_OPENMP
 #pragma omp parallel for
 #endif  // ENABLE_ONEDNN_OPENMP
-  // TODO: Add eigen parallel_for
+  // TODO(intel-tf): Add eigen parallel_for
   for (int64_t n = 0; n < n_channel; ++n) {
     float a_float_for_one_quant_level =
         MklFloatForOneQuantizedLevel<T1>(min_a, max_a);

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
+
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -37,7 +38,7 @@ class TestBFloat16Support : public BFloat16Support {
   ~TestBFloat16Support() override {}
 
   bool SupportsBF16Operand(const HloInstruction& hlo,
-                           int64 operand_index) const override {
+                           int64_t operand_index) const override {
     return true;
   }
 
@@ -50,7 +51,7 @@ class TestBFloat16Support : public BFloat16Support {
   }
 
   bool EffectiveOperandPrecisionIsBF16(const HloInstruction& hlo,
-                                       int64 operand_index) const override {
+                                       int64_t operand_index) const override {
     return hlo.opcode() == HloOpcode::kDot;
   }
 };
@@ -1047,7 +1048,7 @@ TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalSeparateBranchOperands) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1086,7 +1087,7 @@ ENTRY entry {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalSharedBranchOperands) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1121,7 +1122,7 @@ ENTRY entry {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalAliasingOutputs) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1160,7 +1161,7 @@ TEST_F(BFloat16PropagationTest, DynamicUpdateSlice) {
   // This test is crafted so that the DUS has an f32 input (due to parameter)
   // and bf16 output (due to dot). But we should enforce DUS operand 0 and
   // output to get the same precision since it's an in-place operation.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule Module
 
 ENTRY main {
@@ -1188,7 +1189,7 @@ ENTRY main {
 // aliasing is not resolved until after the gte0 variale is already processed,
 // triggering incorrect type for gte0 if not repeating the aliasing analysis.
 TEST_F(BFloat16PropagationTest, ConditionalGTEWithFusion) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 %add.0 (x: f32[4096,4096], y: f32[4096,4096]) -> f32[4096,4096] {
@@ -1224,14 +1225,14 @@ true_branch {
   constant.1 = f32[4096,4096] constant(0)
   add0 = f32[4096,4096] fusion(true_param,true_param), kind=kLoop, calls=add.0
   constant.2 = f32[4096,4096] constant(0)
-  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[]) tuple(true_param,add0,constant.2)
+  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[4096,4096]) tuple(true_param,add0,constant.2)
 }
 
 false_branch {
   false_param = f32[4096,4096] parameter(0)
   add3 = f32[4096,4096] fusion(false_param,false_param), kind=kLoop, calls=add.1
   constant.1 = f32[4096,4096] constant(0)
-  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[]) tuple(add3, add3,constant.1)
+  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[4096,4096]) tuple(add3, add3,constant.1)
 }
 
 ENTRY entry {

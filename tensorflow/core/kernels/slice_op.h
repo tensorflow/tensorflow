@@ -30,21 +30,12 @@ struct Slice {
                   typename TTypes<T, NDIMS>::ConstTensor input,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& slice_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& slice_sizes) {
-    bool use_64bit = (input.size() > Eigen::NumTraits<int>::highest());
-    if (!use_64bit &&
-        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      Eigen::DSizes<int, NDIMS> indices;
-      for (int i = 0; i < NDIMS; ++i) {
-        indices[i] = slice_indices[i];
-      }
-      Eigen::DSizes<int, NDIMS> sizes;
-      for (int i = 0; i < NDIMS; ++i) {
-        sizes[i] = slice_sizes[i];
-      }
-      To32Bit(output).device(d) = To32Bit(input).slice(indices, sizes);
-    } else {
-      output.device(d) = input.slice(slice_indices, slice_sizes);
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto output32, auto input32, auto slice_indices32,
+            auto slice_sizes32) {
+          output32.device(d) = input32.slice(slice_indices32, slice_sizes32);
+        },
+        output, input, slice_indices, slice_sizes);
   }
 };
 

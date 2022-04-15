@@ -17,6 +17,7 @@ limitations under the License.
 #include <iostream>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -26,6 +27,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -49,8 +51,8 @@ namespace {
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
-  void runOnFunction() override;
+    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
+  void runOnOperation() override;
 };
 
 bool IsActivationFunction(Operation *op) {
@@ -106,6 +108,16 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
   LogicalResult matchAndRewrite(SrcOpT contraction,
                                 PatternRewriter &rewriter) const override {
     auto context = rewriter.getContext();
+
+    // We do support fusion only if the contraction operation is inside one of
+    // the expected operations with regions. Other operations can have semantics
+    // that is not compatible with fusion (e.g. region compilation).
+    if (!isa<FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
+      return rewriter.notifyMatchFailure(
+          contraction,
+          "fused operation must be nested inside a function, If or While");
+    }
+
     // If the contraction is used in multiple places, fusing it will only create
     // more contraction nodes, which is slower.
     if (!contraction.getResult().hasOneUse())
@@ -159,12 +171,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     std::vector<NamedAttribute> attrs = contraction->getAttrs();
     ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
-        NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
+        NamedAttribute(StringAttr::get(context, "fused_ops"), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it
     // here.
     Attribute epsilon = rewriter.getF32FloatAttr(0);
     attrs.push_back(
-        NamedAttribute(Identifier::get("epsilon", context), epsilon));
+        NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
@@ -233,10 +245,10 @@ class FuseMatMulBiasAdd
   }
 };
 
-void FusedKernelMatcherPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-  patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
+void FusedKernelMatcherPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
+  patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
@@ -246,10 +258,6 @@ void FusedKernelMatcherPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
-
-static PassRegistration<FusedKernelMatcherPass> pass(
-    "tf-fused-kernel-matcher",
-    "Matches computations corresponding to optimized fused kernels");
 
 }  // namespace TF
 

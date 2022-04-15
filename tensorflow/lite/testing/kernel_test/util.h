@@ -80,18 +80,9 @@ TfLiteStatus RunKernelTest(const kernel_test::TestOptions& options,
   runner->LoadModel(options.tflite_model);
   runner->AllocateTensors();
   if (!runner->IsValid()) return kTfLiteError;
-  auto input_tensor_ids = runner->GetInputs();
   auto inputs = input_generator.GetInputs();
-  if (inputs.size() != input_tensor_ids.size()) {
-    fprintf(stderr,
-            "Number of input tensors generated doesn't match what the model "
-            "asks for.");
-  }
-  for (int i = 0; i < inputs.size(); i++) {
-    runner->SetInput(input_tensor_ids[i], inputs[i]);
-  }
 
-  runner->Invoke();
+  runner->Invoke(inputs);
 
   if (!options.dump_input_to_file.empty()) {
     TF_LITE_ENSURE_STATUS(
@@ -106,8 +97,8 @@ TfLiteStatus RunKernelTest(const kernel_test::TestOptions& options,
       return kTfLiteError;
     }
 
-    for (auto id : runner->GetOutputs()) {
-      output_file << runner->ReadOutput(id) << "\n";
+    for (const auto& name : runner->GetOutputNames()) {
+      output_file << name << ":" << runner->ReadOutput(name) << "\n";
     }
     output_file.close();
   }

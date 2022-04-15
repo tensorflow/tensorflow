@@ -14,14 +14,9 @@
 # ========================================================================
 """Tensor Tracer report generation utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import hashlib
 import os
-
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -52,19 +47,8 @@ _FIELD_NAME_NUM_CACHE_INDICES = 'number-of-indices:'
 _FIELD_NAME_TOPOLOGICAL_SORT_SUCCEED = 'topological-sort-succeed:'
 
 _CURRENT_VERSION = 'use-outside-compilation'
+
 _TT_REPORT_PROTO = 'tensor_tracer_report.report_pb'
-
-
-def report_proto_path(trace_dir):
-  """Returns the path where report proto should be written.
-
-  Args:
-     trace_dir: String denoting the trace directory.
-
-  Returns:
-     A string denoting the path to the report proto.
-  """
-  return os.path.join(trace_dir, _TT_REPORT_PROTO)
 
 
 def topological_sort(g):
@@ -159,20 +143,26 @@ class TensorTraceOrder(object):
     for out_tensor in self.traced_tensors:
       tensor_name = out_tensor.name
       if tensor_name in self.tensorname_to_cache_idx:
-        raise ValueError(
-            'Tensor name %s should not be already in '
-            'tensorname_to_cache_idx'%tensor_name)
+        raise ValueError('Tensor name {} should not be already in '
+                         'tensorname_to_cache_idx'.format(tensor_name))
       if tensor_name not in self.graph_order.tensor_to_idx:
         raise ValueError(
-            'Tensor name %s is not in the tensor_to_idx'%tensor_name)
+            'Tensor name {} is not in the tensor_to_idx, tensor_to_idx={} '
+            .format(tensor_name, self.graph_order.tensor_to_idx))
       tensor_idx = self.graph_order.tensor_to_idx[tensor_name]
       cache_idx = len(self.tensorname_to_cache_idx)
       self.tensorname_to_cache_idx[tensor_name] = cache_idx
       self.cache_idx_to_tensor_idx.append(tensor_idx)
       if len(self.tensorname_to_cache_idx) != len(
           self.cache_idx_to_tensor_idx):
-        raise RuntimeError('len(self.tensorname_to_cache_idx) != '
-                           'len(self.cache_idx_to_tensor_idx')
+        raise RuntimeError(
+            'len(self.tensorname_to_cache_idx) must equal'
+            'len(self.cache_idx_to_tensor_idx), got '
+            'len(self.tensorname_to_cache_idx)={}, '
+            'len(self.cache_idx_to_tensor_idx)={}'
+            .format(
+                len(self.tensorname_to_cache_idx),
+                len(self.cache_idx_to_tensor_idx)))
 
 
 def sort_tensors_and_ops(graph):
@@ -302,10 +292,22 @@ class TTReportHandle(object):
     report.graphdef.CopyFrom(tf_graph.as_graph_def())
     return report
 
-  def write_report_proto(self, report_proto, tt_parameters):
+  def report_proto_path(self, trace_dir, summary_tag_name):
+    """Returns the path where report proto should be written.
+
+    Args:
+      trace_dir: String denoting the trace directory.
+      summary_tag_name: Name of the unique tag that relates to
+                        the report.
+    Returns:
+      A string denoting the path to the report proto.
+    """
+    filename = _TT_REPORT_PROTO + '.' + summary_tag_name.replace('/', '_')
+    return os.path.join(trace_dir, filename)
+
+  def write_report_proto(self, report_path, report_proto, tt_parameters):
     """Writes the given report proto under trace_dir."""
     gfile.MakeDirs(tt_parameters.trace_dir)
-    report_path = report_proto_path(tt_parameters.trace_dir)
     with gfile.GFile(report_path, 'wb') as f:
       f.write(report_proto.SerializeToString())
 
@@ -376,7 +378,9 @@ class TTReportHandle(object):
       for out_tensor in op.outputs:
         if out_tensor.name not in graph_order.tensor_to_idx:
           raise ValueError(
-              'out_tensor %s is not in tensor_to_idx'%out_tensor.name)
+              'out_tensor is not in tensor_to_idx. out_tensor={}, '
+              'tensor_to_idx={}'
+              .format(out_tensor.name, graph_order.tensor_to_idx))
         line += ' %d'%graph_order.tensor_to_idx[out_tensor.name]
       line += '\n'
       self._write_report(line)
@@ -397,7 +401,9 @@ class TTReportHandle(object):
       for consumer_op in consumers:
         if consumer_op.name not in graph_order.op_to_idx:
           raise ValueError(
-              'consumer_op %s is not in op_to_idx'%consumer_op.name)
+              'consumer_op is not in op_to_idx.  '
+              'got consumer_op={}, op_to_idx={}'
+              .format(consumer_op.name, graph_order.op_to_idx))
         line += ' %d'%graph_order.op_to_idx[consumer_op.name]
       line += '\n'
       self._write_report(line)

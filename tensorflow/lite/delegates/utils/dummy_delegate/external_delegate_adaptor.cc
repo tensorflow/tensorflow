@@ -30,10 +30,10 @@ TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
 
   // Parse key-values options to DummyDelegateOptions by mimicking them as
   // command-line flags.
-  std::unique_ptr<const char*> argv =
-      std::unique_ptr<const char*>(new const char*[num_options + 1]);
+  std::vector<const char*> argv;
+  argv.reserve(num_options + 1);
   constexpr char kDummyDelegateParsing[] = "dummy_delegate_parsing";
-  argv.get()[0] = kDummyDelegateParsing;
+  argv.push_back(kDummyDelegateParsing);
 
   std::vector<std::string> option_args;
   option_args.reserve(num_options);
@@ -42,7 +42,7 @@ TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
     option_args.rbegin()->append(options_keys[i]);
     option_args.rbegin()->push_back('=');
     option_args.rbegin()->append(options_values[i]);
-    argv.get()[i + 1] = option_args.rbegin()->c_str();
+    argv.push_back(option_args.rbegin()->c_str());
   }
 
   constexpr char kAllowedBuiltinOp[] = "allowed_builtin_code";
@@ -65,7 +65,7 @@ TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
   };
 
   int argc = num_options + 1;
-  if (!tflite::Flags::Parse(&argc, argv.get(), flag_list)) {
+  if (!tflite::Flags::Parse(&argc, argv.data(), flag_list)) {
     return nullptr;
   }
 

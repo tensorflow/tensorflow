@@ -79,10 +79,10 @@ CudaPtxInMemory::CudaPtxInMemory(
 
 std::string CudaPtxInMemory::DecompressPtx(const char *ptx) {
   // Get the length of the PTX string from the beginning of the buffer.
-  uint64 ptx_length = *reinterpret_cast<const uint64 *>(ptx);
+  uint64_t ptx_length = *reinterpret_cast<const uint64 *>(ptx);
   // Get the PTX string from the buffer with offset and length.
-  std::string compressed_ptx(ptx + sizeof(uint64),
-                             ptx + sizeof(uint64) + ptx_length);
+  std::string compressed_ptx(ptx + sizeof(uint64_t),
+                             ptx + sizeof(uint64_t) + ptx_length);
   std::string decompressed_ptx;
   // Decompress the PTX string with bzip2.
   LOG(FATAL) << "bzip2 decompression is not supported yet.";

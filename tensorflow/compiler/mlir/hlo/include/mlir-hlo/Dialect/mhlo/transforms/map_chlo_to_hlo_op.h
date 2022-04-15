@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_MHLO_OP_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_MHLO_OP_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
+#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
 
 #include <type_traits>
 
@@ -49,12 +49,12 @@ struct HloCompareAdaptor {
 template <template <typename, typename, typename> class Pattern,
           typename... ConstructorArgs>
 void PopulateForBroadcastingBinaryOp(MLIRContext *context,
-                                     OwningRewritePatternList *patterns,
+                                     RewritePatternSet *patterns,
                                      ConstructorArgs &&...args) {
-#define POPULATE_BCAST(ChloOp, HloOp)                                    \
-  patterns->insert<                                                      \
-      Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
-      context, args...);
+#define POPULATE_BCAST(ChloOp, HloOp)                                          \
+  patterns                                                                     \
+      ->add<Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
+          context, args...);
 
   POPULATE_BCAST(BroadcastAddOp, mhlo::AddOp);
   POPULATE_BCAST(BroadcastAndOp, mhlo::AndOp);
@@ -64,6 +64,7 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
   POPULATE_BCAST(BroadcastMaxOp, mhlo::MaxOp);
   POPULATE_BCAST(BroadcastMinOp, mhlo::MinOp);
   POPULATE_BCAST(BroadcastMulOp, mhlo::MulOp);
+  POPULATE_BCAST(BroadcastNextAfterOp, NextAfterOp);
   POPULATE_BCAST(BroadcastOrOp, mhlo::OrOp);
   POPULATE_BCAST(BroadcastPolygammaOp, PolygammaOp);
   POPULATE_BCAST(BroadcastPowOp, mhlo::PowOp);
@@ -86,4 +87,4 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
 }  // namespace chlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H

@@ -35,7 +35,7 @@ class MemorySpacePropagation : public HloModulePass {
   // in the fused computation (parameter or root), propagates the memory space
   // in the callee side. Returns true if the module is modified.
   bool Propagate(ShapeIndexView index, const HloInstruction* callee_instruction,
-                 int64 memory_space) const;
+                 int64_t memory_space) const;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 };

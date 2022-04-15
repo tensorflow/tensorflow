@@ -41,7 +41,7 @@ namespace {
 class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
   explicit FuseBiasTF() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 struct ConvertTFBiasAddOp : public RewritePattern {
@@ -107,13 +107,13 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
   return success();
 }
 
-void FuseBiasTF::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void FuseBiasTF::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   auto* ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Add the generated patterns to the list.
-  patterns.insert<ConvertTFBiasAddOp>(ctx);
+  patterns.add<ConvertTFBiasAddOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -122,9 +122,6 @@ void FuseBiasTF::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass() {
   return std::make_unique<FuseBiasTF>();
 }
-
-static PassRegistration<FuseBiasTF> pass(
-    PASS_NAME, "Fuse tf.Op + tf.BiasAdd and legalized to TOSA.");
 
 }  // namespace tosa
 

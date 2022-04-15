@@ -26,6 +26,7 @@ XlaOp = xla_extension.XlaOp
 PrecisionConfig_Precision = xla_extension.PrecisionConfig_Precision
 PrimitiveType = xla_extension.PrimitiveType
 Shape = xla_extension.Shape
+ShapeIndex = xla_extension.ShapeIndex
 
 _ConvDimensionNumbers = Any
 _DotDimensionNumbers = Any
@@ -47,6 +48,17 @@ class RandomAlgorithm(enum.IntEnum):
   RNG_THREE_FRY: int
   RNG_PHILOX: int
 
+class CustomCallSchedule(enum.IntEnum):
+  SCHEDULE_NONE: int
+  SCHEDULE_LATEST: int
+  SCHEDULE_EARLIEST: int
+
+# TODO(b/189822916): Remove this enum when all clients are migrated to the
+# status-returning API.
+class CustomCallApiVersion(enum.IntEnum):
+  API_VERSION_ORIGINAL: int
+  API_VERSION_STATUS_RETURNING: int
+
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
     operand: XlaOp,
@@ -62,6 +74,42 @@ def AllReduce(
     replica_groups: Sequence[_ReplicaGroup] = ...,
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
+def ApproxTopK(
+    builder: XlaBuilder,
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
+    top_k: int,
+    reduction_dim: int,
+    comparator: XlaComputation,
+    recall_target: Optional[float],
+    aggregate_to_topk: Optional[bool],
+    reduction_input_size_override: Optional[int]) -> XlaOp: ...
+def ApproxTopKFallback(
+    builder: XlaBuilder,
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
+    top_k: int,
+    reduction_dim: int,
+    comparator: XlaComputation,
+    recall_target: Optional[float],
+    aggregate_to_topk: Optional[bool],
+    reduction_input_size_override: Optional[int]) -> XlaOp: ...
+def ApproxTopKReductionOutputSize(
+    input_size: int,
+    rank: int,
+    top_k: int,
+    recall_target: float,
+    aggregate_to_topk: Optional[bool] = ...,
+    input_size_override: Optional[int] = ...) -> Tuple[int, int]: ...
+def ReduceScatter(
+    operand: XlaOp,
+    computation: XlaComputation,
+    scatter_dimension: int,
+    shard_count: int,
+    replica_groups: Sequence[_ReplicaGroup] = ...,
+    channel_id: Optional[ChannelHandle] = ...,
+    layout: Optional[_Layout] = ...,
+    use_global_device_ids: Optional[bool] = ...) -> XlaOp: ...
 def AllToAll(
     operand: XlaOp,
     split_dimension: int,
@@ -106,12 +154,12 @@ def ConvGeneralDilated(
     rhs: XlaOp,
     window_strides: Sequence[int],
     padding: Sequence[Tuple[int, int]],
-    lhs_dilation: Sequence[int], 
+    lhs_dilation: Sequence[int],
     rhs_dilation: Sequence[int],
-    dimension_numbers: _ConvDimensionNumbers, 
+    dimension_numbers: _ConvDimensionNumbers,
     feature_group_count: int = ...,
     batch_group_count: int = ...,
-    precision_config: PrecisionConfig_Precision = ...,
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
     preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def ConvertElementType(
     operand: XlaOp,
@@ -126,7 +174,9 @@ def CustomCall(
     operands: Sequence[XlaOp],
     shape: Shape,
     opaque: bytes = ...,
-    has_side_effects: bool = ...) -> XlaOp: ...
+    has_side_effect: bool = ...,
+    schedule: CustomCallSchedule = ...,
+    api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def CustomCallWithLayout(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -134,18 +184,32 @@ def CustomCallWithLayout(
     shape_with_layout: Shape,
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
-    has_side_effects: bool = ...) -> XlaOp: ...
+    has_side_effect: bool = ...,
+    schedule: CustomCallSchedule = ...,
+    api_version: CustomCallApiVersion = ...) -> XlaOp: ...
+def CustomCallWithAliasing(
+    builder: XlaBuilder,
+    call_target_name: bytes,
+    operands: Sequence[XlaOp],
+    shape_with_layout: Shape,
+    operand_shapes_with_layout: Sequence[Shape],
+    opaque: bytes = ...,
+    has_side_effect: bool = ...,
+    output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
+    literal: _LiteralSlice = ...,
+    schedule: CustomCallSchedule = ...,
+    api_version: CustomCallApiVersion = ...) -> XlaOp: ...
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
-    precision_config: PrecisionConfig_Precision = ...,
-    preferred_element_type: Optional[PrimitiveType]) -> XlaOp: ...
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
+    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DotGeneral(
     lhs: XlaOp,
     rhs: XlaOp,
     dimensions_numbers: _DotDimensionNumbers,
-    precision_config: PrecisionConfig_Precision = ...,
-    preferred_element_type: Optional[PrimitiveType]) -> XlaOp: ...
+    precision_config: Optional[PrecisionConfig_Precision] = ...,
+    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
 def DynamicReshape(
     operand: XlaOp,
     dim_sizes: Sequence[XlaOp],
@@ -163,7 +227,8 @@ def Eigh(
     a: XlaOp,
     lower: bool = ...,
     max_iter: int = ...,
-    epsilon: float = ...) -> Tuple[XlaOp, XlaOp]: ...
+    epsilon: float = ...,
+    sort_eigenvalues: bool = ...) -> Tuple[XlaOp, XlaOp]: ...
 def Fft(
     operand: XlaOp,
     fft_type: FftType,
@@ -207,7 +272,7 @@ def Parameter(
     shape: Shape,
     name: str = ...,
     replicated_at_leaf_buffers: Sequence[bool] = ...) -> XlaOp: ...
-def QR(a: XlaOp, full_matrices: bool) -> XlaOp: ...
+def QR(a: XlaOp, full_matrices: bool) -> Tuple[XlaOp, XlaOp]: ...
 def Reduce(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
@@ -300,7 +365,7 @@ def TriangularSolve(
     left_side: bool,
     lower: bool,
     unit_diagonal: bool,
-    transpose_a: bool) -> XlaOp: ...
+    transpose_a: TriangularSolveOptions_Transpose) -> XlaOp: ...
 def Tuple(builder: XlaBuilder, elements: Sequence[XlaOp]) -> XlaOp: ...
 def While(
     condition: XlaComputation,
@@ -309,8 +374,8 @@ def While(
 
 
 def Igamma(a: XlaOp, x: XlaOp) -> XlaOp: ...
-def Igamac(a: XlaOp, x: XlaOp) -> XlaOp: ...
-def IgamaGradA(a: XlaOp, x: XlaOp) -> XlaOp: ...
+def Igammac(a: XlaOp, x: XlaOp) -> XlaOp: ...
+def IgammaGradA(a: XlaOp, x: XlaOp) -> XlaOp: ...
 def RandomGammaGrad(a: XlaOp, x: XlaOp) -> XlaOp: ...
 def RegularizedIncompleteBeta(a: XlaOp, b: XlaOp, x: XlaOp) -> XlaOp: ...
 def Zeta(a: XlaOp, q: XlaOp) -> XlaOp: ...
@@ -351,12 +416,14 @@ def Log(__arg: XlaOp) -> XlaOp: ...
 def Log1p(__arg: XlaOp) -> XlaOp: ...
 def Sign(__arg: XlaOp) -> XlaOp: ...
 def Cos(__arg: XlaOp) -> XlaOp: ...
+def OptimizationBarrier(__arg: XlaOp) -> XlaOp: ...
 def Sin(__arg: XlaOp) -> XlaOp: ...
 def Tanh(__arg: XlaOp) -> XlaOp: ...
 def IsFinite(__arg: XlaOp) -> XlaOp: ...
 def Neg(__arg: XlaOp) -> XlaOp: ...
 def Sqrt(__arg: XlaOp) -> XlaOp: ...
 def Rsqrt(__arg: XlaOp) -> XlaOp: ...
+def Cbrt(__arg: XlaOp) -> XlaOp: ...
 def Square(__arg: XlaOp) -> XlaOp: ...
 def Reciprocal(__arg: XlaOp) -> XlaOp: ...
 def Erfc(__arg: XlaOp) -> XlaOp: ...

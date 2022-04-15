@@ -19,10 +19,6 @@
   - Tests converting MNIST SavedModel to TFLite FlatBuffer.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 from tensorflow.lite.python import convert_saved_model
 from tensorflow.python.client import session

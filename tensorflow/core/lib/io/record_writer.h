@@ -98,7 +98,9 @@ class RecordWriter {
   // "header[0,kHeaderSize-1]".  The record-header is based on data[0, n-1].
   inline static void PopulateHeader(char* header, const char* data, size_t n);
 
+#if defined(TF_CORD_SUPPORT)
   inline static void PopulateHeader(char* header, const absl::Cord& data);
+#endif
 
   // Utility method to populate TFRecord footers.  Populates record-footer in
   // "footer[0,kFooterSize-1]".  The record-footer is based on data[0, n-1].

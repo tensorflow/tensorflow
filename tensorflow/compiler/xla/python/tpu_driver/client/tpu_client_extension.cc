@@ -13,18 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
+  CHECK(tensorflow::RegisterNumpyBfloat16());
+
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
       .def_property_readonly("platform", &PyTpuClient::platform_name)
@@ -139,10 +147,25 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                 &options.executable_build_options, client,
                 options.parameter_is_tupled_arguments);
           },
-          py::arg("computation"),
+          py::arg("computation"), py::arg("compile_options") = CompileOptions())
+      .def(
+          "compile",
+          [](std::shared_ptr<PyTpuClient> client, std::string mlir_module,
+             CompileOptions options)
+              -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
+            py::gil_scoped_release gil_release;
+            mlir::MLIRContext context;
+            TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                                ParseMlirModuleString(mlir_module, context));
+            return PyTpuExecutable::CompileMlir(
+                module.get(), options.argument_layouts,
+                &options.executable_build_options, client,
+                options.parameter_is_tupled_arguments);
+          },
+          py::arg("mlir_module"),
           py::arg("compile_options") = CompileOptions());
 
-  py::class_<PyTpuBuffer>(m, "PyTpuBuffer")
+  py::class_<PyTpuBuffer>(m, "PyTpuBuffer", py::dynamic_attr())
       .def_property_readonly("client", &PyTpuBuffer::client)
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<PjRtDevice> dst_device) {
@@ -153,6 +176,17 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            })
       .def("delete", &PyTpuBuffer::Delete)
       .def("block_host_until_ready",
+           [](PyTpuBuffer* buffer) {
+             // TODO(phawkins): remove 3 months after the release of jaxlib >=
+             // 0.3.2.
+             PythonDeprecationWarning(
+                 "block_host_until_ready() on a JAX array object is "
+                 "deprecated, use block_until_ready() instead.");
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->BlockHostUntilReady();
+           })
+      .def("block_until_ready",
            [](PyTpuBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
@@ -170,8 +204,16 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              }
              return LiteralToPython(std::move(literal));
            })
-      .def("shape", &PyTpuBuffer::on_host_shape)
+      .def_property_readonly("shape",
+                             [](const PyTpuBuffer& buffer) {
+                               return buffer.on_host_shape().dimensions();
+                             })
       .def("xla_shape", &PyTpuBuffer::on_host_shape)
+      .def_property_readonly(
+          "dtype",
+          [](PyTpuBuffer* buffer) {
+            return PrimitiveTypeToDtype(buffer->on_host_shape().element_type());
+          })
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted",
@@ -204,23 +246,29 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",
+                             [](PyTpuExecutable*) { return py::none(); })
+      .def_property_readonly("fingerprint",
                              [](PyTpuExecutable*) { return py::none(); });
 
   py::class_<TpuDevice, PjRtDevice, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)
       .def_property_readonly("core_on_chip", &TpuDevice::core_on_chip)
+      .def_property_readonly("client",
+                             [](TpuDevice* device) {
+                               return device->tpu_client()->shared_from_this();
+                             })
       // TODO(skye): this is a horrible hack because falling back to
       // PjRtDevice::platform_name() segfaults, due to TpuDevice::client_ being
       // uninitialized. This can be removed when PyTpuClient subclasses
       // PjRtClient and can be used to set TpuDevice::client_.
       .def_property_readonly(
           "platform",
-          [](const TpuDevice& device) -> std::string { return kTpuPlatform; })
+          [](const TpuDevice& device) -> std::string { return TpuPlatform(); })
       .def("__repr__", [](const TpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, process_index=%i, coords=(%i,%i,%i), "
             "core_on_chip=%i)",
-            device.id(), device.task_id(), device.coords()[0],
+            device.id(), device.process_index(), device.coords()[0],
             device.coords()[1], device.coords()[2], device.core_on_chip());
       });
 }  // NOLINT(readability/fn_size)

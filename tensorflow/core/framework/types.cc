@@ -46,18 +46,19 @@ auto* DT_TO_FT = new std::unordered_map<DataType, FullTypeId, DataTypeHasher>({
     {DT_HALF, TFT_HALF},
     {DT_UINT32, TFT_UINT32},
     {DT_UINT64, TFT_UINT64},
+    {DT_VARIANT, TFT_LEGACY_VARIANT},
 });
 
-void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t) {
-  t->set_type_id(TFT_TENSOR);
-  // If the dtype is not mapped, assume it's not supported and use
-  // TFT_ANY, for compatibility. See DT_TO_FT for more details.
+void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t) {
+  t.Clear();
+
   const auto& mapped = DT_TO_FT->find(dtype);
-  auto* arg = t->add_args();
+  // Only map known types, everything else remains unset. This is so that we
+  // only set the most specific type when it is fully known. For example, if the
+  // dtype is DT_VARIANT, then we don't know much and opt to assume that
+  // the type is unset, rather than TFT_ANY.
   if (mapped != DT_TO_FT->end()) {
-    arg->set_type_id(mapped->second);
-  } else {
-    arg->set_type_id(TFT_ANY);
+    t.set_type_id(mapped->second);
   }
 }
 
@@ -77,6 +78,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
+const char* const DEVICE_TPU = "TPU";
 const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
@@ -295,7 +297,7 @@ DEFINE_DATATYPETOENUM_VALUE(int8);
 DEFINE_DATATYPETOENUM_VALUE(tstring);
 DEFINE_DATATYPETOENUM_VALUE(complex64);
 DEFINE_DATATYPETOENUM_VALUE(complex128);
-DEFINE_DATATYPETOENUM_VALUE(int64);
+DEFINE_DATATYPETOENUM_VALUE(int64_t);
 DEFINE_DATATYPETOENUM_VALUE(uint64);
 DEFINE_DATATYPETOENUM_VALUE(bool);
 DEFINE_DATATYPETOENUM_VALUE(qint8);

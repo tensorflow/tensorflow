@@ -73,18 +73,18 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
     // The name to use for the pool of batch threads.
     string thread_pool_name = {"batch_threads"};
     // Maximum number of batch processing threads.
-    int64 num_batch_threads = port::NumSchedulableCPUs();
+    int64_t num_batch_threads = port::NumSchedulableCPUs();
     // Although batch selection is primarily based on age, this parameter
     // specifies a preference for larger batches.  A full batch will be
     // scheduled before an older, nearly empty batch as long as the age gap is
     // less than full_batch_scheduling_boost_micros.  The optimal value for this
     // parameter should be of order the batch processing latency, but must be
     // chosen carefully, as too large a value will harm tail latency.
-    int64 full_batch_scheduling_boost_micros = 0;
+    int64_t full_batch_scheduling_boost_micros = 0;
     // The environment to use (typically only overridden by test code).
     Env* env = Env::Default();
     // Initial limit for number of batches being concurrently processed.
-    int64 initial_in_flight_batches_limit = 3;
+    int64_t initial_in_flight_batches_limit = 3;
     // Returns the current number of batches directly waiting to be processed
     // by the serial device (i.e. GPU, TPU).
     std::function<int64()> get_pending_on_serial_device;
@@ -94,7 +94,7 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
     // Number of batches between potential adjustments of
     // in_flight_batches_limit.  Larger numbers will reduce noise, but will be
     // less responsive to sudden changes in workload.
-    int64 batches_to_average_over = 1000;
+    int64_t batches_to_average_over = 1000;
   };
 
   // Ownership is shared between the caller of Create() and any queues created
@@ -158,28 +158,28 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
   std::unique_ptr<thread::ThreadPool> batch_thread_pool_;
 
   // Limit on number of batches which can be concurrently processed.
-  int64 in_flight_batches_limit_ TF_GUARDED_BY(mu_);
+  int64_t in_flight_batches_limit_ TF_GUARDED_BY(mu_);
 
   // Number of batch processing threads.
-  int64 processing_threads_ TF_GUARDED_BY(mu_) = 0;
+  int64_t processing_threads_ TF_GUARDED_BY(mu_) = 0;
 
   // Number of batches processed since the last in_flight_batches_limit_
   // adjustment.
-  int64 batch_count_ TF_GUARDED_BY(mu_) = 0;
+  int64_t batch_count_ TF_GUARDED_BY(mu_) = 0;
 
   // Number of times since the last in_flight_batches_limit_ adjustment when a
   // processing thread was available but there were no batches to process.
-  int64 no_batch_count_ TF_GUARDED_BY(mu_) = 0;
+  int64_t no_batch_count_ TF_GUARDED_BY(mu_) = 0;
 
   // Sum of batches pending on the serial device since the last
   // in_flight_batches_limit_ adjustment.
-  int64 pending_sum_ = 0;
+  int64_t pending_sum_ = 0;
 
   // Sum of batch latencies since the last in_flight_batches_limit_ adjustment.
-  int64 batch_latency_sum_ = 0;
+  int64_t batch_latency_sum_ = 0;
 
   // Average period between which two consecutive batches begin processing.
-  int64 batch_period_micros_ = 0;
+  int64_t batch_period_micros_ = 0;
 
   // Moving average tracking the fraction of recent in_flight_batches_limit_
   // adjustments where the external traffic was not high enough to provide
@@ -230,8 +230,8 @@ class SDBSQueue : public BatchScheduler<TaskType> {
   const QueueOptions options_;
   // Owned by scheduler_.
   SDBSBatch<TaskType>* current_batch_ TF_GUARDED_BY(mu_) = nullptr;
-  int64 num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
-  int64 num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
+  int64_t num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
+  int64_t num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
   mutable mutex mu_;
   TF_DISALLOW_COPY_AND_ASSIGN(SDBSQueue);
 };
@@ -240,18 +240,18 @@ class SDBSQueue : public BatchScheduler<TaskType> {
 template <typename TaskType>
 class SDBSBatch : public Batch<TaskType> {
  public:
-  SDBSBatch(SDBSQueue<TaskType>* queue, int64 creation_time_micros)
+  SDBSBatch(SDBSQueue<TaskType>* queue, int64_t creation_time_micros)
       : queue_(queue), creation_time_micros_(creation_time_micros) {}
 
   ~SDBSBatch() override {}
 
   SDBSQueue<TaskType>* queue() const { return queue_; }
 
-  int64 creation_time_micros() const { return creation_time_micros_; }
+  int64_t creation_time_micros() const { return creation_time_micros_; }
 
  private:
   SDBSQueue<TaskType>* queue_;
-  const int64 creation_time_micros_;
+  const int64_t creation_time_micros_;
   TF_DISALLOW_COPY_AND_ASSIGN(SDBSBatch);
 };
 }  // namespace internal
@@ -365,7 +365,7 @@ void SerialDeviceBatchScheduler<TaskType>::RemoveQueue(
 
 template <typename TaskType>
 void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
-  const int64 kIdleThreadSleepTimeMicros = 1000;
+  const int64_t kIdleThreadSleepTimeMicros = 1000;
   const double kMaxNoBatchRatio = .1;
   const double kLowTrafficMovingAverageFactor = .1;
   for (;;) {
@@ -378,8 +378,8 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
     }
     if (batches_.empty()) {
       no_batch_count_++;
-      int64 sleep_time = batch_period_micros_ ? batch_period_micros_
-                                              : kIdleThreadSleepTimeMicros;
+      int64_t sleep_time = batch_period_micros_ ? batch_period_micros_
+                                                : kIdleThreadSleepTimeMicros;
       mu_.unlock();
       env()->SleepForMicroseconds(sleep_time);
       continue;
@@ -405,10 +405,10 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
     batch->queue()->ReleaseBatch(batch);
     auto callback = queues_and_callbacks_[batch->queue()];
     mu_.unlock();
-    int64 start_time = env()->NowMicros();
+    int64_t start_time = env()->NowMicros();
     callback(std::unique_ptr<Batch<TaskType>>(
         const_cast<internal::SDBSBatch<TaskType>*>(batch)));
-    int64 end_time = env()->NowMicros();
+    int64_t end_time = env()->NowMicros();
     mu_.lock();
     batch_count_++;
     batch_latency_sum_ += end_time - start_time;
@@ -432,7 +432,8 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
         // the desired target pending.
         in_flight_batches_limit_ +=
             std::round(options_.target_pending - avg_pending);
-        in_flight_batches_limit_ = std::max(in_flight_batches_limit_, int64{1});
+        in_flight_batches_limit_ =
+            std::max(in_flight_batches_limit_, int64_t{1});
         in_flight_batches_limit_ =
             std::min(in_flight_batches_limit_, options_.num_batch_threads);
         // Add extra processing threads if necessary.

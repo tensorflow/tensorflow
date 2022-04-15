@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_mul_to_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_padding.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/merge_densify.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/remove_noop.h"
 
@@ -45,10 +46,13 @@ bool ApplyGeneralTransformations(ModelTransformer* transformer) {
                             NewRemoveSingleInputConcat().get()) &&
          transformer->Apply("remove_identity_reshape",
                             NewRemoveIdentityReshape().get()) &&
+         transformer->Apply("remove_identity_strided_slice",
+                            NewRemoveIdentityStridedSlice().get()) &&
          transformer->Apply("make_padding_from_concat",
                             NewMakePaddingFromConcat().get()) &&
          transformer->Apply("make_fully_connected_from_convolution",
                             NewMakeFullyConnectedFromConvolution().get()) &&
+         transformer->Apply("merge_densify", NewMergeDensify().get()) &&
          transformer->Apply("merge_padding_with_convolution",
                             NewMergePaddingWithConvolution2D().get()) &&
          transformer->Apply("merge_padding_with_pooling",

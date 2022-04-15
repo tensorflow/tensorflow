@@ -40,9 +40,9 @@ XLA_TEST_P(TridiagonalTest, Solves) {
   xla::XlaBuilder builder(TestName());
 
   // TODO(belletti): parametrize num_rhs.
-  const int64 batch_size = std::get<0>(spec);
-  const int64 num_eqs = std::get<1>(spec);
-  const int64 num_rhs = std::get<2>(spec);
+  const int64_t batch_size = std::get<0>(spec);
+  const int64_t num_eqs = std::get<1>(spec);
+  const int64_t num_rhs = std::get<2>(spec);
 
   Array3D<float> lower_diagonal(batch_size, 1, num_eqs);
   Array3D<float> main_diagonal(batch_size, 1, num_eqs);
@@ -69,9 +69,9 @@ XLA_TEST_P(TridiagonalTest, Solves) {
       upper_diagonal, 2, "upper_diagonal", &builder, &upper_diagonal_xla);
   auto rhs_data = CreateR3Parameter<float>(rhs, 3, "rhs", &builder, &rhs_xla);
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaOp x,
-                          ThomasSolver(lower_diagonal_xla, main_diagonal_xla,
-                                       upper_diagonal_xla, rhs_xla));
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaOp x, TridiagonalSolver(kThomas, lower_diagonal_xla, main_diagonal_xla,
+                                 upper_diagonal_xla, rhs_xla));
 
   auto Coefficient = [](auto operand, auto i) {
     return SliceInMinorDims(operand, /*start=*/{i}, /*end=*/{i + 1});
@@ -79,7 +79,7 @@ XLA_TEST_P(TridiagonalTest, Solves) {
 
   std::vector<XlaOp> relative_errors(num_eqs);
 
-  for (int64 i = 0; i < num_eqs; i++) {
+  for (int64_t i = 0; i < num_eqs; i++) {
     auto a_i = Coefficient(lower_diagonal_xla, i);
     auto b_i = Coefficient(main_diagonal_xla, i);
     auto c_i = Coefficient(upper_diagonal_xla, i);

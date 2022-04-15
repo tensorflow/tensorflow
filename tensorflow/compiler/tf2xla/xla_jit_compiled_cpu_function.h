@@ -43,7 +43,7 @@ class XlaJitCompiledCpuFunction {
   // `config` specifies the portion of the graph to compile, via feeds and
   // fetches. Each feed is a positional input argument for the compiled
   // function, while each fetch is a positional output argument.
-  static xla::StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>> Compile(
+  static StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>> Compile(
       const GraphDef& graph_def, const tf2xla::Config& config,
       const xla::ExecutableBuildOptions& build_options);
 

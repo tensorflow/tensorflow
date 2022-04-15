@@ -13,14 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Test utilities for tf.data functionality."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import random
 import re
 
 from tensorflow.python.data.experimental.ops import lookup_ops as data_lookup_ops
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -222,7 +220,13 @@ class DatasetTestBase(test.TestCase):
           dataset, requires_initialization=requires_initialization)
       result = []
       for _ in range(len(expected_output)):
-        result.append(self.evaluate(get_next()))
+        try:
+          result.append(self.evaluate(get_next()))
+        except errors.OutOfRangeError:
+          raise AssertionError(
+              "Dataset ended early, producing %d elements out of %d. "
+              "Dataset output: %s" %
+              (len(result), len(expected_output), str(result)))
       self._compareOutputToExpected(result, expected_output, assert_items_equal)
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next())
@@ -300,6 +304,27 @@ class DatasetTestBase(test.TestCase):
               self.structuredDataset(substructure, shape, dtype)
               for substructure in dataset_structure
           ]))
+
+  def verifyRandomAccess(self, dataset, expected):
+    self.verifyRandomAccessInfiniteCardinality(dataset, expected)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=len(expected)))
+
+  def verifyRandomAccessInfiniteCardinality(self, dataset, expected):
+    """Tests randomly accessing elements of a dataset."""
+    # Tests accessing the elements in a shuffled order with repeats.
+    len_expected = len(expected)
+    indices = list(range(len_expected)) * 2
+    random.shuffle(indices)
+    for i in indices:
+      self.assertAllEqual(expected[i],
+                          self.evaluate(random_access.at(dataset, i)))
+
+    # Tests accessing the elements in order.
+    indices = set(sorted(indices))
+    for i in indices:
+      self.assertAllEqual(expected[i],
+                          self.evaluate(random_access.at(dataset, i)))
 
   def textFileInitializer(self, vals):
     file = os.path.join(self.get_temp_dir(), "text_file_initializer")
@@ -383,7 +408,7 @@ class DatasetTestBase(test.TestCase):
     # delay_ms needed to observe non-deterministic ordering varies across
     # test machines. Usually 10 or 100 milliseconds is enough, but on slow
     # machines it could take longer.
-    for delay_ms in [10, 100, 1000, 20000]:
+    for delay_ms in [10, 100, 1000, 20000, 100000]:
       dataset = dataset_fn(delay_ms)
       actual = self.getDatasetOutput(dataset)
       self.assertCountEqual(expected_elements, actual)

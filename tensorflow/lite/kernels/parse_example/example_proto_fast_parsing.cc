@@ -41,7 +41,7 @@ void CopySparseBufferToTensor(DataType dtype, size_t offset, SparseBuffer* src,
   switch (dtype) {
     case DT_INT64: {
       std::copy(src->int64_list.begin(), src->int64_list.end(),
-                dst->flat<int64>().data() + offset);
+                dst->flat<int64_t>().data() + offset);
       break;
     }
     case DT_FLOAT: {
@@ -153,7 +153,8 @@ void CopyOrMoveBlock(const tstring* b, const tstring* e, tstring* t) {
 }
 
 template <>
-const SmallVector<int64>& GetListFromBuffer<int64>(const SparseBuffer& buffer) {
+const SmallVector<int64_t>& GetListFromBuffer<int64_t>(
+    const SparseBuffer& buffer) {
   return buffer.int64_list;
 }
 template <>

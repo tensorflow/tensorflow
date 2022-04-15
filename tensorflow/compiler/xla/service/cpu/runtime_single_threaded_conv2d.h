@@ -16,38 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_CONV2D_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_CONV2D_H_
 
+#include <stdint.h>
+
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/types.h"
 
 extern "C" {
 
-extern void __xla_cpu_runtime_EigenSingleThreadedConvF16(
+extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs,
-    tensorflow::int64 input_batch, tensorflow::int64 input_rows,
-    tensorflow::int64 input_cols, tensorflow::int64 input_channels,
-    tensorflow::int64 kernel_rows, tensorflow::int64 kernel_cols,
-    tensorflow::int64 kernel_channels, tensorflow::int64 kernel_filters,
-    tensorflow::int64 output_rows, tensorflow::int64 output_cols,
-    tensorflow::int64 row_stride, tensorflow::int64 col_stride,
-    tensorflow::int64 padding_top, tensorflow::int64 padding_bottom,
-    tensorflow::int64 padding_left, tensorflow::int64 padding_right,
-    tensorflow::int64 lhs_row_dilation, tensorflow::int64 lhs_col_dilation,
-    tensorflow::int64 rhs_row_dilation, tensorflow::int64 rhs_col_dilation);
+    Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs, int64_t input_batch,
+    int64_t input_rows, int64_t input_cols, int64_t input_channels,
+    int64_t kernel_rows, int64_t kernel_cols, int64_t kernel_channels,
+    int64_t kernel_filters, int64_t output_rows, int64_t output_cols,
+    int64_t row_stride, int64_t col_stride, int64_t padding_top,
+    int64_t padding_bottom, int64_t padding_left, int64_t padding_right,
+    int64_t lhs_row_dilation, int64_t lhs_col_dilation,
+    int64_t rhs_row_dilation, int64_t rhs_col_dilation,
+    int64_t feature_group_count);
 
-extern void __xla_cpu_runtime_EigenSingleThreadedConvF32(
+extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
-    float* lhs, float* rhs, tensorflow::int64 input_batch,
-    tensorflow::int64 input_rows, tensorflow::int64 input_cols,
-    tensorflow::int64 input_channels, tensorflow::int64 kernel_rows,
-    tensorflow::int64 kernel_cols, tensorflow::int64 kernel_channels,
-    tensorflow::int64 kernel_filters, tensorflow::int64 output_rows,
-    tensorflow::int64 output_cols, tensorflow::int64 row_stride,
-    tensorflow::int64 col_stride, tensorflow::int64 padding_top,
-    tensorflow::int64 padding_bottom, tensorflow::int64 padding_left,
-    tensorflow::int64 padding_right, tensorflow::int64 lhs_row_dilation,
-    tensorflow::int64 lhs_col_dilation, tensorflow::int64 rhs_row_dilation,
-    tensorflow::int64 rhs_col_dilation);
+    float* lhs, float* rhs, int64_t input_batch, int64_t input_rows,
+    int64_t input_cols, int64_t input_channels, int64_t kernel_rows,
+    int64_t kernel_cols, int64_t kernel_channels, int64_t kernel_filters,
+    int64_t output_rows, int64_t output_cols, int64_t row_stride,
+    int64_t col_stride, int64_t padding_top, int64_t padding_bottom,
+    int64_t padding_left, int64_t padding_right, int64_t lhs_row_dilation,
+    int64_t lhs_col_dilation, int64_t rhs_row_dilation,
+    int64_t rhs_col_dilation, int64_t feature_group_count);
 
 }  // extern "C"
 

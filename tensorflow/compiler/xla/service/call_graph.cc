@@ -27,21 +27,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 using absl::StrAppendFormat;
 using absl::StrCat;
 
-string CallContextToString(CallContext context) {
+std::string CallContextToString(CallContext context) {
   switch (context) {
     case CallContext::kNone:
       return "kNone";
-    case CallContext::kSequential:
-      return "kSequential";
-    case CallContext::kParallel:
-      return "kParallel";
+    case CallContext::kControlFlow:
+      return "kControlFlow";
+    case CallContext::kEmbedded:
+      return "kEmbedded";
     case CallContext::kBoth:
       return "kBoth";
   }
@@ -57,8 +56,13 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
-      return CallContext::kSequential;
+      return CallContext::kControlFlow;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
@@ -67,18 +71,18 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
     case HloOpcode::kCustomCall:
-      return CallContext::kParallel;
+      return CallContext::kEmbedded;
     default:
       return CallContext::kNone;
   }
 }
 
-string CallSite::ToString() const {
+std::string CallSite::ToString() const {
   return StrCat(
       instruction()->name(), " calls in context ",
       CallContextToString(context()), ": ",
       absl::StrJoin(called_computations(), ", ",
-                    [](string* out, const HloComputation* computation) {
+                    [](std::string* out, const HloComputation* computation) {
                       out->append(computation->name());
                     }));
 }
@@ -110,8 +114,8 @@ void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   CHECK_EQ(instruction->parent(), computation());
   const CallContext context = GetInstructionCallContext(instruction->opcode());
   if (!instruction->called_computations().empty()) {
-    CHECK(context == CallContext::kSequential ||
-          context == CallContext::kParallel);
+    CHECK(context == CallContext::kControlFlow ||
+          context == CallContext::kEmbedded);
     callsite_instructions_.insert({instruction, callsites_.size()});
     callsites_.push_back(
         CallSite(instruction, instruction->called_computations(), context));
@@ -200,7 +204,7 @@ void CallGraph::SetCallContexts() {
   for (const HloComputation* computation : module_->computations()) {
     CallGraphNode& node = GetNode(computation);
     if (node.callers().empty()) {
-      node.set_context(CallContext::kSequential);
+      node.set_context(CallContext::kControlFlow);
       worklist.push(&node);
     }
   }
@@ -216,10 +220,10 @@ void CallGraph::SetCallContexts() {
         // Update context of callee computation based on the callsite and its
         // current context.
         CallContext context_to_add;
-        if (callsite.context() == CallContext::kParallel) {
-          context_to_add = CallContext::kParallel;
+        if (callsite.context() == CallContext::kEmbedded) {
+          context_to_add = CallContext::kEmbedded;
         } else {
-          CHECK_EQ(callsite.context(), CallContext::kSequential);
+          CHECK_EQ(callsite.context(), CallContext::kControlFlow);
           context_to_add = node->context();
         }
         CallContext new_context =
@@ -358,7 +362,7 @@ bool CallGraph::IsFlattened() const {
     if (node.context() == CallContext::kBoth) {
       return false;
     }
-    if (node.context() == CallContext::kSequential &&
+    if (node.context() == CallContext::kControlFlow &&
         node.caller_callsites().size() > 1) {
       return false;
     }
@@ -428,8 +432,8 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
   return {nullptr, nullptr};
 }
 
-string CallGraph::ToString() const {
-  string out;
+std::string CallGraph::ToString() const {
+  std::string out;
   StrAppendFormat(&out, "Call graph for module %s:\n", module_->name());
   for (const CallGraphNode& node : nodes()) {
     StrAppendFormat(&out, "Computation %s:\n", node.computation()->name());

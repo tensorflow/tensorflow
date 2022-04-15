@@ -442,6 +442,17 @@ static void MergeOverrideHelper(const string& target, const string& name,
       << DeviceNameUtils::ParsedNameToString(parsed_expected);
 }
 
+static void MergeUnsetDevNamesHelper(const string& name_a, const string& name_b,
+                                     const string& expected_merge_name_ab,
+                                     const string& expected_merge_name_ba) {
+  DeviceNameUtils::ParsedName target_a = Name(name_a);
+  DeviceNameUtils::MergeUnsetDevNames(&target_a, Name(name_b));
+  EXPECT_EQ(target_a, Name(expected_merge_name_ab));
+  DeviceNameUtils::ParsedName target_b = Name(name_b);
+  DeviceNameUtils::MergeUnsetDevNames(&target_b, Name(name_a));
+  EXPECT_EQ(target_b, Name(expected_merge_name_ba));
+}
+
 TEST(DeviceNameUtilsTest, MergeDevNames) {
   // Idempotence tests.
   MergeDevNamesHelper("", "", "");
@@ -521,6 +532,49 @@ TEST(DeviceNameUtilsTest, MergeOverrideDevNames) {
   MergeOverrideHelper("/cpu:*", "/job:foo/device:GPU:1", "/job:foo/GPU:1");
   MergeOverrideHelper("/task:0/cpu:*", "/device:GPU:1", "/task:0/GPU:1");
   MergeOverrideHelper("/cpu:*", "/task:0/device:GPU:1", "/task:0/GPU:1");
+}
+
+TEST(DeviceNameUtilsTest, MergeUnsetDevNames) {
+  // Idempotence tests.
+  MergeUnsetDevNamesHelper("", "", "", "");
+  MergeUnsetDevNamesHelper(
+      "/job:foo/replica:1/task:2/cpu:1", "/job:foo/replica:1/task:2/cpu:1",
+      "/job:foo/replica:1/task:2/cpu:1", "/job:foo/replica:1/task:2/cpu:1");
+
+  // Merging with empty device has no effect.
+  MergeUnsetDevNamesHelper("", "/job:foo", "/job:foo", "/job:foo");
+  MergeUnsetDevNamesHelper("", "/replica:2", "/replica:2", "/replica:2");
+  MergeUnsetDevNamesHelper("", "/task:7", "/task:7", "/task:7");
+  MergeUnsetDevNamesHelper("", "/device:GPU:1", "/device:GPU:1",
+                           "/device:GPU:1");
+
+  // Combining disjoint names.
+  MergeUnsetDevNamesHelper("/job:foo", "/task:7", "/job:foo/task:7",
+                           "/job:foo/task:7");
+  MergeUnsetDevNamesHelper("/job:foo", "/device:GPU:1", "/job:foo/device:GPU:1",
+                           "/job:foo/device:GPU:1");
+
+  // Combining overlapping names.
+  MergeUnsetDevNamesHelper("/job:foo/replica:0", "/replica:0/task:1",
+                           "/job:foo/replica:0/task:1",
+                           "/job:foo/replica:0/task:1");
+
+  // Wildcard tests.
+  MergeUnsetDevNamesHelper("", "/gpu:*", "/gpu:*", "/gpu:*");
+  MergeUnsetDevNamesHelper("/gpu:*", "/gpu:*", "/gpu:*", "/gpu:*");
+  MergeUnsetDevNamesHelper("/device:GPU:1", "/gpu:*", "/device:GPU:1",
+                           "/device:GPU:1");
+
+  // Incompatible components.
+  MergeUnsetDevNamesHelper("/job:foo", "/job:bar", "/job:foo", "/job:bar");
+  MergeUnsetDevNamesHelper("/replica:0", "/replica:1", "/replica:0",
+                           "/replica:1");
+  MergeUnsetDevNamesHelper("/task:0", "/task:1", "/task:0", "/task:1");
+  MergeUnsetDevNamesHelper("/gpu:*", "/cpu:*", "/gpu:*", "/cpu:*");
+  MergeUnsetDevNamesHelper("/device:GPU:0", "/device:GPU:1", "/device:GPU:0",
+                           "/device:GPU:1");
+  MergeUnsetDevNamesHelper("/job:foo/device:GPU", "/job:bar",
+                           "/job:foo/device:GPU", "/job:bar/device:GPU");
 }
 
 TEST(DeviceNameUtilsTest, GetNamesForDeviceMappings) {

@@ -42,11 +42,11 @@ Status OptimizeWithEnableGradientDescent(const GrapplerItem &item,
 }
 
 class SimpleRewrite
-    : public ::testing::TestWithParam<std::tuple<bool, int64, string>> {};
+    : public ::testing::TestWithParam<std::tuple<bool, int64_t, string>> {};
 
 TEST_P(SimpleRewrite, EnableGradientDescentTest) {
   const bool autotune = std::get<0>(GetParam());
-  const int64 algorithm_index = std::get<1>(GetParam());
+  const int64_t algorithm_index = std::get<1>(GetParam());
   const string op = std::get<2>(GetParam());
 
   using test::function::NDef;

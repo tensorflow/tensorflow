@@ -19,11 +19,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>  // IWYU pragma: export
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-
-#include <gtest/gtest.h>  // IWYU pragma: export
 
 // Includes gmock.h and enables the use of gmock matchers in tensorflow tests.
 //
@@ -39,14 +38,19 @@ limitations under the License.
 //
 // The advantages of using gmock matchers instead of self defined matchers are
 // better error messages, more maintainable tests and more test coverage.
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "testing/base/public/gmock.h"  // IWYU pragma: export
-#else
+#if !defined(PLATFORM_GOOGLE) && !defined(PLATFORM_GOOGLE_ANDROID) && \
+    !defined(PLATFORM_CHROMIUMOS)
 #include <gmock/gmock-generated-matchers.h>
 #include <gmock/gmock-matchers.h>
 #include <gmock/gmock-more-matchers.h>
-#include <gmock/gmock.h>
 #endif
+#include <gmock/gmock.h>
+
+#define DISABLED_ON_GPU_ROCM(X) X
+#if TENSORFLOW_USE_ROCM
+#undef DISABLED_ON_GPU_ROCM
+#define DISABLED_ON_GPU_ROCM(X) DISABLED_##X
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 namespace testing {

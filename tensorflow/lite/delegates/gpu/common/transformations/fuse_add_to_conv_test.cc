@@ -79,7 +79,7 @@ TEST(MergeConvolutionWithAddTest, Smoke) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewMergeConvolutionWithAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_convolution_with_add", transformation.get());
 
   EXPECT_EQ(1, graph.nodes().size());

@@ -1,0 +1,42 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+# This node has an attribute with a "shape" that has a -5 dimension. This use to
+# crash the importer.
+# Such shapes don't really make sense in TensorFlow, but grappler is using this
+# during some "symbolic shape analysis".
+# CHECK: _Arg name("test_model")
+# CHECK-SAME: #tf_type.shape<?>
+node {
+  name: "test_model"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -5
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 8
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 886
+}
+

@@ -60,7 +60,7 @@ filegroup(
         "virtual_scheduler.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -91,7 +91,7 @@ cc_library(
 tf_cc_test(
     name = "graph_properties_test",
     srcs = ["graph_properties_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     data = [":graph_properties_testdata"],
     tags = [
         "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
@@ -136,7 +136,7 @@ cc_library(
 tf_cc_test(
     name = "graph_memory_test",
     srcs = ["graph_memory_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     deps = [
         ":graph_memory",
         "//tensorflow/cc:cc_ops",
@@ -182,6 +182,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/util:overflow",
         "//tensorflow/core/grappler/clusters:utils",
     ] + tf_protos_grappler(),
 )
@@ -212,6 +213,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -258,6 +261,7 @@ cc_library(
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:protos_all_cc",
     ] + tf_protos_grappler(),
 )
@@ -290,6 +294,7 @@ tf_cc_test(
     name = "virtual_scheduler_test",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
+        ":graph_properties",
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",
@@ -299,6 +304,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -338,6 +344,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core/util:overflow",
     ] + tf_protos_grappler(),
 )
 
@@ -351,6 +358,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -373,6 +381,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/util:overflow",
     ] + tf_protos_grappler(),
     alwayslink = 1,
 )

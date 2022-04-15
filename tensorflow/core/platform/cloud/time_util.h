@@ -22,7 +22,7 @@ namespace tensorflow {
 
 /// Parses the timestamp in RFC 3339 format and returns it
 /// as nanoseconds since epoch.
-Status ParseRfc3339Time(const string& time, int64* mtime_nsec);
+Status ParseRfc3339Time(const string& time, int64_t* mtime_nsec);
 
 }  // namespace tensorflow
 

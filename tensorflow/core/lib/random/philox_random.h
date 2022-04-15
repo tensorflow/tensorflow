@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/types.h"
+#include <cstdint>
 
 // Function qualifiers that need to work on both CPU and GPU.
 #if defined(__CUDACC__) || defined(__HIPCC__)
@@ -70,7 +70,7 @@ class Array {
 
 // A class that encapsulates all the states for a random number generator using
 // the philox_4x32_10 algorithm. Each invocation returns a 128-bit random bits
-// in the form of four uint32.
+// in the form of four uint32_t.
 // There are multiple variants of this algorithm, we picked the 4x32_10 version
 // that is most suited for our applications.
 // Since this class is meant to be copied between CPU to GPU, it maintains a
@@ -79,7 +79,7 @@ class Array {
 // For example: To use this class and populate an array of 1024 randoms on CPU
 // with two threads,
 //
-//  void Fill(PhiloxRandom rnd, uint32* output, int start, int limit) {
+//  void Fill(PhiloxRandom rnd, uint32_t* output, int start, int limit) {
 //    assert(start % 4 == 0);
 //    assert(limit % 4 == 0);
 //    rnd.Skip(start / 4);
@@ -102,31 +102,31 @@ class Array {
 // 2. PhiloxRandom is compilable by gcc and nvcc.
 class PhiloxRandom {
  public:
-  using ResultType = Array<uint32, 4>;
-  using ResultElementType = uint32;
+  using ResultType = Array<uint32_t, 4>;
+  using ResultElementType = uint32_t;
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = 4;
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 10;
   // The type for the 64-bit key stored in the form of two 32-bit uint
   // that are used in the diffusion process.
-  using Key = Array<uint32, 2>;
+  using Key = Array<uint32_t, 2>;
 
   PHILOX_DEVICE_INLINE
   PhiloxRandom() {}
 
   PHILOX_DEVICE_INLINE
-  explicit PhiloxRandom(uint64 seed) {
-    key_[0] = static_cast<uint32>(seed);
-    key_[1] = static_cast<uint32>(seed >> 32);
+  explicit PhiloxRandom(uint64_t seed) {
+    key_[0] = static_cast<uint32_t>(seed);
+    key_[1] = static_cast<uint32_t>(seed >> 32);
   }
 
   PHILOX_DEVICE_INLINE
-  explicit PhiloxRandom(uint64 seed_lo, uint64 seed_hi) {
-    key_[0] = static_cast<uint32>(seed_lo);
-    key_[1] = static_cast<uint32>(seed_lo >> 32);
-    counter_[2] = static_cast<uint32>(seed_hi);
-    counter_[3] = static_cast<uint32>(seed_hi >> 32);
+  explicit PhiloxRandom(uint64_t seed_lo, uint64_t seed_hi) {
+    key_[0] = static_cast<uint32_t>(seed_lo);
+    key_[1] = static_cast<uint32_t>(seed_lo >> 32);
+    counter_[2] = static_cast<uint32_t>(seed_hi);
+    counter_[3] = static_cast<uint32_t>(seed_hi >> 32);
   }
 
   PHILOX_DEVICE_INLINE
@@ -140,9 +140,9 @@ class PhiloxRandom {
 
   // Skip the specified number of samples of 128-bits in the current stream.
   PHILOX_DEVICE_INLINE
-  void Skip(uint64 count) {
-    const uint32 count_lo = static_cast<uint32>(count);
-    uint32 count_hi = static_cast<uint32>(count >> 32);
+  void Skip(uint64_t count) {
+    const uint32_t count_lo = static_cast<uint32_t>(count);
+    uint32_t count_hi = static_cast<uint32_t>(count >> 32);
 
     counter_[0] += count_lo;
     if (counter_[0] < count_lo) {
@@ -192,10 +192,10 @@ class PhiloxRandom {
 
  private:
   // We use the same constants as recommended by the original paper.
-  static constexpr uint32 kPhiloxW32A = 0x9E3779B9;
-  static constexpr uint32 kPhiloxW32B = 0xBB67AE85;
-  static constexpr uint32 kPhiloxM4x32A = 0xD2511F53;
-  static constexpr uint32 kPhiloxM4x32B = 0xCD9E8D57;
+  static constexpr uint32_t kPhiloxW32A = 0x9E3779B9;
+  static constexpr uint32_t kPhiloxW32B = 0xBB67AE85;
+  static constexpr uint32_t kPhiloxM4x32A = 0xD2511F53;
+  static constexpr uint32_t kPhiloxM4x32B = 0xCD9E8D57;
 
   // Helper function to skip the next sample of 128-bits in the current stream.
   PHILOX_DEVICE_INLINE void SkipOne() {
@@ -211,12 +211,12 @@ class PhiloxRandom {
   // Helper function to return the lower and higher 32-bits from two 32-bit
   // integer multiplications.
   PHILOX_DEVICE_INLINE
-  static void MultiplyHighLow(uint32 a, uint32 b, uint32* result_low,
-                              uint32* result_high) {
+  static void MultiplyHighLow(uint32_t a, uint32_t b, uint32_t* result_low,
+                              uint32_t* result_high) {
 #ifndef __CUDA_ARCH__
-    const uint64 product = static_cast<uint64>(a) * b;
-    *result_low = static_cast<uint32>(product);
-    *result_high = static_cast<uint32>(product >> 32);
+    const uint64_t product = static_cast<uint64_t>(a) * b;
+    *result_low = static_cast<uint32_t>(product);
+    *result_high = static_cast<uint32_t>(product >> 32);
 #else
     *result_low = a * b;
     *result_high = __umulhi(a, b);
@@ -226,12 +226,12 @@ class PhiloxRandom {
   // Helper function for a single round of the underlying Philox algorithm.
   PHILOX_DEVICE_INLINE static ResultType ComputeSingleRound(
       const ResultType& counter, const Key& key) {
-    uint32 lo0;
-    uint32 hi0;
+    uint32_t lo0;
+    uint32_t hi0;
     MultiplyHighLow(kPhiloxM4x32A, counter[0], &lo0, &hi0);
 
-    uint32 lo1;
-    uint32 hi1;
+    uint32_t lo1;
+    uint32_t hi1;
     MultiplyHighLow(kPhiloxM4x32B, counter[2], &lo1, &hi1);
 
     ResultType result;

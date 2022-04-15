@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_RANDOM_SEED_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_RANDOM_SEED_OPS_H_
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -29,22 +29,22 @@ namespace data {
 // are 0, then pseudo-random values are used instead.
 class RandomSeeds {
  public:
-  RandomSeeds(int64 seed, int64 seed2)
+  RandomSeeds(int64_t seed, int64_t seed2)
       : input_seed_(seed),
         input_seed2_(seed2),
         seed_((seed | seed2) == 0 ? random::New64() : seed),
         seed2_((seed | seed2) == 0 ? random::New64() : seed2) {}
 
-  int64 input_seed() const { return input_seed_; }
-  int64 input_seed2() const { return input_seed2_; }
-  int64 seed() const { return seed_; }
-  int64 seed2() const { return seed2_; }
+  int64_t input_seed() const { return input_seed_; }
+  int64_t input_seed2() const { return input_seed2_; }
+  int64_t seed() const { return seed_; }
+  int64_t seed2() const { return seed2_; }
 
  private:
-  const int64 input_seed_;
-  const int64 input_seed2_;
-  const int64 seed_;
-  const int64 seed2_;
+  const int64_t input_seed_;
+  const int64_t input_seed2_;
+  const int64_t seed_;
+  const int64_t seed2_;
 };
 
 // Base class for seed generator resources. Subclasses customize how seeds are
@@ -53,25 +53,25 @@ class SeedGenerator {
  public:
   virtual ~SeedGenerator() {}
 
-  virtual int64 seed() const = 0;
-  virtual int64 seed2() const = 0;
+  virtual int64_t seed() const = 0;
+  virtual int64_t seed2() const = 0;
   virtual bool reshuffle_each_iteration() const = 0;
 
-  virtual void GenerateSeeds(int64* seed1, int64* seed2) = 0;
+  virtual void GenerateSeeds(int64_t* seed1, int64_t* seed2) = 0;
   virtual void Reset() = 0;
 
-  virtual int64 num_random_samples() const {
+  virtual int64_t num_random_samples() const {
     tf_shared_lock l(mu_);
     return num_random_samples_;
   }
-  virtual void set_num_random_samples(int64 num_random_samples) {
+  virtual void set_num_random_samples(int64_t num_random_samples) {
     mutex_lock l(mu_);
     num_random_samples_ = num_random_samples;
   }
 
  protected:
   mutable mutex mu_;
-  int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+  int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
 };
 
 // A resource wrapping a shared instance of a seed generator.
@@ -93,11 +93,11 @@ class FixedSeedGenerator : public SeedGenerator {
  public:
   explicit FixedSeedGenerator(RandomSeeds seeds) : seeds_(std::move(seeds)) {}
 
-  int64 seed() const override { return seeds_.seed(); }
-  int64 seed2() const override { return seeds_.seed(); }
+  int64_t seed() const override { return seeds_.seed(); }
+  int64_t seed2() const override { return seeds_.seed(); }
   bool reshuffle_each_iteration() const override { return false; }
 
-  void GenerateSeeds(int64* seed1, int64* seed2) override;
+  void GenerateSeeds(int64_t* seed1, int64_t* seed2) override;
   void Reset() override {}
 
  private:
@@ -112,11 +112,11 @@ class RandomSeedGenerator : public SeedGenerator {
         parent_generator_(seeds_.seed(), seeds_.seed2()),
         generator_(&parent_generator_) {}
 
-  int64 seed() const override { return seeds_.seed(); }
-  int64 seed2() const override { return seeds_.seed2(); }
+  int64_t seed() const override { return seeds_.seed(); }
+  int64_t seed2() const override { return seeds_.seed2(); }
   bool reshuffle_each_iteration() const override { return true; }
 
-  void GenerateSeeds(int64* seed1, int64* seed2) override;
+  void GenerateSeeds(int64_t* seed1, int64_t* seed2) override;
   void Reset() override;
 
  private:

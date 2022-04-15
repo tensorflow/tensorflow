@@ -107,6 +107,10 @@ NodeDef MakeShardNode(StringPiece name, StringPiece input_node_name,
                       StringPiece num_shards_node_name,
                       StringPiece index_node_name);
 
+// Creates a test NodeDef for PrefetchDataset.
+NodeDef MakePrefetchNode(StringPiece name, StringPiece input_node_name,
+                         StringPiece buffer_size);
+
 }  // namespace graph_tests_utils
 }  // namespace grappler
 }  // namespace tensorflow

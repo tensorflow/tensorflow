@@ -146,7 +146,7 @@ class Example {
   // can be optionally absent, in which we case we implicitly assume a value of
   // 1.0f.
   struct SparseFeatures {
-    std::unique_ptr<TTypes<const int64>::UnalignedConstVec> indices;
+    std::unique_ptr<TTypes<const int64_t>::UnalignedConstVec> indices;
     std::unique_ptr<TTypes<const float>::UnalignedConstVec>
         values;  // nullptr encodes optional.
   };
@@ -170,7 +170,7 @@ class Example {
     }
 
     const TTypes<float>::ConstMatrix data_matrix;
-    const int64 row_index;
+    const int64_t row_index;
   };
 
  private:
@@ -201,7 +201,7 @@ class FeatureWeightsDenseStorage {
   }
 
   // Check if a feature index is with-in the bounds.
-  bool IndexValid(const int64 index) const {
+  bool IndexValid(const int64_t index) const {
     return index >= 0 && index < deltas_.dimension(1);
   }
 
@@ -229,30 +229,30 @@ class FeatureWeightsDenseStorage {
 // in an unordered map.
 class FeatureWeightsSparseStorage {
  public:
-  FeatureWeightsSparseStorage(const TTypes<const int64>::Vec indices,
+  FeatureWeightsSparseStorage(const TTypes<const int64_t>::Vec indices,
                               const TTypes<const float>::Matrix nominals,
                               TTypes<float>::Matrix deltas)
       : nominals_(nominals), deltas_(deltas) {
     // Create a map from sparse index to the dense index of the underlying
     // storage.
-    for (int64 j = 0; j < indices.size(); ++j) {
+    for (int64_t j = 0; j < indices.size(); ++j) {
       indices_to_id_[indices(j)] = j;
     }
   }
 
   // Check if a feature index exists.
-  bool IndexValid(const int64 index) const {
+  bool IndexValid(const int64_t index) const {
     return indices_to_id_.find(index) != indices_to_id_.end();
   }
 
   // Nominal value at a particular feature index and class label.
-  float nominals(const int class_id, const int64 index) const {
+  float nominals(const int class_id, const int64_t index) const {
     auto it = indices_to_id_.find(index);
     return nominals_(class_id, it->second);
   }
 
   // Delta weights during mini-batch updates.
-  float deltas(const int class_id, const int64 index) const {
+  float deltas(const int class_id, const int64_t index) const {
     auto it = indices_to_id_.find(index);
     return deltas_(class_id, it->second);
   }
@@ -270,7 +270,7 @@ class FeatureWeightsSparseStorage {
   // The accumulated delta weight for a feature (indexed by its id).
   TTypes<float>::Matrix deltas_;
   // Map from feature index to an index to the dense vector.
-  std::unordered_map<int64, int64> indices_to_id_;
+  std::unordered_map<int64_t, int64_t> indices_to_id_;
 };
 
 // Weights in the model, wraps both current weights, and the delta weights
@@ -279,11 +279,11 @@ class ModelWeights {
  public:
   ModelWeights() {}
 
-  bool SparseIndexValid(const int col, const int64 index) const {
+  bool SparseIndexValid(const int col, const int64_t index) const {
     return sparse_weights_[col].IndexValid(index);
   }
 
-  bool DenseIndexValid(const int col, const int64 index) const {
+  bool DenseIndexValid(const int col, const int64_t index) const {
     return dense_weights_[col].IndexValid(index);
   }
 

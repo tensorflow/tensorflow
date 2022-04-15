@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Special Math Ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import importlib
 
@@ -61,7 +57,7 @@ def _make_grid(dtype, grid_spec):
   num_points = np.prod(grid_spec.shape)
   grid = np.linspace(grid_spec.min, grid_spec.max, num=num_points).astype(dtype)
   grid_spacing = (grid_spec.max - grid_spec.min) / num_points
-  grid += 0.1 * grid_spacing * rng.randn(*grid.shape)
+  grid += 0.1 * grid_spacing * rng.randn(*grid.shape)  # pylint: disable=not-an-iterable
   # More useful if it's sorted (e.g. for testing monotonicity, or debugging).
   grid = np.sort(grid)
   return np.reshape(grid, grid_spec.shape)
@@ -86,7 +82,7 @@ class NdtriTest(test.TestCase):
 
   def assertAllFinite(self, x):
     is_finite = np.isfinite(x)
-    all_true = np.ones_like(is_finite, dtype=np.bool)
+    all_true = np.ones_like(is_finite, dtype=np.bool_)
     self.assertAllEqual(all_true, is_finite)
 
   @test_util.run_in_graph_and_eager_modes
@@ -267,10 +263,10 @@ class NdtrGradientTest(test.TestCase):
   _error64 = ErrorSpec(rtol=1e-7, atol=0)
 
   def assert_all_true(self, v):
-    self.assertAllEqual(np.ones_like(v, dtype=np.bool), v)
+    self.assertAllEqual(np.ones_like(v, dtype=np.bool_), v)
 
   def assert_all_false(self, v):
-    self.assertAllEqual(np.zeros_like(v, dtype=np.bool), v)
+    self.assertAllEqual(np.zeros_like(v, dtype=np.bool_), v)
 
   def _test_grad_finite(self, dtype):
     x = constant_op.constant([-100., 0., 100.], dtype=dtype)
@@ -399,7 +395,7 @@ class LogCDFLaplaceTest(test.TestCase):
   CUTOFF_FLOAT32_UPPER = np.log(1. / (2. * np.finfo(np.float32).eps)) - 1.
 
   def assertAllTrue(self, x):
-    self.assertAllEqual(np.ones_like(x, dtype=np.bool), x)
+    self.assertAllEqual(np.ones_like(x, dtype=np.bool_), x)
 
   def _test_grid_log(self, dtype, scipy_dtype, grid_spec, error_spec):
     with self.cached_session():

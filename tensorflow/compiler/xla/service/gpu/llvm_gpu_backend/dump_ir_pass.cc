@@ -43,12 +43,12 @@ namespace gpu {
 // Heisenberg effect when dumping the IR.
 class DumpIrPass : public llvm::FunctionPass {
  public:
-  explicit DumpIrPass(const string &output_filename)
+  explicit DumpIrPass(const std::string &output_filename)
       : llvm::FunctionPass(id_), output_filename_(output_filename) {}
 
   bool doInitialization(llvm::Module &M) override {
     out_.reset(new llvm::raw_fd_ostream(llvm::StringRef(output_filename_), ec_,
-                                        llvm::sys::fs::F_None));
+                                        llvm::sys::fs::OF_None));
     if (ec_) {
       LOG(FATAL) << "Unable to open " << output_filename_
                  << " to dump LLVM IR: " << ec_.message();
@@ -72,7 +72,7 @@ class DumpIrPass : public llvm::FunctionPass {
 
  private:
   static char id_;
-  string output_filename_;
+  std::string output_filename_;
   std::error_code ec_;
   std::unique_ptr<llvm::raw_fd_ostream> out_;
 };
@@ -85,7 +85,7 @@ void IrDumpingPassManager::run(llvm::Module &module) {
     if (dump_ir_) {
       const llvm::PassInfo *PI =
           llvm::PassRegistry::getPassRegistry()->getPassInfo(P->getPassID());
-      const string basename = ReplaceFilenameExtension(
+      const std::string basename = ReplaceFilenameExtension(
           absl::string_view(tensorflow::io::Basename(input_filename_)),
           absl::StrFormat(
               "pass-%02d.before.%s.ll", i,

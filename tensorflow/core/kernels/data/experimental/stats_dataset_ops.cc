@@ -76,7 +76,9 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
       return "LatencyStatsDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -120,7 +122,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
         uint64 end = EnvTime::NowMicros();
         auto stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator && !*end_of_sequence) {
-          int64 steps = num_elements();
+          int64_t steps = num_elements();
           stats_aggregator->AddToHistogram(
               dataset()->tag_, {static_cast<double>(end - start)}, steps);
         }
@@ -199,7 +201,9 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
       return "BytesProducedStatsDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
@@ -239,7 +243,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
           for (const Tensor& t : *out_tensors) {
             total_bytes += t.TotalBytes();
           }
-          int64 steps = num_elements();
+          int64_t steps = num_elements();
           stats_aggregator->AddToHistogram(
               dataset()->tag_, {static_cast<double>(total_bytes)}, steps);
         }

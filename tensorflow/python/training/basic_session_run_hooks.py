@@ -19,10 +19,6 @@ exported to v2 in tf.estimator namespace. See
 https://github.com/tensorflow/estimator/blob/master/tensorflow_estimator/python/estimator/hooks/basic_session_run_hooks.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -183,6 +179,14 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
 
   Note that if `at_end` is True, `tensors` should not include any tensor
   whose evaluation produces a side effect such as consuming additional inputs.
+
+  @compatibility(TF2)
+  Please check this [notebook][notebook] on how to migrate the API to TF2.
+
+  [notebook]:https://github.com/tensorflow/docs/blob/master/site/en/guide/migrate/logging_stop_hook.ipynb
+
+  @end_compatibility
+
   """
 
   def __init__(self,
@@ -388,7 +392,15 @@ class _MultiStepStopAtStepHook(session_run_hook.SessionRunHook):
 
 @tf_export(v1=["train.StopAtStepHook"])
 class StopAtStepHook(session_run_hook.SessionRunHook):
-  """Hook that requests stop at a specified step."""
+  """Hook that requests stop at a specified step.
+
+  @compatibility(TF2)
+  Please check this [notebook][notebook] on how to migrate the API to TF2.
+
+  [notebook]:https://github.com/tensorflow/docs/blob/master/site/en/guide/migrate/logging_stop_hook.ipynb
+
+  @end_compatibility
+  """
 
   def __init__(self, num_steps=None, last_step=None):
     """Initializes a `StopAtStepHook`.
@@ -553,7 +565,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
     self._listeners = listeners or []
-    self._steps_per_run = 1
+    # Set sufficiently high default that it never skips checking the actual
+    # global step counter -- unless the user overrides it with the right value
+    # for the steps_per_run.
+    self._steps_per_run = 1000000
     self._save_graph_def = save_graph_def
 
   def _set_steps_per_run(self, steps_per_run):

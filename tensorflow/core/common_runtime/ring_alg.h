@@ -42,12 +42,6 @@ class RingAlg : public CollectiveImplementationInterface {
   Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) override;
 
-  // No-op for ring alg.
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails*) override {
-    return Status::OK();
-  }
-
  protected:
   // Called when a bad status is received that implies we should terminate
   // execution and return a bad status.

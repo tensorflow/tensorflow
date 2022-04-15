@@ -47,12 +47,14 @@ class CrossOp : public XlaOpKernel {
     // So slice 1 is: in0[...,:,:,:,1:2]
     // So slice 2 is: in0[...,:,:,:,2:3]
 
-    std::vector<int64> starts(in0_shape.dims(), 0);
-    std::vector<int64> limits;
+    std::vector<int64_t> starts(in0_shape.dims(), 0);
+    std::vector<int64_t> limits;
+    const auto& dim_sizes = in0_shape.dim_sizes();
+    limits.reserve(dim_sizes.size());
     for (auto dim_size : in0_shape.dim_sizes()) {
       limits.push_back(dim_size);
     }
-    std::vector<int64> strides(in0_shape.dims(), 1);
+    std::vector<int64_t> strides(in0_shape.dims(), 1);
 
     xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input(0);

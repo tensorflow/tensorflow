@@ -71,7 +71,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
 
   TF_RET_CHECK(context->input_dtype(num_vars_ + 1) == DT_RESOURCE);
   const ResourceHandle& handle = HandleFromInput(context, num_vars_ + 1);
-  Var* format_state_var;
+  core::RefCountPtr<Var> format_state_var;
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
         *ptr = new Var(new_format_key->dtype());
@@ -187,9 +187,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   xla::ShapedBuffer shaped_buffer(std::move(host_shape), input_buffers.shape(),
                                   device_ordinal);
   shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
-      [](xla::MaybeOwningDeviceMemory* buffer) {
-        CHECK(buffer);
-        return buffer->AsDeviceMemoryBase();
+      [](const xla::MaybeOwningDeviceMemory& buffer) {
+        return buffer.AsDeviceMemoryBase();
       }));
 
   // Write input root tuple.
@@ -258,7 +257,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
     }
     // Release variables holding inputs.
     for (int i = 0; i < variables.size(); ++i) {
-      *variables[i].var()->tensor() = Tensor();
+      *variables[i].var()->tensor() =
+          Tensor(variables[i].var()->tensor()->dtype());
     }
     // Flush on-device program memory cache.
     TF_RETURN_IF_ERROR(

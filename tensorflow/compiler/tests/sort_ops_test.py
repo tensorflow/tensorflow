@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sorting operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 from absl.testing import parameterized
 import numpy as np
@@ -90,7 +86,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
             ])
 
   @parameterized.parameters(0, 1, 2)
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortDimension(self, dimension):
     shape = (2, 3, 4)
     for key_type in self._supported_key_types():
@@ -109,7 +104,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
       self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
 
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortReverse(self):
     shape = (100,)
     for key_type in self._supported_key_types():
@@ -129,7 +123,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
 
   @parameterized.parameters(0, 1, 2)
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortSeveral(self, dimension):
     if np.__version__ < "1.15":
       raise unittest.SkipTest("np.take_along_axis was added in 1.15")
@@ -209,7 +202,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               wrap_sort, inputs, expected=expected)
 
   @parameterized.parameters(0, 1, 2)
-  @test_util.disable_mlir_bridge("Not supported yet")
   def testVariadicSortSeveralStable(self, dimension):
     shape = (2, 3, 4)
     for key_type in self._supported_key_types():
@@ -234,7 +226,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
                 args,  # Pass the arguments as a tuple
                 comparator=compare_lt,
                 dimension=dimension,
-                is_stable=False)
+                is_stable=True)
 
           self._assertOpOutputMatchesExpected(
               wrap_sort, inputs, expected=inputs)
@@ -242,11 +234,9 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def testTopK(self):
     supported_types = set([
         dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32
+        np.int32, np.uint32, np.int64, np.uint64
     ])
     for dtype in supported_types.intersection(self.numeric_types):
-      if dtype == np.float64 and self.device == "TPU":
-        continue
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
       # after conversion to bfloat16, so the possible resulting index array is
       # no longer unique.
@@ -273,14 +263,13 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       ("HalfFloatPrecision", np.float16),
       ("SinglePrecision", np.float32),
       ("DoublePrecision", np.float64),
-      ("Int", np.int32),
-      ("UnsignedInt", np.uint32),
+      ("Int32", np.int32),
+      ("UnsignedInt32", np.uint32),
+      ("Int64", np.int64),
+      ("UnsignedInt64", np.uint64),
   )
   def testTopK2D(self, dtype):
     if dtype in self.numeric_types:
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        return
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
       # after conversion to bfloat16, so the possible resulting index array is
       # no longer unique.
@@ -310,9 +299,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
     for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
       with self.session() as sess:
         p = array_ops.placeholder(dtype)
         with self.test_scope():
@@ -328,9 +314,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
     for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
       with self.session() as sess:
         p = array_ops.placeholder(dtype)
         with self.test_scope():

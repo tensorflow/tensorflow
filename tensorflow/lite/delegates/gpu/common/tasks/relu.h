@@ -24,6 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+void CreateReLU(const ReLUAttributes& attr, CalculationsPrecision precision,
+                Arguments* args, std::string* code);
+
 GPUOperation CreateReLU(const OperationDef& definition,
                         const ReLUAttributes& attr);
 

@@ -28,14 +28,15 @@ namespace {
 
 using HloMatchersTest = HloTestBase;
 
-string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
+std::string DescribeHloMatcher(
+    const ::testing::Matcher<const HloInstruction*>& m) {
   std::stringstream ss;
   m.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename M, typename T>
-string Explain(const T& t, const M& m) {
+std::string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
   EXPECT_THAT(t, ::testing::Not(m));  // For the error message.
   EXPECT_FALSE(m.MatchAndExplain(t, &listener));
@@ -92,7 +93,7 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
   auto c1 =
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto c2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1, 2, 3}));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
   auto call = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
 
@@ -169,7 +170,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
       {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
        ShapeUtil::MakeShape(F32, {11})});
   auto p2 = HloInstruction::CreateParameter(1, tuple_shape, "param.2");
-  Array<int64> assignment({2});
+  Array<int64_t> assignment({2});
   assignment.SetValues({0, 1});
   auto sharding = HloSharding::Tuple(
       tuple_shape, {HloSharding::Tile(assignment), HloSharding::AssignDevice(1),
@@ -200,7 +201,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
 }
 
 TEST_F(HloMatchersTest, DotMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -298,6 +299,53 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
               "f32[16]{0:S(1)}, u32[]) "
               "%copy-start)) "
               "is in the memory space 1, expected 3");
+}
+
+TEST_F(HloMatchersTest, ConstantMatcher) {
+  std::string hlo_string = R"(
+HloModule Constant
+
+ENTRY main {
+  ROOT x = u32[2] constant({1, 2})
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, op::Constant(LiteralUtil::CreateR1<uint32_t>({1, 2})));
+  EXPECT_THAT(root, ::testing::Not(
+                        op::Constant(LiteralUtil::CreateR1<uint32_t>({1, 1}))));
+
+  EXPECT_THAT(Explain(root, op::Constant(LiteralUtil::CreateR0<uint32_t>(1))),
+              "(%x = u32[2]{0} constant({1, 2})) has wrong value (got u32[2] "
+              "{1, 2}, want u32[] 1)");
+}
+
+TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
+  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "param");
+
+  std::vector<ReplicaGroup> replica_groups(2);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(2);
+  replica_groups[1].add_replica_ids(1);
+  replica_groups[1].add_replica_ids(3);
+  std::unique_ptr<HloInstruction> all_to_all =
+      HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
+                                     /*constrain_layout=*/false,
+                                     /*channel_id=*/absl::nullopt);
+
+  EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
+              "%param = f32[5,7]{1,0} parameter(0) not a collective op");
+  EXPECT_THAT(Explain(all_to_all.get(), op::ReplicaGroups({{0, 1}, {2, 3}})),
+              "%all-to-all = f32[5,7]{1,0} all-to-all(f32[5,7]{1,0} %param), "
+              "replica_groups={{0,2},{1,3}} has incorrect replica_groups "
+              "(expected: {{0,1},{2,3}})");
+  EXPECT_THAT(all_to_all.get(), op::ReplicaGroups({{0, 2}, {1, 3}}));
 }
 
 }  // namespace

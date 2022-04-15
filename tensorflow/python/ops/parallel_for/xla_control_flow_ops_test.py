@@ -15,10 +15,6 @@
 """XLA tests for pfor."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
@@ -193,6 +189,9 @@ class WhileV2Test(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_while_with_variable(self):
+    if not context.executing_eagerly():
+      self.skipTest("Flaky with tf.Session")
+
     v = resource_variable_ops.ResourceVariable(5.)
 
     def loop_fn(_):

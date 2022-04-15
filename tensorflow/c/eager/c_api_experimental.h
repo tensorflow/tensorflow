@@ -140,7 +140,7 @@ TFE_MonitoringGetCellIntGauge2(TFE_MonitoringIntGauge2* gauge,
 typedef struct TFE_MonitoringStringGaugeCell TFE_MonitoringStringGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringStringGaugeCellSet(
     TFE_MonitoringStringGaugeCell* cell, const char* value);
-// Retrieves the string value and saves it in buffer.
+// Retrieves the string value and saves it in the buffer.
 TF_CAPI_EXPORT extern const void TFE_MonitoringStringGaugeCellValue(
     TFE_MonitoringStringGaugeCell* cell, TF_Buffer* buf);
 
@@ -174,6 +174,31 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge2(
 TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
 TFE_MonitoringGetCellStringGauge2(TFE_MonitoringStringGauge2* gauge,
                                   const char* label1, const char* label2);
+
+// APIs for String Gauge with 3 labels.
+typedef struct TFE_MonitoringStringGauge3 TFE_MonitoringStringGauge3;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge3(
+    TFE_MonitoringStringGauge3* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge3(TFE_MonitoringStringGauge3* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3);
+
+// APIs for String Gauge with 4 labels.
+typedef struct TFE_MonitoringStringGauge4 TFE_MonitoringStringGauge4;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge4(
+    TFE_MonitoringStringGauge4* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge4(TFE_MonitoringStringGauge4* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3, const char* label4);
 
 typedef struct TFE_MonitoringBoolGaugeCell TFE_MonitoringBoolGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringBoolGaugeCellSet(
@@ -223,7 +248,7 @@ TF_CAPI_EXPORT extern void TFE_MonitoringSamplerCellAdd(
     TFE_MonitoringSamplerCell* cell, double value);
 
 // Retrieves the current value of the cell. The return value is a HistogramProto
-// saved in buffer.
+// saved in the buffer.
 TF_CAPI_EXPORT extern void TFE_MonitoringSamplerCellValue(
     TFE_MonitoringSamplerCell* cell, TF_Buffer* buf);
 
@@ -268,6 +293,10 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
+
+// Sets whether to use TFRT distributed runtime
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
+    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
 
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
@@ -324,7 +353,7 @@ TF_CAPI_EXPORT extern bool TFE_ExecutorIsAsync(TFE_Executor*);
 TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
     TFE_Executor*, TF_Status* status);
 
-// When an error happens, any pending operations are discarded and newly issued
+// When an error happens, any pending operations are discarded, and newly issued
 // ops return an error. This call clears the error state and re-enables
 // execution of newly issued ops.
 //
@@ -333,12 +362,12 @@ TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
 // TODO(agarwal): mark the affected handles and raise errors if they are used.
 TF_CAPI_EXPORT extern void TFE_ExecutorClearError(TFE_Executor*);
 
-// Sets a custom Executor for current thread. All nodes created by this thread
-// will be added to this Executor. It will override current executor.
+// Sets a custom Executor for the current thread. All nodes created by this
+// thread will be added to this Executor. It will override the current executor.
 TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
                                                            TFE_Executor*);
 
-// Returns the Executor for current thread.
+// Returns the Executor for the current thread.
 TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
     TFE_Context*);
 
@@ -347,7 +376,7 @@ TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
 
 // Update an existing context with a new set of servers defined in a ServerDef
 // proto. Servers can be added to and removed from the list of remote workers
-// in the context. New set of servers identified by the ServerDef must be up
+// in the context. A New set of servers identified by the ServerDef must be up
 // when the context is updated.
 //
 // This API is for experimental usage and may be subject to change.
@@ -498,8 +527,8 @@ typedef struct TFE_CustomDevice {
 // names of wrapped devices.
 //
 // There are currently no graph semantics implemented for registered custom
-// devices, so executing tf.functions which contain operations placed on custom
-// devices will fail.
+// devices, so executing tf.functions which contain operations placed on the
+// custom devices will fail.
 //
 // `device_name` must not name an existing physical or custom device. It must
 // follow the format:
@@ -603,6 +632,16 @@ TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
                                                      unsigned char enable,
                                                      TF_Status* status);
 
+// Enables running eager ops as function.
+TF_CAPI_EXPORT void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx,
+                                                       unsigned char enable,
+                                                       TF_Status* status);
+
+// Enables rewrite jit_compile functions.
+TF_CAPI_EXPORT void TFE_ContextSetJitCompileRewrite(TFE_Context* ctx,
+                                                    unsigned char enable,
+                                                    TF_Status* status);
+
 // Returns the device type of the operation that produced `h`.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
     TFE_TensorHandle* h, TF_Status* status);
@@ -610,6 +649,12 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 // Returns the device ID of the operation that produced `h`.
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
+
+// Returns the status for the tensor handle. In TFRT, a tensor handle can carry
+// error info if error happens. If so, the status will be set with the error
+// info. If not, status will be set as OK.
+TF_CAPI_EXPORT extern void TFE_TensorHandleGetStatus(TFE_TensorHandle* h,
+                                                     TF_Status* status);
 
 // Get a comma-separated list of op names executed in graph functions dispatched
 // to `ctx`. This feature is currently only enabled for TFRT debug builds, for
@@ -624,6 +669,41 @@ TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
                                                     int num_cpus,
                                                     const char* prefix,
+                                                    TF_Status* status);
+
+// Set configuration key and value using coordination service.
+// If coordination service is enabled, the key-value will be stored on the
+// leader and become accessible to all workers in the cluster.
+// Currently, a config key can only be set with one value, and subsequently
+// setting the same key will lead to errors.
+//
+// Note that the key-values are only expected to be used for cluster
+// configuration data, and should not be used for storing a large amount of data
+// or being accessed very frequently.
+TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    const char* value,
+                                                    TF_Status* status);
+
+// Get configuration key and value using coordination service.
+// The config key must be set before getting its value. Getting value of
+// non-existing config keys will result in errors.
+TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
+                                                 const char* key,
+                                                 TF_Buffer* value_buf,
+                                                 TF_Status* status);
+
+// Delete configuration key-value. If `key` is a directory, recursively clean up
+// all key-values under the path specified by `key`.
+TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    TF_Status* status);
+
+// Report error (specified by error_code and error_message) to other tasks in
+// the cluster.
+TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
+                                                    int error_code,
+                                                    const char* error_message,
                                                     TF_Status* status);
 
 #ifdef __cplusplus

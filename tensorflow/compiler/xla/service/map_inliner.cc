@@ -69,8 +69,7 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
-    if (root.opcode() == HloOpcode::kFusion ||
-        root.opcode() == HloOpcode::kTrace) {
+    if (root.opcode() == HloOpcode::kFusion) {
       // Cloning not supported for these instructions.
       return Status::OK();
     }
@@ -96,7 +95,7 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {
       std::vector<HloInstruction*> params;
-      for (int64 o = 0; o < root.operands().size(); o++) {
+      for (int64_t o = 0; o < root.operands().size(); o++) {
         params.push_back(map->operands()[root.operand(o)->parameter_number()]);
       }
       HloInstruction* placed_instruction = computation_->AddInstruction(

@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -147,14 +145,14 @@ class ForLoop {
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
-  string GetQualifiedName(absl::string_view name);
+  std::string GetQualifiedName(absl::string_view name);
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
   std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* b);
 
-  string prefix_;
-  string suffix_;
+  std::string prefix_;
+  std::string suffix_;
   llvm::Value* start_index_;
   llvm::Value* end_index_;
   llvm::Value* step_;
@@ -209,14 +207,14 @@ class ForLoopNest {
   // A convenient wrapper of the other flavor of AddLoop. The given start and
   // end index are constant.
   std::unique_ptr<ForLoop> AddLoop(
-      int64 start_index, int64 end_index, int64 stride,
+      int64_t start_index, int64_t end_index, int64_t stride,
       absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(
-      int64 start_index, int64 end_index, absl::string_view suffix,
+      int64_t start_index, int64_t end_index, absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
@@ -240,7 +238,7 @@ class ForLoopNest {
   // size equals the rank of shape and there is a null for each
   // dimension that is not in "dimensions".
   std::vector<llvm::Value*> AddLoopsForShapeOnDimensions(
-      const Shape& shape, absl::Span<const int64> dimensions,
+      const Shape& shape, absl::Span<const int64_t> dimensions,
       absl::string_view suffix);
 
   // Emits a series of nested loops for iterating over an operand array. Loops
@@ -251,7 +249,7 @@ class ForLoopNest {
   // name_suffix is the string to append to the names of LLVM constructs (eg,
   // basic blocks) constructed by this method.
   std::vector<llvm::Value*> EmitOperandArrayLoopNest(
-      const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
+      const llvm_ir::IrArray& operand_array, int64_t dimension_to_skip,
       absl::string_view name_suffix);
 
   // Convenience methods which return particular basic blocks of the outermost
@@ -268,12 +266,12 @@ class ForLoopNest {
     index_type_ = index_ty == nullptr ? b_->getInt64Ty() : index_ty;
   }
 
-  llvm::Constant* GetConstantWithIndexType(int64 c) const {
+  llvm::Constant* GetConstantWithIndexType(int64_t c) const {
     return llvm::ConstantInt::get(index_type_, c);
   }
 
   // Human-friendly name of the loop nest.
-  string name_;
+  std::string name_;
 
   // The preheader and exit basic block of the outermost loop, or nullptr if no
   // loop has been added yet.

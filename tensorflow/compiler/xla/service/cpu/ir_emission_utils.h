@@ -29,7 +29,7 @@ bool PotentiallyImplementedAsEigenConvolution(
 
 // Computes the minimum alignment guaranteed for a tensor of shape `shape` on
 // the target machine.
-int64 GetMinimumAlignmentForArray(
+int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features);
 
 // Dynamic loop bounds are specified as an array of dimension index

@@ -27,21 +27,30 @@ namespace TF {
 namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
-struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
+struct LegalizeTFToQuant
+    : public PassWrapper<LegalizeTFToQuant, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTFToQuant)
+
   explicit LegalizeTFToQuant() = default;
   LegalizeTFToQuant(const LegalizeTFToQuant &) {}
 
   /// Performs the lowering to Quant ops dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-to-quant";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TF to quant ops dialect";
+  }
 };
 
-// TODO(fengliuai): move this rule to PreparePatterns.td
-// TODO(b/140968741): propagate the sign from the command line. Currently all
-// the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
-// actually INT8.
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
+// folding logic will use a "arith.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
 // convert the output type to the next op. Here are the transformations:
@@ -140,11 +149,11 @@ using PreparePerChannelFakeQuant =
 // TODO(fengliuai): add the support of the tf.QuantizeAndDequantize*
 // legalization.
 
-void LegalizeTFToQuant::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void LegalizeTFToQuant::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
   auto *ctx = func.getContext();
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  patterns.add<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
@@ -154,8 +163,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 
-static PassRegistration<LegalizeTFToQuant> pass(
-    "tf-to-quant", "Legalize TF to quant ops dialect");
+static PassRegistration<LegalizeTFToQuant> pass([] {
+  return CreateLegalizeTFToQuantPass();
+});
 
 }  // namespace TF
 }  // namespace mlir

@@ -1,0 +1,10 @@
+path: "tensorflow.experimental.ExtensionType"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionType\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

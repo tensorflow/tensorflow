@@ -47,10 +47,10 @@ Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
   }
 
   auto flat = tensor.flat<float>();
-  std::vector<int64> indices;
+  std::vector<int64_t> indices;
   std::vector<float> values;
 
-  for (int64 i = 0; i < flat.size(); i++) {
+  for (int64_t i = 0; i < flat.size(); i++) {
     float val = flat(i);
     if (std::abs(val) >= 1.0e-5) {
       indices.push_back(i);
@@ -65,13 +65,13 @@ Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
     indices.push_back(0);
     values.push_back(0);
   }
-  *indices_tensor = Tensor(DataTypeToEnum<int64>::value,
-                           {static_cast<int64>(indices.size())});
+  *indices_tensor = Tensor(DataTypeToEnum<int64_t>::value,
+                           {static_cast<int64_t>(indices.size())});
   std::copy_n(indices.begin(), indices.size(),
-              indices_tensor->flat<int64>().data());
+              indices_tensor->flat<int64_t>().data());
 
-  *values_tensor =
-      Tensor(DataTypeToEnum<float>::value, {static_cast<int64>(values.size())});
+  *values_tensor = Tensor(DataTypeToEnum<float>::value,
+                          {static_cast<int64_t>(values.size())});
   std::copy_n(values.begin(), values.size(),
               values_tensor->flat<float>().data());
 
@@ -301,11 +301,11 @@ Status SparsifyGatherInternal(
 
             Tensor axis_t;
             TF_RETURN_IF_ERROR(GetNodeAttr(axis_node, "value", &axis_t));
-            int64 axis = 0;
+            int64_t axis = 0;
             if (axis_t.dtype() == DT_INT32) {
               axis = axis_t.scalar<int32>()();
             } else if (axis_t.dtype() == DT_INT64) {
-              axis = axis_t.scalar<int64>()();
+              axis = axis_t.scalar<int64_t>()();
             } else {
               return tensorflow::errors::FailedPrecondition(
                   "Gather axis was not int32 or int64.");

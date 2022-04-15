@@ -288,7 +288,7 @@ REGISTER_SELECT_GPU(Eigen::half);
 REGISTER_SELECT_GPU(float);
 REGISTER_SELECT_GPU(double);
 REGISTER_SELECT_GPU(int32);
-REGISTER_SELECT_GPU(int64);
+REGISTER_SELECT_GPU(int64_t);
 REGISTER_SELECT_GPU(complex64);
 REGISTER_SELECT_GPU(complex128);
 
@@ -358,15 +358,10 @@ struct BatchSelectFunctorBase {
     const Eigen::DenseIndex batch = cond_vec.size();
     const Eigen::DenseIndex all_but_batch = then_flat_outer_dims.dimension(1);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<Eigen::DenseIndex, 2> broadcast_dims{{1, all_but_batch}};
-    Eigen::Tensor<Eigen::DenseIndex, 2>::Dimensions reshape_dims{{batch, 1}};
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::DenseIndex> broadcast_dims;
     broadcast_dims.set(1, all_but_batch);
     Eigen::IndexList<Eigen::DenseIndex, Eigen::type2index<1> > reshape_dims;
     reshape_dims.set(0, batch);
-#endif
 
     Assign(d, output_flat_outer_dims,
            cond_vec.reshape(reshape_dims)
@@ -390,7 +385,7 @@ struct BatchSelectFunctor<CPUDevice, T> {
     const T* t = then_flat_outer_dims.data();
     const T* e = else_flat_outer_dims.data();
 
-    auto work = [batch_size, output, c, t, e](int64 start, int64 end) {
+    auto work = [batch_size, output, c, t, e](int64_t start, int64_t end) {
       for (size_t i = start; i < end; ++i) {
         size_t offset = i * batch_size;
         port::prefetch<port::PREFETCH_HINT_NTA>(

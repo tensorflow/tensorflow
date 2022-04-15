@@ -63,6 +63,32 @@ struct TPUEmbedding : ::mlir::SideEffects::Resource::Base<TPUEmbedding> {
   StringRef getName() final { return "TPUEmbedding"; }
 };
 
+// Resource corresponding to GeneratorOp.
+struct GeneratorOp : public ::mlir::SideEffects::Resource::Base<GeneratorOp> {
+  StringRef getName() final { return "<Default Generator>"; }
+};
+
+struct Send : public ::mlir::SideEffects::Resource::Base<Send> {
+  StringRef getName() final { return "<Send>"; }
+};
+
+struct Recv : public ::mlir::SideEffects::Resource::Base<Recv> {
+  StringRef getName() final { return "<Recv>"; }
+};
+
+struct RandomGenerator
+    : public ::mlir::SideEffects::Resource::Base<RandomGenerator> {
+  StringRef getName() final { return "<RandomGenerator>"; }
+};
+
+struct TPUExecute : public ::mlir::SideEffects::Resource::Base<TPUExecute> {
+  StringRef getName() final { return "<TPUExecute>"; }
+};
+
+struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {
+  StringRef getName() final { return "<MustExecute>"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

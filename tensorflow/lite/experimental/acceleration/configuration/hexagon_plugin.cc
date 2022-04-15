@@ -55,6 +55,10 @@ class HexagonPlugin : public DelegatePluginInterface {
       options_.powersave_level = settings->powersave_level();
       options_.print_graph_profile = settings->print_graph_profile();
       options_.print_graph_debug = settings->print_graph_debug();
+      if (tflite_settings.max_delegated_partitions() >= 0) {
+        options_.max_delegated_partitions =
+            tflite_settings.max_delegated_partitions();
+      }
     }
 #else
     (void)settings;

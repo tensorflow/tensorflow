@@ -118,7 +118,7 @@ bool Arg<toco::IntList>::Parse(std::string text) {
   // TODO(aselle): Moved this from elsewhere, but ahentz recommends we could
   // use absl::SplitLeadingDec32Values(text.c_str(), &parsed_values_.elements)
   if (!text.empty()) {
-    int32 element;
+    int32_t element;
     for (absl::string_view part : absl::StrSplit(text, ',')) {
       if (!absl::SimpleAtoi(part, &element)) return false;
       parsed_value_.elements.push_back(element);

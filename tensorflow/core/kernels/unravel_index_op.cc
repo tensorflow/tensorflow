@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,7 +39,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Tidx>
 class UnravelIndexOp : public OpKernel {
  public:
-  explicit UnravelIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit UnravelIndexOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), dtidx_(DataTypeToEnum<Tidx>::v()) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& indices_tensor = ctx->input(0);
@@ -53,12 +58,39 @@ class UnravelIndexOp : public OpKernel {
                                 dims_tensor.shape().DebugString(), "\""));
 
     auto dims = dims_tensor.vec<Tidx>();
+    // Make sure dims does not contain a zero
+    double prod = 1;
+    uint64_t limit;
+    if (dtidx_ == DataType::DT_INT64) {
+      limit = kint64max;
+    } else {
+      limit = kint32max;
+    }
 
-    // Chek to make sure indices is not out of boundary
+    for (int i = 0; i < dims.size(); i++) {
+      OP_REQUIRES(
+          ctx, dims(i) != 0,
+          errors::InvalidArgument("Input dims cannot contain a dim of zero, "
+                                  "but dims contains zero at index ",
+                                  i));
+      OP_REQUIRES(ctx, dims(i) > 0,
+                  errors::InvalidArgument(
+                      "Input dims cannot be negative. Got dim = ", dims(i),
+                      " at index ", i));
+      // Check interger overflow
+      OP_REQUIRES(
+          ctx, prod <= limit / dims(i),
+          errors::InvalidArgument("Input dims product is causing integer "
+                                  "overflow: (",
+                                  dims, ")"));
+      prod = (prod * dims(i));
+    }
+
+    // Check to make sure indices is not out of boundary
     Eigen::Tensor<Tidx, 0, Eigen::RowMajor> dims_prod_eigen = dims.prod();
     Tidx dims_prod = dims_prod_eigen();
     const Tidx* indices = indices_tensor.flat<Tidx>().data();
-    int64 size = indices_tensor.NumElements();
+    int64_t size = indices_tensor.NumElements();
     bool check = std::all_of(indices, indices + size,
                              [&](Tidx index) { return index < dims_prod; });
     OP_REQUIRES(ctx, check,
@@ -124,6 +156,7 @@ class UnravelIndexOp : public OpKernel {
                strides_shifted.reshape(reshape).broadcast(bcast);
     }
   }
+  const DataType dtidx_;
 };
 
 #define REGISTER_KERNEL(type)                                               \

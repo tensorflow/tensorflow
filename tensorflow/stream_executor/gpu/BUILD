@@ -65,7 +65,12 @@ cc_library(
 
 cc_library(
     name = "gpu_driver_header",
-    hdrs = ["gpu_driver.h"],
+    hdrs = if_gpu_is_configured(["gpu_driver.h"]),
+    visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/core/util/autotune_maps:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
     deps = [
         ":gpu_types_header",
         "//tensorflow/stream_executor:device_options",
@@ -80,12 +85,12 @@ cc_library(
 cc_library(
     name = "gpu_event_header",
     hdrs = if_gpu_is_configured(["gpu_event.h"]),
-    deps = [
+    deps = if_gpu_is_configured([
         ":gpu_driver_header",
         ":gpu_stream_header",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor/lib",
-    ],
+    ]),
 )
 
 cc_library(
@@ -243,8 +248,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -253,6 +260,8 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/rocm:rocm_driver",
     ]) + ["@com_google_absl//absl/container:flat_hash_set"],
 )
 

@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/sampling_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -19,8 +19,8 @@ namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
-constexpr int64 kRandomSeed = 42;
-constexpr int64 kRandomSeed2 = 7;
+constexpr int64_t kRandomSeed = 42;
+constexpr int64_t kRandomSeed2 = 7;
 
 class SamplingDatasetParams : public DatasetParams {
  public:
@@ -40,8 +40,9 @@ class SamplingDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override {
     Tensor rate = CreateTensor<float>(TensorShape({}), {rate_});
-    Tensor seed_tensor = CreateTensor<int64>(TensorShape({}), {seed_tensor_});
-    Tensor seed2_tensor = CreateTensor<int64>(TensorShape({}), {seed2_tensor_});
+    Tensor seed_tensor = CreateTensor<int64_t>(TensorShape({}), {seed_tensor_});
+    Tensor seed2_tensor =
+        CreateTensor<int64_t>(TensorShape({}), {seed2_tensor_});
     return {rate, seed_tensor, seed2_tensor};
   }
 
@@ -66,8 +67,8 @@ class SamplingDatasetParams : public DatasetParams {
   // Target sample rate, range (0,1], wrapped in a scalar Tensor
   float rate_;
   // Boxed versions of kRandomSeed and kRandomSeed2.
-  int64 seed_tensor_ = kRandomSeed;
-  int64 seed2_tensor_ = kRandomSeed2;
+  int64_t seed_tensor_ = kRandomSeed;
+  int64_t seed2_tensor_ = kRandomSeed2;
 };
 
 class SamplingDatasetOpTest : public DatasetOpsTestBase {};
@@ -100,14 +101,14 @@ std::vector<GetNextTestCase<SamplingDatasetParams>> GetNextTestCases() {
   return {
       // Test case 1: 100% sample should return all inputs
       {/*dataset_params=*/OneHundredPercentSampleParams(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape({}),
-                                                 {{0}, {1}, {2}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape({}),
+                                                   {{0}, {1}, {2}})},
 
       // Test case 2: 10% sample should return about 10% of inputs, and the
       // specific inputs returned shouldn't change across build environments.
       {/*dataset_params=*/TenPercentSampleParams(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape({}),
-                                                 {{9}, {11}, {19}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape({}),
+                                                   {{9}, {11}, {19}})},
 
       // Test case 3: 0% sample should return nothing and should not crash.
       {/*dataset_params=*/ZeroPercentSampleParams(), /*expected_outputs=*/{}}};
@@ -199,11 +200,11 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/OneHundredPercentSampleParams(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})},
           {/*dataset_params=*/TenPercentSampleParams(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{9}, {11}, {19}})},
+           CreateTensors<int64_t>(TensorShape({}), {{9}, {11}, {19}})},
           {/*dataset_params=*/ZeroPercentSampleParams(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/{}}};

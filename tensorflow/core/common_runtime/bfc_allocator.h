@@ -48,10 +48,28 @@ class MemoryDump;
 // all requests to allocate memory go through this interface.
 class BFCAllocator : public Allocator {
  public:
-  // Takes ownership of sub_allocator.
-  BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-               bool allow_growth, const string& name,
-               bool garbage_collection = false);
+  struct Options {
+    bool allow_growth = true;
+
+    // If true, the allocator may sleep for a period of time when it can't
+    // fulfill an allocation request, in the hopes that another thread will free
+    // up memory in the meantime.
+    //
+    // If false, the allocator will never sleep, even if
+    // AllocationAttributes::attr_retry_on_failure is true.
+    bool allow_retry_on_failure = true;
+
+    // Whether the allocator will deallocate free regions to avoid OOM due to
+    // memory fragmentation.
+    bool garbage_collection = false;
+
+    // Controls when a chunk should be split, if its size exceeds the requested
+    // allocation size.
+    double fragmentation_fraction = 0;
+  };
+  BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator, size_t total_memory,
+               const string& name, const Options& opts);
+
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
@@ -71,15 +89,17 @@ class BFCAllocator : public Allocator {
 
   size_t AllocatedSize(const void* ptr) const override;
 
-  int64 AllocationId(const void* ptr) const override;
+  int64_t AllocationId(const void* ptr) const override;
 
   absl::optional<AllocatorStats> GetStats() override;
 
-  void ClearStats() override;
+  bool ClearStats() override;
 
   void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
 
   void SetSafeFrontier(uint64 count) override;
+
+  AllocatorMemoryType GetMemoryType() const override;
 
   bool ShouldRecordOpName() const { return true; }
 
@@ -117,7 +137,7 @@ class BFCAllocator : public Allocator {
 
   // Return the largest free chunk bytes from the largest bin in constant time.
   // The free chunks are sorted by size (and then address) in a bin.
-  int64 LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  int64_t LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Add TraceMe (in memory allocation and deallocation) for memory stats
   // profiling. The chunk_ptr is passed to get information such as address,
@@ -127,7 +147,7 @@ class BFCAllocator : public Allocator {
 
   // Overloaded AddTraceMe function with chunk information.
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
-                  int64 req_bytes, int64 alloc_bytes)
+                  int64_t req_bytes, int64_t alloc_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
@@ -167,7 +187,7 @@ class BFCAllocator : public Allocator {
     // value greater than zero before the chunk is returned from
     // AllocateRaw, and this value is unique among values assigned by
     // the parent allocator.
-    int64 allocation_id = -1;
+    int64_t allocation_id = -1;
     void* ptr = nullptr;  // pointer to granted subbuffer.
 
     // If not kInvalidChunkHandle, the memory referred to by 'prev' is directly
@@ -188,24 +208,12 @@ class BFCAllocator : public Allocator {
 
     bool in_use() const { return allocation_id != -1; }
 
+#ifdef TENSORFLOW_MEM_DEBUG
     // optional debugging info
     const char* op_name = nullptr;
     uint64 step_id = 0;
-    uint64 action_count = 0;
-
-    // Get the op name used for memory debugging.
-    const char* GetDebugOpName() const {
-      // If chunk is not in use, although the op_name pointer is not nullptr,
-      // the corresponding OpKernel might have already been deallocated, and the
-      // op_name pointer might point to invalid memory. So in this case, return
-      // a special op name "UNUSED";
-      if (!in_use())
-        return "UNUSED";
-      else if (op_name)
-        return op_name;
-      else
-        return "UNKNOWN";
-    }
+    int64 action_count = 0;
+#endif
 
     string DebugString(BFCAllocator* a,
                        bool recurse) TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -222,9 +230,11 @@ class BFCAllocator : public Allocator {
         Chunk* n = a->ChunkFromHandle(next);
         strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
-      strings::StrAppend(&dbg, ", for: ", GetDebugOpName(),
+#ifdef TENSORFLOW_MEM_DEBUG
+      strings::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
                          ", stepid: ", step_id,
                          ", last_action: ", action_count);
+#endif
       return dbg;
     }
   };
@@ -560,6 +570,8 @@ class BFCAllocator : public Allocator {
 
   char bins_space_[sizeof(Bin) * kNumBins];
 
+  const Options opts_;
+
   // The size of the current region allocation.
   size_t curr_region_allocation_bytes_;
 
@@ -569,10 +581,6 @@ class BFCAllocator : public Allocator {
   // An indicator that expansion of a region has hit the limits
   // of the available memory.
   bool started_backpedal_ = false;
-
-  // Whether the allocator will deallocate free regions to avoid OOM due to
-  // memory fragmentation.
-  const bool garbage_collection_;
 
   // Whether the allocator will coalesce adjacent sub allocator provided
   // AllocationRegions. This may be disabled if discrete sub allocator
@@ -599,15 +607,15 @@ class BFCAllocator : public Allocator {
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
-  int64 next_allocation_id_ TF_GUARDED_BY(lock_);
+  int64_t next_allocation_id_ TF_GUARDED_BY(lock_);
 
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);
-  uint64 action_counter_ TF_GUARDED_BY(lock_);
-
-  // The circular buffer used to track memory operation history.
-  static constexpr uint64 kMemDebugHistorySize = 4096;
-  int64 size_history_[kMemDebugHistorySize];
+#ifdef TENSORFLOW_MEM_DEBUG
+  int64 action_counter_ = 0 TF_GUARDED_BY(lock_);
+#define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
+  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
+#endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
   friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;

@@ -187,42 +187,17 @@ execute the op. In this example, it means:
 *   Populate version=1 when dilation factors are all 1.
 *   Populate version=2 otherwise.
 
-To do this, you need to first add corresponding parameters to
-`depthwise_conv_2d` inside the `OpSignature` struct:
-
-```
-struct {
-      int32_t dilation_w_factor;
-      int32_t dilation_h_factor;
-    } depthwise_conv_2d;
-```
-
-Then populate these new parameters in `GetOpSignature` function in
-`lite/tools/versioning/op_version.cc`:
-
-```
-case BuiltinOperator_DEPTHWISE_CONV_2D: {
-      auto conv_option = op->builtin_options_as_DepthwiseConv2DOptions();
-      if (conv_option) {
-        op_sig.options.depthwise_conv_2d.dilation_w_factor =
-            conv_option->dilation_w_factor();
-        op_sig.options.depthwise_conv_2d.dilation_h_factor =
-            conv_option->dilation_h_factor();
-      }
-    } break;
-```
-
-Note that if you are adding support for new types, above steps are not needed.
-Input and output types are defined and populated for all ops in `OpSignature`.
-
-Finally, modify `GetBuiltinOperatorVersion` function for the operator in
+Modify `GetBuiltinOperatorVersion` function for the operator in
 `lite/tools/versioning/op_version.cc` by adding the new version to the case of
 `DepthwiseConv2D`:
 
 ```
 case BuiltinOperator_DEPTHWISE_CONV_2D:
-  if (op_sig.options.depthwise_conv_2d.dilation_w_factor != 1 ||
-      op_sig.options.depthwise_conv_2d.dilation_h_factor != 1) {
+  auto depthwise_conv_params =
+      reinterpret_cast<TfLiteDepthwiseConvParams*>(op_sig.builtin_data);
+  TFLITE_DCHECK(depthwise_conv_params != nullptr);
+  if (depthwise_conv_params->dilation_width_factor != 1 ||
+       depthwise_conv_params->dilation_height_factor != 1) {
     return 2;
   }
   return 1;

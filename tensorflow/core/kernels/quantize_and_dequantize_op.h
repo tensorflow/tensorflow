@@ -148,11 +148,11 @@ void ComputeQuantizationRange(bool signed_input, int num_bits,
   // e.g. [-127,127] for signed = true, narrow_range = true, num_bits = 8,
   // or [-128,127] for signed = true, narrow_range = false, num_bits = 8,
   // or [0, 255] for signed = false, num_bits = 8.
-  const int64 min_quantized = signed_input ? narrow_range
-                                                 ? -(1ULL << (num_bits - 1)) + 1
-                                                 : -(1ULL << (num_bits - 1))
-                                           : 0;
-  const int64 max_quantized =
+  const int64_t min_quantized =
+      signed_input ? narrow_range ? -(1ULL << (num_bits - 1)) + 1
+                                  : -(1ULL << (num_bits - 1))
+                   : 0;
+  const int64_t max_quantized =
       signed_input ? (1ULL << (num_bits - 1)) - 1 : (1ULL << num_bits) - 1;
   // Determine the maximum scaling factor that would scale
   // [min_range, max_range] to not exceed [min_quantized, max_quantized],
@@ -233,11 +233,7 @@ struct QuantizeAndDequantizePerChannelImpl {
     std::vector<T> max_range(num_channels);
 
     if (!range_given) {
-#if !defined(EIGEN_HAS_INDEX_LIST)
-      Eigen::array<int, 2> reduce_dims{{0, 2}};
-#else
       Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<2> > reduce_dims;
-#endif
       input_min.device(d) = input.minimum(reduce_dims);
       input_max.device(d) = input.maximum(reduce_dims);
       d.memcpyDeviceToHost(min_range.data(), input_min.data(),

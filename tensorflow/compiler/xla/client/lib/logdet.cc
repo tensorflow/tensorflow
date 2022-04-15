@@ -39,8 +39,8 @@ SignAndLogDet SLogDet(XlaOp a) {
     TF_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
     auto qr = Qr(a);
 
-    int64 m = ShapeUtil::GetDimension(a_shape, -2);
-    int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    int64_t m = ShapeUtil::GetDimension(a_shape, -2);
+    int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     if (m != n) {
       return InvalidArgument(
           "Arguments to logdet must be (batched) square matrices, got: %s",

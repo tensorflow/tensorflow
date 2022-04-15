@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
@@ -29,14 +30,14 @@ using absl::StrFormat;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
 
-string HumanReadableProfileBuilder::ToString() const {
-  string s;
+std::string HumanReadableProfileBuilder::ToString() const {
+  std::string s;
 
   StrAppendFormat(&s, "Execution profile for %s: (%s @ f_nom)\n",
                   computation_name_,
                   HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)));
 
-  int64 cumulative_cycles = 0;
+  int64_t cumulative_cycles = 0;
   auto print_op = [&](const OpInfo& op, bool is_total = false) {
     // Skip ops with 0 optimal seconds and 0 actual cycles.  These are ops that
     // were expected to be free and are actually free -- things like (on most
@@ -46,8 +47,8 @@ string HumanReadableProfileBuilder::ToString() const {
       return;
     }
 
-    string bytes_per_sec;
-    string bytes_per_cycle;
+    std::string bytes_per_sec;
+    std::string bytes_per_cycle;
     if (op.cycles > 0 && op.bytes_accessed >= 0) {
       bytes_per_sec = StrCat(
           HumanReadableNumBytes(op.bytes_accessed / CyclesToSeconds(op.cycles)),
@@ -71,7 +72,7 @@ string HumanReadableProfileBuilder::ToString() const {
           cumulative_cycles / static_cast<double>(total_cycles_) * 100;
     }
 
-    string cycles_percent_str;
+    std::string cycles_percent_str;
     if (is_total) {
       // Leaving off the two trailing decimal points of "100.%" lets us save two
       // columns in the output.
@@ -100,9 +101,9 @@ string HumanReadableProfileBuilder::ToString() const {
   };
 
   double optimal_seconds_sum = 0;
-  int64 total_flops = 0.;
-  int64 total_transcendentals = 0.;
-  int64 total_bytes = 0;
+  int64_t total_flops = 0.;
+  int64_t total_transcendentals = 0.;
+  int64_t total_bytes = 0;
   for (const auto& op : op_infos_) {
     if (op.optimal_seconds > 0) {
       // An op can run faster than the estimated optimum. For example, we might
@@ -114,9 +115,9 @@ string HumanReadableProfileBuilder::ToString() const {
       optimal_seconds_sum +=
           std::min(double{op.optimal_seconds}, CyclesToSeconds(op.cycles));
     }
-    total_flops += std::max(op.flop_count, int64{0});
-    total_transcendentals += std::max(op.transcendental_count, int64{0});
-    total_bytes += std::max(op.bytes_accessed, int64{0});
+    total_flops += std::max(op.flop_count, int64_t{0});
+    total_transcendentals += std::max(op.transcendental_count, int64_t{0});
+    total_bytes += std::max(op.bytes_accessed, int64_t{0});
   }
 
   VLOG(1) << "Total floating point ops: " << total_flops;

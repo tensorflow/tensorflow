@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for lift_to_graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import test

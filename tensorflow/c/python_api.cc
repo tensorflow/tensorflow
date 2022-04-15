@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/python_api.h"
 
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 
 namespace tensorflow {
@@ -43,10 +44,16 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 
 void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                TF_Status* status) {
-
   mutex_lock l(graph->mu);
   op->node.ClearAttr(attr_name);
   RecordMutation(graph, *op, "clearing attribute");
+}
+
+void SetFullType(TF_Graph* graph, TF_Operation* op,
+                 const FullTypeDef& full_type) {
+  mutex_lock l(graph->mu);
+  *op->node.mutable_def()->mutable_experimental_type() = full_type;
+  RecordMutation(graph, *op, "setting fulltype");
 }
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
@@ -100,7 +107,7 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
       auto* out_shape_and_type = handle_data.add_shape_and_type();
       ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
       out_shape_and_type->set_dtype(p.dtype);
-      out_shape_and_type->set_specialized_type(p.specialized_type);
+      *out_shape_and_type->mutable_type() = p.type;
     }
   }
   string result;
@@ -129,7 +136,7 @@ void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
         ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
     if (TF_GetCode(status) != TF_OK) return;
     shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype(),
-                                  shape_and_type_proto.specialized_type());
+                                  shape_and_type_proto.type());
   }
   ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
 }

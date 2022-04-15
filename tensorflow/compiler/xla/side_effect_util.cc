@@ -26,4 +26,9 @@ const char kXlaHostTransferOriginalTypeAttr[] =
 const char kXlaHostTransferIsLowerBitsAttr[] =
     "_xla_host_transfer_is_lower_bits";
 
+const char kXlaHostTransferHandlerNameAttr[] =
+    "_xla_host_transfer_handler_name";
+
+const char kXlaHostTransferTfRendezvousHandlerName[] = "tf_rendezvous";
+
 }  // namespace xla

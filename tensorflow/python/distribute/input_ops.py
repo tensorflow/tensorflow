@@ -14,13 +14,9 @@
 # ==============================================================================
 """Input-pipeline utilities for Distribution strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.experimental.ops import distribute
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops.options import AutoShardPolicy
 from tensorflow.python.data.util import traverse
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops

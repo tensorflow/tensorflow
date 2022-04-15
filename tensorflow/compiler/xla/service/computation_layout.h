@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -48,10 +48,10 @@ class ComputationLayout {
   }
 
   // Returns the layout of a particular parameter.
-  const ShapeLayout& parameter_layout(int64 param_no) const {
+  const ShapeLayout& parameter_layout(int64_t param_no) const {
     return parameter_layouts_[param_no];
   }
-  ShapeLayout* mutable_parameter_layout(int64 param_no) {
+  ShapeLayout* mutable_parameter_layout(int64_t param_no) {
     return &parameter_layouts_[param_no];
   }
 
@@ -69,7 +69,7 @@ class ComputationLayout {
 
   // Returns the shape of the particular parameter or result of the computation
   // with layout.
-  const Shape& parameter_shape(int64 param_no) const {
+  const Shape& parameter_shape(int64_t param_no) const {
     return parameter_layouts_[param_no].shape();
   }
   const Shape& result_shape() const { return result_layout_.shape(); }
@@ -83,7 +83,7 @@ class ComputationLayout {
   bool LayoutIsSet() const;
 
   // Returns a string representation of this object.
-  string ToString() const;
+  std::string ToString() const;
 
   // Create a ProgramShape proto based on the parameter and result shapes held
   // within this object.
@@ -91,7 +91,16 @@ class ComputationLayout {
 
   bool operator==(const ComputationLayout& other) const;
   bool operator!=(const ComputationLayout& other) const;
-  uint64 Hash() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ComputationLayout& computation_layout) {
+    h = H::combine(std::move(h), computation_layout.result_layout_.shape());
+    for (const auto& parameter_layout : computation_layout.parameter_layouts_) {
+      h = H::combine(std::move(h), parameter_layout.shape());
+    }
+    h = H::combine(std::move(h), computation_layout.parameter_layouts_.size());
+    return h;
+  }
 
  private:
   std::vector<ShapeLayout> parameter_layouts_;

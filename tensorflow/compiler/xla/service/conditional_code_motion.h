@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -52,8 +54,12 @@ class Boundary {
     }
     return res;
   }
-  bool operator==(const Boundary& that) {
-    return ContainersEqual(operands_, that.operands_);
+  bool operator==(const Boundary& that) const {
+    return absl::c_equal(operands_, that.operands_);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const Boundary& boundary) {
+    return H::combine(std::move(h), boundary.operands_);
   }
 
  private:
@@ -84,7 +90,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // during identical comparison. Otherwise, layout is ignored.
   // The search configuration is a single integer but is split into four parts:
   // (sign, n, m, p), where n,m,p each occupy 8 bits and together make the 24
-  // bits at the end of the int32. For the sign part, if search_config is <0,
+  // bits at the end of the int32_t. For the sign part, if search_config is <0,
   // the reuse_config_ cost model is modified (tuned); if search_config is >0,
   // the move_config_ cost model is modified (tuned); if search_config == 0,
   // the default cost model is used with no tuning. When tuning, the entries in
@@ -95,7 +101,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // start over when optimizing a new model.
   explicit ConditionalCodeMotion(bool is_layout_sensitive,
                                  bool pursue_full_conditional_code_motion,
-                                 int64 search_config = 0)
+                                 int64_t search_config = 0)
       : is_layout_sensitive_(is_layout_sensitive),
         pursue_full_conditional_code_motion_(
             /*turn off special case if tuning*/
@@ -124,7 +130,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // Make a single search configuration for changing transformation decisions:
   // flip the decisions at position n = flip_start + flip_stride * m, and
   // m = 0..max_flip.
-  // The following defines how the int64 search configuration is composed, as
+  // The following defines how the int64_t search configuration is composed, as
   // flip_start + (flip_max << kMaxPos) + (flip_stride << kStridePos).
   // Position (digit) for maximum number of flips.
   static constexpr int kMaxPos = 16;
@@ -134,24 +140,24 @@ class ConditionalCodeMotion : public HloModulePass {
   static constexpr int kStridePos = 32;
   // Bit mask for extracting the last digits of value.
   static constexpr int kValueMask = 0xffff;
-  static int64 MakeSearchConfig(int64 start, int64 max, int64 stride) {
-    const int64 config =
+  static int64_t MakeSearchConfig(int64_t start, int64_t max, int64_t stride) {
+    const int64_t config =
         (max << kMaxPos) + (start << kStartPos) + (stride << kStridePos);
     VLOG(2) << "flip stride = " << flip_stride(config) << "\n";
     VLOG(2) << "flig config = " << config << "\n";
     return config;
   }
 
-  static int16 flip_start(int64 search_config) {
+  static int16_t flip_start(int64_t search_config) {
     return (search_config >> kStartPos) & kValueMask;
   }
 
-  static int16 flip_stride(int64 search_config) {
+  static int16_t flip_stride(int64_t search_config) {
     return (search_config >> kStridePos) & kValueMask;
   }
 
-  static int16 DecrementMaxFlip(int64* search_config) {
-    const int16 max_flip = ((*search_config) >> kMaxPos) & kValueMask;
+  static int16_t DecrementMaxFlip(int64_t* search_config) {
+    const int16_t max_flip = ((*search_config) >> kMaxPos) & kValueMask;
     // Decrement flip count so we can stop if it reaches 0.
     if (max_flip > 0) {
       *search_config -= (1 << kMaxPos);
@@ -165,7 +171,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // Optimization decision for each boundary of the conditional instruction.
   class Decision {
    public:
-    enum class Direction : uint8 {
+    enum class Direction : uint8_t {
       kMoveOutOfBranch,
       kMoveIntoBranch,
       kNoChange
@@ -192,14 +198,14 @@ class ConditionalCodeMotion : public HloModulePass {
   const bool is_layout_sensitive_;
   const bool pursue_full_conditional_code_motion_;
   // The following parameterizes the transformation decisions and cost model.
-  std::vector<int64> search_config_;
-  int64 search_config_index_;
+  std::vector<int64_t> search_config_;
+  int64_t search_config_index_;
   // Map each conditional to a vector of its search configurations. The key of
   // the map is the index number of the conditional in a module when traversed
   // in post order, and the value of the map is the sequence of search
   // configurations specified with the same index number for the conditional.
-  absl::flat_hash_map<int64, std::vector<int64>> search_config_map_;
-  std::vector<std::vector<int64>> move_config_, reuse_config_;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> search_config_map_;
+  std::vector<std::vector<int64_t>> move_config_, reuse_config_;
 
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,

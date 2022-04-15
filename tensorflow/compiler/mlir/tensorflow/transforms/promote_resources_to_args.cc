@@ -13,40 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This pass promotes resource accesses in the main function to input arguments
-// and outputs of the main function.
-//
-// Two types of resources are supported:
-// (1) A function argument of TF::ResourceType type.
-// (2) A VarHandleOp in the function.
-//
-// After the pass,
-//
-//  . The function will have an input argument for each resource that is
-//    already provided as an input argument or is read. The type of the input
-//    argument will become the shape of the value represented by the resource.
-//
-//  . The function will have an output for each resource that is written. The
-//    type of the output will become the shape of the resource.
-//
-// The information of variable identification and input-output alising is
-// recorded as named attributes of the input argument or output:
-//
-//  . 'tf.resource_name' matches 'shared_name' of VarHandleOp, which represents
-//    the identifier of the corresponding resource. This attribute is added to
-//    an input argument if the initial value of the resource is read, or to the
-//    output if the initial value is not read.
-//
-//  . 'tf.aliasing_output' is the index of the function output that is an alias
-//    of the input argument. This attribute is added only to the input argument
-//    when the initial value of the corresponding resource is read, and the
-//    resource is written later.
-//
-// Assumption of this pass:
-//  . Compound resource operations have already been decomposed.
-//  . Dead functions have already been removed, as resource arguments in dead
-//    functions can cause the pass to fail.
-
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -56,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -68,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -158,7 +125,7 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
     FuncOp function, bool add_validation,
     llvm::SmallVectorImpl<std::string>* var_handle_shared_names) {
   Block& block = function.front();
-  auto func_type = function.getType();
+  auto func_type = function.getFunctionType();
 
   auto func_arg_types = llvm::to_vector<4>(func_type.getInputs());
   llvm::SmallDenseMap<llvm::StringRef, int> var_arg_index_by_name;
@@ -177,7 +144,7 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
       auto resource_type = var_handle_op.resource().getType();
       func_arg_types.push_back(resource_type);
       var_handle_op.resource().replaceAllUsesWith(
-          block.addArgument(resource_type));
+          block.addArgument(resource_type, var_handle_op.getLoc()));
     } else {
       var_handle_op.resource().replaceAllUsesWith(
           block.getArgument(it.first->getSecond()));
@@ -204,13 +171,15 @@ LogicalResult PromoteResourcesToArguments(
     FuncOp function, llvm::ArrayRef<std::string> var_handle_shared_names) {
   Block& block = function.front();
 
-  auto return_op = llvm::dyn_cast_or_null<ReturnOp>(block.getTerminator());
+  auto return_op =
+      llvm::dyn_cast_or_null<func::ReturnOp>(block.getTerminator());
   if (!return_op)
     return function.emitError() << "expects function '" << function.getName()
                                 << "' to have a MLIR ReturnOp";
 
   llvm::SmallVector<ResourceInfo, 4> resources(function.getNumArguments());
-  auto argument_types = llvm::to_vector<4>(function.getType().getInputs());
+  auto argument_types =
+      llvm::to_vector<4>(function.getFunctionType().getInputs());
   bool has_resources = false;
   auto add_resource_argument = [&](BlockArgument arg,
                                    TF::ResourceType resource_type) {
@@ -350,7 +319,7 @@ LogicalResult PromoteResourcesToArguments(
   // Rewrite return if there are variable writes.
   const int return_operands_size = return_operands.size();
   if (return_operands_size > num_results_before) {
-    builder.create<ReturnOp>(return_op.getLoc(), return_operands);
+    builder.create<func::ReturnOp>(return_op.getLoc(), return_operands);
     return_op.erase();
   }
 
@@ -372,31 +341,44 @@ LogicalResult PromoteResourcesToArguments(
 }
 
 class PromoteResourcesToArgsPass
-    : public PassWrapper<PromoteResourcesToArgsPass, OperationPass<ModuleOp>> {
+    : public PromoteResourcesToArgsPassBase<PromoteResourcesToArgsPass> {
  public:
+  PromoteResourcesToArgsPass() = default;
+  explicit PromoteResourcesToArgsPass(llvm::ArrayRef<std::string> functions);
   void runOnOperation() override;
 };
 
+PromoteResourcesToArgsPass::PromoteResourcesToArgsPass(
+    llvm::ArrayRef<std::string> functions) {
+  functions_ = functions;
+}
+
 void PromoteResourcesToArgsPass::runOnOperation() {
   ModuleOp module = getOperation();
-  FuncOp main_func = module.lookupSymbol<FuncOp>("main");
-  if (!main_func) return;
+  if (llvm::size(functions_) == 0) {
+    functions_ = {"main"};
+  }
+  SymbolTable symbolTable(module);
+  for (const std::string& f : functions_) {
+    FuncOp func = symbolTable.lookup<FuncOp>(f);
+    if (!func) continue;
 
-  // This routine should only be called when control flow operations are still
-  // represented with TF IfOp and WhileOp operations. In this case, there should
-  // be only one basic blocks in the MLIR representation.
-  if (failed(CheckSingleBlockFunction(main_func))) return signalPassFailure();
+    // This routine should only be called when control flow operations are still
+    // represented with TF IfOp and WhileOp operations. In this case, there
+    // should be only one basic blocks in the MLIR representation.
+    if (failed(CheckSingleBlockFunction(func))) return signalPassFailure();
 
-  llvm::SmallVector<std::string, 4> var_handle_shared_names;
-  if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
-      failed(PromoteVarHandlesToArguments(main_func, /*add_validation=*/true,
-                                          &var_handle_shared_names)) ||
-      failed(PromoteResourcesToArguments(main_func, var_handle_shared_names)))
-    return signalPassFailure();
+    llvm::SmallVector<std::string, 4> var_handle_shared_names;
+    if (failed(ResourceLiftingForFunctionalControlFlow(func)) ||
+        failed(PromoteVarHandlesToArguments(func, /*add_validation=*/true,
+                                            &var_handle_shared_names)) ||
+        failed(PromoteResourcesToArguments(func, var_handle_shared_names)))
+      return signalPassFailure();
+  }
 }
 
 class PromoteVarHandlesToArgsPass
-    : public PassWrapper<PromoteVarHandlesToArgsPass, OperationPass<ModuleOp>> {
+    : public PromoteVarHandlesToArgsPassBase<PromoteVarHandlesToArgsPass> {
  public:
   void runOnOperation() override;
 };
@@ -431,14 +413,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass() {
   return std::make_unique<PromoteVarHandlesToArgsPass>();
 }
-
-static PassRegistration<PromoteResourcesToArgsPass> pass(
-    "tf-promote-resources-to-args",
-    "Promote resources reads/writes to function inputs/outputs.");
-
-static PassRegistration<PromoteVarHandlesToArgsPass> var_handle_pass(
-    "tf-promote-var-handles-to-args",
-    "Promote tf.VarHandleOps to function arguments.");
 
 }  // namespace TF
 }  // namespace mlir

@@ -53,26 +53,14 @@ class SparseConditionalAccumulator
                                const string& name, const string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
-            dtype, shape, name, reduction_type) {
-    accum_idx_vec_ = nullptr;
-    count_element_ = nullptr;
-    accum_val_ = nullptr;
-    accum_val_persistent_ = new PersistentTensor();
-  }
-
-  ~SparseConditionalAccumulator() override {
-    if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
-    if (count_element_ != nullptr) delete count_element_;
-    if (accum_val_persistent_ != nullptr) delete accum_val_persistent_;
-    // Do not delete accum_val_! Will be automatically garbage collected
-  };
+            dtype, shape, name, reduction_type),
+        accum_val_(std::make_unique<Tensor>()) {}
 
  protected:
-  std::vector<int64>* accum_idx_vec_ = nullptr;
-  std::vector<int>* count_element_ = nullptr;
+  std::unique_ptr<std::vector<int64_t>> accum_idx_vec_;
+  std::unique_ptr<std::vector<int>> count_element_;
 
-  Tensor* accum_val_ = nullptr;
-  PersistentTensor* accum_val_persistent_ = nullptr;
+  std::unique_ptr<Tensor> accum_val_;
 
   typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
                            Eigen::Unaligned>
@@ -87,8 +75,8 @@ class SparseConditionalAccumulator
     const Tensor* tensor_idx = std::get<0>(*tensor);
     const Tensor* tensor_val = std::get<1>(*tensor);
     const Tensor* tensor_shape = std::get<2>(*tensor);
-    int64 grad_val_dims = tensor_val->dims();
-    int64 grad_dims = grad_val_dims;
+    int64_t grad_val_dims = tensor_val->dims();
+    int64_t grad_dims = grad_val_dims;
 
     // Compare with provided shape
     if (has_known_shape) {
@@ -97,8 +85,8 @@ class SparseConditionalAccumulator
             "Shape mismatch: expected shape rank at least ", shape_.dims(),
             ", got ", tensor_shape->NumElements());
       }
-      const auto tensor_shape_flat = tensor_shape->flat<int64>();
-      for (int64 i = 0; i < shape_.dims(); i++) {
+      const auto tensor_shape_flat = tensor_shape->flat<int64_t>();
+      for (int64_t i = 0; i < shape_.dims(); i++) {
         if (shape_.dim_size(i) != -1 &&
             shape_.dim_size(i) != tensor_shape_flat(i)) {
           return errors::InvalidArgument("Shape mismatch: expected shape dim ",
@@ -110,11 +98,11 @@ class SparseConditionalAccumulator
     // Check that indices are within limits
     if (shape_.dims() > 0 && shape_.dim_size(0) != -1 &&
         tensor_idx->dims() > 0) {
-      for (int64 i = 0; i < tensor_idx->dim_size(0); i++) {
-        if (tensor_idx->vec<int64>()(i) >= shape_.dim_size(0)) {
+      for (int64_t i = 0; i < tensor_idx->dim_size(0); i++) {
+        if (tensor_idx->vec<int64_t>()(i) >= shape_.dim_size(0)) {
           return errors::InvalidArgument(
               "Shape mismatch: index of slice ", i, " exceeded limits of shape",
-              "; index is ", tensor_idx->vec<int64>()(i), " exceeded ",
+              "; index is ", tensor_idx->vec<int64_t>()(i), " exceeded ",
               shape_.dim_size(0));
         }
       }
@@ -122,12 +110,12 @@ class SparseConditionalAccumulator
 
     // Check values compatibility with accumulated gradient if available
     if (counter_ > 0) {
-      int64 accum_val_dims = accum_val_->dims();
+      int64_t accum_val_dims = accum_val_->dims();
       if (accum_val_dims != grad_val_dims) {
         return errors::InvalidArgument("Shape mismatch: expected values rank ",
                                        accum_val_dims, ", got ", grad_val_dims);
       }
-      for (int64 i = 1; i < accum_val_dims; i++) {
+      for (int64_t i = 1; i < accum_val_dims; i++) {
         if (accum_val_->dim_size(i) != tensor_val->dim_size(i)) {
           return errors::InvalidArgument("Shape mismatch: expected values dim ",
                                          i, " to be ", accum_val_->dim_size(i),
@@ -142,7 +130,7 @@ class SparseConditionalAccumulator
             ", got ", grad_dims);
       }
       // Check that values have correct dimensions
-      for (int64 i = 1; i < shape_.dims(); i++) {
+      for (int64_t i = 1; i < shape_.dims(); i++) {
         if (shape_.dim_size(i) != -1 &&
             shape_.dim_size(i) != tensor_val->dim_size(i)) {
           return errors::InvalidArgument("Shape mismatch: expected values dim ",
@@ -161,29 +149,23 @@ class SparseConditionalAccumulator
     const Tensor* grad_idx = std::get<0>(*grad);
     const Tensor* grad_val = std::get<1>(*grad);
 
-    const int64 nnz = grad_idx->dim_size(0);
+    const int64_t nnz = grad_idx->dim_size(0);
 
     // Assign indices
-    if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
-    accum_idx_vec_ = new std::vector<int64>();
+    accum_idx_vec_ = std::make_unique<std::vector<int64_t>>();
     accum_idx_vec_->reserve(nnz);
     for (int i = 0; i < nnz; i++) {
-      accum_idx_vec_->push_back(grad_idx->vec<int64>()(i));
+      accum_idx_vec_->push_back(grad_idx->vec<int64_t>()(i));
     }
 
     // Assign values to accum_val_tensor
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    ctx->allocate_persistent(dtype_, grad_val->shape(), accum_val_persistent_,
-                             &accum_val_)
-        .IgnoreError();
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(dtype_, grad_val->shape(), accum_val_.get()));
     accum_val_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad_val->flat<T>();
 
     // Assign count_element_
-    if (count_element_ != nullptr) {
-      delete count_element_;
-    }
-    count_element_ = new std::vector<int>(nnz, 1);
+    count_element_ = std::make_unique<std::vector<int>>(nnz, 1);
 
     // Do not need shape; Assume that the op has checked that the shapes match,
     // so grad's shape == shape_
@@ -197,8 +179,8 @@ class SparseConditionalAccumulator
     const Tensor* grad_idx = std::get<0>(*grad);
     const Tensor* grad_val = std::get<1>(*grad);
 
-    const int64 accum_nnz = accum_idx_vec_->size();
-    const int64 grad_nnz = grad_idx->dim_size(0);
+    const int64_t accum_nnz = accum_idx_vec_->size();
+    const int64_t grad_nnz = grad_idx->dim_size(0);
 
     // Source enumerates the origin of a non-zero element: whether it is from
     // the new gradient, the accumulated gradient, or the sum of both.
@@ -212,11 +194,11 @@ class SparseConditionalAccumulator
     // value, to identify where each non-zero element of the sum comes from.
     // The input and output indexed slices are assumed to be ordered along
     // increasing dimension number.
-    int64 i = 0, j = 0;
-    int64 sum_nnz = 0;
+    int64_t i = 0, j = 0;
+    int64_t sum_nnz = 0;
     while (i < accum_nnz && j < grad_nnz) {
       sum_nnz++;
-      switch (cmp(accum_idx_vec_, grad_idx, i, j)) {
+      switch (cmp(accum_idx_vec_.get(), grad_idx, i, j)) {
         case -1:
           entries_to_copy.emplace_back(from_accum, i, -1);
           ++i;
@@ -246,33 +228,30 @@ class SparseConditionalAccumulator
     }
 
     // (2) Copy or sum the non-zero elements into sum_indices and sum_tensor
-    std::vector<int64>* sum_indices_vec = new std::vector<int64>();
+    std::vector<int64_t>* sum_indices_vec = new std::vector<int64_t>();
     sum_indices_vec->reserve(sum_nnz);
 
     std::vector<int>* sum_counts = new std::vector<int>();
     sum_counts->reserve(sum_nnz);
 
-    Tensor* sum_tensor = nullptr;
-    PersistentTensor* tensor_sum_persistent = new PersistentTensor();
+    Tensor* sum_tensor = new Tensor();
 
     TensorShape sum_shape = grad_val->shape();
     sum_shape.set_dim(0, sum_nnz);
 
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_persistent(dtype_, sum_shape, tensor_sum_persistent,
-                                      &sum_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(dtype_, sum_shape, sum_tensor));
     auto sum_flat = sum_tensor->flat_outer_dims<T>();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
     auto grad_flat = grad_val->flat_outer_dims<T>();
 
-    const int64 num_col = grad_flat.dimension(1);
+    const int64_t num_col = grad_flat.dimension(1);
 
     Eigen::DSizes<Eigen::DenseIndex, 1> slice_shape(num_col);
 
     for (i = 0; i < sum_nnz; ++i) {
       const Source src = std::get<0>(entries_to_copy[i]);
-      const int64 idx_a = std::get<1>(entries_to_copy[i]);
-      const int64 idx_b = std::get<2>(entries_to_copy[i]);
+      const int64_t idx_a = std::get<1>(entries_to_copy[i]);
+      const int64_t idx_b = std::get<2>(entries_to_copy[i]);
       T* sum_slice_ptr = &sum_flat(i, 0);
       SliceT sum_slice(sum_slice_ptr, slice_shape);
       if (src == from_accum) {
@@ -294,7 +273,7 @@ class SparseConditionalAccumulator
         sum_counts->push_back(count_element_->at(idx_a) + 1);
       } else if (src == from_grad) {
         // Element comes from new gradient; make a copy of indices and values
-        sum_indices_vec->push_back(grad_idx->vec<int64>()(idx_b));
+        sum_indices_vec->push_back(grad_idx->vec<int64_t>()(idx_b));
         const T* grad_slice_ptr = &grad_flat(idx_b, 0);
         SliceConstT grad_slice(grad_slice_ptr, slice_shape);
         sum_slice = grad_slice;
@@ -305,22 +284,18 @@ class SparseConditionalAccumulator
     // (3) Keep output, i.e., switch pointers to point to new data structures
     // representing the sum
     // Indices
-    if (accum_idx_vec_ != nullptr) delete accum_idx_vec_;
-    accum_idx_vec_ = sum_indices_vec;
+    accum_idx_vec_.reset(sum_indices_vec);
     // Values
-    accum_val_ = sum_tensor;
-    delete accum_val_persistent_;
-    accum_val_persistent_ = tensor_sum_persistent;
+    accum_val_.reset(sum_tensor);
     // Counts
-    if (count_element_ != nullptr) delete count_element_;
-    count_element_ = sum_counts;
+    count_element_.reset(sum_counts);
 
     // No need to copy shape, since shape remains the same after sum.
   }
 
   void DivideAccumGradByCounter(OpKernelContext* ctx) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
-    const int64 nnz = count_element_->size();
+    const int64_t nnz = count_element_->size();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
     std::vector<T> count_typet;
     std::transform(count_element_->begin(), count_element_->end(),
@@ -337,7 +312,7 @@ class SparseConditionalAccumulator
 
     // Option 2: average element-wise
     Eigen::DSizes<Eigen::DenseIndex, 1> slice_shape(accum_flat.dimension(1));
-    for (int64 i = 0; i < nnz; i++) {
+    for (int64_t i = 0; i < nnz; i++) {
       T* accum_slice_ptr = &accum_flat(i, 0);
       SliceT accum_slice(accum_slice_ptr, slice_shape);
       accum_slice.device(ctx->template eigen_device<Device>()) =
@@ -384,7 +359,7 @@ class SparseConditionalAccumulator
         errors::InvalidArgument(
             "Input indices should be vector but received shape: ",
             grad_idx_tensor->shape().DebugString()));
-    const int64 nnz = grad_idx_tensor->dim_size(0);
+    const int64_t nnz = grad_idx_tensor->dim_size(0);
     OP_REQUIRES_BOOLEAN(
         ctx, grad_val_tensor->dims() > 0,
         errors::InvalidArgument("Values cannot be 0-dimensional."));
@@ -407,10 +382,10 @@ class SparseConditionalAccumulator
   }
 
  private:
-  inline int cmp(std::vector<int64>* a_idx, const Tensor* b_idx,
-                 const int64 a_row, const int64 b_row) {
-    const int64 a = a_idx->at(a_row);
-    const int64 b = b_idx->vec<int64>()(b_row);
+  inline int cmp(std::vector<int64_t>* a_idx, const Tensor* b_idx,
+                 const int64_t a_row, const int64_t b_row) {
+    const int64_t a = a_idx->at(a_row);
+    const int64_t b = b_idx->vec<int64_t>()(b_row);
     if (a < b) {
       return -1;
     } else if (a > b) {
@@ -421,11 +396,11 @@ class SparseConditionalAccumulator
 
   inline bool ReturnIdxTensor(OpKernelContext* ctx) {
     Tensor* idx_tensor;
-    const int64 nnz = accum_idx_vec_->size();
+    const int64_t nnz = accum_idx_vec_->size();
     OP_REQUIRES_OK_BOOLEAN(ctx, ctx->allocate_output(0, {nnz}, &idx_tensor));
     // If allocate_output fails, OP_REQUIRES_OK_BOOLEAN will short-circuit
     // the remaining code and just return false
-    auto idx_tensor_vec = idx_tensor->vec<int64>();
+    auto idx_tensor_vec = idx_tensor->vec<int64_t>();
     for (int i = 0; i < nnz; ++i) {
       idx_tensor_vec(i) = accum_idx_vec_->at(i);
     }
@@ -438,7 +413,7 @@ class SparseConditionalAccumulator
   }
 
   inline bool ReturnShapeTensor(OpKernelContext* ctx) {
-    int64 accum_val_dims = accum_val_->dims();
+    int64_t accum_val_dims = accum_val_->dims();
     Tensor* shape_tensor;
     OP_REQUIRES_OK_BOOLEAN(
         ctx, ctx->allocate_output(2, {accum_val_dims}, &shape_tensor));
@@ -446,10 +421,10 @@ class SparseConditionalAccumulator
     // the remaining code and just return false
 
     // First dim of shape is defined by shape_, others by accum_val_->shape
-    shape_tensor->flat<int64>()(0) =
+    shape_tensor->flat<int64_t>()(0) =
         (shape_.dims() > 0) ? shape_.dim_size(0) : -1;
-    for (int64 i = 1; i < accum_val_dims; i++) {
-      shape_tensor->flat<int64>()(i) = accum_val_->dim_size(i);
+    for (int64_t i = 1; i < accum_val_dims; i++) {
+      shape_tensor->flat<int64_t>()(i) = accum_val_->dim_size(i);
     }
     return true;
   }

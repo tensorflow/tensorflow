@@ -77,11 +77,6 @@ void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
   interpreter_->AddTensors(num_tensors);
   for (int i = 0; i < num_tensors; ++i) {
     TfLiteQuantizationParams quant;
-    // Suppress explicit output type specification to ensure type inference
-    // works properly.
-    if (std::find(outputs.begin(), outputs.end(), i) != outputs.end()) {
-      type = kTfLiteFloat32;
-    }
     CHECK_EQ(interpreter_->SetTensorParametersReadWrite(i, type,
                                                         /*name=*/"",
                                                         /*dims=*/dims, quant),
@@ -150,6 +145,9 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
     case kTfLiteString:
       type_attribute = attr("T", "type: DT_STRING");
       break;
+    case kTfLiteBool:
+      type_attribute = attr("T", "type: DT_BOOL");
+      break;
     default:
       // TODO(b/113613439): Use nodedef string utilities to properly handle all
       // types.
@@ -174,6 +172,9 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
     AddTfOp("FlexRFFT", "RFFT", "", inputs, outputs);
   } else if (op == kImag) {
     AddTfOp("FlexImag", "Imag", "", inputs, outputs);
+  } else if (op == kLoopCond) {
+    string attributes = type_attribute;
+    AddTfOp("FlexLoopCond", "LoopCond", attributes, inputs, outputs);
   } else if (op == kNonExistent) {
     AddTfOp("NonExistentOp", "NonExistentOp", "", inputs, outputs);
   } else if (op == kIncompatibleNodeDef) {

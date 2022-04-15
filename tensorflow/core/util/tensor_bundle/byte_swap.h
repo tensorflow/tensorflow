@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 // Define basic byte swapping operations.
 // These operations must be macros to use compiler intrinsics.
@@ -107,6 +108,9 @@ Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 // Returns: Status::OK() on success, -1 otherwise
 // TODO(frreiss): Should this be a member of the Tensor class?
 Status ByteSwapTensor(Tensor *t);
+
+// Swap tensor_content field of Const Op Tensors in the named functions
+Status ByteSwapTensorContent(MetaGraphDef *meta_graph_def);
 
 }  // namespace tensorflow
 

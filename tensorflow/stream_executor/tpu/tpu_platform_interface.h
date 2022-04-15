@@ -49,7 +49,7 @@ class TpuPlatformInterface : public stream_executor::Platform {
 
   Status Reset() { return Reset(false, {}); }
 
-  virtual int64 TpuMemoryLimit() = 0;
+  virtual int64_t TpuMemoryLimit() = 0;
 
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 

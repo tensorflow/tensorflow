@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/padded_batch_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,7 +25,7 @@ class PaddedBatchDatasetOpTest : public DatasetOpsTestBase {};
 class PaddedBatchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  PaddedBatchDatasetParams(T input_dataset_params, int64 batch_size,
+  PaddedBatchDatasetParams(T input_dataset_params, int64_t batch_size,
                            std::vector<Tensor> padded_shapes,
                            std::vector<Tensor> padded_values,
                            bool drop_remainder, bool parallel_copy,
@@ -50,7 +50,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
   std::vector<Tensor> GetInputTensors() const override {
     std::vector<Tensor> input_tensors;
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {batch_size_}));
+        CreateTensor<int64_t>(TensorShape({}), {batch_size_}));
     for (auto& padded_shape : padded_shapes_) {
       input_tensors.emplace_back(padded_shape);
     }
@@ -80,11 +80,11 @@ class PaddedBatchDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {PaddedBatchDatasetOp::kParallelCopy, parallel_copy_},
-        {PaddedBatchDatasetOp::kToutputTypes, output_dtypes_},
-        {PaddedBatchDatasetOp::kOutputShapes, output_shapes_},
-        {PaddedBatchDatasetOp::kNumPaddedShapes, num_padded_shapes_}};
+    *attr_vector = {{"parallel_copy", parallel_copy_},
+                    {"Toutput_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"N", num_padded_shapes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 
@@ -93,7 +93,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
   }
 
  private:
-  int64 batch_size_;
+  int64_t batch_size_;
   std::vector<Tensor> padded_shapes_;
   std::vector<Tensor> padded_values_;
   bool drop_remainder_;
@@ -104,14 +104,14 @@ class PaddedBatchDatasetParams : public DatasetParams {
 // Test case 1: input elements with same shapes.
 PaddedBatchDatasetParams PaddedBatchDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(
+      /*components=*/{CreateTensor<int64_t>(
           TensorShape{7, 2}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13})},
       /*node_name=*/"tensor_slice");
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/tensor_slice_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {3})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/true,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -123,11 +123,11 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams1() {
 // Test case 2: input elements with different shapes.
 PaddedBatchDatasetParams PaddedBatchDatasetParams2() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -138,8 +138,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams2() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {3})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/true,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -151,11 +151,11 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams2() {
 // Test case 3: similar with the test case 2 but drop_remainder = false.
 PaddedBatchDatasetParams PaddedBatchDatasetParams3() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -166,8 +166,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams3() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {3})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -181,11 +181,11 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams3() {
 // shape is still {-1, 3} instead of {2, 3}.
 PaddedBatchDatasetParams PaddedBatchDatasetParams4() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 1}, {{6, 7, 8}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 1}, {{6, 7, 8}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -196,8 +196,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams4() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {3})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -209,11 +209,11 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams4() {
 // Test case 5: similar with the test case 3 but padded_shapes = {-1}.
 PaddedBatchDatasetParams PaddedBatchDatasetParams5() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -224,8 +224,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams5() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {-1})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {-1})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/false,
       /*output_dtypes=*/{DT_INT64},
@@ -237,11 +237,11 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams5() {
 // Test case 6: similar with the test case 5 but parallel_copy = true.
 PaddedBatchDatasetParams PaddedBatchDatasetParams6() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{4, 1}, {{6, 7, 8, 9}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -252,8 +252,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams6() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {-1})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {-1})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -267,8 +267,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams7() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/RangeDatasetParams(0, 0, 1),
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {-1})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {-1})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -280,12 +280,12 @@ PaddedBatchDatasetParams PaddedBatchDatasetParams7() {
 // Test case 8: short padding shape.
 PaddedBatchDatasetParams PaddedBatchDatasetParamsWithShortPaddingShape() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -296,8 +296,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParamsWithShortPaddingShape() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {1})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {1})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -308,12 +308,12 @@ PaddedBatchDatasetParams PaddedBatchDatasetParamsWithShortPaddingShape() {
 
 PaddedBatchDatasetParams PaddedBatchDatasetParamsWithInvalidPaddingShape() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -324,8 +324,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParamsWithInvalidPaddingShape() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{2}, {1, 2})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{2}, {1, 2})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -336,12 +336,12 @@ PaddedBatchDatasetParams PaddedBatchDatasetParamsWithInvalidPaddingShape() {
 
 PaddedBatchDatasetParams PaddedBatchDatasetParamsWithInvalidBatchSize() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -352,8 +352,8 @@ PaddedBatchDatasetParams PaddedBatchDatasetParamsWithInvalidBatchSize() {
   return PaddedBatchDatasetParams(
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/-1,
-      /*padded_shapes=*/{CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      /*padded_shapes=*/{CreateTensor<int64_t>(TensorShape{1}, {3})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -365,12 +365,12 @@ PaddedBatchDatasetParams PaddedBatchDatasetParamsWithInvalidBatchSize() {
 PaddedBatchDatasetParams
 PaddedBatchDatasetParamsWithInvalidPaddingShapesSize() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -382,9 +382,9 @@ PaddedBatchDatasetParamsWithInvalidPaddingShapesSize() {
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
       /*padded_shapes=*/
-      {CreateTensor<int64>(TensorShape{1}, {3}),
-       CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padded_values=*/{CreateTensor<int64>(TensorShape{}, {1})},
+      {CreateTensor<int64_t>(TensorShape{1}, {3}),
+       CreateTensor<int64_t>(TensorShape{1}, {3})},
+      /*padded_values=*/{CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -396,12 +396,12 @@ PaddedBatchDatasetParamsWithInvalidPaddingShapesSize() {
 PaddedBatchDatasetParams
 PaddedBatchDatasetParamsWithInvalidPaddingValuesSize() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -413,10 +413,10 @@ PaddedBatchDatasetParamsWithInvalidPaddingValuesSize() {
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
       /*padded_shapes=*/
-      {CreateTensor<int64>(TensorShape{1}, {3})},
+      {CreateTensor<int64_t>(TensorShape{1}, {3})},
       /*padded_values=*/
-      {CreateTensor<int64>(TensorShape{}, {1}),
-       CreateTensor<int64>(TensorShape{}, {1})},
+      {CreateTensor<int64_t>(TensorShape{}, {1}),
+       CreateTensor<int64_t>(TensorShape{}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -428,12 +428,12 @@ PaddedBatchDatasetParamsWithInvalidPaddingValuesSize() {
 PaddedBatchDatasetParams
 PaddedBatchDatasetParamsWithInvalidPaddingValuesDType() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -445,7 +445,7 @@ PaddedBatchDatasetParamsWithInvalidPaddingValuesDType() {
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
       /*padded_shapes=*/
-      {CreateTensor<int64>(TensorShape{1}, {3})},
+      {CreateTensor<int64_t>(TensorShape{1}, {3})},
       /*padded_values=*/
       {CreateTensor<tstring>(TensorShape{}, {"a"})},
       /*drop_remainder=*/false,
@@ -459,12 +459,12 @@ PaddedBatchDatasetParamsWithInvalidPaddingValuesDType() {
 PaddedBatchDatasetParams
 PaddedBatchDatasetParamsWithInvalidPaddingValuesShape() {
   auto tensor_slice_dataset_params_0 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{0, 1, 2, 3, 4, 5}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{0, 1, 2, 3, 4, 5}}),
       /*node_name=*/"tensor_slice_0");
   auto tensor_slice_dataset_params_1 = TensorSliceDatasetParams(
-      /*components=*/CreateTensors<int64>(TensorShape{3, 2},
-                                          {{6, 7, 8, 9, 10, 11}}),
+      /*components=*/CreateTensors<int64_t>(TensorShape{3, 2},
+                                            {{6, 7, 8, 9, 10, 11}}),
       /*node_name=*/"tensor_slice_1");
   auto concatenate_dataset_params =
       ConcatenateDatasetParams(std::move(tensor_slice_dataset_params_0),
@@ -476,9 +476,9 @@ PaddedBatchDatasetParamsWithInvalidPaddingValuesShape() {
       /*input_dataset_params=*/concatenate_dataset_params,
       /*batch_size=*/2,
       /*padded_shapes=*/
-      {CreateTensor<int64>(TensorShape{1}, {3})},
+      {CreateTensor<int64_t>(TensorShape{1}, {3})},
       /*padded_values=*/
-      {CreateTensor<int64>(TensorShape{1}, {1})},
+      {CreateTensor<int64_t>(TensorShape{1}, {1})},
       /*drop_remainder=*/false,
       /*parallel_copy=*/true,
       /*output_dtypes=*/{DT_INT64},
@@ -490,37 +490,37 @@ PaddedBatchDatasetParamsWithInvalidPaddingValuesShape() {
 std::vector<GetNextTestCase<PaddedBatchDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/PaddedBatchDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape{2, 3},
                {{0, 1, 1, 2, 3, 1}, {4, 5, 1, 6, 7, 1}, {8, 9, 1, 10, 11, 1}})},
           {/*dataset_params=*/PaddedBatchDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape{2, 3},
                {{0, 1, 1, 2, 3, 1}, {4, 5, 1, 6, 1, 1}, {7, 1, 1, 8, 1, 1}})},
           {/*dataset_params=*/PaddedBatchDatasetParams3(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
-            CreateTensor<int64>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
-            CreateTensor<int64>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1}),
-            CreateTensor<int64>(TensorShape{1, 3}, {9, 1, 1})}},
+           {CreateTensor<int64_t>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1}),
+            CreateTensor<int64_t>(TensorShape{1, 3}, {9, 1, 1})}},
           {/*dataset_params=*/PaddedBatchDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape{2, 3},
                {{0, 1, 1, 2, 3, 1}, {4, 5, 1, 6, 1, 1}, {7, 1, 1, 8, 1, 1}})},
           {/*dataset_params=*/PaddedBatchDatasetParams5(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
-            CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
-            CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
-            CreateTensor<int64>(TensorShape{1, 1}, {9})}},
+           {CreateTensor<int64_t>(TensorShape{2, 2}, {0, 1, 2, 3}),
+            CreateTensor<int64_t>(TensorShape{2, 2}, {4, 5, 6, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 1}, {7, 8}),
+            CreateTensor<int64_t>(TensorShape{1, 1}, {9})}},
           {/*dataset_params=*/PaddedBatchDatasetParams6(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
-            CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
-            CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
-            CreateTensor<int64>(TensorShape{1, 1}, {9})}},
+           {CreateTensor<int64_t>(TensorShape{2, 2}, {0, 1, 2, 3}),
+            CreateTensor<int64_t>(TensorShape{2, 2}, {4, 5, 6, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 1}, {7, 8}),
+            CreateTensor<int64_t>(TensorShape{1, 1}, {9})}},
           {/*dataset_params=*/PaddedBatchDatasetParams7(),
            /*expected_outputs=*/{}}};
 }
@@ -665,42 +665,42 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/PaddedBatchDatasetParams1(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape{2, 3},
                {{0, 1, 1, 2, 3, 1}, {4, 5, 1, 6, 7, 1}, {8, 9, 1, 10, 11, 1}})},
           {/*dataset_params=*/PaddedBatchDatasetParams2(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape{2, 3},
                {{0, 1, 1, 2, 3, 1}, {4, 5, 1, 6, 1, 1}, {7, 1, 1, 8, 1, 1}})},
           {/*dataset_params=*/PaddedBatchDatasetParams3(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
-            CreateTensor<int64>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
-            CreateTensor<int64>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1}),
-            CreateTensor<int64>(TensorShape{1, 3}, {9, 1, 1})}},
+           {CreateTensor<int64_t>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1}),
+            CreateTensor<int64_t>(TensorShape{1, 3}, {9, 1, 1})}},
           {/*dataset_params=*/PaddedBatchDatasetParams4(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape{2, 3},
                {{0, 1, 1, 2, 3, 1}, {4, 5, 1, 6, 1, 1}, {7, 1, 1, 8, 1, 1}})},
           {/*dataset_params=*/PaddedBatchDatasetParams5(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
-            CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
-            CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
-            CreateTensor<int64>(TensorShape{1, 1}, {9})}},
+           {CreateTensor<int64_t>(TensorShape{2, 2}, {0, 1, 2, 3}),
+            CreateTensor<int64_t>(TensorShape{2, 2}, {4, 5, 6, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 1}, {7, 8}),
+            CreateTensor<int64_t>(TensorShape{1, 1}, {9})}},
           {/*dataset_params=*/PaddedBatchDatasetParams6(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
-            CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
-            CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
-            CreateTensor<int64>(TensorShape{1, 1}, {9})}},
+           {CreateTensor<int64_t>(TensorShape{2, 2}, {0, 1, 2, 3}),
+            CreateTensor<int64_t>(TensorShape{2, 2}, {4, 5, 6, 1}),
+            CreateTensor<int64_t>(TensorShape{2, 1}, {7, 8}),
+            CreateTensor<int64_t>(TensorShape{1, 1}, {9})}},
           {/*dataset_params=*/PaddedBatchDatasetParams7(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/{}}};

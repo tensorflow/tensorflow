@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <numeric>
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "llvm/Support/MemoryBuffer.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -24,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/lib/io/path.h"
 
 namespace mlir {
@@ -36,7 +39,7 @@ static constexpr int kTextFileIndex_LineNumber = -1;
 // InitTextFileToImportPass converts InitializeTableFromTextFileV2Op to the
 // corresponding LookupTableImportV2Op if possible.
 class InitTextFileToImportPass
-    : public mlir::PassWrapper<InitTextFileToImportPass, FunctionPass> {
+    : public InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
   InitTextFileToImportPass() {}
   InitTextFileToImportPass(const InitTextFileToImportPass&) {}
@@ -45,14 +48,7 @@ class InitTextFileToImportPass
   }
 
  private:
-  void runOnFunction() override;
-
-  Option<std::string> saved_model_dir_{
-      *this, "tf-saved-model-dir",
-      llvm::cl::desc("Directory containing the model exported as a TensorFlow "
-                     "SavedModel. If your model is not based on the TensorFlow "
-                     "SavedModel, use an empty value."),
-      llvm::cl::init("")};
+  void runOnOperation() override;
 };
 
 class ConvertInitializeTableFromTextFileV2
@@ -119,14 +115,14 @@ class ConvertInitializeTableFromTextFileV2
     std::iota(line_nums.begin(), line_nums.end(), 0);
 
     // Create constant ops for keys an values.
-    Value key_constant_tensor = rewriter.create<ConstantOp>(
+    Value key_constant_tensor = rewriter.create<arith::ConstantOp>(
         op.getLoc(),
         DenseStringElementsAttr::get(
             RankedTensorType::get(static_cast<int64_t>(lines.size()),
                                   StringType::get(rewriter.getContext())),
             lines));
 
-    Value value_constant_tensor = rewriter.create<ConstantOp>(
+    Value value_constant_tensor = rewriter.create<arith::ConstantOp>(
         op.getLoc(), rewriter.getI64TensorAttr(line_nums));
 
     // Replace the given op with LookupTableImportV2Op.
@@ -141,12 +137,12 @@ class ConvertInitializeTableFromTextFileV2
   StringRef saved_model_dir_;
 };
 
-void InitTextFileToImportPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void InitTextFileToImportPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
 
-  patterns.insert<ConvertInitializeTableFromTextFileV2>(
+  patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
@@ -159,10 +155,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
 
-static PassRegistration<InitTextFileToImportPass> pass(
-    "tf-init-text-file-to-import",
-    "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op to "
-    "remove the dependency on asset files");
 
 }  // namespace TF
 }  // namespace mlir

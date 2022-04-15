@@ -14,12 +14,7 @@
 # ==============================================================================
 """Tests for 3D convolutions using the XLA JIT."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
@@ -100,11 +95,11 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
       #   kernel_depth * ceil(kernel_height/2) * kernel_width or
       #   kernel_depth * kernel_height * ceil(kernel_width/2)
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[3]):
-          for w in xrange(y_shape[3]):
-            for h in xrange(y_shape[2]):
-              for d in xrange(y_shape[1]):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[3]):
+          for w in range(y_shape[3]):
+            for h in range(y_shape[2]):
+              for d in range(y_shape[1]):
                 d_in = d > 0 and d < y_shape[1] - 1
                 h_in = h > 0 and h < y_shape[2] - 1
                 w_in = w > 0 and w < y_shape[3] - 1
@@ -137,11 +132,11 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
           x, f, y_shape, strides=strides, padding="SAME")
       value = self.evaluate(output)
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[3]):
-          for w in xrange(y_shape[3]):
-            for h in xrange(y_shape[2]):
-              for d in xrange(y_shape[1]):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[3]):
+          for w in range(y_shape[3]):
+            for h in range(y_shape[2]):
+              for d in range(y_shape[1]):
                 # We add a case for locations divisible by the stride.
                 d_in = d % strides[1] == 0 and 0 < d < y_shape[1] - 1
                 h_in = h % strides[2] == 0 and 0 < h < y_shape[2] - 1
@@ -180,11 +175,11 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
       # The amount of padding added
       pad = 1
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[3]):
-          for w in xrange(y_shape[3]):
-            for h in xrange(y_shape[2]):
-              for d in xrange(y_shape[1]):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[3]):
+          for w in range(y_shape[3]):
+            for h in range(y_shape[2]):
+              for d in range(y_shape[1]):
                 # We add a case for locations divisible by the stride.
                 d_in = d % strides[1] == 0 and pad < d < y_shape[1] - 1 - pad
                 h_in = h % strides[2] == 0 and pad < h < y_shape[2] - 1 - pad

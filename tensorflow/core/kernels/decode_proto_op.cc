@@ -72,7 +72,7 @@ struct DefaultValue {
     float v_float;         // DT_FLOAT
     int8 v_int8;           // DT_INT8
     int32 v_int32;         // DT_INT32
-    int64 v_int64;         // DT_INT64
+    int64_t v_int64;       // DT_INT64
     const char* v_string;  // DT_STRING
     uint8 v_uint8;         // DT_UINT8
     uint8 v_uint32;        // DT_UINT32
@@ -108,7 +108,7 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
       result->value.v_int32 = static_cast<int32>(value);
       break;
     case DT_INT64:
-      result->value.v_int64 = static_cast<int64>(value);
+      result->value.v_int64 = static_cast<int64_t>(value);
       break;
     case DT_UINT8:
       result->value.v_uint8 = static_cast<uint8>(value);
@@ -341,7 +341,7 @@ class CountCollector {
         st = CountPackedFixed<int32>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SFIXED64:
-        st = CountPackedFixed<int64>(buf, buf_size);
+        st = CountPackedFixed<int64_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SINT32:
         st = CountPackedVarint(buf, buf_size);
@@ -497,7 +497,7 @@ class DenseCollector {
     // Only for repeated fields do we advance the next_repeat_index_ past 1.
     // TODO(nix): to handle oneof we must also zero out any previous values
     //  seen on the wire.
-    int32 index = 0;
+    int32_t index = 0;
     if (field.is_repeated) {
       index = next_repeat_index_;
     }
@@ -553,7 +553,7 @@ class DenseCollector {
       case DataType::DT_INT32:
         return FillDefault<int32>(default_value_.value.v_int32);
       case DataType::DT_INT64:
-        return FillDefault<int64>(default_value_.value.v_int64);
+        return FillDefault<int64_t>(default_value_.value.v_int64);
       case DataType::DT_STRING:
         return FillDefault<tstring>(default_value_.value.v_string);
       case DataType::DT_UINT8:
@@ -789,7 +789,7 @@ class DecodeProtoOp : public OpKernel {
     //   the memory of the input tensor.
     std::vector<Tensor*> outputs(field_count);
     for (int fi = 0; fi < field_count; ++fi) {
-      TensorShape flat_shape = {static_cast<int64>(message_count),
+      TensorShape flat_shape = {static_cast<int64_t>(message_count),
                                 max_sizes[fi]};
       TensorShape out_shape = shape_prefix;
       out_shape.AddDim(max_sizes[fi]);
@@ -868,7 +868,7 @@ class DecodeProtoOp : public OpKernel {
     // Update the size tensor and max repeat size for each field.
     auto sizes = sizes_tensor->flat_inner_dims<int32>();
     for (int fi = 0; fi < field_count; fi++) {
-      int32 size = field_sizes[fi];
+      int32_t size = field_sizes[fi];
       sizes(message_index, fields_[fi]->output_index) = size;
       if ((*max_sizes)[fi] < size) {
         (*max_sizes)[fi] = size;
@@ -894,7 +894,7 @@ class DecodeProtoOp : public OpKernel {
           CHECK_GT(element_size, 0);
           stride = last_dim_size * element_size;
 
-          const int64 flatshape[1] = {tensor->NumElements() * element_size};
+          const int64_t flatshape[1] = {tensor->NumElements() * element_size};
           data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.

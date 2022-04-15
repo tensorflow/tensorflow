@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Cluster Resolvers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import framework
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver

@@ -128,17 +128,20 @@ FunctionDef ResourceIdentity();
 // x: resource -> y: float.
 FunctionDef ReadResourceVariable();
 
+// Contains simple control flow returning the input via an Enter op.
+FunctionDef ControlFlow();
+
 // Contains malformed control flow which can't be run by the executor.
 FunctionDef InvalidControlFlow();
 
 // x: T -> x <= N.
-FunctionDef LessThanOrEqualToN(int64 N);
+FunctionDef LessThanOrEqualToN(int64_t N);
 
 // x: T, y: T -> x + 1, x * y
 FunctionDef XPlusOneXTimesY();
 
 // x: T, y: T -> x <= N
-FunctionDef XYXLessThanOrEqualToN(int64 N);
+FunctionDef XYXLessThanOrEqualToN(int64_t N);
 
 // x: T -> bool
 FunctionDef RandomUniformLess();

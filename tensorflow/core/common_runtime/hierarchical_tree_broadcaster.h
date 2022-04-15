@@ -42,12 +42,6 @@ class HierarchicalTreeBroadcaster : public CollectiveImplementationInterface {
   Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) override;
 
-  // No-op for hierarchical tree broadcaster.
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails*) override {
-    return Status::OK();
-  }
-
   // Begins async execution of the hierarchical tree broadcast.
   // Must be called in a blockable thread.
   // TODO(b/80529858): remove the previous warning when we have a dedicated

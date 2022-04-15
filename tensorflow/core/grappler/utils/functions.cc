@@ -122,7 +122,7 @@ GraphDef& GrapplerFunctionItem::mutable_function_body() { return graph; }
 bool GrapplerFunctionItem::is_stateful() const { return is_stateful_; }
 
 GrapplerFunctionItem& GrapplerFunctionItem::SwapFunctionBody(GraphDef&& other) {
-  graph.Swap(&other);
+  graph = std::move(other);
   return *this;
 }
 

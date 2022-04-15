@@ -14,10 +14,6 @@
 # ==============================================================================
 """Switching v2 features on and off."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.experimental.ops import interleave_ops
@@ -50,6 +46,11 @@ def enable_v2_behavior():
 
   This function is called in the main TensorFlow `__init__.py` file, user should
   not need to call it, except during complex migrations.
+
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. V2 behavior is enabled by
+  default.
+  @end_compatibility
   """
   _v2_behavior_usage_gauge.get_cell("enable").set(True)
   # TF2 behavior is enabled if either 1) enable_v2_behavior() is called or
@@ -88,6 +89,16 @@ def disable_v2_behavior():
   TensorFlow 1.x and 2.x to behave as intended for 1.x.
 
   User can call this function to disable 2.x behavior during complex migrations.
+
+  @compatibility(TF2)
+  Using this function indicates that your software is not compatible
+  with eager execution and `tf.function` in TF2.
+
+  To migrate to TF2, rewrite your code to be compatible with eager execution.
+  Please refer to the [migration guide]
+  (https://www.tensorflow.org/guide/migrate) for additional resource on the
+  topic.
+  @end_compatibility
   """
   _v2_behavior_usage_gauge.get_cell("disable").set(True)
   tf2.disable()

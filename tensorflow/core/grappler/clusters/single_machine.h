@@ -57,7 +57,7 @@ class SingleMachine : public Cluster {
                         RunMetadata* run_metadata);
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
-                        RunMetadata* run_metadata, int64 timeout_s);
+                        RunMetadata* run_metadata, int64_t timeout_s);
   Status ResetSession();
   Status CloseSession(bool use_timeout);
   Status ShutdownSession();
@@ -72,7 +72,7 @@ class SingleMachine : public Cluster {
   mutex last_graph_mu_;
   const GraphDef* last_graph_ TF_GUARDED_BY(last_graph_mu_) = nullptr;
   std::vector<string> init_ops_;
-  int64 expected_init_time_s_;
+  int64_t expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::unique_ptr<DeviceSet> device_set_;

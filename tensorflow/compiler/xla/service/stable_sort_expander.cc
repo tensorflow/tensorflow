@@ -40,8 +40,8 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   HloComputation* computation = sort->parent();
 
   HloInstruction* expanded_sort = nullptr;
-  absl::flat_hash_set<int64> used_indices;
-  int64 iota_index = -1;
+  absl::flat_hash_set<int64_t> used_indices;
+  int64_t iota_index = -1;
   for (const HloInstruction* operand : sort->operands()) {
     // We can only use the iota operand if it has an iota dimension which is the
     // same as the dimension to sort. Also it should have an integral type that
@@ -67,7 +67,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     // TODO(b/122298745): Handle Sort ops where S32 is too small for the number
     // of elements in the sort dimension.
     if (iota_shape.dimensions(sort->sort_dimension()) >
-        std::numeric_limits<int32>::max()) {
+        std::numeric_limits<int32_t>::max()) {
       return Unimplemented(
           "Stable sorting of more than 2^31-1 elements is not implemented");
     }
@@ -112,7 +112,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     // sort.
     std::vector<HloInstruction*> tuple_elements;
     tuple_elements.reserve(sort->operand_count());
-    for (int64 i = 0; i < sort->operand_count(); ++i) {
+    for (int64_t i = 0; i < sort->operand_count(); ++i) {
       tuple_elements.push_back(
           computation->AddInstruction(HloInstruction::CreateGetTupleElement(
               sort->operand(i)->shape(), new_sort, i)));
@@ -155,7 +155,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   // should make sure that the cloned root instruction gives the result of the
   // comparison computation when being called with each scalar pair reversed.
   // parameters corresponding to the iota operand.
-  for (int64 i = 0; i < comparator->num_parameters(); ++i) {
+  for (int64_t i = 0; i < comparator->num_parameters(); ++i) {
     replacements[comparator->parameter_instruction(i)] =
         comparator->parameter_instruction(i ^ 1);
   }

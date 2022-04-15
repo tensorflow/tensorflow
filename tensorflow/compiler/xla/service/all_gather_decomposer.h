@@ -40,7 +40,6 @@ class AllGatherDecomposer : public HloModulePass {
 
  private:
   std::function<bool(const HloAllGatherInstruction&)> should_decompose_;
-  int64 partition_count_;
 };
 
 }  // namespace xla

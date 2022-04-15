@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for where op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
@@ -85,6 +81,44 @@ class WhereOpTest(xla_test.XLATestCase):
       feed = [True, False, True]
       self.assertAllEqual([[0], [2]], sess.run(result, {x: feed}))
 
+  def testWhereInt(self):
+    """Test Where with integers."""
+
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.int32)
+        result = array_ops.where(x)
+
+      # Output of the computation is dynamic.
+      feed = [-1, 0, 1]
+      self.assertAllEqual([[0], [2]], sess.run(result, {x: feed}))
+
+  def testWhereFloat(self):
+    """Test Where with floats."""
+
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.float32)
+        result = array_ops.where(x)
+
+      # Output of the computation is dynamic.
+      feed = [-1.0, -0.0, 0.0, 1.0]
+      self.assertAllEqual([[0], [3]], sess.run(result, {x: feed}))
+
+  def testWhereComplex(self):
+    """Test Where with floats."""
+
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.complex64)
+        result = array_ops.where(x)
+
+      # Output of the computation is dynamic.
+      feed = [
+          -1.0 + 0.0j, -0.0 + 0.0j, 0.0 - 0.0j, 1.0 - 1.0j, 1.0 + 0.0j,
+          0.0 + 1.0j
+      ]
+      self.assertAllEqual([[0], [3], [4], [5]], sess.run(result, {x: feed}))
 
 if __name__ == "__main__":
   test.main()

@@ -53,6 +53,7 @@ class RingReducer : public RingAlg {
   Notification group_size_tensor_ready_;
 
   friend class RingReducerTest;
+  friend class RingReducerInitParamsTest;
 };
 
 }  // namespace tensorflow

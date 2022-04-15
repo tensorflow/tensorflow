@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/python/lib/core/numpy.h"
 
 bool EagerTensor_CheckExact(const PyObject* o);
-tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor);
+int64_t PyEagerTensor_ID(const PyObject* tensor);
 tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
-tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor);
+int64_t PyEagerTensor_NumElements(PyObject* tensor);
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 namespace tensorflow {

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Various classes representing distributed values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import weakref
 
@@ -35,13 +31,15 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import distribute as ds_types
+from tensorflow.python.types import trace
 
 
 def _on_write_update_replica(var, update_fn, value, **kwargs):
@@ -61,17 +59,19 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
           "Either change the variable dtype to float or update it in "
           "cross-replica context.")
 
-    aggregated_value = apply_aggregation_replica_context(value, var.aggregation,
-                                                         var)
+    aggregated_value = apply_aggregation_replica_context(
+        value, var.aggregation, var)
     values_util.mark_as_unsaveable()
 
     return ds_context.get_replica_context()._update(  # pylint: disable=protected-access
         var,
         update_fn,
         args=(aggregated_value,),
-        kwargs=kwargs, group=True)
+        kwargs=kwargs,
+        group=True)
 
   else:
+
     def merge_fn(strategy, value, **kwargs):
       """Aggregate values and update all variables in cross replica context."""
       # Don't allow MEAN with non float dtype, since it may cause unexpected
@@ -101,8 +101,8 @@ def apply_aggregation_replica_context(value, aggregation, destinations):
   """Aggregate `value` to `destinations` as specified by `aggregation`."""
   # if it is a python literal, return without aggregation
   if isinstance(value, DistributedValues):
-    raise ValueError("Do not use a DistributedValues update variable in replica"
-                     " context.")
+    raise TypeError(
+        "Cannot use DistributedValues to update variables in replica context.")
   if not tensor_util.is_tf_type(value):
     return value
 
@@ -122,73 +122,8 @@ def apply_aggregation_replica_context(value, aggregation, destinations):
     return aggregated_value
 
 
-@tf_export("distribute.DistributedValues", v1=[])
-class DistributedValues(object):
-  """Base class for representing distributed values.
-
-  A subclass instance of `tf.distribute.DistributedValues` is created when
-  creating variables within a distribution strategy, iterating a
-  `tf.distribute.DistributedDataset` or through `tf.distribute.Strategy.run`.
-  This base class should never be instantiated directly.
-  `tf.distribute.DistributedValues` contains a value per replica. Depending on
-  the subclass, the values could either be synced on update, synced on demand,
-  or never synced.
-
-  `tf.distribute.DistributedValues` can be reduced to obtain single value across
-  replicas, as input into `tf.distribute.Strategy.run` or the per-replica values
-  inspected using `tf.distribute.Strategy.experimental_local_results`.
-
-  Example usage:
-
-  1. Created from a `tf.distribute.DistributedDataset`:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> distributed_values = next(dataset_iterator)
-
-  2. Returned by `run`:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> @tf.function
-  ... def run():
-  ...   ctx = tf.distribute.get_replica_context()
-  ...   return ctx.replica_id_in_sync_group
-  >>> distributed_values = strategy.run(run)
-
-  3. As input into `run`:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> distributed_values = next(dataset_iterator)
-  >>> @tf.function
-  ... def run(input):
-  ...   return input + 1.0
-  >>> updated_value = strategy.run(run, args=(distributed_values,))
-
-  4. Reduce value:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> distributed_values = next(dataset_iterator)
-  >>> reduced_value = strategy.reduce(tf.distribute.ReduceOp.SUM,
-  ...                                 distributed_values,
-  ...                                 axis = 0)
-
-  5. Inspect local replica values:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> per_replica_values = strategy.experimental_local_results(
-  ...    distributed_values)
-  >>> per_replica_values
-  (<tf.Tensor: shape=(1,), dtype=float32, numpy=array([5.], dtype=float32)>,
-   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>)
-
-  """
+class DistributedValues(ds_types.DistributedValues):
+  """Base class for representing distributed values."""
 
   def __init__(self, values):
     """Should only be called by subclass __init__."""
@@ -204,8 +139,8 @@ class DistributedValues(object):
 
   def _get_cross_replica(self):
     raise NotImplementedError(
-        "This method should be overridden by sub-classes which support cross-"
-        "replica accesses.")
+        "DistributedValues._get_cross_replica should be implemented by "
+        "sub-classes which support cross-replica accesses.")
 
   def _get_on_device_or_primary(self):
     """Returns value in same replica or device if possible, else the _primary."""
@@ -408,7 +343,8 @@ class DistributedDelegate(DistributedValues):
   # TODO(josh11b): Even more operator overloads.
 
 
-class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
+class PerReplica(DistributedValues, composite_tensor.CompositeTensor,
+                 ds_types.PerReplica):
   """Holds a map from replica to unsynchronized values."""
 
   @property
@@ -420,6 +356,30 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
   def values(self):
     """Returns the per replica values."""
     return self._values
+
+
+def _per_replica_to_tensor(var, dtype=None, name=None, as_ref=False):
+  """Converts a `PerReplica` to a `Tensor`."""
+  del name
+  if dtype is not None and not dtype.is_compatible_with(var.dtype):
+    raise ValueError(
+        "Incompatible type conversion requested to type {!r} for variable "
+        "of type {!r}".format(dtype.name, var.dtype.name))
+  if as_ref:
+    raise NotImplementedError(
+        "PerReplica doesn't support being used as a reference.")
+  if ds_context.in_cross_replica_context() or not ds_context.has_strategy():
+    raise ValueError("It looks like you are using a PerReplica object while "
+                     "not inside a replica context, which is not supported. "
+                     "Try running your op or function inside a replica context "
+                     "by using `strategy.run`")
+  else:
+    replica_id = values_util.get_current_replica_id_as_int()
+    return var.values[replica_id]
+
+# Register a conversion function to provide a useful error message when users
+# try to use PerReplica values in the wrong contexts
+ops.register_tensor_conversion_function(PerReplica, _per_replica_to_tensor)
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
@@ -454,7 +414,7 @@ class PerReplicaSpec(type_spec.TypeSpec):
 # Note that unlike PerReplica, Mirrored values inherit from
 # DistributedDelegate and so can be used directly in cross-replica mode.
 # TODO(tomhennigan) Should this extend CompositeTensor?
-class Mirrored(DistributedDelegate):
+class Mirrored(DistributedDelegate, ds_types.Mirrored):
   """Holds a map from replica to values which are kept in sync."""
 
   def _get_cross_replica(self):
@@ -485,6 +445,34 @@ class DistributedVarOp(object):
 
   def __hash__(self):
     return hash((self.name, self.graph, tuple(self.traceback), self.type))
+
+
+# TODO(b/209081027): Remove this once Variable is a CompositeTensor.
+class DistributedVariableTraceType(trace.TraceType):
+  """TraceType of DistributedVariable objects."""
+
+  def __init__(self, distributed_variable):
+    self.distributed_variable = distributed_variable
+    self.components = (tuple(distributed_variable.shape.as_list()),
+                       distributed_variable.dtype)
+
+  def is_subtype_of(self, other):
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    return self if all(self == other for other in others) else None
+
+  def _placeholder_value(self):
+    return self.distributed_variable
+
+  def __hash__(self) -> int:
+    return hash(self.components)
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, DistributedVariableTraceType):
+      return False
+
+    return self.components == other.components
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable,
@@ -670,8 +658,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return self._primary.handle
     replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
-      raise ValueError("`handle` is not available outside the replica context"
-                       " or a `tf.distribute.Strategy.update()` call.")
+      raise ValueError(
+          "DistributedVariable.handle is not available outside the replica "
+          "context or a `tf.distribute.Strategy.update()` call.")
     else:
       if self._use_packed_variable():
         return self._packed_var.handle
@@ -773,8 +762,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     if context.executing_eagerly():
       return self.read_value().numpy()
     else:
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
+      raise NotImplementedError("DistributedVariable.numpy() is only available "
+                                "when eager execution is enabled.")
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():
@@ -878,6 +867,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     return values_util.scatter_update(
         self, sparse_delta, use_locking=use_locking, name=name)
 
+  def __tf_tracing_type__(self, _):
+    return DistributedVariableTraceType(self)
+
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.
 
@@ -899,7 +891,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     if self._policy:
       return self._policy._as_graph_element(self)  # pylint: disable=protected-access
 
-    raise NotImplementedError("No policy set for calling _as_graph_element.")
+    raise NotImplementedError(
+        "DistributedVariable._as_graph_element requires a valid "
+        "VariablePolicy. Please set the policy via the `var_policy` argument "
+        "in the constructor, or override this method in sub-classes which "
+        "support cross-replica accesses.")
 
   def _get_cross_replica(self):
     if values_util.is_saving_non_distributed():
@@ -908,8 +904,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return self._policy._get_cross_replica(self)  # pylint: disable=protected-access
 
     raise NotImplementedError(
-        "This method should be overridden by sub-classes which support cross-"
-        "replica accesses.")
+        "DistributedVariable._get_cross_replica requires a valid "
+        "VariablePolicy. Please set the policy via the `var_policy` argument "
+        "in the constructor, or override this method in sub-classes which "
+        "support cross-replica accesses.")
 
   def _update_cross_replica(self, update_fn, value, **kwargs):
     """Applies updates across replicas.
@@ -941,7 +939,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     """
     if self._policy:
       return self._policy._update_replica(self, update_fn, value, **kwargs)  # pylint: disable=protected-access
-    raise NotImplementedError("should be implemented by subclass.")
+    raise NotImplementedError(
+        "DistributedVariable._update_replica requires a valid VariablePolicy. "
+        "Please set the policy via the `var_policy` argument in the "
+        "constructor, or override this method in sub-classes which support "
+        "cross-replica accesses.")
 
   def _update(self, update_fn, value, **kwargs):
     """Applies updates depending on the context.
@@ -1029,11 +1031,20 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
+    resource_variable_ops.write_object_proto_for_resource_variable(
+        self, proto, options)
     if self._policy:
       if self._policy._is_mirrored():  # pylint: disable=protected-access
         self._policy._write_object_proto(self, proto, options)  # pylint: disable=protected-access
-    else:
-      self._write_object_proto(proto, options)
+
+  @property
+  def is_distributed_variable(self):
+    return True
+
+  def __tf_experimental_restore_capture__(
+      self, concrete_function, internal_capture):
+    concrete_function.graph.capture_distributed_variable(self, internal_capture)
+    return self
 
 
 # We extend from `saveable_object.SaveableObject` instead of
@@ -1049,8 +1060,11 @@ class _DistributedVariableSaveable(saveable_object.SaveableObject):
   def __init__(self, distributed_variable, primary_variable, name):
     self._distributed_variable = distributed_variable
     if not self._distributed_variable._policy:
-      raise ValueError("VariablePolicy has not been set for the distributed "
-                       "variable.")
+      raise ValueError(
+          "The VariablePolicy of the argument `distributed_variable` must be "
+          "set to create a _DistributedVariableSaveable. Please set it via "
+          "the `var_policy` argument in the constructor of DistributedVariable."
+      )
     tensor, spec = distributed_variable._policy.get_saveable(
         distributed_variable, primary_variable, name)
     super(_DistributedVariableSaveable, self).__init__(tensor, spec, name)
@@ -1068,15 +1082,13 @@ class _MirroredSaveable(saveable_object.SaveableObject):
   def __init__(self, mirrored_variable, primary_variable, name):
     self._mirrored_variable = mirrored_variable
     tensor, spec = values_util.get_on_write_saveable(self._mirrored_variable,
-                                                     primary_variable,
-                                                     name)
+                                                     primary_variable, name)
     super(_MirroredSaveable, self).__init__(tensor, spec, name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    return values_util.get_on_write_restore_ops(self._mirrored_variable,
-                                                tensor)
+    return values_util.get_on_write_restore_ops(self._mirrored_variable, tensor)
 
 
 class MirroredVariable(DistributedVariable, Mirrored):
@@ -1090,8 +1102,9 @@ class MirroredVariable(DistributedVariable, Mirrored):
       return self._primary.scatter_min(*args, **kwargs)
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
-      raise NotImplementedError(values_util.scatter_error_msg.format(
-          op_name="scatter_min", aggregation=self._aggregation))
+      raise NotImplementedError(
+          values_util.scatter_error_msg.format(
+              op_name="scatter_min", aggregation=self._aggregation))
     return super(MirroredVariable, self).scatter_min(*args, **kwargs)
 
   def scatter_max(self, *args, **kwargs):
@@ -1099,8 +1112,9 @@ class MirroredVariable(DistributedVariable, Mirrored):
       return self._primary.scatter_max(*args, **kwargs)
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
-      raise NotImplementedError(values_util.scatter_error_msg.format(
-          op_name="scatter_max", aggregation=self._aggregation))
+      raise NotImplementedError(
+          values_util.scatter_error_msg.format(
+              op_name="scatter_max", aggregation=self._aggregation))
     return super(MirroredVariable, self).scatter_max(*args, **kwargs)
 
   def scatter_update(self, *args, **kwargs):
@@ -1108,8 +1122,9 @@ class MirroredVariable(DistributedVariable, Mirrored):
       return self._primary.scatter_update(*args, **kwargs)
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
-      raise NotImplementedError(values_util.scatter_error_msg.format(
-          op_name="scatter_update", aggregation=self._aggregation))
+      raise NotImplementedError(
+          values_util.scatter_error_msg.format(
+              op_name="scatter_update", aggregation=self._aggregation))
     return super(MirroredVariable, self).scatter_update(*args, **kwargs)
 
   def _get_cross_replica(self):
@@ -1153,6 +1168,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
+    super(MirroredVariable, self)._write_object_proto(proto, options)
     values_util.write_object_proto(self, proto, options)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
@@ -1197,6 +1213,17 @@ class SyncOnReadVariable(DistributedVariable):
   def _update_replica(self, update_fn, value, **kwargs):
     return update_fn(self._get_on_device_or_primary(), value, **kwargs)
 
+  def _get(self):
+    """Returns the value of SyncOnReadVariable based on surrounding context.
+
+    If called under a non-default replica-context, returns the corresponding
+    variable on that replica.
+    If called under default replica-context or cross-replica context, returns
+    the synced value.
+    """
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      return super(SyncOnReadVariable, self)._get()
+
   # TODO(b/154017756): Make assign behaivor in cross replica context consistent
   # with MirroredVariable.
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
@@ -1235,13 +1262,12 @@ class SyncOnReadVariable(DistributedVariable):
         return values_util.on_read_assign_cross_replica(
             self, value, read_value=read_value)
       else:
-        return super(SyncOnReadVariable,
-                     self).assign(value, use_locking, name, read_value)
+        return super(SyncOnReadVariable, self).assign(value, use_locking, name,
+                                                      read_value)
 
   def _scatter_not_implemented(self, method):
     raise NotImplementedError(
-        "Variables with `synchronization=ON_READ` doesn't support `%s`" %
-        method)
+        f"Variables with `synchronization=ON_READ` doesn't support `{method}`")
 
   def scatter_sub(self, *args, **kwargs):
     if values_util.is_saving_non_distributed():
@@ -1279,6 +1305,10 @@ class SyncOnReadVariable(DistributedVariable):
     self._scatter_not_implemented("scatter_update")
 
   def value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.value()` inside variable_sync_on_read_context is not "
+          "supported")
     if values_util.is_saving_non_distributed():
       return self._primary.value()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -1290,6 +1320,13 @@ class SyncOnReadVariable(DistributedVariable):
       else:
         # _get_on_device_or_primary() returns a Variable.
         return self._get_on_device_or_primary().value()
+
+  def read_value(self):
+    if ds_context.in_variable_sync_on_read_context():
+      raise NotImplementedError(
+          "call `variable.read_value()` inside variable_sync_on_read_context is"
+          " not supported")
+    return super().read_value()
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -1328,31 +1365,39 @@ class SyncOnReadVariable(DistributedVariable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _write_object_proto(self, proto, options):
-    """Update a SavedObject proto for the caller.
+  def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
+    """Converts a SyncOnReadVariable to a tensor."""
+    if values_util.is_saving_non_distributed():
+      return ops.convert_to_tensor(
+          self._primary, dtype=dtype, name=name, as_ref=as_ref)
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      replica_context = ds_context.get_replica_context()
+      if (replica_context is not None and
+          ds_context.in_variable_sync_on_read_context()):
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return ops.convert_to_tensor(
+              self._get_replica(0), dtype=dtype, name=name, as_ref=as_ref)
+        if self._aggregation == vs.VariableAggregation.SUM:
+          values_util.mark_as_unsaveable()
+        # pylint: disable=protected-access
+        reduced = (
+            replica_context.strategy.extended._replica_ctx_all_reduce(
+                reduce_util.ReduceOp.from_variable_aggregation(
+                    self._aggregation),
+                self._get().read_value()))
+        return ops.convert_to_tensor(
+            reduced, dtype=dtype, name=name, as_ref=as_ref)
 
-    If a DistributedVariable object supports this method, it will be called when
-    saving with a pre-built `SavedObject` proto representing the object, plus an
-    instance of `SaveOptions`. This method is then free to modify that proto
-    instance.
-
-    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
-    write out information about their components to the
-    `experimental_distributed_variable_components` field of a
-    `SavedVariable` (depending on the `SaveOptions` variable policy).
-
-    Args:
-      proto: A pre-built `SavedObject` proto for this object. It is assumed this
-        will be a `SavedVariable` instance.
-      options: A `SaveOptions` instance.
-    """
-    pass
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion functions which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 # DistributedVariable
-def _tensor_conversion_distributed_var(var, dtype=None, name=None,
+def _tensor_conversion_distributed_var(var,
+                                       dtype=None,
+                                       name=None,
                                        as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
@@ -1403,23 +1448,23 @@ class VariablePolicy(object):
 
   def value(self):
     raise NotImplementedError(
-        "This method should be overridden by sub-classes.")
+        "VariablePolicy.value should be overriden by sub-classes.")
 
   def _is_mirrored(self):
     raise NotImplementedError(
-        "This method should be overridden by sub-classes.")
+        "VariablePolicy._is_mirrored should be overriden by sub-classes.")
 
   def _as_graph_element(self, _):
     raise NotImplementedError(
-        "This method should be overridden by sub-classes.")
+        "VariablePolicy._as_graph_element should be overriden by sub-classes.")
 
   def _get_cross_replica(self, var):
     raise NotImplementedError(
-        "This method should be overridden by sub-classes.")
+        "VariablePolicy._get_cross_replica should be overriden by sub-classes.")
 
   def _update_replica(self, var, update_fn, value, **kwargs):
     raise NotImplementedError(
-        "This method should be overridden by sub-classes.")
+        "VariablePolicy._update_replica should be overriden by sub-classes.")
 
 
 class OnReadPolicy(VariablePolicy):
@@ -1448,8 +1493,8 @@ class OnReadPolicy(VariablePolicy):
   def _as_graph_element(self, var):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if ds_context.in_cross_replica_context():
-        return ops.convert_to_tensor(var._get_cross_replica())   # pylint: disable=protected-access
-    return var._get()._as_graph_element()   # pylint: disable=protected-access
+        return ops.convert_to_tensor(var._get_cross_replica())  # pylint: disable=protected-access
+    return var._get()._as_graph_element()  # pylint: disable=protected-access
 
   def _get_cross_replica(self, var):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -1466,11 +1511,14 @@ class OnReadPolicy(VariablePolicy):
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
 
   def _scatter_not_implemented(self, method):
-    raise NotImplementedError(
-        "ON_READ variables doesn't support `%s` in cross replica context" %
-        method)
+    raise NotImplementedError(f"ON_READ variables doesn't support `{method}` "
+                              "in cross replica context")
 
-  def assign_sub(self, var, value, use_locking=False, name=None,
+  def assign_sub(self,
+                 var,
+                 value,
+                 use_locking=False,
+                 name=None,
                  read_value=True):
     """Subtracts a value from this variable."""
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
@@ -1481,10 +1529,17 @@ class OnReadPolicy(VariablePolicy):
             var, value, read_value=read_value)
       else:
         return values_util.on_write_assign_sub(
-            var, value, use_locking=use_locking, name=name,
+            var,
+            value,
+            use_locking=use_locking,
+            name=name,
             read_value=read_value)
 
-  def assign_add(self, var, value, use_locking=False, name=None,
+  def assign_add(self,
+                 var,
+                 value,
+                 use_locking=False,
+                 name=None,
                  read_value=True):
     """Adds a value to this variable."""
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
@@ -1495,7 +1550,10 @@ class OnReadPolicy(VariablePolicy):
             var, value, read_value=read_value)
       else:
         return values_util.on_write_assign_add(
-            var, value, use_locking=use_locking, name=name,
+            var,
+            value,
+            use_locking=use_locking,
+            name=name,
             read_value=read_value)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
@@ -1503,13 +1561,15 @@ class OnReadPolicy(VariablePolicy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
         values_util.mark_as_unsaveable()
-        return values_util.on_read_assign_cross_replica(var, value,
-                                                        read_value=read_value)
+        return values_util.on_read_assign_cross_replica(
+            var, value, read_value=read_value)
       else:
-        return values_util.on_write_assign(var, value,
-                                           use_locking=use_locking,
-                                           name=name,
-                                           read_value=read_value)
+        return values_util.on_write_assign(
+            var,
+            value,
+            use_locking=use_locking,
+            name=name,
+            read_value=read_value)
 
   def scatter_sub(self, *args, **kwargs):
     del args, kwargs
@@ -1577,59 +1637,69 @@ class OnWritePolicy(VariablePolicy):
     return _on_write_update_replica(var, update_fn, value, **kwargs)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
-    return values_util.on_write_assign(var, value, use_locking=use_locking,
-                                       name=name, read_value=read_value)
+    return values_util.on_write_assign(
+        var, value, use_locking=use_locking, name=name, read_value=read_value)
 
-  def assign_add(self, var, value, use_locking=False, name=None,
+  def assign_add(self,
+                 var,
+                 value,
+                 use_locking=False,
+                 name=None,
                  read_value=True):
-    return values_util.on_write_assign_add(var, value, use_locking=use_locking,
-                                           name=name, read_value=read_value)
+    return values_util.on_write_assign_add(
+        var, value, use_locking=use_locking, name=name, read_value=read_value)
 
-  def assign_sub(self, var, value, use_locking=False, name=None,
+  def assign_sub(self,
+                 var,
+                 value,
+                 use_locking=False,
+                 name=None,
                  read_value=True):
-    return values_util.on_write_assign_sub(var, value, use_locking=use_locking,
-                                           name=name, read_value=read_value)
+    return values_util.on_write_assign_sub(
+        var, value, use_locking=use_locking, name=name, read_value=read_value)
 
   def scatter_sub(self, var, sparse_delta, use_locking=False, name=None):
-    return values_util.scatter_sub(var, sparse_delta, use_locking=use_locking,
-                                   name=name)
+    return values_util.scatter_sub(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_add(self, var, sparse_delta, use_locking=False, name=None):
-    return values_util.scatter_add(var, sparse_delta, use_locking=use_locking,
-                                   name=name)
+    return values_util.scatter_add(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_mul(self, var, sparse_delta, use_locking=False, name=None):
-    return values_util.scatter_mul(var, sparse_delta, use_locking=use_locking,
-                                   name=name)
+    return values_util.scatter_mul(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_div(self, var, sparse_delta, use_locking=False, name=None):
-    return values_util.scatter_div(var, sparse_delta, use_locking=use_locking,
-                                   name=name)
+    return values_util.scatter_div(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_min(self, var, sparse_delta, use_locking=False, name=None):
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
-      raise NotImplementedError(values_util.scatter_error_msg.format(
-          op_name="scatter_min", aggregation=self._aggregation))
-    return values_util.scatter_min(var, sparse_delta, use_locking=use_locking,
-                                   name=name)
+      raise NotImplementedError(
+          values_util.scatter_error_msg.format(
+              op_name="scatter_min", aggregation=self._aggregation))
+    return values_util.scatter_min(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_max(self, var, sparse_delta, use_locking=False, name=None):
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
-      raise NotImplementedError(values_util.scatter_error_msg.format(
-          op_name="scatter_max", aggregation=self._aggregation))
-    return values_util.scatter_max(var, sparse_delta, use_locking=use_locking,
-                                   name=name)
+      raise NotImplementedError(
+          values_util.scatter_error_msg.format(
+              op_name="scatter_max", aggregation=self._aggregation))
+    return values_util.scatter_max(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def scatter_update(self, var, sparse_delta, use_locking=False, name=None):
     if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
         self._aggregation != vs.VariableAggregation.NONE):
-      raise NotImplementedError(values_util.scatter_error_msg.format(
-          op_name="scatter_update", aggregation=self._aggregation))
-    return values_util.scatter_update(var, sparse_delta,
-                                      use_locking=use_locking,
-                                      name=name)
+      raise NotImplementedError(
+          values_util.scatter_error_msg.format(
+              op_name="scatter_update", aggregation=self._aggregation))
+    return values_util.scatter_update(
+        var, sparse_delta, use_locking=use_locking, name=name)
 
   def get_saveable(self, var, primary_var, name):
     """Saveable ops for AUTO variables."""
@@ -1658,3 +1728,31 @@ class OnWritePolicy(VariablePolicy):
       options: A `SaveOptions` instance.
     """
     values_util.write_object_proto(var, proto, options)
+
+
+class PerWorkerResource():
+  """A per-worker CapturableResource class for non-ParameterServer strategy.
+
+  Resources that populate `host_to_resources` should be instances of classes
+  subclassing CapturableResource, although currently it's only used and tested
+  for StaticHashTable with TPUStrategy.
+  """
+
+  def __init__(self, strategy, host_to_resources):
+    self._strategy = strategy
+    self._host_to_resources = host_to_resources
+
+  def __getattribute__(self, name):
+    if name not in ("__init__", "__getattribute__", "_host_to_resources",
+                    "_strategy", "local_resource"):
+      return getattr(self.local_resource(), name)
+    return super(PerWorkerResource, self).__getattribute__(name)
+
+  def local_resource(self):
+    """Returns the resource on the local worker."""
+    current_device = device_util.canonicalize(device_util.current())
+    host_device = device_util.canonicalize(
+        device_util.get_host_for_device(current_device))
+    return self._host_to_resources.get(
+        host_device,
+        self._host_to_resources[next(iter(self._host_to_resources))])

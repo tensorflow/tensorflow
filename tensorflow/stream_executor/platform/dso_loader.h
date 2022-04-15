@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/platform.h"
 
 // Include appropriate platform-dependent implementations
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
 #include "tensorflow/stream_executor/platform/google/dso_loader.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)

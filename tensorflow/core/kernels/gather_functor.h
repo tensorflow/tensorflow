@@ -57,7 +57,7 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
   // Store the value of invalidate index for printing error information, it's a
   // shared variable.
   SliceIndex result = -1;
-  auto work = [&](int64 start, int64 end) {
+  auto work = [&](int64_t start, int64_t end) {
     SliceIndex batch_idx = static_cast<SliceIndex>(start / indices_size);
     SliceIndex indices_idx = static_cast<SliceIndex>(start % indices_size);
     SliceIndex batch_idx_end = static_cast<SliceIndex>(end / indices_size);
@@ -67,6 +67,12 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
            (batch_idx == batch_idx_end && indices_idx < indices_idx_end)) {
       SliceIndex i_next = indices_idx + 1;
       SliceIndex b_next = batch_idx + 1;
+      const Index index = internal::SubtleMustCopy(indices(indices_idx));
+      if (!FastBoundsCheck(index, limit)) {
+        mutex_lock l(mu);
+        result = indices_idx;
+        return;
+      }
       if ((batch_idx == batch_idx_end && i_next < indices_idx_end) ||
           (i_next < indices_size)) {
         port::prefetch<port::PREFETCH_HINT_T0>(
@@ -77,12 +83,6 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
         port::prefetch<port::PREFETCH_HINT_T0>(&params(b_next, indices(0), 0));
         port::prefetch<port::PREFETCH_HINT_T0>(&out(b_next, 0, 0));
         i_next = 0;
-      }
-      const Index index = internal::SubtleMustCopy(indices(indices_idx));
-      if (!FastBoundsCheck(index, limit)) {
-        mutex_lock l(mu);
-        result = indices_idx;
-        return;
       }
       // Copy using memcpy if possible, otherwise an Eigen loop
       // TODO(cwhipkey): avoid linking to framework to get Allocator (to improve
@@ -112,31 +112,31 @@ SliceIndex HandleCopies(OpKernelContext* ctx,
 
 template <typename T, typename Index>
 struct GatherFunctorCPU {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 3>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 3>::Tensor out) {
-    const int64 indices_size = indices.size();
-    const int64 slice_size = out.dimension(2);
-    int64 bad_i;
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 3>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 3>::Tensor out) {
+    const int64_t indices_size = indices.size();
+    const int64_t slice_size = out.dimension(2);
+    int64_t bad_i;
 
-    const int64 batch_size = params.dimension(0);
+    const int64_t batch_size = params.dimension(0);
 
     bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
                       params.size() > std::numeric_limits<int32>::max() ||
                       indices_size > std::numeric_limits<int32>::max() ||
                       batch_size * indices_size * slice_size >
                           std::numeric_limits<int32>::max());
-#define CALL(elems)                                                      \
-  do {                                                                   \
-    if (use_large) {                                                     \
-      bad_i = HandleCopies<T, Index, int64, elems>(ctx, params, indices, \
-                                                   slice_size, out);     \
-    } else {                                                             \
-      const int32 small_slice = static_cast<int32>(slice_size);          \
-      bad_i = HandleCopies<T, Index, int32, elems>(ctx, params, indices, \
-                                                   small_slice, out);    \
-    }                                                                    \
+#define CALL(elems)                                                        \
+  do {                                                                     \
+    if (use_large) {                                                       \
+      bad_i = HandleCopies<T, Index, int64_t, elems>(ctx, params, indices, \
+                                                     slice_size, out);     \
+    } else {                                                               \
+      const int32 small_slice = static_cast<int32>(slice_size);            \
+      bad_i = HandleCopies<T, Index, int32, elems>(ctx, params, indices,   \
+                                                   small_slice, out);      \
+    }                                                                      \
   } while (0)
 
     if (slice_size == 10)
@@ -153,28 +153,28 @@ struct GatherFunctorCPU {
 
 template <typename Device, typename T, typename Index>
 struct GatherFunctor {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 3>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 3>::Tensor out);
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 3>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 3>::Tensor out);
 };
 
 template <typename T, typename Index>
 struct GatherFunctor<CPUDevice, T, Index> {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 3>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 3>::Tensor out) {
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 3>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 3>::Tensor out) {
     return GatherFunctorCPU<T, Index>()(ctx, params, indices, out);
   }
 };
 
 template <typename Index>
 struct GatherFunctor<GPUDevice, Variant, Index> {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<Variant, 3>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<Variant, 3>::Tensor out) {
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<Variant, 3>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<Variant, 3>::Tensor out) {
     return GatherFunctorCPU<Variant, Index>()(ctx, params, indices, out);
   }
 };

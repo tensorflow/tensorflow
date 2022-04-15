@@ -102,6 +102,13 @@ void TF_SetXlaAutoJitMode(const char* mode) {
   tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
 }
 
+unsigned char TF_GetXlaAutoJitEnabled() {
+  tensorflow::XlaAutoJitFlag flag =
+      tensorflow::GetMarkForCompilationPassFlags()->xla_auto_jit_flag;
+  return static_cast<unsigned char>(flag.optimization_level_single_gpu > 0 ||
+                                    flag.optimization_level_general > 0);
+}
+
 unsigned char TF_GetXlaConstantFoldingDisabled() {
   return static_cast<unsigned char>(
       tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding);
@@ -508,9 +515,7 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
-  status->status =
-      tensorflow::unwrap(ctx)->GetDistributedManager()->EnableCollectiveOps(
-          server_def);
+  status->status = tensorflow::unwrap(ctx)->EnableCollectiveOps(server_def);
 }
 
 TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,

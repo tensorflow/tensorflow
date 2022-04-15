@@ -14,10 +14,6 @@
 # ==============================================================================
 """Handles control flow statements: while, for, if."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.core import converter

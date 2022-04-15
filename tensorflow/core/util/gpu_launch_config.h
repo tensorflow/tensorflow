@@ -276,21 +276,25 @@ Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
   }
 
   int dev;
+  int xthreadlimit = 0, ythreadlimit = 0, zthreadlimit = 0;
+  int xgridlimit = 0, ygridlimit = 0, zgridlimit = 0;
 #if GOOGLE_CUDA
   cudaGetDevice(&dev);
-  cudaDeviceProp deviceProp;
-  cudaGetDeviceProperties(&deviceProp, dev);
+  cudaDeviceGetAttribute(&xthreadlimit, cudaDevAttrMaxBlockDimX, dev);
+  cudaDeviceGetAttribute(&ythreadlimit, cudaDevAttrMaxBlockDimY, dev);
+  cudaDeviceGetAttribute(&zthreadlimit, cudaDevAttrMaxBlockDimZ, dev);
+  cudaDeviceGetAttribute(&xgridlimit, cudaDevAttrMaxGridDimX, dev);
+  cudaDeviceGetAttribute(&ygridlimit, cudaDevAttrMaxGridDimY, dev);
+  cudaDeviceGetAttribute(&zgridlimit, cudaDevAttrMaxGridDimZ, dev);
 #elif TENSORFLOW_USE_ROCM
   hipGetDevice(&dev);
-  hipDeviceProp_t deviceProp;
-  hipGetDeviceProperties(&deviceProp, dev);
+  hipDeviceGetAttribute(&xthreadlimit, hipDeviceAttributeMaxBlockDimX, dev);
+  hipDeviceGetAttribute(&ythreadlimit, hipDeviceAttributeMaxBlockDimY, dev);
+  hipDeviceGetAttribute(&zthreadlimit, hipDeviceAttributeMaxBlockDimZ, dev);
+  hipDeviceGetAttribute(&xgridlimit, hipDeviceAttributeMaxGridDimX, dev);
+  hipDeviceGetAttribute(&ygridlimit, hipDeviceAttributeMaxGridDimY, dev);
+  hipDeviceGetAttribute(&zgridlimit, hipDeviceAttributeMaxGridDimZ, dev);
 #endif
-  int xthreadlimit = deviceProp.maxThreadsDim[0];
-  int ythreadlimit = deviceProp.maxThreadsDim[1];
-  int zthreadlimit = deviceProp.maxThreadsDim[2];
-  int xgridlimit = deviceProp.maxGridSize[0];
-  int ygridlimit = deviceProp.maxGridSize[1];
-  int zgridlimit = deviceProp.maxGridSize[2];
 
   int block_count = 0;
   int thread_per_block = 0;

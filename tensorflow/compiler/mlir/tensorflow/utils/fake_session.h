@@ -67,8 +67,10 @@ class FakeSession : public tensorflow::Session {
  private:
   void InitVariables();
   void BuildDeviceManager();
+  void Initialize();
 
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr_;
+  bool initialized_ = false;
 };
 
 }  // namespace test_util

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 
+#include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 namespace mlir {
@@ -30,22 +32,27 @@ void createTFLtoTOSALegalizationPipeline(
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
 
+  // Add pass to decompose TFLite mixed quantization to non-quantized variants.
+  pm.addPass(TFL::CreateDecomposeHybridQuantizationPass());
+
   // Now that there is only one function, run some MLIR passes on it.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
   pm.addPass(mlir::createLoopFusionPass());
-  pm.addPass(mlir::createMemRefDataFlowOptPass());
+  pm.addPass(mlir::createAffineScalarReplacementPass());
 
   //----------------------------------------------------------------------------
   // Perform main conversion.
   //----------------------------------------------------------------------------
   pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
-  pm.addPass(mlir::tosa::createLegalizeTFLPass());
+  pm.addPass(mlir::tosa::createLegalizeTFLPass(opts.disabled_patterns,
+                                               opts.enabled_patterns));
 
   //----------------------------------------------------------------------------
   // Post conversion cleanup.
   //----------------------------------------------------------------------------
+  pm.addPass(mlir::tosa::createTosaInferShapesPass());
   pm.addPass(mlir::tosa::createTosaMakeBroadcastablePass());
   // Inline the call/return basic blocks within TOSA control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -53,10 +60,11 @@ void createTFLtoTOSALegalizationPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-static mlir::PassPipelineRegistration<TOSATFLLegalizationPipelineOptions>
-    tfl_tosa_pipeline("tfl-to-tosa-pipeline",
-                      "TensorFlow Lite to TOSA legalization pipeline",
-                      createTFLtoTOSALegalizationPipeline);
+void registerTFLtoTOSALegalizationPipeline() {
+  mlir::PassPipelineRegistration<TOSATFLLegalizationPipelineOptions>(
+      "tfl-to-tosa-pipeline", "TensorFlow Lite to TOSA legalization pipeline",
+      createTFLtoTOSALegalizationPipeline);
+}
 
 }  // namespace tosa
 }  // namespace mlir

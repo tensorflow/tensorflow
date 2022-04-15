@@ -110,7 +110,8 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   // Emit the loop conditional branch. Load and compare indvar with ending
   // index and jump to loop exit if equal. Jump to body otherwise.
   b->SetInsertPoint(header_bb_);
-  indvar_ = b->CreateLoad(indvar_address, GetQualifiedName("indvar"));
+  indvar_ = b->CreateLoad(start_index_->getType(), indvar_address,
+                          GetQualifiedName("indvar"));
   llvm::Value* exit_cond = b->CreateICmpUGE(indvar_, end_index_);
   b->CreateCondBr(/*Cond=*/exit_cond,
                   /*True=*/exit_bb_, /*False=*/body_bb_);
@@ -165,7 +166,7 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilder<>* b) {
   return result;
 }
 
-string ForLoop::GetQualifiedName(absl::string_view name) {
+std::string ForLoop::GetQualifiedName(absl::string_view name) {
   return llvm_ir::IrName(prefix_, llvm_ir::IrName(name, suffix_));
 }
 
@@ -208,8 +209,8 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(
   return loop;
 }
 
-std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
-                                              int64 end_index,
+std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
+                                              int64_t end_index,
                                               absl::string_view suffix,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
@@ -219,8 +220,8 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                  prevent_vectorization);
 }
 
-std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
-                                              int64 end_index, int64 stride,
+std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
+                                              int64_t end_index, int64_t stride,
                                               absl::string_view suffix,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
@@ -233,17 +234,17 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
                                              absl::string_view suffix) {
-  std::vector<int64> dimensions(shape.rank());
+  std::vector<int64_t> dimensions(shape.rank());
   std::iota(dimensions.begin(), dimensions.end(), 0);
   return IrArray::Index(AddLoopsForShapeOnDimensions(shape, dimensions, suffix),
                         shape, index_type_);
 }
 
 std::vector<llvm::Value*> ForLoopNest::AddLoopsForShapeOnDimensions(
-    const Shape& shape, absl::Span<const int64> dimensions,
+    const Shape& shape, absl::Span<const int64_t> dimensions,
     absl::string_view suffix) {
   std::vector<llvm::Value*> multi_index(shape.dimensions_size());
-  for (int64 dimension : dimensions) {
+  for (int64_t dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape.dimensions(dimension),
@@ -255,15 +256,15 @@ std::vector<llvm::Value*> ForLoopNest::AddLoopsForShapeOnDimensions(
 }
 
 std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
-    const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
+    const llvm_ir::IrArray& operand_array, int64_t dimension_to_skip,
     absl::string_view name_suffix) {
   // Prepares the dimension list we will use to emit the loop nest. Outermost
   // loops are added first. Add loops in major-to-minor order, and skip the
   // 'dimension_to_skip' dimension.
-  std::vector<int64> dimensions;
+  std::vector<int64_t> dimensions;
   const Shape& shape = operand_array.GetShape();
   // Initially get the dimensions in minor to major order, then reverse them.
-  for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
+  for (int64_t dimension : LayoutUtil::MinorToMajor(shape)) {
     if (dimension != dimension_to_skip) {
       dimensions.push_back(dimension);
     }

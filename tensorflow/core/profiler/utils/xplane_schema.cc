@@ -29,6 +29,10 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+// TODO(b/195582092): change it to /device:custom once all literals are
+// migrated.
+const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
+
 const absl::string_view kTpuRuntimePlaneName = "/host:TPU-runtime";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kRoctracerApiPlaneName = "/host:ROCTRACER";
@@ -43,6 +47,9 @@ const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
+
+const absl::string_view kDeviceVendorNvidia = "Nvidia";
+const absl::string_view kDeviceVendorAMD = "AMD";
 
 namespace {
 
@@ -67,7 +74,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"RunGraph", kRunGraph},
       {"RunGraphDone", kRunGraphDone},
       {"TfOpRun", kTfOpRun},
-      {"EagerKernelExecute", kEagerKernelExecute},
+      {"EagerExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},
       {"MemoryAllocation", kMemoryAllocation},
@@ -113,6 +120,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MapAndBatchConsume", kMapAndBatchConsume},
       {"ParseExampleProduce", kParseExampleProduce},
       {"ParseExampleConsume", kParseExampleConsume},
+      {"ParallelBatchProduce", kParallelBatchProduce},
+      {"ParallelBatchConsume", kParallelBatchConsume},
       // Batching related.
       {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
@@ -120,12 +129,52 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},
+      {"ScheduleWithEagerSplit", kScheduleWithEagerSplit},
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
+      // TFRT related.
+      {"TfrtModelRun", kTfrtModelRun},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
+      // TPU related.
+      {"EnqueueRequestLocked", kEnqueueRequestLocked},
+      {"RunProgramRequest", kRunProgramRequest},
+      {"StartProgramRequest", kStartProgramRequest},
+      {"HostCallbackRequest", kHostCallbackRequest},
+      {"TransferH2DRequest", kTransferH2DRequest},
+      {"TransferPreprocessedH2DRequest", kTransferPreprocessedH2DRequest},
+      {"TransferD2HRequest", kTransferD2HRequest},
+      {"TransferD2DRequest", kTransferD2DRequest},
+      {"TransferD2DRemoteRequest", kTransferD2DRemoteRequest},
+      {"OnDeviceSendRequest", kOnDeviceSendRequest},
+      {"OnDeviceRecvRequest", kOnDeviceRecvRequest},
+      {"OnDeviceSendRecvLocalRequest", kOnDeviceSendRecvLocalRequest},
+      {"DoEnqueueProgram", kDoEnqueueProgram},
+      {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
+      {"StartProgram", kStartProgram},
+      {"WriteHbm", kWriteHbm},
+      {"ReadHbm", kReadHbm},
+      {"TpuExecuteOp", kTpuExecuteOp},
+      {"CompleteCallbacks", kCompleteCallbacks},
+      {"TPUPartitionedCallOp-InitializeVarOnTPU",
+       kTpuPartitionedCallOpInitializeVarOnTpu},
+      {"TPUPartitionedCallOp-ExecuteRemote",
+       kTpuPartitionedCallOpExecuteRemote},
+      {"TPUPartitionedCallOp-ExecuteLocal", kTpuPartitionedCallOpExecuteLocal},
+      {"Linearize", kLinearize},
+      {"Delinearize", kDelinearize},
+      {"TransferBufferFromDevice-FastPath", kTransferBufferFromDeviceFastPath},
+      {"tpu::System::TransferToDevice=>IssueEvent",
+       kTransferToDeviceIssueEvent},
+      {"tpu::System::TransferToDevice=>IssueEvent=>Done",
+       kTransferToDeviceDone},
+      {"tpu::System::TransferFromDevice=>IssueEvent",
+       kTransferFromDeviceIssueEvent},
+      {"tpu::System::TransferFromDevice=>IssueEvent=>Done",
+       kTransferFromDeviceDone},
+      {"tpu::System::Execute", kTpuSystemExecute},
   });
   DCHECK_EQ(host_event_type_map->size(), kNumHostEventTypes);
   return *host_event_type_map;
@@ -143,8 +192,10 @@ const StatTypeMap& GetStatTypeMap() {
       {"node_ordinal", kNodeOrdinal},
       {"model_id", kModelId},
       {"queue_addr", kQueueAddr},
+      {"queue_id", kQueueId},
       {"request_id", kRequestId},
       {"run_id", kRunId},
+      {"replica_id", kReplicaId},
       {"graph_type", kGraphType},
       {"step_num", kStepNum},
       {"iter_num", kIterNum},
@@ -183,32 +234,35 @@ const StatTypeMap& GetStatTypeMap() {
       {"Memset_details", kMemsetDetails},
       {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
-      {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
       {"flow", kFlow},
       {"step_name", kStepName},
-      {"level 0", kLevel0},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
+      {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
+      {"is_func", kIsFunc},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
       {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
+      {"model_name", kModelName},
+      {"model_version", kModelVersion},
+      {"bytes_transferred", kBytesTransferred},
+      {"queue", kDmaQueue},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
       // XLA metadata map related.
-      {"SELF_DURATION_PS", kSelfDurationPs},
-      {"MIN_DURATION_PS", kMinDurationPs},
       {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
@@ -217,6 +271,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
       {"padding_amount", kPaddingAmount},
@@ -248,14 +303,14 @@ absl::string_view GetHostEventTypeStr(HostEventType event_type) {
   return GetHostEventTypeStrMap().at(event_type);
 }
 
-absl::optional<int64> FindHostEventType(absl::string_view event_name) {
+absl::optional<int64_t> FindHostEventType(absl::string_view event_name) {
   if (auto event_type = gtl::FindOrNull(GetHostEventTypeMap(), event_name)) {
     return *event_type;
   }
   return absl::nullopt;
 }
 
-absl::optional<int64> FindTfOpEventType(absl::string_view event_name) {
+absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
   // TF op names.
   Category category = ParseTfOpFullname(event_name).category;
   switch (category) {
@@ -272,14 +327,14 @@ absl::string_view GetStatTypeStr(StatType stat_type) {
   return GetStatTypeStrMap().at(stat_type);
 }
 
-absl::optional<int64> FindStatType(absl::string_view stat_name) {
+absl::optional<int64_t> FindStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetStatTypeMap(), stat_name)) {
     return *stat_type;
   }
   return absl::nullopt;
 }
 
-bool IsInternalEvent(absl::optional<int64> event_type) {
+bool IsInternalEvent(absl::optional<int64_t> event_type) {
   // TODO(b/162102421): Introduce a prefix for internal event names.
   if (!event_type.has_value()) return false;
   switch (*event_type) {
@@ -302,12 +357,11 @@ bool IsInternalEvent(absl::optional<int64> event_type) {
   }
 }
 
-bool IsInternalStat(absl::optional<int64> stat_type) {
+bool IsInternalStat(absl::optional<int64_t> stat_type) {
   // TODO(b/162102421): Introduce a prefix for internal stat names.
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
     case StatType::kKernelDetails:
-    case StatType::kLevel0:
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:

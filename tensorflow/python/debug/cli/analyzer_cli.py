@@ -17,15 +17,10 @@
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import copy
 import re
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
@@ -1423,7 +1418,7 @@ class DebugAnalyzer(object):
 
     # Create depth-dependent hanging indent for the line.
     hang = ""
-    for k in xrange(depth):
+    for k in range(depth):
       if k < depth - 1:
         if k + 1 in unfinished:
           hang += HANG_UNFINISHED

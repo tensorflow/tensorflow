@@ -15,22 +15,57 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace stream_executor {
+
+static port::StatusOr<absl::string_view> GetPtxasVersionString(
+    const std::string& binary_path) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static auto* seen_binary_paths TF_GUARDED_BY(mu) =
+      new absl::flat_hash_map<std::string, std::string>();
+
+  tensorflow::mutex_lock lock(mu);
+  auto it = seen_binary_paths->find(binary_path);
+  if (it != seen_binary_paths->end()) {
+    // Already checked this binary, nothing to do.
+    return absl::string_view(it->second);
+  }
+
+  tensorflow::SubProcess binary;
+  binary.SetProgram(binary_path, {binary_path, "--version"});
+  binary.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
+  if (!binary.Start()) {
+    return port::InternalError(
+        absl::StrFormat("Couldn't invoke %s --version", binary_path));
+  }
+
+  std::string out;
+  int exit_code = binary.Communicate(/*stdin_input=*/nullptr, &out,
+                                     /*stderr_output=*/nullptr);
+  if (exit_code != 0) {
+    return port::InternalError(absl::StrFormat(
+        "Running %s --version returned %d", binary_path, exit_code));
+  }
+  auto emplace_it = seen_binary_paths->emplace(binary_path, std::move(out));
+  return absl::string_view(emplace_it.first->second);
+}
 
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
@@ -39,70 +74,47 @@ namespace stream_executor {
 //
 // Locks on entry.
 static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static std::unordered_set<std::string>* seen_ptxas_paths TF_GUARDED_BY(mu) =
-      new std::unordered_set<std::string>();
-
-  tensorflow::mutex_lock lock(mu);
-  if (!seen_ptxas_paths->insert(ptxas_path).second) {
-    // Already checked this ptx binary, nothing to do.
+  port::StatusOr<absl::string_view> ptxas_version =
+      GetPtxasVersionString(ptxas_path);
+  if (!ptxas_version.ok()) {
+    LOG(WARNING) << "Couldn't get ptxas version string: "
+                 << ptxas_version.status();
     return;
   }
 
-  tensorflow::SubProcess ptxas;
-  ptxas.SetProgram(ptxas_path, {ptxas_path, "--version"});
-  ptxas.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
-  if (!ptxas.Start()) {
-    LOG(WARNING) << "Couldn't invoke " << ptxas_path << " --version";
-    return;
-  }
-
-  std::string out;
-  int exit_code = ptxas.Communicate(/*stdin_input=*/nullptr, &out,
-                                    /*stderr_output=*/nullptr);
-  if (exit_code != 0) {
-    LOG(WARNING) << "Running " << ptxas_path << " --version returned "
-                 << exit_code;
-    return;
-  }
-
-  int64 vmaj, vmin, vdot;
+  int64_t vmaj, vmin, vdot;
   std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(out, R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str,
-                         &vmin_str, &vdot_str) ||
+  if (!RE2::PartialMatch(ptxas_version.ValueOrDie(),
+                         R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str, &vmin_str,
+                         &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &vmaj) ||
       !absl::SimpleAtoi(vmin_str, &vmin) ||
       !absl::SimpleAtoi(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
-                 << out;
+                 << ptxas_version.ValueOrDie();
     return;
   }
 
   // We need ptxas >= 9.0 as a hard requirement, because we compile targeting
   // PTX 6.0.  An older ptxas will just fail to compile any of our code.
   //
-  // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
-  // address calculations with large offsets (e.g. "load ptr + large_constant"),
-  // b/70245379.
-  //
-  // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
-  // that appears related to address calculations, b/111107644.  ptxas 9.2.88
-  // appears to work, as far as we can tell.
+  // ptxas versions before the version that shipped with CUDA 11.1 are known to
+  // miscompile XLA code.
   if (vmaj < 9) {
     LOG(ERROR)
         << "You are using ptxas 8.x, but TF requires ptxas 9.x (and strongly "
-           "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
-           "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
-           "binary is sufficient.";
-  } else if (std::make_tuple(vmaj, vmin, vdot) < std::make_tuple(9, 2, 88)) {
+           "prefers >= 11.1).  Compilation of XLA kernels below will likely "
+           "fail.\n\nYou may not need to update CUDA; cherry-picking the ptxas "
+           "binary is often sufficient.";
+  } else if (std::make_tuple(vmaj, vmin) < std::make_tuple(11, 1)) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot
-        << ", which is older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+        << ", which is older than 11.1. ptxas before 11.1 is known to "
            "miscompile XLA code, leading to incorrect results or "
-           "invalid-address errors.\n\nYou do not need to update to CUDA "
-           "9.2.88; cherry-picking the ptxas binary is sufficient.";
+           "invalid-address errors.\n\nYou may not need to update to CUDA "
+           "11.1; cherry-picking the ptxas binary is often sufficient.";
   }
 }
 
@@ -150,13 +162,34 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
 }
 
-static std::string findCudaExecutable(const std::string binary_name,
+static std::string FindCudaExecutable(const std::string binary_name,
                                       const std::string preferred_cuda_dir) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static auto* seen_binary_paths TF_GUARDED_BY(mu) =
+      new absl::flat_hash_map<std::pair<std::string, std::string>,
+                              std::string>();
+
 #if defined(PLATFORM_WINDOWS)
   const std::string binary_filename = binary_name + ".exe";
 #else
   const std::string& binary_filename = binary_name;
 #endif
+
+  auto cache_key = std::make_pair(binary_name, preferred_cuda_dir);
+
+  tensorflow::mutex_lock lock(mu);
+  auto it = seen_binary_paths->find(cache_key);
+  if (it != seen_binary_paths->end()) {
+    return it->second;
+  }
+
+  // Try searching in the default PATH first if applicable.
+  if (tensorflow::PreferPtxasFromPath() &&
+      GetPtxasVersionString(binary_filename).ok()) {
+    VLOG(2) << "Using " << binary_filename;
+    seen_binary_paths->emplace(std::move(cache_key), binary_filename);
+    return binary_filename;
+  }
 
   // Search in cuda root candidates.
   auto env = tensorflow::Env::Default();
@@ -165,15 +198,20 @@ static std::string findCudaExecutable(const std::string binary_name,
        tensorflow::CandidateCudaRoots(preferred_cuda_dir)) {
     binary_path = tensorflow::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
-    if (env->FileExists(binary_path).ok()) {
+    if (env->FileExists(binary_path).ok() &&
+        GetPtxasVersionString(binary_path).ok()) {
       break;
     }
   }
   if (!env->FileExists(binary_path).ok()) {
-    // Rely on subprocess invocation to find the correct binary.
+    // Give up and just rely on subprocess invocation to find the correct
+    // binary. This won't work, in all probability, given we already tried that
+    // above, but it's the best we can do.
+    VLOG(2) << "Unable to find " << binary_name;
     binary_path = binary_filename;
   }
   VLOG(2) << "Using " << binary_filename << " at " << binary_path;
+  seen_binary_paths->emplace(std::move(cache_key), binary_path);
   return binary_path;
 }
 
@@ -187,7 +225,8 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
 
   absl::MutexLock lock(mutex);
 
-  if (already_logged->insert({ptxas_path, cc_major, cc_minor}).second) {
+  if (already_logged->insert(std::make_tuple(ptxas_path, cc_major, cc_minor))
+          .second) {
     LOG(WARNING) << "Falling back to the CUDA driver for PTX compilation; "
                     "ptxas does not support CC "
                  << cc_major << "." << cc_minor;
@@ -208,7 +247,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options) {
   std::string ptxas_path =
-      findCudaExecutable("ptxas", options.preferred_cuda_dir);
+      FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 
   WarnIfBadPtxasVersion(ptxas_path);
 
@@ -238,8 +277,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   });
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
-      ptxas_path, ptx_path, "-o", cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor)};
+      ptxas_path,
+      ptx_path,
+      "-o",
+      cubin_path,
+      absl::StrCat("-arch=sm_", cc_major, cc_minor),
+      "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -276,7 +319,11 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   }
   // Print the verbose output of ptxas.
   if (!stderr_output.empty()) {
-    VLOG(2) << stderr_output;
+    if (absl::StrContains(stderr_output, "warning")) {
+      LOG(INFO) << stderr_output;
+    } else {
+      VLOG(2) << stderr_output;
+    }
   }
 
   // Read in the result of compilation and return it as a byte vector.
@@ -290,7 +337,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
 port::StatusOr<std::vector<uint8>> BundleGpuAsm(
     std::vector<CubinOrPTXImage> images, GpuAsmOpts options) {
   std::string fatbinary_path =
-      findCudaExecutable("fatbinary", options.preferred_cuda_dir);
+      FindCudaExecutable("fatbinary", options.preferred_cuda_dir);
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;

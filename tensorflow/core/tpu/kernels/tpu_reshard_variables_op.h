@@ -42,7 +42,7 @@ class TPUReshardVariablesOpKernel : public AsyncOpKernel {
   Status DoTpuExecute(OpKernelContext* context, const Tensor& format_key,
                       tpu::CompilationCacheFetchTarget fetch_target);
 
-  int64 num_vars_;
+  int64_t num_vars_;
 };
 
 }  // namespace tensorflow

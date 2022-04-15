@@ -49,7 +49,7 @@ Status CreateStringScalarTensorHandle(ImmediateExecutionContext* ctx,
 Status CreateStringVectorTensorHandle(ImmediateExecutionContext* ctx,
                                       const std::string& s,
                                       ImmediateTensorHandlePtr* out) {
-  int64 flat_shape[] = {1};
+  int64_t flat_shape[] = {1};
   AbstractTensorPtr tensor(ctx->CreateTensor(DT_STRING, flat_shape));
   if (tensor.get() == nullptr) {
     return errors::Internal(

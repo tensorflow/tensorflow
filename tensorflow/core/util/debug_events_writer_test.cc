@@ -76,8 +76,8 @@ class DebugEventsWriterTest : public ::testing::Test {
 
   void TearDown() override {
     if (env()->IsDirectory(dump_root_).ok()) {
-      int64 undeleted_files = 0;
-      int64 undeleted_dirs = 0;
+      int64_t undeleted_files = 0;
+      int64_t undeleted_dirs = 0;
       TF_ASSERT_OK(env()->DeleteRecursively(dump_root_, &undeleted_files,
                                             &undeleted_dirs));
       ASSERT_EQ(0, undeleted_files);
@@ -505,7 +505,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
 }
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
-  const int32 kConcurrentWrites = 30;
+  const int32_t kConcurrentWrites = 30;
   DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
       dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   TF_ASSERT_OK(writer->Init());
@@ -514,7 +514,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
       new thread::ThreadPool(Env::Default(), "test_pool", 10);
   std::atomic_int_fast32_t counter(0);
   auto fn = [&writer, &counter]() {
-    const int32 index = counter.fetch_add(1);
+    const int32_t index = counter.fetch_add(1);
     if (index % 3 == 0) {
       SourceFile* source_file = new SourceFile();
       source_file->set_file_path(
@@ -544,12 +544,12 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   EXPECT_EQ(actuals.size(), kConcurrentWrites / 3);
   std::vector<string> file_paths;
   std::vector<string> host_names;
-  for (int32 i = 0; i < kConcurrentWrites / 3; ++i) {
+  for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     file_paths.push_back(actuals[i].source_file().file_path());
     host_names.push_back(actuals[i].source_file().host_name());
   }
   std::sort(file_paths.begin(), file_paths.end());
-  for (int32 i = 0; i < kConcurrentWrites / 3; ++i) {
+  for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     EXPECT_EQ(file_paths[i],
               strings::Printf("/home/tf_programs/program_%.2d.py", i * 3));
     EXPECT_EQ(host_names[i], "localhost.localdomain");
@@ -558,11 +558,11 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   ReadDebugEventProtos(writer, DebugEventFileType::STACK_FRAMES, &actuals);
   EXPECT_EQ(actuals.size(), kConcurrentWrites / 3);
   std::vector<string> stack_frame_ids;
-  for (int32 i = 0; i < kConcurrentWrites / 3; ++i) {
+  for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     stack_frame_ids.push_back(actuals[i].stack_frame_with_id().id());
   }
   std::sort(stack_frame_ids.begin(), stack_frame_ids.end());
-  for (int32 i = 0; i < kConcurrentWrites / 3; ++i) {
+  for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     EXPECT_EQ(stack_frame_ids[i], strings::Printf("e%.2d", i * 3 + 1));
   }
 
@@ -570,12 +570,12 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   EXPECT_EQ(actuals.size(), kConcurrentWrites / 3);
   std::vector<string> op_types;
   std::vector<string> op_names;
-  for (int32 i = 0; i < kConcurrentWrites / 3; ++i) {
+  for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     op_types.push_back(actuals[i].graph_op_creation().op_type());
     op_names.push_back(actuals[i].graph_op_creation().op_name());
   }
   std::sort(op_names.begin(), op_names.end());
-  for (int32 i = 0; i < kConcurrentWrites / 3; ++i) {
+  for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     EXPECT_EQ(op_types[i], "Log");
     EXPECT_EQ(op_names[i], strings::Printf("Log_%.2d", i * 3 + 2));
   }

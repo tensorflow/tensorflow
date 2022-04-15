@@ -14,10 +14,6 @@
 # ==============================================================================
 """Public API for tf.initializer namespace."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables as _variables
 
@@ -39,8 +35,5 @@ global_variables = _variables.global_variables_initializer
 local_variables = _variables.local_variables_initializer
 
 # Seal API.
-del absolute_import
-del division
-del print_function
 del init_ops
 del _variables

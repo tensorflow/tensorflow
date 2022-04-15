@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -130,10 +131,12 @@ TEST(ValidationSubgraph, NameIsDetected) {
   EXPECT_TRUE(IsValidationSubgraph("VALIDATION:main"));
 }
 
+TEST(MultiplyAndCheckOverflow, Validate) {
+  size_t res = 0;
+  EXPECT_TRUE(MultiplyAndCheckOverflow(1, 2, &res) == kTfLiteOk);
+  EXPECT_FALSE(MultiplyAndCheckOverflow(static_cast<size_t>(123456789023),
+                                        1223423425, &res) == kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

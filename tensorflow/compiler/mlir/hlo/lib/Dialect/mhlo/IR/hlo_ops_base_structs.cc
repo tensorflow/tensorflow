@@ -15,4 +15,27 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 
+#include <sys/types.h>
+
+#include <set>
+#include <unordered_map>
+
+#include "llvm/ADT/SmallVector.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
+
+// Auto-generated implementation.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.cc.inc"
+
+namespace mlir {
+namespace mhlo {
+
+void printConvolutionDimensions(AsmPrinter &p, Operation *,
+                                ConvDimensionNumbersAttr dnums_) {
+  printConvolutionDimensions(p, dnums_);
+}
+
+}  // namespace mhlo
+}  // namespace mlir

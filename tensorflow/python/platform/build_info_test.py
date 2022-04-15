@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test for the generated build_info script."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import platform
 
 from tensorflow.python.platform import build_info

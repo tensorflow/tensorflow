@@ -213,7 +213,7 @@ XLA_TEST_F(CholeskyTest, SimpleBatched) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-using CholeskyTestCase = std::tuple<int64, int64, bool>;
+using CholeskyTestCase = std::tuple<int64_t, int64_t, bool>;
 
 class RandomCholeskyTest
     : public ClientLibraryTestBase,
@@ -225,9 +225,9 @@ XLA_TEST_P(RandomCholeskyTest, Real) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
-  std::vector<int64> dimensions = {std::get<0>(test_params),
-                                   std::get<1>(test_params),
-                                   std::get<1>(test_params)};
+  std::vector<int64_t> dimensions = {std::get<0>(test_params),
+                                     std::get<1>(test_params),
+                                     std::get<1>(test_params)};
   bool lower = std::get<2>(test_params);
   Shape shape = ShapeUtil::MakeShape(F32, dimensions);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -264,9 +264,9 @@ XLA_TEST_P(RandomCholeskyTest, Complex) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
-  std::vector<int64> dimensions = {std::get<0>(test_params),
-                                   std::get<1>(test_params),
-                                   std::get<1>(test_params)};
+  std::vector<int64_t> dimensions = {std::get<0>(test_params),
+                                     std::get<1>(test_params),
+                                     std::get<1>(test_params)};
   bool lower = std::get<2>(test_params);
   Shape shape = ShapeUtil::MakeShape(F32, dimensions);
   TF_ASSERT_OK_AND_ASSIGN(

@@ -71,7 +71,7 @@ class MultiOutputFusion : public HloModulePass {
   // This function estimates the savings by merging instr1 and instr2 into one
   // multi-output fusion instruction. It returns a result in kib. (The result
   // is intentionally not granules, because this method is not TPU-specific.)
-  virtual int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
+  virtual int64_t GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
 
   // Whether fusing the instruction can reduce memory reads.
   virtual bool IsProfitableOperand(HloInstruction* instr);
@@ -100,7 +100,8 @@ class MultiOutputFusion : public HloModulePass {
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
       HloInstruction* instr1, HloInstruction* instr2,
-      absl::Span<HloInstruction* const> instrs_to_update,
+      absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
+          instrs_to_update,
       const std::function<bool(HloInstruction*)>& skip = nullptr);
 
   // Hook for multi-output fusion along producer-consumer edges.
@@ -114,7 +115,7 @@ class MultiOutputFusion : public HloModulePass {
   // instr1 and instr2. The second entry in the vector is an old profit value
   // from fusing the corresponding instruction and the base op of the new
   // fusion.
-  std::vector<std::pair<HloInstruction*, int64>> GetNewFusibles(
+  std::vector<std::pair<HloInstruction*, int64_t>> GetNewFusibles(
       HloInstruction* instr1, HloInstruction* instr2);
 
   // Create a new fusion instruction and add `base' into it.
@@ -127,7 +128,7 @@ class MultiOutputFusion : public HloModulePass {
   // When an instruction is removed, member 'hlo' is set to nullptr.
   struct FusionCandidate {
     HloInstruction* hlo;
-    std::list<std::pair<HloInstruction*, int64>> fusibles;
+    std::list<std::pair<HloInstruction*, int64_t>> fusibles;
     explicit FusionCandidate(HloInstruction* hlo) : hlo(hlo) {}
   };
 
@@ -135,14 +136,14 @@ class MultiOutputFusion : public HloModulePass {
   struct ToBeFused {
     HloInstruction* instr1;
     HloInstruction* instr2;
-    int64 score;
-    int64 timestamp;
-    ToBeFused(HloInstruction* instr1, HloInstruction* instr2, int64 score,
-              int64 timestamp)
+    int64_t score;
+    int64_t timestamp;
+    ToBeFused(HloInstruction* instr1, HloInstruction* instr2, int64_t score,
+              int64_t timestamp)
         : instr1(instr1), instr2(instr2), score(score), timestamp(timestamp) {}
     bool operator<(const ToBeFused& rhs) const {
-      return std::pair<int64, int64>(score, timestamp) <
-             std::pair<int64, int64>(rhs.score, rhs.timestamp);
+      return std::pair<int64_t, int64_t>(score, timestamp) <
+             std::pair<int64_t, int64_t>(rhs.score, rhs.timestamp);
     }
   };
 
@@ -163,7 +164,7 @@ class MultiOutputFusion : public HloModulePass {
 
    private:
     std::priority_queue<ToBeFused> worklist_;
-    int64 timestamp_ = 0;
+    int64_t timestamp_ = 0;
   };
 
   // Update the internal data structures before instr1 and instr2 are fused into
@@ -174,10 +175,10 @@ class MultiOutputFusion : public HloModulePass {
   // one fusion instruction.
   void UpdateAfterFuse(
       HloInstruction* fusion,
-      const std::vector<std::pair<HloInstruction*, int64>>& new_fusibles,
+      const std::vector<std::pair<HloInstruction*, int64_t>>& new_fusibles,
       bool new_fusion_node);
 
-  int64 get_candidate_id(HloInstruction* instr) {
+  int64_t get_candidate_id(HloInstruction* instr) {
     return FindOrDie(candidates_index_, instr);
   }
 
@@ -202,8 +203,10 @@ class MultiOutputFusion : public HloModulePass {
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
 
-  // This stores all the candidate instructions in current computation.
-  std::vector<HloInstruction*> all_fusion_candidates_;
+  // This stores all the candidate instructions and their indices within
+  // reachability_ in current computation.
+  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
+      all_fusion_candidates_;
 
   // Computation for the pass.
   HloComputation* computation_;

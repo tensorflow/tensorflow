@@ -75,6 +75,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 TF_EXPORT extern const char* const DEVICE_DEFAULT;     // "DEFAULT"
 TF_EXPORT extern const char* const DEVICE_CPU;         // "CPU"
 TF_EXPORT extern const char* const DEVICE_GPU;         // "GPU"
+TF_EXPORT extern const char* const DEVICE_TPU;         // "TPU"
 TF_EXPORT extern const char* const DEVICE_TPU_SYSTEM;  // "TPU_SYSTEM"
 
 template <typename Device>
@@ -412,7 +413,7 @@ struct IsValidDataType<long> {
 };
 template <>
 struct EnumToDataType<DT_INT64> {
-  typedef tensorflow::int64 Type;
+  typedef int64_t Type;
 };
 
 template <>
@@ -462,7 +463,7 @@ struct IsValidDataType {
 };
 
 // Extra validity checking; not part of public API.
-static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
+static_assert(IsValidDataType<int64_t>::value, "Incorrect impl for int64");
 static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
 // TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
@@ -561,8 +562,8 @@ struct TypeHasher {
   }
 };
 
-// Maps a legacy DType proto enum to an equivalent FullType Tensor.
-void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t);
+// Maps a legacy DType proto enum to an equivalent FullType ID.
+void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t);
 
 }  // namespace tensorflow
 

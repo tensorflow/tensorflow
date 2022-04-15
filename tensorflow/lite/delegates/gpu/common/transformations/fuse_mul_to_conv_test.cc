@@ -79,7 +79,7 @@ TEST(MergeConvolutionWithMulTest, Smoke) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewMergeConvolutionWithMul();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_convolution_with_mul", transformation.get());
 
   EXPECT_EQ(1, graph.nodes().size());
@@ -130,7 +130,7 @@ TEST(MergeMulWithConvolutionTest, Smoke) {
   ASSERT_EQ(3, graph.values().size());
 
   auto transformation = NewMergeMulWithConvolution();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_mul_with_convolution", transformation.get());
 
   EXPECT_EQ(1, graph.nodes().size());

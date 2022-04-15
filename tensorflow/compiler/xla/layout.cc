@@ -23,15 +23,17 @@ namespace xla {
 
 TileProto Tile::ToProto() const {
   TileProto tile_proto;
-  for (int64 i : dimensions()) {
+  for (int64_t i : dimensions()) {
     tile_proto.add_dimensions(i);
   }
   return tile_proto;
 }
 
-string Tile::ToString() const {
-  std::vector<string> elements;
-  for (auto dim : dimensions()) {
+std::string Tile::ToString() const {
+  std::vector<std::string> elements;
+  const auto& dims = dimensions();
+  elements.reserve(dims.size());
+  for (auto dim : dims) {
     if (dim >= 0) {
       elements.push_back(std::to_string(dim));
     } else {
@@ -49,7 +51,7 @@ string Tile::ToString() const {
   Layout layout;
   layout.set_format(proto.format());
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
-  for (const int64 dimension : proto.minor_to_major()) {
+  for (const int64_t dimension : proto.minor_to_major()) {
     layout.add_minor_to_major(dimension);
   }
   for (const TileProto& tile_proto : proto.tiles()) {
@@ -64,7 +66,7 @@ LayoutProto Layout::ToProto() const {
   LayoutProto proto;
   proto.set_format(format_);
   proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
-  for (const int64 dimension : minor_to_major()) {
+  for (const int64_t dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
   }
   for (const Tile& tile : tiles()) {
@@ -75,9 +77,9 @@ LayoutProto Layout::ToProto() const {
   return proto;
 }
 
-string Layout::ToString() const {
+std::string Layout::ToString() const {
   if (format() == DENSE) {
-    string colon_string = tiles().empty() ? "" : "T";
+    std::string colon_string = tiles().empty() ? "" : "T";
     for (const Tile& tile : tiles()) {
       absl::StrAppend(&colon_string, tile.ToString());
     }

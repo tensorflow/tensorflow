@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Building Blocks of TensorFlow Debugger Command-Line Interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
 import re

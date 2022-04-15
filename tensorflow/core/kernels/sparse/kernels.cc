@@ -22,13 +22,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace functor {
 
 Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
-    const int64 batch_size, const int num_rows,
-    TTypes<int64>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
+    const int64_t batch_size, const int num_rows,
+    TTypes<int64_t>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
     TTypes<int32>::Vec csr_row_ptr, TTypes<int32>::Vec csr_col_ind) {
   // Validate inputs.
   if (batch_ptr.size() != batch_size + 1) {
@@ -42,7 +43,7 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
         csr_row_ptr.size(), " vs. ", batch_size * (num_rows + 1));
   }
 
-  const int64 total_nnz = indices.dimension(0);
+  const int64_t total_nnz = indices.dimension(0);
   const int rank = indices.dimension(1);
   if (rank == 2 && batch_size != 1) {
     return errors::InvalidArgument(
@@ -61,13 +62,18 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     batch_ptr(0) = 0;
     ++prev_batch;
 
-    for (int64 i = 0; i < total_nnz; ++i) {
+    for (int64_t i = 0; i < total_nnz; ++i) {
       // For now, the rows pointers store the corresponding row counts.
+      int64_t ix = indices(i, 0) + 1;
+      if (ix >= csr_row_ptr.size()) {
+        return errors::InvalidArgument("Got an index ", ix,
+                                       " that is outside of csr_row_ptr");
+      }
       csr_row_ptr(indices(i, 0) + 1) += 1;
       csr_col_ind(i) = indices(i, 1);
     }
   } else {  // rank == 3
-    for (int64 i = 0; i < total_nnz; ++i) {
+    for (int64_t i = 0; i < total_nnz; ++i) {
       const int cur_batch = indices(i, 0);
       // For now, the rows pointers store the corresponding row counts.
       csr_row_ptr(cur_batch * (num_rows + 1) + indices(i, 1) + 1) += 1;

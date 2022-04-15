@@ -14,10 +14,6 @@
 # ==============================================================================
 """Upgrader for Python scripts from 1.* to 2.0 TensorFlow using SAFETY mode."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import module_deprecations_v2

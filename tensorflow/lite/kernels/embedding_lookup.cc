@@ -71,6 +71,10 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
   const int row_size = SizeOfDimension(value, 0);
+  if (row_size == 0) {
+    // Propagate empty tensor if input is empty
+    return kTfLiteOk;
+  }
   const int row_bytes = value->bytes / row_size;
 
   char* output_raw = GetTensorData<char>(output);
@@ -79,10 +83,10 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
     int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
-      context->ReportError(context,
-                           "Embedding Lookup: index out of bounds. "
-                           "Got %d, and bounds are [0, %d]",
-                           idx, row_size - 1);
+      TF_LITE_KERNEL_LOG(context,
+                         "Embedding Lookup: index out of bounds. "
+                         "Got %d, and bounds are [0, %d]",
+                         idx, row_size - 1);
       return kTfLiteError;
     } else {
       std::memcpy(output_raw + i * row_bytes, value_raw + idx * row_bytes,
@@ -112,10 +116,10 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
     int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
-      context->ReportError(context,
-                           "Embedding Lookup: index out of bounds. "
-                           "Got %d, and bounds are [0, %d]",
-                           idx, row_size - 1);
+      TF_LITE_KERNEL_LOG(context,
+                         "Embedding Lookup: index out of bounds. "
+                         "Got %d, and bounds are [0, %d]",
+                         idx, row_size - 1);
       return kTfLiteError;
     } else {
       // Dequantize embedding values.
@@ -149,7 +153,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return EvalSimple(context, node, lookup, value, output);
       }
     default:
-      context->ReportError(context, "Type not currently supported.");
+      TF_LITE_KERNEL_LOG(context, "Type not currently supported.");
       return kTfLiteError;
   }
 }

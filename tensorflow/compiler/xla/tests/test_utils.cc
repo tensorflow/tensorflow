@@ -88,12 +88,13 @@ void PopulateWithIntNext(Literal* literal);
 template <>
 void PopulateWithIntNext<half>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
-  uint16 next_value = 0;
+  uint16_t next_value = 0;
   for (half& value : literal->data<half>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
-    uint16 exponent_msb = next_value & 0x4000;
-    value.x = (next_value & 0xBFFF) | (exponent_msb << 1);
+    uint16_t exponent_msb = next_value & 0x4000;
+    value = Eigen::numext::bit_cast<half, uint16_t>((next_value & 0xBFFF) |
+                                                    (exponent_msb << 1));
     next_value++;
   }
 }
@@ -102,12 +103,13 @@ template <>
 void PopulateWithIntNext<bfloat16>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
   // Start at 0x80 rather than 0 to avoid denormals.
-  uint16 next_value = 0x80;
+  uint16_t next_value = 0x80;
   for (bfloat16& value : literal->data<bfloat16>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
-    uint16 exponent_msb = next_value & 0x4000;
-    value.value = (next_value & 0xBFFF) | (exponent_msb << 1);
+    uint16_t exponent_msb = next_value & 0x4000;
+    value = Eigen::numext::bit_cast<bfloat16, uint16_t>((next_value & 0xBFFF) |
+                                                        (exponent_msb << 1));
     next_value++;
   }
 }
@@ -226,13 +228,13 @@ struct RngT {
 };
 
 template <>
-struct RngT<int8> {
-  using type = int16;
+struct RngT<int8_t> {
+  using type = int16_t;
 };
 
 template <>
-struct RngT<uint8> {
-  using type = uint16;
+struct RngT<uint8_t> {
+  using type = uint16_t;
 };
 
 template <typename IntT>
@@ -267,7 +269,9 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                           bool use_large_range) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
+    elements.reserve(shape_tuple_shapes.size());
+    for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element, MakeFakeLiteralInternal(
                                                element_shape, engine,
                                                no_duplicates, use_large_range));
@@ -302,28 +306,28 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                             use_large_range);
       break;
     case S8:
-      PopulateWithRandomIntegralData<int8>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int8_t>(&literal, engine, no_duplicates);
       break;
     case U8:
-      PopulateWithRandomIntegralData<uint8>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint8_t>(&literal, engine, no_duplicates);
       break;
     case S16:
-      PopulateWithRandomIntegralData<int16>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int16_t>(&literal, engine, no_duplicates);
       break;
     case U16:
-      PopulateWithRandomIntegralData<uint16>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint16_t>(&literal, engine, no_duplicates);
       break;
     case S32:
-      PopulateWithRandomIntegralData<int32>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int32_t>(&literal, engine, no_duplicates);
       break;
     case U32:
-      PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint32_t>(&literal, engine, no_duplicates);
       break;
     case S64:
-      PopulateWithRandomIntegralData<int64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int64_t>(&literal, engine, no_duplicates);
       break;
     case U64:
-      PopulateWithRandomIntegralData<uint64>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint64_t>(&literal, engine, no_duplicates);
       break;
     case C64:
       PopulateWithComplexData<complex64>(&literal, engine, no_duplicates,
@@ -336,7 +340,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
       TF_CHECK_OK(
-          literal.Populate<bool>([&](absl::Span<const int64> /*indices*/) {
+          literal.Populate<bool>([&](absl::Span<const int64_t> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -365,11 +369,13 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 // range [min, max]. Currently this works only for INT types.
 StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
                                                     std::minstd_rand0* engine,
-                                                    int64 min, int64 max,
+                                                    int64_t min, int64_t max,
                                                     bool is_sorted) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
+    elements.reserve(shape_tuple_shapes.size());
+    for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element,
                           MakeFakeLiteralInternalWithBounds(
                               element_shape, engine, min, max, is_sorted));
@@ -388,59 +394,73 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
   Literal literal(new_shape);
   switch (shape.element_type()) {
     case S8:
-      PopulateWithRandomIntegralDataWithBounds<int8>(
-          &literal, engine, static_cast<int8>(min), static_cast<int8>(max));
+      PopulateWithRandomIntegralDataWithBounds<int8_t>(
+          &literal, engine, static_cast<int8_t>(min), static_cast<int8_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int8>().begin(), literal.data<int8>().end());
+        std::sort(literal.data<int8_t>().begin(), literal.data<int8_t>().end());
       }
       break;
     case U8:
-      PopulateWithRandomIntegralDataWithBounds<uint8>(
-          &literal, engine, static_cast<uint8>(min), static_cast<uint8>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint8_t>(
+          &literal, engine, static_cast<uint8_t>(min),
+          static_cast<uint8_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint8>().begin(), literal.data<uint8>().end());
+        std::sort(literal.data<uint8_t>().begin(),
+                  literal.data<uint8_t>().end());
       }
       break;
     case S16:
-      PopulateWithRandomIntegralDataWithBounds<int16>(
-          &literal, engine, static_cast<int16>(min), static_cast<int16>(max));
+      PopulateWithRandomIntegralDataWithBounds<int16_t>(
+          &literal, engine, static_cast<int16_t>(min),
+          static_cast<int16_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int16>().begin(), literal.data<int16>().end());
+        std::sort(literal.data<int16_t>().begin(),
+                  literal.data<int16_t>().end());
       }
       break;
     case U16:
-      PopulateWithRandomIntegralDataWithBounds<uint16>(
-          &literal, engine, static_cast<uint16>(min), static_cast<uint16>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint16_t>(
+          &literal, engine, static_cast<uint16_t>(min),
+          static_cast<uint16_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint16>().begin(), literal.data<uint16>().end());
+        std::sort(literal.data<uint16_t>().begin(),
+                  literal.data<uint16_t>().end());
       }
       break;
     case S32:
-      PopulateWithRandomIntegralDataWithBounds<int32>(
-          &literal, engine, static_cast<int32>(min), static_cast<int32>(max));
+      PopulateWithRandomIntegralDataWithBounds<int32_t>(
+          &literal, engine, static_cast<int32_t>(min),
+          static_cast<int32_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int32>().begin(), literal.data<int32>().end());
+        std::sort(literal.data<int32_t>().begin(),
+                  literal.data<int32_t>().end());
       }
       break;
     case U32:
-      PopulateWithRandomIntegralDataWithBounds<uint32>(
-          &literal, engine, static_cast<uint32>(min), static_cast<uint32>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint32_t>(
+          &literal, engine, static_cast<uint32_t>(min),
+          static_cast<uint32_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint32>().begin(), literal.data<uint32>().end());
+        std::sort(literal.data<uint32_t>().begin(),
+                  literal.data<uint32_t>().end());
       }
       break;
     case S64:
-      PopulateWithRandomIntegralDataWithBounds<int64>(
-          &literal, engine, static_cast<int64>(min), static_cast<int64>(max));
+      PopulateWithRandomIntegralDataWithBounds<int64_t>(
+          &literal, engine, static_cast<int64_t>(min),
+          static_cast<int64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int64>().begin(), literal.data<int64>().end());
+        std::sort(literal.data<int64_t>().begin(),
+                  literal.data<int64_t>().end());
       }
       break;
     case U64:
-      PopulateWithRandomIntegralDataWithBounds<uint64>(
-          &literal, engine, static_cast<uint64>(min), static_cast<uint64>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint64_t>(
+          &literal, engine, static_cast<uint64_t>(min),
+          static_cast<uint64_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint64>().begin(), literal.data<uint64>().end());
+        std::sort(literal.data<uint64_t>().begin(),
+                  literal.data<uint64_t>().end());
       }
       break;
     default:
@@ -479,7 +499,7 @@ ConstantType GetInitValue(const HloComputation& computation) {
 bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
-  const int64 op_num = use.operand_number;
+  const int64_t op_num = use.operand_number;
   return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
           (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
           (opcode == HloOpcode::kReduce &&
@@ -488,9 +508,9 @@ bool NeedsInitValue(const HloUse& use) {
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(int64 index_bound, std::minstd_rand0* engine) {
-  std::uniform_int_distribution<int32> generator(0, index_bound);
-  return LiteralUtil::CreateR0<int32>(generator(*engine));
+Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
+  std::uniform_int_distribution<int32_t> generator(0, index_bound);
+  return LiteralUtil::CreateR0<int32_t>(generator(*engine));
 }
 
 // Use dataflow analysis on each parameter to see if there are uses that would
@@ -503,10 +523,10 @@ std::vector<HloInstruction*> FindConstrainedUses(
   std::vector<HloInstruction*> constrained_uses;
   for (const auto& pair : dataflow.GetInstructionValueSet(&param)) {
     const HloValue& value = dataflow.GetUniqueValueAt(&param, pair.first);
-    for (const HloUse& use : value.uses()) {
+    for (const HloUse& use : value.GetUses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
-      const int64 op_num = use.operand_number;
+      const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
         constrained_uses.push_back(instruction);
@@ -548,7 +568,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range) {
-  int64 index_bound = INT64_MAX;
+  int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
   bool needs_sorted_indices = false;
@@ -561,9 +581,9 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 first_index =
+        const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
-        for (int64 operand = first_index; operand < use->operand_count();
+        for (int64_t operand = first_index; operand < use->operand_count();
              ++operand) {
           if (use->operand(operand) == &param) {
             index_bound = std::min(
@@ -696,9 +716,9 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
                                          .shape()
                                    : params[i]->shape();
 
-    arguments[i] = MakeConstrainedArgument(*dataflow, *params[i], param_shape,
-                                           engine, use_large_range)
-                       .ValueOrDie();
+    TF_ASSIGN_OR_RETURN(arguments[i], MakeConstrainedArgument(
+                                          *dataflow, *params[i], param_shape,
+                                          engine, use_large_range));
   }
   return std::move(arguments);
 }

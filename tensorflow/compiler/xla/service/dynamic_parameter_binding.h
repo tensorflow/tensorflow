@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 
+#include <functional>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -43,7 +45,7 @@ class DynamicParameterBinding {
   // has to be a scalar value.
   struct DynamicParameter {
     // The parameter number of dynamic parameter.
-    int64 parameter_num;
+    int64_t parameter_num;
     // The index of the parameter.
     ShapeIndex parameter_index;
   };
@@ -53,11 +55,11 @@ class DynamicParameterBinding {
   // DynamicParameter using `DynamicParameterBinding::Bind` method.
   struct DynamicDimension {
     // The parameter number of dynamic dimension.
-    int64 parameter_num;
+    int64_t parameter_num;
     // The subshape index of the parameter.
     ShapeIndex parameter_index;
     // The dimension number in the subshape.
-    int64 dimension;
+    int64_t dimension;
 
     // "friend" keyword are added so these functions can be found by ADL.
     template <typename H>
@@ -103,7 +105,7 @@ class DynamicParameterBinding {
   static StatusOr<DynamicParameterBinding> CreateFromProto(
       const DynamicParameterBindingProto& proto);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Verifies that the given binding is valid for the given module.
   // Specifically, the binding's parameter and parameter size should be valid.

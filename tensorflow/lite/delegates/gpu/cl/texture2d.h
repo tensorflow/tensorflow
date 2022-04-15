@@ -44,7 +44,7 @@ class Texture2D : public GPUObject {
   Texture2D(const Texture2D&) = delete;
   Texture2D& operator=(const Texture2D&) = delete;
 
-  virtual ~Texture2D() { Release(); }
+  ~Texture2D() override { Release(); }
 
   cl_mem GetMemoryPtr() const { return texture_; }
 

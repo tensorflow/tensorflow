@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Specifies sources of doc strings for API modules."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util import tf_export
 
 
@@ -40,37 +36,66 @@ class DocSource(object):
 
 
 _TENSORFLOW_DOC_SOURCES = {
-    'app': DocSource(docstring_module_name='platform.app'),
-    'bitwise': DocSource(docstring_module_name='ops.bitwise_ops'),
-    'compat': DocSource(docstring_module_name='util.compat'),
-    'distribute': DocSource(docstring_module_name='distribute.distribute_lib'),
-    'distributions': DocSource(
-        docstring_module_name='ops.distributions.distributions'),
-    'errors': DocSource(docstring_module_name='framework.errors'),
-    'experimental.numpy': DocSource(docstring_module_name='ops.numpy_ops'),
-    'gfile': DocSource(docstring_module_name='platform.gfile'),
-    'graph_util': DocSource(docstring_module_name='framework.graph_util'),
-    'image': DocSource(docstring_module_name='ops.image_ops'),
-    'linalg': DocSource(docstring_module_name='ops.linalg_ops'),
-    'logging': DocSource(docstring_module_name='ops.logging_ops'),
-    'losses': DocSource(docstring_module_name='ops.losses.losses'),
-    'manip': DocSource(docstring_module_name='ops.manip_ops'),
-    'math': DocSource(docstring_module_name='ops.math_ops'),
-    'metrics': DocSource(docstring_module_name='ops.metrics'),
-    'nn': DocSource(docstring_module_name='ops.nn_ops'),
-    'nn.rnn_cell': DocSource(docstring_module_name='ops.rnn_cell'),
-    'python_io': DocSource(docstring_module_name='lib.io.python_io'),
-    'ragged': DocSource(docstring_module_name='ops.ragged'),
-    'resource_loader': DocSource(
-        docstring_module_name='platform.resource_loader'),
-    'sets': DocSource(docstring_module_name='ops.sets'),
-    'signal': DocSource(docstring_module_name='ops.signal.signal'),
-    'sparse': DocSource(docstring_module_name='ops.sparse_ops'),
-    'strings': DocSource(docstring_module_name='ops.string_ops'),
-    'summary': DocSource(docstring_module_name='summary.summary'),
-    'sysconfig': DocSource(docstring_module_name='platform.sysconfig'),
-    'test': DocSource(docstring_module_name='platform.test'),
-    'train': DocSource(docstring_module_name='training.training'),
+    'app':
+        DocSource(docstring_module_name='platform.app'),
+    'bitwise':
+        DocSource(docstring_module_name='ops.bitwise_ops'),
+    'compat':
+        DocSource(docstring_module_name='util.compat'),
+    'distribute':
+        DocSource(docstring_module_name='distribute.distribute_lib'),
+    'distributions':
+        DocSource(docstring_module_name='ops.distributions.distributions'),
+    'errors':
+        DocSource(docstring_module_name='framework.errors'),
+    'experimental.numpy':
+        DocSource(docstring_module_name='ops.numpy_ops'),
+    'gfile':
+        DocSource(docstring_module_name='platform.gfile'),
+    'graph_util':
+        DocSource(docstring_module_name='framework.graph_util'),
+    'image':
+        DocSource(docstring_module_name='ops.image_ops'),
+    'linalg':
+        DocSource(docstring_module_name='ops.linalg_ops'),
+    'logging':
+        DocSource(docstring_module_name='ops.logging_ops'),
+    'losses':
+        DocSource(docstring_module_name='ops.losses.losses'),
+    'manip':
+        DocSource(docstring_module_name='ops.manip_ops'),
+    'math':
+        DocSource(docstring_module_name='ops.math_ops'),
+    'metrics':
+        DocSource(docstring_module_name='ops.metrics'),
+    'nest':
+        DocSource(docstring_module_name='util.nest'),
+    'nn':
+        DocSource(docstring_module_name='ops.nn_ops'),
+    'nn.rnn_cell':
+        DocSource(docstring_module_name='ops.rnn_cell'),
+    'python_io':
+        DocSource(docstring_module_name='lib.io.python_io'),
+    'ragged':
+        DocSource(docstring_module_name='ops.ragged'),
+    'resource_loader':
+        DocSource(docstring_module_name='platform.resource_loader'),
+    'sets':
+        DocSource(docstring_module_name='ops.sets'),
+    'signal':
+        DocSource(docstring_module_name='ops.signal.signal'),
+    'sparse':
+        DocSource(docstring_module_name='ops.sparse_ops'),
+    'strings':
+        DocSource(docstring_module_name='ops.string_ops'),
+    'summary':
+        DocSource(docstring_module_name='summary.summary'),
+    'sysconfig':
+        DocSource(docstring_module_name='platform.sysconfig'),
+    'test':
+        DocSource(docstring_module_name='platform.test'),
+    'train':
+        DocSource(docstring_module_name='training.training'),
 }
 
 _ESTIMATOR_DOC_SOURCES = {
@@ -80,6 +105,11 @@ _ESTIMATOR_DOC_SOURCES = {
         docstring_module_name='export.export_lib'),
     'estimator.inputs': DocSource(
         docstring_module_name='inputs.inputs'),
+}
+
+_KERAS_DOC_SOURCES = {
+    'keras.optimizers.experimental':
+        DocSource(docstring_module_name='optimizers.optimizer_experimental')
 }
 
 
@@ -96,4 +126,6 @@ def get_doc_sources(api_name):
     return _TENSORFLOW_DOC_SOURCES
   if api_name == tf_export.ESTIMATOR_API_NAME:
     return _ESTIMATOR_DOC_SOURCES
+  if api_name == tf_export.KERAS_API_NAME:
+    return _KERAS_DOC_SOURCES
   return {}

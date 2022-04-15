@@ -57,9 +57,9 @@ struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
                       typename TTypes<T>::ConstMatrix b,
                       typename gemm_compute_type<T>::type beta,
                       typename TTypes<T>::Matrix c) {
-    int64 m = c.dimensions()[0];
-    int64 n = c.dimensions()[1];
-    int64 k = transa ? a.dimensions()[0] : a.dimensions()[1];
+    int64_t m = c.dimensions()[0];
+    int64_t n = c.dimensions()[1];
+    int64_t k = transa ? a.dimensions()[0] : a.dimensions()[1];
 
     TensorCuBlasGemm<T>()(ctx, transb, transa, n, m, k, alpha, b.data(),
                           transb ? k : n, a.data(), transa ? m : k, beta,

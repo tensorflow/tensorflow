@@ -1,12 +1,4 @@
-# Pin to Java 1.7 to ensure broader compatibility for the Java bindings on
-# Android. Note also that the android_library bazel rule currently enforces
-# java 7
-# https://github.com/bazelbuild/bazel/blob/6c1106b1a721516d3b3db54d2e1c31b44a76fbb1/src/main/java/com/google/devtools/build/lib/bazel/rules/android/BazelAndroidSemantics.java#L73
-
-JAVA_VERSION_OPTS = [
-    "-source 7 -target 7",
-    "-XDnoparameters",
-]
+JAVA_VERSION_OPTS = []
 
 # A more robust set of lint and errorprone checks when building
 # Java source to improve code consistency.
@@ -18,6 +10,7 @@ XLINT_OPTS = [
     "-Xlint:-serial",
     "-Xlint:-try",
     "-Xlint:-classfile",  # see b/32750402, go/javac-warnings#classfile
+    "-Xlint:-options",  # see b/195079247
 ]
 
 # The bazel errorprone plugin currently only enables default errorChecks

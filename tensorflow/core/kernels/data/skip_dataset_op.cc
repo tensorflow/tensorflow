@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -37,7 +37,7 @@ constexpr char kInputImplEmpty[] = "input_impl_empty";
 
 class SkipDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+  Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
   }
@@ -67,12 +67,20 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+  int64_t CardinalityInternal() const override {
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
-    return count_ < 0 ? 0 : std::max(int64{0}, n - count_);
+    return count_ < 0 ? 0 : std::max(int64_t{0}, n - count_);
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
+    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+      return n;
+    }
+    return count_ < 0 ? 0 : std::max(int64_t{0}, n - count_);
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
@@ -82,6 +90,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index + count_, out_tensors);
   }
 
  protected:
@@ -199,11 +213,11 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ TF_GUARDED_BY(mu_);
+    int64_t i_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
-  const int64 count_;
+  const int64_t count_;
   const DatasetBase* const input_;
 };
 
@@ -213,8 +227,8 @@ SkipDatasetOp::SkipDatasetOp(OpKernelConstruction* ctx)
 void SkipDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                 DatasetBase** output) {
   // Create a new SkipDatasetOp::Dataset, and return it as the output.
-  int64 count;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  int64_t count;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
 
   *output = new Dataset(ctx, count, input);
 }

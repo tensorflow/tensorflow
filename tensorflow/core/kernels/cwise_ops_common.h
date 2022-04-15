@@ -59,10 +59,10 @@ class BinaryOpShared : public OpKernel {
 
     BCast bcast;
     Tensor* out = nullptr;
-    int64 out_num_elements;
+    int64_t out_num_elements;
 
-    int64 in0_num_elements;
-    int64 in1_num_elements;
+    int64_t in0_num_elements;
+    int64_t in1_num_elements;
 
     int ndims;
     bool result;
@@ -87,7 +87,17 @@ class BinaryOp : public BinaryOpShared {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input_0 = ctx->input(0);
+    OP_REQUIRES(ctx, input_0.dtype() == DataTypeToEnum<Tin>::v(),
+                errors::InvalidArgument(
+                    "Expected tensor of type ",
+                    DataTypeString(DataTypeToEnum<Tin>::v()), " but got type ",
+                    DataTypeString(input_0.dtype())));
     const Tensor& input_1 = ctx->input(1);
+    OP_REQUIRES(ctx, input_1.dtype() == DataTypeToEnum<Tin>::v(),
+                errors::InvalidArgument(
+                    "Expected tensor of type ",
+                    DataTypeString(DataTypeToEnum<Tin>::v()), " but got type ",
+                    DataTypeString(input_1.dtype())));
     const Device& eigen_device = ctx->eigen_device<Device>();
     bool error = false;
     bool* const error_ptr = Functor::has_errors ? &error : nullptr;
@@ -265,6 +275,11 @@ class SimpleBinaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
+    OP_REQUIRES(
+        ctx, in0.NumElements() == in1.NumElements(),
+        errors::InvalidArgument("The two arguments to a cwise op must have "
+                                "same number of elements, got ",
+                                in0.NumElements(), " and ", in1.NumElements()));
     auto in0_flat = in0.flat<Tin>();
     auto in1_flat = in1.flat<Tin>();
     const Device& eigen_device = ctx->eigen_device<Device>();
@@ -435,14 +450,6 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  inline Eigen::DSizes<int, 2> NByOne(int n) {
-    return Eigen::DSizes<int, 2>(n, 1);
-  }
-  inline Eigen::DSizes<int, 2> OneByM(int m) {
-    return Eigen::DSizes<int, 2>(1, m);
-  }
-#else
   inline Eigen::IndexList<int, Eigen::type2index<1>> NByOne(int n) {
     Eigen::IndexList<int, Eigen::type2index<1>> ret;
     ret.set(0, n);
@@ -453,7 +460,6 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     ret.set(1, m);
     return ret;
   }
-#endif
 
   void BCast(const CPUDevice& dev,
              typename TTypes<typename Functor::out_type, NDIMS>::Tensor out,
@@ -600,6 +606,14 @@ struct UnaryFunctor<CPUDevice, Functor> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
     Assign(d, out, in.unaryExpr(typename Functor::func()));
+  }
+};
+
+template <typename Functor, typename Targ>
+struct UnaryFunctorWithArg<CPUDevice, Functor, Targ> {
+  void operator()(const CPUDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in, Targ val) {
+    Assign(d, out, in.unaryExpr(typename Functor::func(val)));
   }
 };
 

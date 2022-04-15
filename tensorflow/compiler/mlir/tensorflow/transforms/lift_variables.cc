@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -136,7 +137,7 @@ LogicalResult LiftVariablesFromSession(
     ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
 
     builder.create<tf_saved_model::GlobalTensorOp>(
-        NameLoc::get(builder.getIdentifier(name.str())),
+        NameLoc::get(builder.getStringAttr(name.str())),
         builder.getStringAttr(name), tensor_attr,
         TypeAttr::get(tensor_attr.getType()), builder.getUnitAttr());
   }
@@ -149,7 +150,7 @@ LogicalResult LiftVariablesFromSession(
 LogicalResult LiftVariables(ModuleOp module, Session* session) {
   MLIRContext* context = module.getContext();
   mlir::Builder builder(context);
-  Identifier resource_name_id = builder.getIdentifier(kResourceNameArgAttr);
+  StringAttr resource_name_id = builder.getStringAttr(kResourceNameArgAttr);
 
   SmallSet<StringRef, 4> resource_names;
 
@@ -213,8 +214,8 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
 
     // Update the function type.
     func.setType(mlir::FunctionType::get(module.getContext(),
-                                         func.getArgumentTypes(),
-                                         func.getType().getResults()));
+                                         func.getBody().getArgumentTypes(),
+                                         func.getFunctionType().getResults()));
   }
   return success();
 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
 
+#include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -36,7 +37,7 @@ void createTFtoTOSALegalizationPipeline(
   pm.addPass(mlir::createCSEPass());
 
   pm.addPass(mlir::createLoopFusionPass());
-  pm.addPass(mlir::createMemRefDataFlowOptPass());
+  pm.addPass(mlir::createAffineScalarReplacementPass());
 
   //----------------------------------------------------------------------------
   // Perform main conversion.
@@ -48,6 +49,7 @@ void createTFtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Post conversion cleanup.
   //----------------------------------------------------------------------------
+  pm.addPass(mlir::tosa::createTosaInferShapesPass());
   pm.addPass(mlir::tosa::createTosaMakeBroadcastablePass());
   // Inline the call/return basic blocks within TOSA control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -55,10 +57,11 @@ void createTFtoTOSALegalizationPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-static mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>
-    tf_tosa_pipeline("tf-to-tosa-pipeline",
-                     "TensorFlow to TOSA legalization pipeline",
-                     createTFtoTOSALegalizationPipeline);
+void registerTFtoTOSALegalizationPipeline() {
+  mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>(
+      "tf-to-tosa-pipeline", "TensorFlow to TOSA legalization pipeline",
+      createTFtoTOSALegalizationPipeline);
+}
 
 }  // namespace tosa
 }  // namespace mlir

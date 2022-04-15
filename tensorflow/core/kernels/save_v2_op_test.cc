@@ -105,7 +105,7 @@ TEST_F(SaveV2OpTest, Simple) {
   AddInput<int16>(TensorShape({7}), [](int x) -> int16 { return x - 8; });
 
   // Add a 1-d int64 tensor
-  AddInput<int64>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
+  AddInput<int64_t>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
 
   // Add a 2-d complex64 tensor
   AddInput<complex64>(TensorShape({2, 3}), [](int x) -> complex64 {
@@ -285,7 +285,7 @@ TEST_F(SaveV2OpTest, Simple) {
     TF_EXPECT_OK(reader.Lookup("tensor_int64", &val));
     EXPECT_EQ(DT_INT64, val.dtype());
     for (int i = 0; i < 9; ++i) {
-      EXPECT_EQ(i - 9, val.template flat<int64>()(i));
+      EXPECT_EQ(i - 9, val.template flat<int64_t>()(i));
     }
   }
 

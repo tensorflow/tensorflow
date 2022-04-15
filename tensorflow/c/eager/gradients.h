@@ -67,7 +67,7 @@ struct ForwardOperation {
   string op_name;
   std::vector<AbstractTensorHandle*> inputs;
   std::vector<AbstractTensorHandle*> outputs;
-  std::vector<int64> skip_input_indices;
+  std::vector<int64_t> skip_input_indices;
   AttrBuilder attrs;
 };
 
@@ -111,7 +111,7 @@ class TapeTensor {
   TapeTensor(const TapeTensor& other);
   ~TapeTensor();
 
-  tensorflow::int64 GetID() const;
+  int64_t GetID() const;
   tensorflow::DataType GetDType() const;
 
   AbstractTensorHandle* ZerosLike() const;

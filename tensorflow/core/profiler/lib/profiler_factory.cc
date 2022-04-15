@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/profiler_controller.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 
@@ -38,18 +39,26 @@ std::vector<ProfilerFactory>* GetFactories() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
 
 void RegisterProfilerFactory(ProfilerFactory factory) {
   mutex_lock lock(mu);
-  GetFactories()->push_back(factory);
+  GetFactories()->push_back(std::move(factory));
 }
 
-void CreateProfilers(
-    const ProfileOptions& options,
-    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
+std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
+    const ProfileOptions& options) {
+  std::vector<std::unique_ptr<profiler::ProfilerInterface>> result;
   mutex_lock lock(mu);
-  for (auto factory : *GetFactories()) {
-    if (auto profiler = factory(options)) {
-      result->push_back(std::move(profiler));
-    }
+  for (const auto& factory : *GetFactories()) {
+    auto profiler = factory(options);
+    // A factory might return nullptr based on options.
+    if (profiler == nullptr) continue;
+    result.emplace_back(
+        absl::make_unique<ProfilerController>(std::move(profiler)));
   }
+  return result;
+}
+
+void ClearRegisteredProfilersForTest() {
+  mutex_lock lock(mu);
+  GetFactories()->clear();
 }
 
 }  // namespace profiler

@@ -21,7 +21,7 @@ limitations under the License.
 #include <limits>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "sobol_data.h"
+#include "sobol_data.h"  // from @sobol_data
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"

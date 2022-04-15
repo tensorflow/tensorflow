@@ -32,7 +32,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
  public:
@@ -41,7 +40,7 @@ class UnpackOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const int32 num = num_outputs();
+    const int32_t num = num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
 
@@ -60,7 +59,7 @@ class UnpackOp : public OpKernel {
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(axis);
-    const int64 output_size = output_shape.num_elements();
+    const int64_t output_size = output_shape.num_elements();
     OP_REQUIRES(
         context,
         FastBoundsCheck(output_size,
@@ -143,23 +142,22 @@ TF_CALL_uint8(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
-// A special GPU kernel for int32.
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Unpack")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("value")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
 REGISTER_KERNEL_BUILDER(Name("Unpack")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("value")
                             .HostMemory("output")
-                            .TypeConstraint<int64>("T"),
+                            .TypeConstraint<int64_t>("T"),
                         UnpackOp<CPUDevice, int64>);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // end namespace tensorflow

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_OPERATION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_OPERATION_H_
 
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
@@ -46,8 +48,8 @@ class ClOperation {
   ClOperation() = default;
   virtual ~ClOperation() = default;
   // Move only
-  ClOperation(ClOperation&& operation);
-  ClOperation& operator=(ClOperation&& operation);
+  ClOperation(ClOperation&& operation) = default;
+  ClOperation& operator=(ClOperation&& operation) = default;
   ClOperation(const ClOperation&) = delete;
   ClOperation& operator=(const ClOperation&) = delete;
 
@@ -57,18 +59,39 @@ class ClOperation {
 
   GPUOperation& GetGpuOperation() { return *operation_; }
   const GPUOperation& GetGpuOperation() const { return *operation_; }
+  uint64_t GetKernelFingerprint() const { return kernel_fingerprint_; }
 
-  const OperationDef& GetDefinition() const { return operation_->definition_; }
+  const OperationDef& GetDefinition() const {
+    return operation_->GetDefinition();
+  }
 
   absl::Status AddOperation(ClOperation* operation);
 
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
 
+  absl::Status SetSrcTensor(int index, Tensor* tensor);
+  absl::Status SetDstTensor(int index, Tensor* tensor);
+
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    return queue->Dispatch(kernel_, operation_->work_groups_count_,
+    return queue->Dispatch(kernel_, operation_->GetWorkGroupsCount(),
                            operation_->work_group_size_);
+  }
+
+  absl::Status AddToQueue(ProfilingCommandQueue* queue, CLEvent* event) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    return queue->CLCommandQueue::Dispatch(kernel_,
+                                           operation_->GetWorkGroupsCount(),
+                                           operation_->work_group_size_, event);
+  }
+
+  // for better profiling
+  absl::Status AddToQueueNTimes(ProfilingCommandQueue* queue, int n,
+                                int flush_period = 0) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    return queue->DispatchNTimes(kernel_, operation_->GetWorkGroupsCount(),
+                                 operation_->work_group_size_, n, flush_period);
   }
 
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
@@ -76,19 +99,18 @@ class ClOperation {
 
   absl::Status Compile(const CreationContext& creation_context);
 
-  absl::Status CompileDeserialized(const CreationContext& creation_context);
+  absl::Status RestoreDeserialized(const ProgramCache& program_cache,
+                                   uint64_t fingerprint,
+                                   const GpuInfo& gpu_info,
+                                   const int3& work_group_size,
+                                   CLContext* context);
 
-  void MoveObjectRefsFromCLToGeneric() {
-    cl_args_.MoveObjectRefsOut(&operation_->args_);
-  }
-  void MoveObjectRefsFromGenericToCL() {
-    cl_args_.MoveObjectRefsIn(&operation_->args_);
-  }
-  void SyncScalarValues() { cl_args_.CopyScalarValues(&operation_->args_); }
+  int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
 
  private:
   std::unique_ptr<GPUOperation> operation_;
   CLKernel kernel_;
+  uint64_t kernel_fingerprint_;
   CLArguments cl_args_;
 };
 

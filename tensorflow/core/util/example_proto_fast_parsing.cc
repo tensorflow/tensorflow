@@ -53,7 +53,7 @@ class LimitedArraySlice {
       : current_(begin), begin_(begin), end_(begin + num_elements) {}
 
   // May return negative if there were push_back calls after slice was filled.
-  int64 EndDistance() const { return end_ - current_; }
+  int64_t EndDistance() const { return end_ - current_; }
 
   // Attempts to push value to the back of this. If the slice has
   // already been filled, this method has no effect on the underlying data, but
@@ -220,7 +220,7 @@ class Feature {
         return false;
       }
 
-      constexpr int32 kNumFloatBytes = 4;
+      constexpr int32_t kNumFloatBytes = 4;
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32 packed_length;
@@ -246,7 +246,7 @@ class Feature {
           if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
             return false;
         } else {
-          int64 index = initial_size;
+          int64_t index = initial_size;
           while (!stream.ExpectAtEnd()) {
             uint32 buffer32;
             if (!stream.ReadLittleEndian32(&buffer32)) return false;
@@ -262,10 +262,10 @@ class Feature {
         const size_t initial_size = float_list->size();
         // 1 byte for the tag (`1` encoded as Variant32) and kNumFloatBytes for
         // the value.
-        const int64 num_elements =
+        const int64_t num_elements =
             stream.BytesUntilLimit() / (1 + kNumFloatBytes);
         float_list->resize(initial_size + num_elements);
-        int64 index = initial_size;
+        int64_t index = initial_size;
         while (!stream.ExpectAtEnd()) {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;
@@ -304,7 +304,7 @@ class Feature {
         while (!stream.ExpectAtEnd()) {
           protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
-          int64_list->push_back(static_cast<int64>(n));
+          int64_list->push_back(static_cast<int64_t>(n));
         }
 
         stream.PopLimit(packed_limit);
@@ -313,7 +313,7 @@ class Feature {
           if (!stream.ExpectTag(kVarintTag(1))) return false;
           protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
-          int64_list->push_back(static_cast<int64>(n));
+          int64_list->push_back(static_cast<int64_t>(n));
         }
       }
     }
@@ -385,12 +385,27 @@ bool ParseFeatureMapEntry(protobuf::io::CodedInputStream* stream,
   uint32 length;
   if (!stream->ReadVarint32(&length)) return false;
   auto limit = stream->PushLimit(length);
-  if (!stream->ExpectTag(kDelimitedTag(1))) return false;
-  if (!ParseString(stream, &feature_map_entry->first)) return false;
-  if (!stream->ExpectTag(kDelimitedTag(2))) return false;
-  StringPiece feature_string_piece;
-  if (!ParseString(stream, &feature_string_piece)) return false;
-  feature_map_entry->second = parsed::Feature(feature_string_piece);
+
+  // Protobufs allow an arbitrary order for the key and value fields.
+  for (int n = 0; n < 2; ++n) {
+    const uint32_t tag = stream->ReadTag();
+    switch (tag) {
+      case kDelimitedTag(1):
+        if (!ParseString(stream, &feature_map_entry->first)) return false;
+        break;
+
+      case kDelimitedTag(2): {
+        StringPiece feature_string_piece;
+        if (!ParseString(stream, &feature_string_piece)) return false;
+        feature_map_entry->second = parsed::Feature(feature_string_piece);
+        break;
+      }
+
+      default:
+        return false;
+    }
+  }
+
   if (!stream->ExpectAtEnd()) return false;
   stream->PopLimit(limit);
   return true;
@@ -479,10 +494,10 @@ bool TestFastParse(const string& serialized, Example* example) {
         break;
       }
       case DT_INT64: {
-        SmallVector<int64> list;
+        SmallVector<int64_t> list;
         if (!name_and_feature.second.ParseInt64List(&list)) return false;
         auto* result_list = value.mutable_int64_list();
-        for (int64 i : list) {
+        for (int64_t i : list) {
           result_list->add_value(i);
         }
         break;
@@ -531,7 +546,7 @@ struct SparseBuffer {
   // Other 2 vectors remain empty.
   SmallVector<tstring> bytes_list;
   SmallVector<float> float_list;
-  SmallVector<int64> int64_list;
+  SmallVector<int64_t> int64_list;
 
   // Features of example i are elements with indices
   // from example_end_indices[i-1] to example_end_indices[i]-1 on the
@@ -585,9 +600,9 @@ Status FastParseSerializedExample(
     return errors::InvalidArgument("Could not parse example input, value: '",
                                    serialized_example, "'");
   }
-  std::vector<int64> sparse_feature_last_example(config.sparse.size(), -1);
-  std::vector<int64> dense_feature_last_example(config.dense.size(), -1);
-  std::vector<int64> ragged_feature_last_example(config.ragged.size(), -1);
+  std::vector<int64_t> sparse_feature_last_example(config.sparse.size(), -1);
+  std::vector<int64_t> dense_feature_last_example(config.dense.size(), -1);
+  std::vector<int64_t> ragged_feature_last_example(config.ragged.size(), -1);
 
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
@@ -680,8 +695,8 @@ Status FastParseSerializedExample(
 
         switch (config.dense[d].dtype) {
           case DT_INT64: {
-            auto out_p = out.flat<int64>().data() + offset;
-            LimitedArraySlice<int64> slice(out_p, num_elements);
+            auto out_p = out.flat<int64_t>().data() + offset;
+            LimitedArraySlice<int64_t> slice(out_p, num_elements);
             if (!feature.ParseInt64List(&slice)) return parse_error();
             if (slice.EndDistance() != 0) {
               return shape_error(num_elements - slice.EndDistance(), "int64");
@@ -879,8 +894,8 @@ Status FastParseSerializedExample(
 
     switch (config.dense[d].dtype) {
       case DT_INT64: {
-        std::copy_n(in.flat<int64>().data(), num_elements,
-                    out.flat<int64>().data() + offset);
+        std::copy_n(in.flat<int64_t>().data(), num_elements,
+                    out.flat<int64_t>().data() + offset);
         break;
       }
       case DT_FLOAT: {
@@ -971,7 +986,8 @@ template <typename T>
 const SmallVector<T>& GetListFromBuffer(const SparseBuffer& buffer);
 
 template <>
-const SmallVector<int64>& GetListFromBuffer<int64>(const SparseBuffer& buffer) {
+const SmallVector<int64_t>& GetListFromBuffer<int64_t>(
+    const SparseBuffer& buffer) {
   return buffer.int64_list;
 }
 template <>
@@ -1051,10 +1067,10 @@ class TensorVector {
     return *tensor_;
   }
 
-  int64 size() const {
+  int64_t size() const {
     return tensor_.has_value() ? tensor_->NumElements() : 0;
   }
-  void resize(int64 new_size) {
+  void resize(int64_t new_size) {
     DCHECK(!tensor_.has_value());
     tensor_ = Tensor(DataTypeToEnum<T>::v(), TensorShape({new_size}));
     data_ = tensor_->flat<T>().data();
@@ -1091,7 +1107,7 @@ void CopySparseBufferToTensor(DataType dtype, size_t offset, SparseBuffer* src,
   switch (dtype) {
     case DT_INT64: {
       std::copy(src->int64_list.begin(), src->int64_list.end(),
-                dst->flat<int64>().data() + offset);
+                dst->flat<int64_t>().data() + offset);
       break;
     }
     case DT_FLOAT: {
@@ -1161,7 +1177,7 @@ Status FastParseExample(const Config& config,
     if (config.dense[d].variable_length) continue;
     TensorShape out_shape;
     out_shape.AddDim(serialized.size());
-    for (const int64 dim : config.dense[d].shape.dim_sizes()) {
+    for (const int64_t dim : config.dense[d].shape.dim_sizes()) {
       out_shape.AddDim(dim);
     }
     fixed_dense_values[d] = Tensor(config.dense[d].dtype, out_shape);
@@ -1267,7 +1283,7 @@ Status FastParseExample(const Config& config,
     Tensor* values = &result->sparse_values.back();
 
     result->sparse_shapes.emplace_back(DT_INT64, TensorShape({2}));
-    auto shapes_shape_t = result->sparse_shapes.back().vec<int64>();
+    auto shapes_shape_t = result->sparse_shapes.back().vec<int64_t>();
     shapes_shape_t(0) = serialized.size();
     shapes_shape_t(1) = max_num_features;
 
@@ -1279,7 +1295,7 @@ Status FastParseExample(const Config& config,
       size_t delta = 0;
 
       if (indices->NumElements() > 0) {
-        int64* ix_p = &indices->matrix<int64>()(offset, 0);
+        int64* ix_p = &indices->matrix<int64_t>()(offset, 0);
         size_t example_index = first_example_of_minibatch(i);
         for (size_t example_end_index : buffer.example_end_indices) {
           size_t feature_index = 0;
@@ -1314,7 +1330,7 @@ Status FastParseExample(const Config& config,
                                        row_splits_shape);
     Tensor* row_splits = &result->ragged_splits.back();
     if (config.ragged[d].splits_dtype == DT_INT64) {
-      row_splits->flat<int64>()(0) = 0;
+      row_splits->flat<int64_t>()(0) = 0;
     } else {
       row_splits->flat<int32>()(0) = 0;
     }
@@ -1333,14 +1349,14 @@ Status FastParseExample(const Config& config,
       // Update row_splits.  row_splits are formed by concatenating the example
       // end_indices (adjusting each to start after the previous one ends).
       if (config.ragged[d].splits_dtype == DT_INT64) {
-        int64* row_splits_out = &row_splits->flat<int64>()(splits_offset);
-        int64 start = *row_splits_out;
+        int64* row_splits_out = &row_splits->flat<int64_t>()(splits_offset);
+        int64_t start = *row_splits_out;
         for (size_t example_end_index : buffer.example_end_indices) {
           *++row_splits_out = start + example_end_index;
         }
       } else {
         int32* row_splits_out = &row_splits->flat<int32>()(splits_offset);
-        int32 start = *row_splits_out;
+        int32_t start = *row_splits_out;
         for (size_t example_end_index : buffer.example_end_indices) {
           *++row_splits_out = start + example_end_index;
         }
@@ -1391,8 +1407,8 @@ Status FastParseExample(const Config& config,
 
     switch (config.dense[d].dtype) {
       case DT_INT64: {
-        FillAndCopyVarLen<int64>(d, num_elements, num_elements_per_minibatch,
-                                 config, varlen_dense_buffers, &values);
+        FillAndCopyVarLen<int64_t>(d, num_elements, num_elements_per_minibatch,
+                                   config, varlen_dense_buffers, &values);
         break;
       }
       case DT_FLOAT: {
@@ -1593,8 +1609,8 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
       }
       switch (example_dtype) {
         case DT_INT64: {
-          auto out_p = out->flat<int64>().data();
-          LimitedArraySlice<int64> slice(out_p, num_elements);
+          auto out_p = out->flat<int64_t>().data();
+          LimitedArraySlice<int64_t> slice(out_p, num_elements);
           if (!feature.ParseInt64List(&slice)) return parse_error();
           if (slice.EndDistance() != 0) {
             return parse_error();
@@ -1626,7 +1642,7 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
     } else {  // if variable length
       SmallVector<tstring> bytes_list;
       TensorVector<float> float_list;
-      SmallVector<int64> int64_list;
+      SmallVector<int64_t> int64_list;
 
       const size_t num_elements_divisor =
           is_dense ? config.dense[d].elements_per_stride : 1;
@@ -1723,14 +1739,14 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
         // TODO(mrry): Investigate the possibility of not materializing
         // the indices (and perhaps dense_shape) until they are needed.
         *out_indices = Tensor(
-            DT_INT64, TensorShape({static_cast<int64>(num_elements), 1}));
-        auto indices_flat = out_indices->flat<int64>();
+            DT_INT64, TensorShape({static_cast<int64_t>(num_elements), 1}));
+        auto indices_flat = out_indices->flat<int64_t>();
         for (size_t i = 0; i < num_elements; ++i) {
-          indices_flat(i) = static_cast<int64>(i);
+          indices_flat(i) = static_cast<int64_t>(i);
         }
 
         *out_dense_shape = Tensor(DT_INT64, TensorShape({1}));
-        auto shapes_shape_t = out_dense_shape->vec<int64>();
+        auto shapes_shape_t = out_dense_shape->vec<int64_t>();
         shapes_shape_t(0) = num_elements;
 
         out = &result->sparse_values[d];
@@ -1746,7 +1762,7 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
         case DT_INT64: {
           *out = Tensor(out_dtype, out_shape);
           CopyOrMoveBlock(int64_list.begin(), int64_list.end(),
-                          out->flat<int64>().data());
+                          out->flat<int64_t>().data());
           break;
         }
         case DT_FLOAT: {
@@ -1797,7 +1813,7 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
       result->sparse_indices[d] = Tensor(DT_INT64, TensorShape({0, 1}));
       result->sparse_values[d] =
           Tensor(config.sparse[d].dtype, TensorShape({0}));
-      result->sparse_shapes[d].vec<int64>()(0) = 0;
+      result->sparse_shapes[d].vec<int64_t>()(0) = 0;
     }
   }
 
@@ -1880,7 +1896,7 @@ inline void PadFloatFeature(int num_to_pad, float* out) {
   }
 }
 
-inline void PadInt64Feature(int num_to_pad, int64* out) {
+inline void PadInt64Feature(int num_to_pad, int64_t* out) {
   for (int i = 0; i < num_to_pad; i++) {
     *out++ = 0;
   }
@@ -1940,7 +1956,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
 // Return the number of int64 elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.
 inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
-                             int64* out) {
+                             int64_t* out) {
   int num_elements = 0;
   uint32 length;
   if (!stream->ExpectTag(kDelimitedTag(3)) || !stream->ReadVarint32(&length)) {
@@ -2004,7 +2020,7 @@ inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
       break;
     case DT_INT64:
       delta =
-          ParseInt64Feature(stream, out->flat<int64>().data() + *out_offset);
+          ParseInt64Feature(stream, out->flat<int64_t>().data() + *out_offset);
       break;
     default:
       ReportUnexpectedDataType(dtype);
@@ -2249,9 +2265,9 @@ void CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
   size_t src_size = src.NumElements();
   switch (dtype) {
     case DT_INT64: {
-      auto src_t = src.flat<int64>().data();
+      auto src_t = src.flat<int64_t>().data();
       std::copy(src_t, src_t + src_size,
-                dst->flat<int64>().data() + *dst_offset);
+                dst->flat<int64_t>().data() + *dst_offset);
       break;
     }
     case DT_FLOAT: {
@@ -2360,8 +2376,9 @@ Status ParseContextSparseFeatures(const FeatureProtosMap& context_features,
         Tensor(allocator, DT_INT64, TensorShape({is_batch ? 2 : 1}));
     Tensor& out_values = context_result->sparse_values[t];
     size_t out_values_offset = 0;
-    int64* out_indices = context_result->sparse_indices[t].flat<int64>().data();
-    auto out_shape = context_result->sparse_shapes[t].vec<int64>();
+    int64_t* out_indices =
+        context_result->sparse_indices[t].flat<int64_t>().data();
+    auto out_shape = context_result->sparse_shapes[t].vec<int64_t>();
 
     // Fill in the values.
     size_t num_elements = 0;
@@ -2425,9 +2442,9 @@ Status ParseContextRaggedFeatures(const FeatureProtosMap& context_features,
         is_batch && splits_dtype == DT_INT32
             ? context_result->ragged_splits[t].vec<int32>().data()
             : nullptr;
-    int64* int64_splits =
+    int64_t* int64_splits =
         is_batch && splits_dtype == DT_INT64
-            ? context_result->ragged_splits[t].vec<int64>().data()
+            ? context_result->ragged_splits[t].vec<int64_t>().data()
             : nullptr;
     if (int32_splits) {
       *int32_splits++ = 0;
@@ -2464,7 +2481,7 @@ Status ParseContextRaggedFeatures(const FeatureProtosMap& context_features,
               ? int32_splits -
                     context_result->ragged_splits[t].vec<int32>().data()
               : int64_splits -
-                    context_result->ragged_splits[t].vec<int64>().data();
+                    context_result->ragged_splits[t].vec<int64_t>().data();
       if (actual_splits != num_examples + 1) {
         return errors::InvalidArgument(
             "Unexpected number of examples for feature ", c.feature_name);
@@ -2505,7 +2522,8 @@ Status ParseSequenceDenseFeatures(const FeatureProtosMap& sequence_features,
           expected_max_elements,
           " is not consistent with output shape: ", total_shape.DebugString());
     }
-    int64 expected_max_rows = expected_max_elements / row_shape.num_elements();
+    int64_t expected_max_rows =
+        expected_max_elements / row_shape.num_elements();
     if (is_batch) {
       dense_shape.AddDim(num_examples);
     }
@@ -2516,11 +2534,11 @@ Status ParseSequenceDenseFeatures(const FeatureProtosMap& sequence_features,
     sequence_result->dense_values[t] = Tensor(allocator, dtype, dense_shape);
     (*dense_feature_lengths)[t] =
         Tensor(allocator, DT_INT64, dense_length_shape);
-    int64* out_lengths = (*dense_feature_lengths)[t].flat<int64>().data();
+    int64_t* out_lengths = (*dense_feature_lengths)[t].flat<int64_t>().data();
 
     tstring* out_bytes = nullptr;
     float* out_float = nullptr;
-    int64* out_int64 = nullptr;
+    int64_t* out_int64 = nullptr;
     switch (dtype) {
       case DT_STRING:
         out_bytes = sequence_result->dense_values[t].flat<tstring>().data();
@@ -2529,7 +2547,7 @@ Status ParseSequenceDenseFeatures(const FeatureProtosMap& sequence_features,
         out_float = sequence_result->dense_values[t].flat<float>().data();
         break;
       case DT_INT64:
-        out_int64 = sequence_result->dense_values[t].flat<int64>().data();
+        out_int64 = sequence_result->dense_values[t].flat<int64_t>().data();
         break;
       default:
         ReportUnexpectedDataType(dtype);
@@ -2652,7 +2670,7 @@ Status ParseSequenceSparseFeatures(
 
     tstring* out_bytes = nullptr;
     float* out_float = nullptr;
-    int64* out_int64 = nullptr;
+    int64_t* out_int64 = nullptr;
     switch (dtype) {
       case DT_STRING:
         out_bytes = sequence_result->sparse_values[t].flat<tstring>().data();
@@ -2661,14 +2679,14 @@ Status ParseSequenceSparseFeatures(
         out_float = sequence_result->sparse_values[t].flat<float>().data();
         break;
       case DT_INT64:
-        out_int64 = sequence_result->sparse_values[t].flat<int64>().data();
+        out_int64 = sequence_result->sparse_values[t].flat<int64_t>().data();
         break;
       default:
         ReportUnexpectedDataType(dtype);
     }
-    int64* out_indices =
-        sequence_result->sparse_indices[t].flat<int64>().data();
-    auto out_shape = sequence_result->sparse_shapes[t].vec<int64>();
+    int64_t* out_indices =
+        sequence_result->sparse_indices[t].flat<int64_t>().data();
+    auto out_shape = sequence_result->sparse_shapes[t].vec<int64_t>();
 
     // Fill in the values.
     size_t num_elements = 0;
@@ -2787,17 +2805,17 @@ Status ParseSequenceRaggedFeatures(
         splits_dtype == DT_INT32
             ? sequence_result->ragged_splits[t].vec<int32>().data()
             : nullptr;
-    int64* int64_inner_splits =
+    int64_t* int64_inner_splits =
         splits_dtype == DT_INT64
-            ? sequence_result->ragged_splits[t].vec<int64>().data()
+            ? sequence_result->ragged_splits[t].vec<int64_t>().data()
             : nullptr;
     int32* int32_outer_splits =
         is_batch && splits_dtype == DT_INT32
             ? sequence_result->ragged_outer_splits[t].vec<int32>().data()
             : nullptr;
-    int64* int64_outer_splits =
+    int64_t* int64_outer_splits =
         is_batch && splits_dtype == DT_INT64
-            ? sequence_result->ragged_outer_splits[t].vec<int64>().data()
+            ? sequence_result->ragged_outer_splits[t].vec<int64_t>().data()
             : nullptr;
     if (int32_inner_splits) {
       *int32_inner_splits++ = 0;
@@ -2879,7 +2897,7 @@ Status ParseSequenceRaggedFeatures(
       int num_inner_splits =
           int32_inner_splits
               ? int32_inner_splits - inner_splits.vec<int32>().data()
-              : int64_inner_splits - inner_splits.vec<int64>().data();
+              : int64_inner_splits - inner_splits.vec<int64_t>().data();
       if (num_inner_splits != expected_num_rows + 1) {
         return errors::InvalidArgument("Unexpected number of rows for feature ",
                                        c.feature_name);
@@ -2890,7 +2908,7 @@ Status ParseSequenceRaggedFeatures(
       int num_outer_splits =
           int32_outer_splits
               ? int32_outer_splits - outer_splits.vec<int32>().data()
-              : int64_outer_splits - outer_splits.vec<int64>().data();
+              : int64_outer_splits - outer_splits.vec<int64_t>().data();
       if (num_outer_splits != num_examples + 1) {
         return errors::InvalidArgument(
             "Unexpected number of examples for feature ", c.feature_name);

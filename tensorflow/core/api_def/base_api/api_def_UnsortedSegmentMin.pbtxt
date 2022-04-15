@@ -4,6 +4,10 @@ op {
     name: "segment_ids"
     description: <<END
 A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.
 END
   }
   out_arg {
@@ -20,8 +24,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the minimum such that:
 
 \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
@@ -33,14 +36,19 @@ possible value for the specific numeric type,
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 1,  2, 2, 1],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
 
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
+
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
 END
 }

@@ -92,7 +92,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
       module->AddEntryComputation(builder.Build());
 
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
-      [](int64 shape_size) {
+      [](int64_t shape_size) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   ConvCanonicalization conv_canonicalization(&target_machine_features);
@@ -154,7 +154,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   module->AddEntryComputation(builder.Build());
 
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
-      [](int64 shape_size) {
+      [](int64_t shape_size) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   ConvCanonicalization conv_canonicalization(&target_machine_features);

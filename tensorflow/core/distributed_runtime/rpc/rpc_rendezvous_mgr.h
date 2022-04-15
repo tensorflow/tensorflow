@@ -47,7 +47,7 @@ class RpcRendezvousMgr : public BaseRendezvousMgr {
   explicit RpcRendezvousMgr(const WorkerEnv* env);
 
  protected:
-  BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env);
+  BaseRemoteRendezvous* Create(int64_t step_id, const WorkerEnv* worker_env);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRendezvousMgr);

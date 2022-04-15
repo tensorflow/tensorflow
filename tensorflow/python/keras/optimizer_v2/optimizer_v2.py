@@ -27,8 +27,8 @@ from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -51,9 +51,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
-
-keras_optimizers_gauge = monitoring.BoolGauge(
-    "/tensorflow/api/keras/optimizers", "keras optimizer usage", "method")
 
 _DEFAULT_VALID_DTYPES = frozenset([
     dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
@@ -359,9 +356,6 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       ValueError: in case of any invalid argument.
     """
-    # Instrument optimizer usages
-    keras_optimizers_gauge.get_cell(self.__class__.__name__).set(True)
-
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay", "global_clipnorm"}
     for k in kwargs:
       if k not in allowed_kwargs:
@@ -694,7 +688,7 @@ class OptimizerV2(trackable.Trackable):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
-      if isinstance(grad, ops.IndexedSlices):
+      if isinstance(grad, indexed_slices.IndexedSlices):
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
@@ -1105,8 +1099,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> len(opt.get_weights())
     3
 
@@ -1136,8 +1129,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> new_weights = [np.array(10), np.ones([20, 10]), np.zeros([10])]
     >>> opt.set_weights(new_weights)
     >>> opt.iterations
@@ -1478,7 +1470,7 @@ class RestoredOptimizer(OptimizerV2):
         "you.")
 
 revived_types.register_revived_type(
-    "optimizer",
+    "tf_deprecated_optimizer",
     lambda obj: isinstance(obj, OptimizerV2),
     versions=[revived_types.VersionedTypeRegistration(
         object_factory=lambda proto: RestoredOptimizer(),

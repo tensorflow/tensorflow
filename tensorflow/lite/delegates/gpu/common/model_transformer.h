@@ -27,11 +27,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-class TransformationReporter;
-
 struct TransformationContext {
   GraphFloat32* graph;
-  TransformationReporter* reporter;
 };
 
 enum class TransformStatus {
@@ -56,6 +53,9 @@ enum class TransformStatus {
 struct TransformResult {
   TransformStatus status;
   std::string message;
+  bool operator==(const TransformResult& result) const {
+    return this->status == result.status && this->message == result.message;
+  }
 };
 
 // Class responsible for applying a transformation to a single node.
@@ -86,31 +86,19 @@ class SequenceTransformation {
       const std::vector<Node*>& sequence, GraphFloat32* graph) = 0;
 };
 
-// A class accumulated decisions or updates done by transformations.
-class TransformationReporter {
- public:
-  virtual ~TransformationReporter() = default;
-
-  virtual void DeclinedTransformation(const std::string& transformation,
-                                      const std::string& node_ids,
-                                      const std::string& message) = 0;
-
-  virtual void AppliedTransformation(const std::string& transformation,
-                                     const std::string& node_ids,
-                                     const std::string& message) = 0;
-};
-
-// A class is designed to perform model transformations.
+// Performs model transformations.
 class ModelTransformer {
  public:
-  ModelTransformer(GraphFloat32* graph, TransformationReporter* reporter)
-      : graph_(graph), reporter_(reporter) {}
+  explicit ModelTransformer(GraphFloat32* graph) : graph_(graph) {}
 
   // @return false if a graph is in the broken states can not be used any more
   bool Apply(const std::string& name, SequenceTransformation* transformation);
 
   // @return false if a graph is in the broken states can not be used any more
   bool Apply(const std::string& name, NodeTransformation* transformation);
+
+  // @return last recorded error for graph transformations.
+  const std::string& last_transformation_message() const;
 
  private:
   bool ApplyStartingWithNode(const std::string& name,
@@ -124,21 +112,11 @@ class ModelTransformer {
   }
 
   GraphFloat32* graph_;
-  TransformationReporter* reporter_;
 
+  // TODO(b/163423950): Clean up messaging mechanism.
+  std::string last_transformation_message_;
   std::deque<NodeId> to_process_;
   absl::flat_hash_set<NodeId> processed_;
-};
-
-class NullTransformationReporter : public TransformationReporter {
- public:
-  void DeclinedTransformation(const std::string& transformation,
-                              const std::string& nodes_id,
-                              const std::string& message) override {}
-
-  void AppliedTransformation(const std::string& transformation,
-                             const std::string& nodes_id,
-                             const std::string& message) override {}
 };
 
 }  // namespace gpu

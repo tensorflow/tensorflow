@@ -62,12 +62,14 @@ class GpuTimer : public internal::TimerInterface {
 
   // See Timer::Microseconds().
   // TODO(leary) make this into an error code interface...
-  uint64 Microseconds() const override {
+  uint64_t Microseconds() const override {
     return GetElapsedMilliseconds() * 1e3;
   }
 
   // See Timer::Nanoseconds().
-  uint64 Nanoseconds() const override { return GetElapsedMilliseconds() * 1e6; }
+  uint64_t Nanoseconds() const override {
+    return GetElapsedMilliseconds() * 1e6;
+  }
 
  private:
   GpuExecutor* parent_;

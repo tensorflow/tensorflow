@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -93,7 +92,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
   return absl::make_unique<GlobalData>(stub_, response.data());
 }
 
-Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
+Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
   *request.mutable_literal() = literal.ToProto();
@@ -116,7 +115,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
 }
 
 StatusOr<Literal> Client::TransferFromOutfeed(
-    const Shape* shape_with_layout, int64 replica_id,
+    const Shape* shape_with_layout, int64_t replica_id,
     const DeviceHandle* device_handle) {
   TransferFromOutfeedRequest request;
   if (device_handle) {
@@ -312,7 +311,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   // device 0.
   //
   // TODO(b/118493728): Allow Execute to return one result per computation.
-  for (int64 i = 0, end = results.size(); i < end; i++) {
+  for (int64_t i = 0, end = results.size(); i < end; i++) {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
     if (!ShapeUtil::IsEmptyTuple(shape)) {
       VLOG(3) << "Fetching result from device " << i << ": "
@@ -363,7 +362,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
 }
 
 StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
-    int64 device_count) {
+    int64_t device_count) {
   if (device_count < 1) {
     return InvalidArgument("device_count must be greater than 0");
   }
@@ -380,7 +379,9 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   }
 
   std::vector<DeviceHandle> device_handles;
-  for (const DeviceHandle& device_handle : response.device_handles()) {
+  const auto& response_device_handles = response.device_handles();
+  device_handles.reserve(response_device_handles.size());
+  for (const DeviceHandle& device_handle : response_device_handles) {
     device_handles.push_back(device_handle);
   }
 
@@ -463,16 +464,16 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   return Shape(response.shape());
 }
 
-StatusOr<string> Client::ExecutionStatsAsString(
+StatusOr<std::string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
       GetComputationStats(computation, GetDebugOptionsFromFlags()));
-  int64 total_flops =
+  int64_t total_flops =
       computation_stats.flop_count() + computation_stats.transcendental_count();
   if (profile.compute_time_ns() > 0) {
-    int64 nanoseconds = profile.compute_time_ns();
-    int64 cycle_count = profile.compute_cycle_count();
+    int64_t nanoseconds = profile.compute_time_ns();
+    int64_t cycle_count = profile.compute_cycle_count();
     double gflops = total_flops / nanoseconds;
     return absl::StrCat(
         "[Execution Statistics] flop count: ", computation_stats.flop_count(),
@@ -481,7 +482,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
         ", compute cycles: ", cycle_count, ", performance: ", gflops,
         "gflop/s");
   }
-  return string("[Execution Statistics] not available.");
+  return std::string("[Execution Statistics] not available.");
 }
 
 StatusOr<ChannelHandle> Client::CreateChannelHandleByType(

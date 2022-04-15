@@ -29,7 +29,7 @@ struct HistogramFixedWidthFunctor {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& values,
                         const typename TTypes<T, 1>::ConstTensor& value_range,
-                        int32 nbins, typename TTypes<Tout, 1>::Tensor& out);
+                        int32_t nbins, typename TTypes<Tout, 1>::Tensor& out);
 };
 
 }  // end namespace functor

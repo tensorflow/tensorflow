@@ -175,6 +175,9 @@ class AttrBuilder : public AbstractOpAttrs {
   bool GetBool(absl::string_view attr_name, bool* result) const override;
   bool GetType(absl::string_view attr_name,
                tensorflow::DataType* result) const override;
+  Status GetTypeList(
+      absl::string_view attr_name,
+      absl::InlinedVector<DataType, 4>* type_list) const override;
 
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;

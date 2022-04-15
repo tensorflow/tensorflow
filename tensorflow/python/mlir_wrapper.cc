@@ -47,6 +47,21 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           return output;
         });
 
+  m.def("ImportGraphDef",
+        [](const std::string &graphdef, const std::string &pass_pipeline,
+           bool show_debug_info, const std::string &input_names,
+           const std::string &input_data_types,
+           const std::string &input_data_shapes,
+           const std::string &output_names) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          std::string output = tensorflow::ImportGraphDef(
+              graphdef, pass_pipeline, show_debug_info, input_names,
+              input_data_types, input_data_shapes, output_names, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        });
+
   m.def("ExperimentalConvertSavedModelToMlir",
         [](const std::string &saved_model_path,
            const std::string &exported_names, bool show_debug_info) {

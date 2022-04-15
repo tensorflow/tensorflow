@@ -44,10 +44,6 @@ bazel-bin/tensorflow/python/tools/optimize_for_inference \
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import math
 import re
@@ -191,8 +187,8 @@ def values_from_const(node_def):
   """
   if node_def.op != "Const":
     raise ValueError(
-        "Node named '%s' should be a Const op for values_from_const." %
-        node_def.name)
+        "Can not extract constant value from a node that is not Const. Got:\n"
+        f"{node_def}")
   input_tensor = node_def.attr["value"].tensor
   tensor_value = tensor_util.MakeNdarray(input_tensor)
   return tensor_value

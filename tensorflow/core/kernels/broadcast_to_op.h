@@ -32,37 +32,24 @@ namespace functor {
 template <typename Device, typename T>
 struct BroadcastTo {
   template <int NDIMS>
-  void DoBCast32Bit(const Device &device, typename TTypes<T, NDIMS>::Tensor out,
-                    typename TTypes<T, NDIMS>::ConstTensor in,
-                    const typename Eigen::array<int, NDIMS> &bcast) const {
-    To32Bit(out).device(device) = To32Bit(in).broadcast(bcast);
-  }
-
-  template <int NDIMS>
   void DoBCast(
       const Device &device, typename TTypes<T, NDIMS>::Tensor out,
       typename TTypes<T, NDIMS>::ConstTensor in,
       const typename Eigen::array<Eigen::DenseIndex, NDIMS> &bcast) const {
-    out.device(device) = in.broadcast(bcast);
+    MaybeWith32BitIndexing<Device>(
+        [&](auto out32, auto in32, const auto &bcast32) {
+          out32.device(device) = in32.broadcast(bcast32);
+        },
+        out, in, bcast);
   }
 
   template <int NDIMS>
   void ReshapeAndBCast(const Device &device, Tensor &output_tensor,
                        const Tensor &input_tensor, const BCast &bcast) const {
-    const bool can_use_32bit = std::is_same<Eigen::GpuDevice, Device>::value &&
-                               output_tensor.NumElements() < kint32max &&
-                               input_tensor.NumElements() < kint32max;
-    if (can_use_32bit) {
-      DoBCast32Bit<NDIMS>(
-          device, output_tensor.template shaped<T, NDIMS>(bcast.result_shape()),
-          input_tensor.template shaped<T, NDIMS>(bcast.x_reshape()),
-          BCast::ToIndexArrayType<int, NDIMS>(bcast.x_bcast()));
-    } else {
-      DoBCast<NDIMS>(
-          device, output_tensor.template shaped<T, NDIMS>(bcast.result_shape()),
-          input_tensor.template shaped<T, NDIMS>(bcast.x_reshape()),
-          BCast::ToIndexArrayType<Eigen::DenseIndex, NDIMS>(bcast.x_bcast()));
-    }
+    DoBCast<NDIMS>(
+        device, output_tensor.template shaped<T, NDIMS>(bcast.result_shape()),
+        input_tensor.template shaped<T, NDIMS>(bcast.x_reshape()),
+        BCast::ToIndexArrayType<Eigen::DenseIndex, NDIMS>(bcast.x_bcast()));
   }
 
   // PRECONDITION: rank(input_shape) > 0 &&

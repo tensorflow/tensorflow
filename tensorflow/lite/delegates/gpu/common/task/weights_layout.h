@@ -18,20 +18,25 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+
 namespace tflite {
 namespace gpu {
 
 enum class WeightsLayout {
   kUnknown,
-  kOHWIOGroupI4O4,
-  kOHWIOGroupO4I4,
+  // Spatial is DHW/HW depending on amount of spatial dimensions (Depth, Height,
+  // Width).
+  kOSpatialIOGroupI4O4,
+  kOSpatialIOGroupO4I4,
   kOICustomSpatialI4O4,
   kOICustomSpatialO4I4,
-  k2DX4I4YIsHWIAndXIsOOGroupO4,
-  k2DX4O4YIsHWIAndXIsOOGroupI4,
+  k2DX4I4YIsSpatialIAndXIsOOGroupO4,
+  k2DX4O4YIsSpatialIAndXIsOOGroupI4,
 };
 
 struct WeightsDescription {
+  DataType type;
   WeightsLayout layout;
   // applicable with layouts that have OGroup.
   int output_group_size;  // OGroup size
@@ -41,6 +46,9 @@ struct WeightsDescription {
   int GetOutputGroupSize() const;
   bool IsI4O4() const;
   bool IsO4I4() const;
+  bool IsCustomSpatial() const;
+
+  bool operator==(const WeightsDescription& t) const;
 };
 
 }  // namespace gpu

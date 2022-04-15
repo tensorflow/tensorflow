@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -23,15 +25,54 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace jax {
 
-// Returns the value for jax_enable_x64 (defined by a thread-local value if
-// defined, defaulting to the value of the flag otherwise).
+// Flags, such as JIT disable and the x64 mode, are controlled by:
+// - a global flag value, e.g., associated to --jax_enable_x64
+// - possibly a thread-local value, which initially is absl::nullopt and
+//   overrides the global value if set. The thread-local state is
+//   used to implement context managers that locally override the global state.
+struct JitState {
+  ~JitState() {
+    if (extra_jit_context) {
+      // We likely do not hold the GIL if this JitState is thread-local, so we
+      // hand the Python object to the global reference manager to destroy.
+      pybind11::object o = std::move(*extra_jit_context);
+      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
+      extra_jit_context = absl::nullopt;
+    }
+  }
+
+  absl::optional<bool> disable_jit;
+  absl::optional<bool> enable_x64;
+
+  // Used to manually set the default device jax should use. May be unset even
+  // in global state, indicating there is no manual override.
+  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> default_device;
+
+  // Extra context that should be included in the JIT cache key. Must be
+  // hashable and have an equality defined.
+  absl::optional<pybind11::object> extra_jit_context;
+
+  // A callback that, if present, is called when a JITted function is executed
+  // from cache. May be unset even in global state.
+  absl::optional<pybind11::function> post_hook;
+};
+
+JitState& GetGlobalState();
+JitState& GetLocalState();
+
+// Getters for JitState fields that first look in thread-local state, then
+// fallback to global state.
+bool GetDisableJit();
 bool GetEnableX64();
+absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> GetDefaultDevice();
+absl::optional<pybind11::function> GetPostHook();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -43,6 +84,9 @@ bool GetEnableX64();
 // (a) equality of the arguments and keyword arguments ArgSignature
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
+  // Not part of the signature, but we need it for error messages.
+  absl::string_view function_name;
+
   // A PyTreeDef for each dynamic argument, positional arguments first
   // followed by keyword arguments. Keyword arguments are in the order given
   // by dynamic_arg_names.
@@ -61,11 +105,15 @@ struct CallSignature {
   // Static keyword argument names. Interned, and sorted by keyword name.
   std::vector<pybind11::object> static_arg_names;
 
-  xla::PjRtDevice* device;
+  // For JIT, we need this in the key because computation follows the data, so
+  // we may have multiple executables depending on the devices the data is on.
+  // This is not the case for PMAP, and is set to `nullptr`.
+  xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
 
   // Opaque additional context that should be included as part of the cache key.
-  pybind11::object extra_jit_context;
+  absl::optional<pybind11::object> global_extra_jit_context;
+  absl::optional<pybind11::object> thread_local_extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -94,7 +142,7 @@ struct ParsedArgumentsAsBuffers {
   std::vector<xla::PjRtBuffer*> arg_buffers;
   // We may need to keep these objects around, because:
   // (a) we need to extend the lifetime of objects created within
-  //    `ConvertArgsToBuffers`
+  //    `CopyBuffersToDevice`
   // (b) `arg_buffers` do not maintain ownership
   std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
 };

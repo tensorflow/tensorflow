@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
@@ -36,8 +37,8 @@ TEST(GpuMultiStream, Basics) {
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});
-  std::vector<int32> inputs(n);
-  std::vector<int32> expected_outputs(n);
+  std::vector<int32_t> inputs(n);
+  std::vector<int32_t> expected_outputs(n);
 
   XlaBuilder builder("acomputation");
   auto p0 = Parameter(&builder, 0, shape, "param");
@@ -58,8 +59,8 @@ TEST(GpuMultiStream, Basics) {
       std::unique_ptr<PjRtExecutable> executable,
       client->Compile(computation, std::move(compile_options)));
 
-  int64 dummy_size = 1 << 20;
-  std::vector<int32> dummy_inputs(dummy_size);
+  int64_t dummy_size = 1 << 20;
+  std::vector<int32_t> dummy_inputs(dummy_size);
   Shape dummy_shape = ShapeUtil::MakeShape(S32, {dummy_size});
 
   for (int i = 0; i < 100; ++i) {
@@ -72,19 +73,22 @@ TEST(GpuMultiStream, Basics) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto dummy_buffer,
         client->BufferFromHostBuffer(
-            dummy_inputs.data(), dummy_shape,
+            dummy_inputs.data(), S32, dummy_shape.dimensions(),
+            /*byte_strides=*/absl::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*on_done_with_host_buffer=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
         client->BufferFromHostBuffer(
-            inputs.data(), shape,
+            inputs.data(), S32, shape.dimensions(),
+            /*byte_strides=*/absl::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*on_done_with_host_buffer=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
         client->BufferFromHostBuffer(
-            inputs.data(), shape,
+            inputs.data(), S32, shape.dimensions(),
+            /*byte_strides=*/absl::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*on_done_with_host_buffer=*/nullptr, device));
     // The execution may be enqueued before the transfers complete, requiring
@@ -95,10 +99,11 @@ TEST(GpuMultiStream, Basics) {
         auto out_buffers,
         executable->Execute({{in_buffer0.get(), in_buffer1.get()}}, options));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0][0]->ToLiteral());
-    LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);
-    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteral());
-    LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);
+    TF_ASSERT_OK_AND_ASSIGN(auto out_literal,
+                            out_buffers[0][0]->ToLiteralSync());
+    LiteralTestUtil::ExpectR1Equal<int32_t>(expected_outputs, *out_literal);
+    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteralSync());
+    LiteralTestUtil::ExpectR1Equal<int32_t>(expected_outputs, *out_literal);
   }
 }
 

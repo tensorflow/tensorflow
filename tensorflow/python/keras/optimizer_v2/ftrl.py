@@ -30,8 +30,8 @@ class Ftrl(optimizer_v2.OptimizerV2):
   "Follow The Regularized Leader" (FTRL) is an optimization algorithm developed
   at Google for click-through rate prediction in the early 2010s. It is most
   suitable for shallow models with large and sparse feature spaces.
-  The algorithm is described in
-  [this paper](https://research.google.com/pubs/archive/41159.pdf).
+  The algorithm is described by
+  [McMahan et al., 2013](https://research.google.com/pubs/archive/41159.pdf).
   The Keras version has support for both online L2 regularization
   (the L2 regularization described in the paper
   above) and shrinkage-type L2 regularization
@@ -95,8 +95,8 @@ class Ftrl(optimizer_v2.OptimizerV2):
       gradients by value.
 
   Reference:
-    - [Original paper](
-      https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
+    - [McMahan et al., 2013](
+      https://research.google.com/pubs/archive/41159.pdf)
   """
 
   def __init__(self,

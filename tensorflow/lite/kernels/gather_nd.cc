@@ -51,9 +51,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteString:
       break;
     default:
-      context->ReportError(
-          context, "Params of type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(params->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Params of type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(params->type));
       return kTfLiteError;
   }
   switch (indices->type) {
@@ -61,9 +61,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt32:
       break;
     default:
-      context->ReportError(
-          context, "Indices of type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(indices->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Indices of type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(indices->type));
       return kTfLiteError;
   }
 
@@ -71,15 +71,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int indices_rank = NumDimensions(indices);
   const int indices_nd = SizeOfDimension(indices, indices_rank - 1);
   if (params_rank < 1) {
-    context->ReportError(context, "Params must be at least a vector.");
+    TF_LITE_KERNEL_LOG(context, "Params must be at least a vector.");
     return kTfLiteError;
   }
   if (indices_rank < 1) {
-    context->ReportError(context, "Indices must be at least a vector.");
+    TF_LITE_KERNEL_LOG(context, "Indices must be at least a vector.");
     return kTfLiteError;
   }
   if (indices_nd > params_rank) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Index innermost dimension length must be <= params rank.");
     return kTfLiteError;
   }
@@ -123,6 +123,17 @@ TfLiteStatus GatherNdString(const TfLiteTensor* params,
 template <typename IndicesT>
 TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
                           const TfLiteTensor* indices, TfLiteTensor* output) {
+  bool indices_has_only_positive_elements = true;
+  const auto* indices_values = GetTensorData<IndicesT>(indices);
+  const size_t num_indices = indices->bytes / sizeof(IndicesT);
+  for (size_t i = 0; i < num_indices; i++) {
+    if (indices_values[i] < 0) {
+      indices_has_only_positive_elements = false;
+      break;
+    }
+  }
+  TF_LITE_ENSURE(context, indices_has_only_positive_elements);
+
   switch (params->type) {
     case kTfLiteFloat32:
       return GatherNd<float, IndicesT>(params, indices, output);
@@ -139,9 +150,9 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
     case kTfLiteString:
       return GatherNdString<IndicesT>(params, indices, output);
     default:
-      context->ReportError(context,
-                           "Params type '%s' are not supported by gather_nd.",
-                           TfLiteTypeGetName(params->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Params type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(params->type));
       return kTfLiteError;
   }
 }
@@ -155,15 +166,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
+  // Prevent division by 0 in the helper.
+  // In TF, GatherND supports empty `params` only when `indices` is also empty.
+  TF_LITE_ENSURE(context,
+                 (NumElements(params) == 0 && NumElements(indices) == 0) ||
+                     NumElements(params) > 0);
+
   switch (indices->type) {
     case kTfLiteInt32:
       return EvalGatherNd<int32_t>(context, params, indices, output);
     case kTfLiteInt64:
       return EvalGatherNd<int64_t>(context, params, indices, output);
     default:
-      context->ReportError(
-          context, "Indices of type '%s' are not supported by gather_nd.",
-          TfLiteTypeGetName(indices->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Indices of type '%s' are not supported by gather_nd.",
+                         TfLiteTypeGetName(indices->type));
       return kTfLiteError;
   }
 }

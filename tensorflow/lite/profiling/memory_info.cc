@@ -24,7 +24,7 @@ namespace tflite {
 namespace profiling {
 namespace memory {
 
-const int MemoryUsage::kValueNotSet = 0;
+const size_t MemoryUsage::kValueNotSet = 0;
 
 bool MemoryUsage::IsSupported() {
 #ifdef __linux__
@@ -40,7 +40,11 @@ MemoryUsage GetMemoryUsage() {
   if (getrusage(RUSAGE_SELF, &res) == 0) {
     result.max_rss_kb = res.ru_maxrss;
   }
+#if defined(__GLIBC__) && __GLIBC_MINOR__ >= 33
+  const auto mem = mallinfo2();
+#else
   const auto mem = mallinfo();
+#endif
   result.total_allocated_bytes = mem.arena;
   result.in_use_allocated_bytes = mem.uordblks;
 #endif

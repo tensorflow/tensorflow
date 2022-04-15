@@ -24,15 +24,18 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 
-// InterpreterTest is a friend of Interpreter, so it can access context_.
+// Test helper for accessing private Intrepreter members and methods.
 class InterpreterTest : public ::testing::Test {
  public:
+  InterpreterTest() : interpreter_(new Interpreter) {}
+
   template <typename Delegate>
   static TfLiteStatus ModifyGraphWithDelegate(
       Interpreter* interpreter, std::unique_ptr<Delegate> delegate) {
@@ -40,27 +43,41 @@ class InterpreterTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
+  TfLiteContext* GetInterpreterContext() { return interpreter_->context_; }
 
-  std::vector<Interpreter::TfLiteDelegatePtr>*
-  mutable_lazy_delegate_providers() {
-    return &interpreter_.lazy_delegate_providers_;
+  Interpreter::TfLiteDelegateCreators* mutable_lazy_delegate_providers() {
+    return &interpreter_->lazy_delegate_providers_;
   }
 
-  bool HasDelegates() { return interpreter_.HasDelegates(); }
+  bool HasDelegates() { return interpreter_->HasDelegates(); }
 
-  void BuildSignature(const std::string& method_name, const std::string& key,
+  bool IsFullyDelegated() const { return interpreter_->IsFullyDelegated(); }
+
+  TfLiteStatus ApplyLazyDelegateProviders() {
+    return interpreter_->ApplyLazyDelegateProviders();
+  }
+
+  void BuildSignature(const std::string& signature_key,
                       const std::map<std::string, uint32_t>& inputs,
                       const std::map<std::string, uint32_t>& outputs) {
-    Interpreter::SignatureDef signature;
+    internal::SignatureDef signature;
     signature.inputs = inputs;
     signature.outputs = outputs;
-    signature.method_name = method_name;
-    signature.signature_def_key = key;
-    interpreter_.SetSignatureDef({signature});
+    signature.signature_key = signature_key;
+    signature.subgraph_index = 0;
+    interpreter_->SetSignatureDef({signature});
   }
 
-  Interpreter interpreter_;
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan) {
+    return interpreter_->SetExecutionPlan(new_plan);
+  }
+
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr) {
+    interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
+  }
+
+  std::unique_ptr<Interpreter> interpreter_;
 };
 
 }  // namespace tflite

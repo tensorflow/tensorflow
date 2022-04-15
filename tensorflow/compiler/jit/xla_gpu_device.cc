@@ -21,40 +21,19 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-
-// Returns a set containing the device ids contained in visible_device_list or
-// nullopt if it is empty. It returns error in case of malformed configuration
-// string.
-static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
-    const string& visible_device_list) {
-  std::set<int> gpu_ids;
-  if (visible_device_list.empty()) {
-    return {{absl::nullopt}};
-  }
-  const std::vector<string> visible_devices =
-      absl::StrSplit(visible_device_list, ',');
-  for (const string& platform_device_id_str : visible_devices) {
-    int32 platform_device_id;
-    if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
-      return errors::InvalidArgument(
-          "Could not parse entry in 'visible_device_list': '",
-          platform_device_id_str,
-          "'. visible_device_list = ", visible_device_list);
-    }
-    gpu_ids.insert(platform_device_id);
-  }
-  return {{gpu_ids}};
-}
 
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
@@ -65,8 +44,9 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
-  if (!flags->tf_xla_enable_xla_devices) {
-    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+  if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
+               "and XLA devices creation not required";
     return Status::OK();
   }
 
@@ -95,7 +75,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
-  if (!flags->tf_xla_enable_xla_devices) {
+  if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
@@ -154,9 +134,12 @@ Status XlaGpuDeviceFactory::CreateDevices(
     options.compilation_device_name = DEVICE_GPU_XLA_JIT;
     options.use_multiple_streams = true;
     options.allowed_devices = gpu_ids;
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
+        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+    options.shape_determination_fns = {shape_representation_fns};
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
-    Status status = device->UseGpuDeviceInfo();
+    Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {
       LOG(INFO) << "Ignoring visible " << DEVICE_GPU_XLA_JIT
                 << " device. Device number is " << i << ", reason: " << status;

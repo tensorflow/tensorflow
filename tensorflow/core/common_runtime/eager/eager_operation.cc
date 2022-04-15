@@ -53,7 +53,7 @@ Status EagerOperation::SetAttrString(const char* attr_name, const char* data,
 }
 
 Status EagerOperation::SetAttrInt(const char* attr_name, int64_t value) {
-  MutableAttrs()->Set(attr_name, static_cast<int64>(value));
+  MutableAttrs()->Set(attr_name, static_cast<int64_t>(value));
   return Status::OK();
 }
 
@@ -144,9 +144,9 @@ Status EagerOperation::SetAttrFloatList(const char* attr_name,
 
 Status EagerOperation::SetAttrIntList(const char* attr_name,
                                       const int64_t* values, int num_values) {
-  MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const int64>(
-                          reinterpret_cast<const int64*>(values), num_values));
+  MutableAttrs()->Set(
+      attr_name, gtl::ArraySlice<const int64_t>(
+                     reinterpret_cast<const int64_t*>(values), num_values));
   return Status::OK();
 }
 
@@ -312,7 +312,7 @@ Status EagerOperation::SetInput(size_t index,
 Status EagerOperation::Reset(
     const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
-    const absl::optional<EagerRemoteFunctionParams> remote_func_params) {
+    const absl::optional<EagerFunctionParams> eager_func_params) {
   DCHECK(inputs_.empty());
   ClearInferenceState();
   bool is_function = false;
@@ -344,7 +344,9 @@ Status EagerOperation::Reset(
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
-  remote_func_params_ = remote_func_params;
+  if (eager_func_params.has_value()) {
+    eager_func_params_ = eager_func_params;
+  }
   op_name_ = op;
   return SetDeviceName(device_name);
 }

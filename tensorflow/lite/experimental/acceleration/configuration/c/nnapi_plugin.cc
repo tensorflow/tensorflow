@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 // This file implements the Delegate Plugin for the NNAPI Delegate.
-// It provides both
 
 #include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
 
@@ -31,6 +30,13 @@ static TfLiteDelegate* CreateDelegate(const void* settings) {
   const ::tflite::TFLiteSettings* tflite_settings =
       static_cast<const ::tflite::TFLiteSettings*>(settings);
   tflite::delegates::NnapiPlugin nnapi_plugin(*tflite_settings);
+  auto support_library_handle = nnapi_plugin.GetSupportLibraryHandle();
+  if (support_library_handle) {
+    auto nnapi_support_library_driver =
+        reinterpret_cast<const NnApiSLDriverImplFL5*>(support_library_handle);
+    return new tflite::StatefulNnApiDelegate(nnapi_support_library_driver,
+                                             nnapi_plugin.Options());
+  }
   return new tflite::StatefulNnApiDelegate(nnapi_plugin.Options());
 }
 

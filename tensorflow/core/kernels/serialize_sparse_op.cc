@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
@@ -147,11 +149,11 @@ struct SerializeGroups {};
 template <typename T>
 struct SerializeGroups<T, tstring> {
   Status operator()(sparse::GroupIterable* minibatch,
-                    const Tensor& output_shape, int64 N, int rank,
+                    const Tensor& output_shape, int64_t N, int rank,
                     Tensor* serialized_sparse) {
     auto serialized_sparse_t = serialized_sparse->matrix<tstring>();
 
-    int64 last_nonempty_group = -1;
+    int64_t last_nonempty_group = -1;
 
     auto serialize = [](const Tensor& input, tstring* result) {
       TensorProto proto;
@@ -162,7 +164,7 @@ struct SerializeGroups<T, tstring> {
     tstring serialized_shape;
     serialize(output_shape, &serialized_shape);
 
-    auto serialize_empty_element = [&](int64 b) {
+    auto serialize_empty_element = [&](int64_t b) {
       serialize(Tensor(DT_INT64, {0, rank - 1}), &serialized_sparse_t(b, 0));
       serialize(Tensor(DataTypeToEnum<T>::value, {0}),
                 &serialized_sparse_t(b, 1));
@@ -170,7 +172,7 @@ struct SerializeGroups<T, tstring> {
     };
 
     for (const auto& subset : *minibatch) {
-      const int64 b = subset.group_at(0);
+      const int64_t b = subset.group_at(0);
       if (b < 0 || b >= N) {
         return errors::InvalidArgument(
             "Received unexpected column 0 value in input SparseTensor: ", b,
@@ -180,7 +182,7 @@ struct SerializeGroups<T, tstring> {
       // GroupIterable generates only the non-empty groups of rows, so we must
       // generate empty outputs for any empty rows since the last non-empty
       // group that was generated.
-      for (int64 empty_b = last_nonempty_group + 1; empty_b < b; ++empty_b) {
+      for (int64_t empty_b = last_nonempty_group + 1; empty_b < b; ++empty_b) {
         serialize_empty_element(empty_b);
       }
 
@@ -188,12 +190,12 @@ struct SerializeGroups<T, tstring> {
 
       const auto indices = subset.indices();
       const auto values = subset.values<T>();
-      const int64 num_entries = values.size();
+      const int64_t num_entries = values.size();
 
       Tensor output_indices = Tensor(DT_INT64, {num_entries, rank - 1});
       Tensor output_values = Tensor(DataTypeToEnum<T>::value, {num_entries});
 
-      auto output_indices_t = output_indices.matrix<int64>();
+      auto output_indices_t = output_indices.matrix<int64_t>();
       auto output_values_t = output_values.vec<T>();
 
       for (int i = 0; i < num_entries; ++i) {
@@ -208,7 +210,7 @@ struct SerializeGroups<T, tstring> {
       serialized_sparse_t(b, 2) = serialized_shape;
     }
 
-    for (int64 empty_b = last_nonempty_group + 1; empty_b < N; ++empty_b) {
+    for (int64_t empty_b = last_nonempty_group + 1; empty_b < N; ++empty_b) {
       serialize_empty_element(empty_b);
     }
 
@@ -217,30 +219,32 @@ struct SerializeGroups<T, tstring> {
 };
 
 template <typename T>
-void CopyValues(const T* src, T* dest, int64 num_values) {
+void CopyValues(const T* src, T* dest, int64_t num_values) {
   static_assert(is_simple_type<T>::value, "Memcpy requires a simple type.");
   memcpy(dest, src, num_values * sizeof(T));
 }
 
 template <>
-void CopyValues<tstring>(const tstring* src, tstring* dest, int64 num_values) {
+void CopyValues<tstring>(const tstring* src, tstring* dest,
+                         int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
-void CopyValues<Variant>(const Variant* src, Variant* dest, int64 num_values) {
+void CopyValues<Variant>(const Variant* src, Variant* dest,
+                         int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
 void CopyValues<ResourceHandle>(const ResourceHandle* src, ResourceHandle* dest,
-                                int64 num_values) {
+                                int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
 void CopyValues<Eigen::half>(const Eigen::half* src, Eigen::half* dest,
-                             int64 num_values) {
+                             int64_t num_values) {
   return CopyValues(reinterpret_cast<const char*>(src),
                     reinterpret_cast<char*>(dest),
                     num_values * sizeof(Eigen::half));
@@ -249,11 +253,11 @@ void CopyValues<Eigen::half>(const Eigen::half* src, Eigen::half* dest,
 template <typename T>
 struct SerializeGroups<T, Variant> {
   Status operator()(sparse::GroupIterable* minibatch,
-                    const Tensor& output_shape, int64 N, int rank,
+                    const Tensor& output_shape, int64_t N, int rank,
                     Tensor* serialized_sparse) {
     auto serialized_sparse_t = serialized_sparse->template matrix<Variant>();
 
-    int64 last_nonempty_group = -1;
+    int64_t last_nonempty_group = -1;
 
     // The "DataTypeToEnum<T>::value" member is static and defined but not
     // declared.  This leads to linker errors when a "DataTypeToEnum<T>::value"
@@ -261,7 +265,7 @@ struct SerializeGroups<T, Variant> {
     // workaround the linker errors.
     DataType T_type = DataTypeToEnum<T>::value;
 
-    auto serialize_empty_element = [&](int64 b) {
+    auto serialize_empty_element = [&](int64_t b) {
       serialized_sparse_t(b, 0).emplace<Tensor>(DT_INT64,
                                                 TensorShape({0, rank - 1}));
       serialized_sparse_t(b, 1).emplace<Tensor>(T_type, TensorShape({0}));
@@ -269,7 +273,7 @@ struct SerializeGroups<T, Variant> {
     };
 
     for (const auto& subset : *minibatch) {
-      const int64 b = subset.group_at(0);
+      const int64_t b = subset.group_at(0);
       if (b < 0 || b >= N) {
         return errors::InvalidArgument(
             "Received unexpected column 0 value in input SparseTensor: ", b,
@@ -279,7 +283,7 @@ struct SerializeGroups<T, Variant> {
       // GroupIterable generates only the non-empty groups of rows, so we must
       // generate empty outputs for any empty rows since the last non-empty
       // group that was generated.
-      for (int64 empty_b = last_nonempty_group + 1; empty_b < b; ++empty_b) {
+      for (int64_t empty_b = last_nonempty_group + 1; empty_b < b; ++empty_b) {
         serialize_empty_element(empty_b);
       }
 
@@ -287,16 +291,16 @@ struct SerializeGroups<T, Variant> {
 
       const auto indices = subset.indices();
       const auto values = subset.values<T>();
-      const int64 num_entries = values.size();
+      const int64_t num_entries = values.size();
 
       Tensor& output_indices = serialized_sparse_t(b, 0).emplace<Tensor>(
           DT_INT64, TensorShape({num_entries, rank - 1}));
       Tensor& output_values = serialized_sparse_t(b, 1).emplace<Tensor>(
           T_type, TensorShape({num_entries}));
 
-      int64* output_indices_ptr =
-          static_cast<int64*>(DMAHelper::base(&output_indices));
-      const int64* indices_ptr = indices.data();
+      int64_t* output_indices_ptr =
+          static_cast<int64_t*>(DMAHelper::base(&output_indices));
+      const int64_t* indices_ptr = indices.data();
 
       T* output_values_ptr = static_cast<T*>(DMAHelper::base(&output_values));
       const T* values_ptr = values.data();
@@ -321,7 +325,7 @@ struct SerializeGroups<T, Variant> {
       serialized_sparse_t(b, 2).emplace<Tensor>(output_shape);
     }
 
-    for (int64 empty_b = last_nonempty_group + 1; empty_b < N; ++empty_b) {
+    for (int64_t empty_b = last_nonempty_group + 1; empty_b < N; ++empty_b) {
       serialize_empty_element(empty_b);
     }
 
@@ -364,16 +368,19 @@ class SerializeManySparseOp : public OpKernel {
         errors::InvalidArgument(
             "Rank of input SparseTensor should be > 1, but saw rank: ", rank));
 
-    TensorShape tensor_input_shape(input_shape->vec<int64>());
-    gtl::InlinedVector<int64, 8> std_order(rank);
+    TensorShape tensor_input_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape(input_shape->vec<int64_t>(),
+                                                 &tensor_input_shape));
+    gtl::InlinedVector<int64_t, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;
     OP_REQUIRES_OK(context, SparseTensor::Create(*input_indices, *input_values,
                                                  tensor_input_shape, std_order,
                                                  &input_st));
 
-    auto input_shape_t = input_shape->vec<int64>();
-    const int64 N = input_shape_t(0);
+    auto input_shape_t = input_shape->vec<int64_t>();
+    const int64_t N = input_shape_t(0);
 
     Tensor* serialized_sparse;
     OP_REQUIRES_OK(context,
@@ -382,7 +389,7 @@ class SerializeManySparseOp : public OpKernel {
     OP_REQUIRES_OK(context, input_st.IndicesValid());
 
     Tensor output_shape(DT_INT64, {rank - 1});
-    auto output_shape_t = output_shape.vec<int64>();
+    auto output_shape_t = output_shape.vec<int64_t>();
     for (int d = 1; d < rank; d++) output_shape_t(d - 1) = input_shape_t(d);
 
     // Get groups by minibatch dimension

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -51,6 +52,7 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   args_.AddFloat("mask_y");
   args_.AddFloat("mask_z");
   args_.AddFloat("mask_w");
+  args_.AddInt("grid_x_size");
 
   if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
       conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
@@ -71,13 +73,14 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
 
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int O = GLOBAL_ID_0 * 4;\n";
+  c += "  int O = GLOBAL_ID_0;\n";
   c += "  int I = GLOBAL_ID_1;\n";
   c += "  int Z = GLOBAL_ID_2;\n";
   c += "  int W = Z % args.src_tensor.Width();\n";
   c += "  int H = Z / args.src_tensor.Width();\n";
-  c += "  if (O >= args.src_tensor.Batch() || I >= args.src_tensor.Slices() || "
+  c += "  if (O >= args.grid_x_size || I >= args.src_tensor.Slices() || "
        "H >= args.src_tensor.Height()) return;\n";
+  c += "  O *= 4;\n";
   std::string x_kern = "W";
   std::string y_kern = "H";
   if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
@@ -90,10 +93,13 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
     y_kern = "h_remap";
   }
   const std::string coords = x_kern + ", " + y_kern;
-  c += "  FLT4 v0 = args.src_tensor.Read(" + coords + ", I, O + 0);\n";
+  c += "  FLT4 v0 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v1 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v2 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v3 = INIT_FLT4(0.0f);\n";
+  c += "  if (O < args.src_tensor.Batch()) {\n";
+  c += "    v0 = args.src_tensor.Read(" + coords + ", I, O);\n";
+  c += "  }\n";
   c += "  if (O + 1 < args.src_tensor.Batch()) {\n";
   c += "    v1 = args.src_tensor.Read(" + coords + ", I, O + 1);\n";
   c += "  }\n";
@@ -122,19 +128,21 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
     c += "  FLT4 r2 = v2;\n";
     c += "  FLT4 r3 = v3;\n";
   }
-  if (conv_weights_desc.layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
-      conv_weights_desc.layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+  if (conv_weights_desc.layout ==
+          WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
+      conv_weights_desc.layout ==
+          WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
     // Writing to 4X Textures 2D
     AddDstTensor("dst_tensor0", op_def.dst_tensors[0]);
     AddDstTensor("dst_tensor1", op_def.dst_tensors[1]);
     AddDstTensor("dst_tensor2", op_def.dst_tensors[2]);
     AddDstTensor("dst_tensor3", op_def.dst_tensors[3]);
     c += "  int yc = (H * args.src_tensor.Width() + W) * "
-         "args.src_tensor.Slices() + I\n;";
-    c += "  args.dst_tensor0.Write2D(r0, O / 4, yc)\n;";
-    c += "  args.dst_tensor1.Write2D(r1, O / 4, yc)\n;";
-    c += "  args.dst_tensor2.Write2D(r2, O / 4, yc)\n;";
-    c += "  args.dst_tensor3.Write2D(r3, O / 4, yc)\n;";
+         "args.src_tensor.Slices() + I;\n";
+    c += "  args.dst_tensor0.Write2D(r0, O / 4, yc);\n";
+    c += "  args.dst_tensor1.Write2D(r1, O / 4, yc);\n";
+    c += "  args.dst_tensor2.Write2D(r2, O / 4, yc);\n";
+    c += "  args.dst_tensor3.Write2D(r3, O / 4, yc);\n";
     c += "}\n";
   } else {
     // Writing to linear buffer
@@ -150,24 +158,30 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
           "((d_index * args.src_tensor.Slices() + I) * "
           "args.src_tensor.Height() "
           "+ H) * args.src_tensor.Width() + W";
-    } else if (conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4 ||
-               conv_weights_desc.layout == WeightsLayout::kOHWIOGroupO4I4) {
+    } else if (conv_weights_desc.layout ==
+                   WeightsLayout::kOSpatialIOGroupI4O4 ||
+               conv_weights_desc.layout ==
+                   WeightsLayout::kOSpatialIOGroupO4I4) {
       index =
           "((d_index * args.src_tensor.Height() + H) * args.src_tensor.Width() "
           "+ "
           "W) * args.src_tensor.Slices() + I";
     }
     c += "  int dst_offset = (" + index + ") * GROUP_SIZE + k_index;\n";
-    c += "  args.dst_tensor.WriteLinear(r0, dst_offset * 4 + 0)\n;";
-    c += "  args.dst_tensor.WriteLinear(r1, dst_offset * 4 + 1)\n;";
-    c += "  args.dst_tensor.WriteLinear(r2, dst_offset * 4 + 2)\n;";
-    c += "  args.dst_tensor.WriteLinear(r3, dst_offset * 4 + 3)\n;";
+    c += "  args.dst_tensor.WriteLinear(r0, dst_offset * 4 + 0);\n";
+    c += "  args.dst_tensor.WriteLinear(r1, dst_offset * 4 + 1);\n";
+    c += "  args.dst_tensor.WriteLinear(r2, dst_offset * 4 + 2);\n";
+    c += "  args.dst_tensor.WriteLinear(r3, dst_offset * 4 + 3);\n";
     c += "}\n";
   }
   return c;
 }
 
 absl::Status ConverterToConvWeights::BindArguments(ArgumentsBinder* args) {
+  const int out_group_size = weights_desc_.GetOutputGroupSize();
+  const int grid_x =
+      DivideRoundUp(AlignByN(src_[0]->Batch(), 4 * out_group_size), 4);
+  RETURN_IF_ERROR(args->SetInt("grid_x_size", grid_x));
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
   RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
   RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));

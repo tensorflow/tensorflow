@@ -14,10 +14,8 @@
 # ==============================================================================
 """TF function conversion."""
 
-import collections
 import itertools
 import os
-import re
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -43,6 +41,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
 
   def __init__(self, methodName):  # pylint: disable=invalid-name
     super(TfFunctionTest, self).__init__(methodName)
+    self._profile_strategy = "Range"
     self._trt_engine_op_count_offset = 0
     self._test_conversion_params = {
         "_tftrt_convert_function": True,
@@ -55,7 +54,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
         "_tftrt_max_cached_engines": 1,
         "_tftrt_use_calibration": False,
         "_tftrt_use_implicit_batch": True,
-        "_tftrt_profile_strategy": "Range",
+        "_tftrt_profile_strategy": self._profile_strategy,
         "_tftrt_allow_build_at_runtime": False
     }
     self._is_v2 = False
@@ -83,29 +82,6 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
       func_def.attr[param_name].CopyFrom(attr_value_pb2.AttrValue(i=test_value))
     else:
       logging.info("Attr_value type %s is not supported", attr_value_type)
-
-  def _RemoveGraphSequenceNumberImpl(self, value, expecting_prefix):
-    if self._is_v2:
-      return trt_test.TfTrtIntegrationTestBase._RemoveGraphSequenceNumberImpl(
-          self, value, expecting_prefix)
-    if isinstance(value, str):
-      match = re.search(r"TRTEngineOp_\d+_", value)
-      has_prefix = match and value.startswith(match.group(0))
-      assert (not expecting_prefix) or has_prefix
-      if has_prefix:
-        parts = value.split("_", maxsplit=2)
-        assert len(parts) == 3
-        if self._trt_engine_op_count_offset == 0:
-          curr_op_number = int(parts[1])
-          self._trt_engine_op_count_offset = curr_op_number
-        curr_op_actual_number = int(parts[1]) - self._trt_engine_op_count_offset
-        curr_name = parts[0] + "_" + str(curr_op_actual_number)
-        return curr_name
-      return value
-    elif isinstance(value, collections.abc.Iterable):
-      return set(
-          self._RemoveGraphSequenceNumberImpl(nm, expecting_prefix)
-          for nm in value)
 
   def _ChainAllNodes(self, graph_def):
     return itertools.chain(
@@ -149,45 +125,18 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
         identity, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
     return array_ops.squeeze(pool)
 
-  @def_function.function(input_signature=[
-      tensor_spec.TensorSpec(shape=[None, 8, 8, 3], dtype=dtypes.float32)
-  ])
-  def _conv_and_pool_1(self, inp):
-    dtype = inp.dtype
-    conv_filter = constant_op.constant([[[[1., 0.5], [4., 6.], [0.5, 1.]]]],
-                                       name="weights",
-                                       dtype=dtype)
-    conv = nn.conv2d(
-        input=inp,
-        filter=conv_filter,
-        strides=[1, 2, 2, 1],
-        padding="SAME",
-        name="conv")
-    bias = constant_op.constant([4., 1.5], name="bias", dtype=dtype)
-    added = nn.bias_add(conv, bias, name="bias_add")
-    relu = nn.relu(added, "relu")
-    identity = array_ops.identity(relu, "identity")
-    pool = nn_ops.max_pool(
-        identity, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
-    return array_ops.squeeze(pool)
-
   def GraphFn(self, x):
     x = self._conv_and_pool_0(x)
-    x = self._conv_and_pool_1(x)
     return array_ops.identity(x, name="output_0")
 
   def GetParams(self):
     return self.BuildParams(self.GraphFn, dtypes.float32, [[10, 32, 32, 2]],
-                            [[10, 2, 2, 2]])
+                            [[10, 8, 8, 3]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
-            "weights", "conv", "bias", "bias_add", "relu", "identity",
-            "max_pool"
-        ],
-        "TRTEngineOp_1": [
+        "TRTEngineOp_000": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]
@@ -300,7 +249,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
                    func_def.signature.name)
       func_name_without_prefix = func_def.signature.name[prefix_len:]
       if func_name_without_prefix.startswith(
-          ("_conv_and_pool_0", "_conv_and_pool_1")):
+          ("_conv_and_pool_0")):
         func_def.attr["_noinline"].CopyFrom(attr_value_pb2.AttrValue(b=True))
         self._copy_test_attributes_to_func_def(func_def)
     old_saved_model_file = os.path.join(saved_model_dir,
@@ -356,8 +305,10 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
       self._VerifyTestAttrs(function_protos=gdef_to_verify.library.function)
     else:
       self.assertEqual(num_engines, len(expected_engines))
-      if isinstance(expected_engines, dict):
-        self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
+      expected_connections = self.ExpectedConnections(run_params)
+      if expected_connections:
+        self._VerifyConnections(expected_engines, expected_connections,
+                                original_gdef, gdef_to_verify)
       self._VerifyMaxBatchSizeAnnotations(
           expected_engines=expected_engines,
           original_gdef=original_gdef,
@@ -365,6 +316,10 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
           expected_max_batch_sizes=self.ExpectedMaxBatchSizes(run_params),
           default_max_batch_size=self.GetMaxBatchSize(run_params))
       self._VerifyTestAttrs(function_protos=gdef_to_verify.library.function)
+
+  def _ShouldConverterBuild(self, run_params):
+    return (run_params.is_v2 and not run_params.convert_online and
+            run_params.dynamic_engine)
 
   def RunTest(self, run_params):
     self._test_conversion_params["_tftrt_precision_mode"] = (
@@ -376,12 +331,13 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
     # When running with V1, using dynamic_engine and
     # allow_build_at_runtime==False at the same time do not work.
     if run_params.is_v2:
-      self._test_conversion_params["_tftrt_allow_build_at_runtime"] = (
-          run_params.convert_online)
+      self._test_conversion_params["_tftrt_allow_build_at_runtime"] = True
       self._is_v2 = True
     else:
       self._test_conversion_params["_tftrt_allow_build_at_runtime"] = (
           run_params.convert_online or run_params.dynamic_engine)
+    self._test_conversion_params["_tftrt_use_implicit_batch"] = \
+        not run_params.dynamic_shape
     self.DisableNonTrtOptimizers()
     trt_test.TfTrtIntegrationTestBase.RunTest(self, run_params)
 

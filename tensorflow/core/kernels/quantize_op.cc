@@ -113,7 +113,50 @@ class QuantizeV2Op : public OpKernel {
 
     int num_slices = 1;
     if (axis_ > -1) {
+      OP_REQUIRES(
+          ctx, input.dims() > axis_,
+          errors::InvalidArgument(
+              "Axis is on a zero-based index, so its value must always be less "
+              "than number of input's dims, but given axis value was ",
+              axis_, " and input's dims was ", input.dims()));
       num_slices = input.dim_size(axis_);
+      OP_REQUIRES(ctx, input_min_range.dims() == 1,
+                  errors::InvalidArgument(
+                      "If axis is specified, min_range must be a 1-D tensor "
+                      "whose size matches the axis dimension of the input and "
+                      "output tensors, but min_range dims are ",
+                      input_min_range.dims()));
+      OP_REQUIRES(ctx, input_min_range.dim_size(0) == num_slices,
+                  errors::InvalidArgument(
+                      "If axis is specified, min_range must be a 1-D tensor "
+                      "whose size matches the axis dimension of the input and "
+                      "output tensors, but min_range is a 1-D tensor of size ",
+                      input_min_range.dim_size(0),
+                      " and input's axis dimension is of size ", num_slices));
+      OP_REQUIRES(ctx, input_max_range.dims() == 1,
+                  errors::InvalidArgument(
+                      "If axis is specified, max_range must be a 1-D tensor "
+                      "whose size matches the axis dimension of the input and "
+                      "output tensors, but max_range dims are ",
+                      input_max_range.dims()));
+      OP_REQUIRES(ctx, input_max_range.dim_size(0) == num_slices,
+                  errors::InvalidArgument(
+                      "If axis is specified, max_range must be a 1-D tensor "
+                      "whose size matches the axis dimension of the input and "
+                      "output tensors, but max_range is a 1-D tensor of size ",
+                      input_max_range.dim_size(0),
+                      " and input's axis dimension is of size ", num_slices));
+    } else {
+      OP_REQUIRES(ctx, input_min_range.NumElements() == 1,
+                  errors::InvalidArgument(
+                      "If axis is not specified, min_range must contain a "
+                      "single float element, but it contains ",
+                      input_min_range.NumElements(), " elements"));
+      OP_REQUIRES(ctx, input_max_range.NumElements() == 1,
+                  errors::InvalidArgument(
+                      "If axis is not specified, max_range must contain a "
+                      "single float element, but it contains ",
+                      input_max_range.NumElements(), " elements"));
     }
 
     const TensorShape& minmax_shape = ctx->input(1).shape();
@@ -143,7 +186,7 @@ class QuantizeV2Op : public OpKernel {
 
     auto input_tensor =
         input.template flat_inner_outer_dims<float, 3>(axis_ - 1);
-    int64 pre_dim = 1, post_dim = 1;
+    int64_t pre_dim = 1, post_dim = 1;
     for (int i = 0; i < axis_; ++i) {
       pre_dim *= output->dim_size(i);
     }

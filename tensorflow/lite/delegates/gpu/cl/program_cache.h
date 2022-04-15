@@ -44,12 +44,23 @@ class ProgramCache {
   absl::Status GetOrCreateCLKernel(
       const std::string& code, const std::string& function_name,
       const std::vector<CompilerOptions>& compiler_options,
-      const CLContext& context, const CLDevice& device, CLKernel* result);
+      const CLContext& context, const CLDevice& device, CLKernel* result,
+      uint64_t* kernel_fingerprint = nullptr);
 
   absl::Status GetOrCreateCLKernel(const std::string& code,
                                    const std::string& function_name,
                                    const CLContext& context,
-                                   const CLDevice& device, CLKernel* result);
+                                   const CLDevice& device, CLKernel* result,
+                                   uint64_t* kernel_fingerprint = nullptr);
+
+  absl::Status GetKernel(uint64_t fingerprint, const std::string& function_name,
+                         CLKernel* result) const;
+
+  absl::Status AddProgramBinary(const CLContext& context,
+                                const CLDevice& device, uint64_t fingerprint,
+                                absl::Span<const uint8_t> binary);
+  absl::Status GetProgramBinary(uint64_t fingerprint,
+                                std::vector<uint8_t>* program_binary) const;
 
   absl::Status AddSerializedCache(const CLContext& context,
                                   const CLDevice& device,
@@ -60,39 +71,24 @@ class ProgramCache {
  private:
   struct ProgramDescriptor {
     ProgramDescriptor() = default;
-    ProgramDescriptor(const std::string& code_text, const std::string& options,
-                      bool use_fingerprint);
+    ProgramDescriptor(const std::string& code,
+                      const std::string& compiler_options);
     explicit ProgramDescriptor(uint64_t fingerprint);
 
-    std::string code;
-    std::string compiler_options;
     uint64_t fingerprint;
-    bool use_fingerprint;
   };
   struct ProgramDescriptorHasher {
     std::size_t operator()(const ProgramDescriptor& k) const {
-      if (k.use_fingerprint) {
-        return std::hash<uint64_t>()(k.fingerprint);
-      } else {
-        return std::hash<std::string>()(k.code) +
-               std::hash<std::string>()(k.compiler_options);
-      }
+      return std::hash<uint64_t>()(k.fingerprint);
     }
   };
   struct ProgramDescriptorEqual {
     bool operator()(const ProgramDescriptor& a,
                     const ProgramDescriptor& b) const {
-      if (a.use_fingerprint && b.use_fingerprint) {
-        return a.fingerprint == b.fingerprint;
-      } else {
-        return a.compiler_options == b.compiler_options && a.code == b.code;
-      }
+      return a.fingerprint == b.fingerprint;
     }
   };
 
-  // There is a low probability of a hash collision when cache is deserialized
-  // because only fingerprints are serialized instead of full source code.
-  bool use_fingerprints_ = false;
   absl::flat_hash_map<ProgramDescriptor, CLProgram, ProgramDescriptorHasher,
                       ProgramDescriptorEqual>
       programs_;

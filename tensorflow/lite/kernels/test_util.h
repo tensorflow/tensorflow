@@ -41,12 +41,12 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
@@ -180,7 +180,16 @@ class SingleOpModel {
 
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
-  void SetDelegate(TfLiteDelegate* delegate) { delegate_ = delegate; }
+  // Note: the caller still owns the memory of the passed-in `delegate`.
+  void SetDelegate(TfLiteDelegate* delegate) {
+    delegate_ = delegate;
+    // As this is a manually-set TF Lite delegate, we assume the intention of
+    // the test is to test against the particular delegate, hence bypassing
+    // applying TfLite default delegates (i.e. the XNNPACK delegate).
+    if (delegate_ != nullptr) {
+      SetBypassDefaultDelegates();
+    }
+  }
 
   TfLiteStatus ApplyDelegate();
 
@@ -221,7 +230,7 @@ class SingleOpModel {
     const int dims_count = t.traversal_order.size();
     std::vector<int8_t> dense_data(data);
 
-    tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+    tflite::internal::sparsity::FormatConverter<int8_t> converter(
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
@@ -293,7 +302,7 @@ class SingleOpModel {
     const int dims_count = t.traversal_order.size();
     std::vector<T> dense_data(data);
 
-    tflite::optimize::sparsity::FormatConverter<T> converter(
+    tflite::internal::sparsity::FormatConverter<T> converter(
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
@@ -341,6 +350,9 @@ class SingleOpModel {
 
       // Add compressed data as a Buffer to buffers list.
       buffer_id = buffers_.size();
+      // When the quantization parameter is set for the added tensor, we
+      // quantize the given data.
+      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
       if (symmetric_quantize) {
         const int length = sparse_data.size();
         std::vector<int8_t> q(length);
@@ -349,6 +361,16 @@ class SingleOpModel {
             sparse_data.data(), length, q.data(), &min, &max, &scaling_factor);
         q_params = CreateQuantizationParameters(
             builder_, 0, 0, builder_.CreateVector<float>({scaling_factor}),
+            builder_.CreateVector<int64_t>({0}));
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      } else if (is_quantized) {
+        CHECK_EQ(t.type, TensorType_INT8)
+            << "The INT8 quantization is only supported for sparsified tensor";
+        auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
+        q_params = CreateQuantizationParameters(
+            builder_, t.min, t.max, builder_.CreateVector<float>({t.scale}),
             builder_.CreateVector<int64_t>({0}));
         auto data_buffer = builder_.CreateVector(
             reinterpret_cast<const uint8_t*>(q.data()), q.size());
@@ -485,20 +507,20 @@ class SingleOpModel {
 
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
-  // Note: 'apply_delegate' also serves to tell whether default TfLite delegates
-  // should be applied implicitly for a test case. For example, when testing the
-  // specific implementation of a TfLite delegate, it might be necessary to set
-  // this to false.
+  // Note, if `allocate_and_delegate` is `false`, then the value of
+  // `apply_delegate` is ignored.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
                         bool apply_delegate, bool allocate_and_delegate = true);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
-  // Executes inference, asserting success.
-  void Invoke();
+  // Executes inference and return status code.
+  TfLiteStatus Invoke();
 
-  // Executes inference *without* asserting success.
+  // This function is deprecated and it's exactly the same as `Invoke`.
+  // TODO(b/227101699): Replace all usages of `InvokeUnchecked` with `Invoke`
+  // and remove this function.
   TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
@@ -602,8 +624,16 @@ class SingleOpModel {
     return result;
   }
 
-  void SetNumThreads(int num_threads) {
+  // Sets the number of threads available to the interpreter.
+  // Reconstruct the interpreter if reset_interpreter is true.
+  void SetNumThreads(int num_threads, bool reset_interpreter = false) {
     CHECK(interpreter_ != nullptr);
+    if (reset_interpreter) {
+      // Reconstruct interpreter as number of threads may affect internal state,
+      // e.g. stratch buffer allocation.
+      BuildInterpreter(input_shapes_, num_threads, allocate_and_delegate_,
+                       apply_delegate_, allocate_and_delegate_);
+    }
     interpreter_->SetNumThreads(num_threads);
   }
 
@@ -617,6 +647,10 @@ class SingleOpModel {
 
  protected:
   int32_t GetTensorSize(int index) const;
+
+  // Tell TF Lite runtime to skip applying default delegates (i.e. XNNPACK
+  // delegate) when handling this op-level model.
+  void SetBypassDefaultDelegates() { bypass_default_delegates_ = true; }
 
   flatbuffers::FlatBufferBuilder builder_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
@@ -672,6 +706,7 @@ class SingleOpModel {
         buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
       }
 
+      builder_.ForceVectorAlignment(data.size(), sizeof(T), 16);
       // Add data as a Buffer to buffers list.
       buffer_id = buffers_.size();
       auto data_buffer =
@@ -864,8 +899,16 @@ class SingleOpModel {
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
-  TfLiteDelegate* delegate_ = nullptr;
+  TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
+  std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;
+  bool allow_fp32_relax_to_fp16_ = false;
+  bool apply_delegate_ = true;
+  bool allocate_and_delegate_ = true;
+
+  // Whether to bypass the application of TF Lite default delegates (i.e.
+  // XNNPACK delegate) at rutnime.
+  bool bypass_default_delegates_ = false;
 };
 
 // Populate string tensors.
@@ -914,6 +957,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, double>::value) return TensorType_FLOAT64;
   if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, int16_t>::value) return TensorType_INT16;
+  if (std::is_same<T, uint16_t>::value) return TensorType_UINT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
@@ -974,6 +1018,16 @@ struct TypeUnion<int16_t> {
   // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
   typedef int16_t ScalarType;
+};
+
+template <>
+struct TypeUnion<uint16_t> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_UINT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt16;
+  typedef uint16_t ScalarType;
 };
 
 template <>

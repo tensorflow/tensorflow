@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -672,15 +673,11 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
 
 // Returns whether the context's GPU supports efficient fp16 math.
 inline bool HasFastHalfMath(OpKernelContext* ctx) {
-  int major, minor;
-  ctx->op_device_context()
-      ->stream()
-      ->parent()
-      ->GetDeviceDescription()
-      .cuda_compute_capability(&major, &minor);
-  auto cuda_arch = major * 100 + minor * 10;
+  se::CudaComputeCapability compute_capability =
+      ctx->op_device_context()->stream()->GetCudaComputeCapability();
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
-  return cuda_arch >= 530 && cuda_arch != 610;
+  return compute_capability.IsAtLeast(5, 3) &&
+         compute_capability != se::CudaComputeCapability{6, 1};
 }
 
 template <typename T, DepthwiseConv2dDirection kDirection,
@@ -972,8 +969,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
   auto device = ctx->eigen_gpu_device();
-  GpuLaunchConfig config =
-      GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
+  int launch_bounds_value = 640;
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_in_backprop, device, kernel,
+                                              0, launch_bounds_value);
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
@@ -1722,8 +1720,9 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  GpuLaunchConfig config =
-      GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
+  int launch_bounds_value = 640;
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_out_backprop, device, kernel,
+                                              0, launch_bounds_value);
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, input, filter_backprop, num_out_backprop));
@@ -1758,6 +1757,15 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
     const T* input, T* filter_backprop, TensorFormat data_format) {
   auto stream = ctx->op_device_context()->stream();
+
+  // By disabling this exception, we can discover if other determinism
+  // exceptions are reached in the execution of a given model.
+  OP_REQUIRES(
+      ctx,
+      !OpDeterminismRequired() || DisableDepthwiseConvDeterminismExceptions(),
+      errors::Unimplemented(
+          "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
+          " not currently available."));
 
   // Initialize the results to 0.
   int num_filter_backprop =

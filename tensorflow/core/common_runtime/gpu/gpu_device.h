@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/node_file_writer.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -46,8 +47,30 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
+namespace Eigen {
+class StreamInterface;
+}
+
 namespace tensorflow {
 class GPUKernelTracker;
+
+class ConcretePerOpGpuDevice : public PerOpGpuDevice {
+ public:
+  ConcretePerOpGpuDevice();
+
+  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+                    TfDeviceId tf_device_id, Allocator* base_allocator,
+                    char* scratch);
+
+  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+                    PlatformDeviceId platform_device_id,
+                    Allocator* base_allocator, char* scratch);
+
+  const Eigen::GpuDevice& device() const override;
+
+ private:
+  std::unique_ptr<::Eigen::StreamInterface> stream_device_;
+};
 
 class BaseGPUDevice : public LocalDevice {
  public:
@@ -99,7 +122,7 @@ class BaseGPUDevice : public LocalDevice {
   se::StreamExecutor* executor() const { return executor_; }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64 step_id) override;
+                                int64_t step_id) override;
 
   ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
     return scoped_allocator_mgr_.get();
@@ -150,7 +173,7 @@ class BaseGPUDevice : public LocalDevice {
   mutex scratch_init_mutex_;
   char* scratch_ = nullptr;
   GPUDeviceContext* device_context_;
-  GpuDeviceInfo* gpu_device_info_ = nullptr;
+  DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_ = nullptr;
   mutex trace_mu_;
   TfDeviceId tf_device_id_;
   const bool sync_every_op_ = false;
@@ -159,6 +182,7 @@ class BaseGPUDevice : public LocalDevice {
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
+  NodeFileWriter* node_file_writer_ = nullptr;  // not owned
 
   // Initialize scratch buffers used by Eigen.
   Status InitScratchBuffers();
@@ -177,6 +201,10 @@ class BaseGPUDevice : public LocalDevice {
   Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
                               const Tensor& from, Tensor* to,
                               StatusCallback done);
+
+  Tensor CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor);
+  void LogInputs(OpKernel* op_kernel, OpKernelContext* context);
+  void LogOutputs(OpKernel* op_kernel, OpKernelContext* context);
 };
 
 // A per-compute-stream utility that keeps track of kernels that have been
@@ -360,7 +388,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // 'devices' vector.
   Status CreateGPUDevice(const SessionOptions& options,
                          const std::string& name_prefix,
-                         TfDeviceId tf_device_id, int64 memory_limit,
+                         TfDeviceId tf_device_id, int64_t memory_limit,
                          const DeviceLocality& dev_locality, size_t num_tf_gpus,
                          std::vector<std::unique_ptr<Device>>* devices);
 

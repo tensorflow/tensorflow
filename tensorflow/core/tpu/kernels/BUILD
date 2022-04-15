@@ -5,9 +5,13 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 # Config setting to enable go/libtpu support.
 
@@ -15,6 +19,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -30,9 +35,14 @@ tf_kernel_library(
         ":infeed_ops",
         ":outfeed_ops",
         ":replication_ops",
+        ":sharding_util_ops",
         ":topk_ops",
         ":tpu_compile_op",
         ":tpu_configuration_ops",
+        ":tpu_embedding_configuration_ops",
+        ":tpu_embedding_enqueue_ops",
+        ":tpu_embedding_load_retrieve_ops",
+        ":tpu_embedding_ops",
         ":tpu_execute_op",
         ":tpu_functional_ops",
         ":tpu_handle_to_key_op",
@@ -60,7 +70,10 @@ cc_library(
         ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
+        ":tpu_fingerprint_lookup",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         ":tpu_util_hdrs",
@@ -110,12 +123,17 @@ tf_kernel_library(
         ":tpu_compilation_cache_local_lookup",
         ":tpu_compilation_cache_lookup",
         ":tpu_compilation_cache_rpc_lookup",
+        ":tpu_execute_op_options",
         ":tpu_mesh_state_interface",
+        ":tpu_embedding_engine_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
+        ":tpu_fingerprint_lookup",
+        "@com_google_absl//absl/cleanup",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:refcount",
@@ -123,8 +141,90 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/tpu:proto_helper",
+    ],
+    alwayslink = 1,
+)
+
+tf_kernel_library(
+    name = "tpu_embedding_configuration_ops",
+    srcs = ["tpu_embedding_configuration_ops.cc"],
+    deps = if_libtpu(
+        [":tpu_util"],
+        ["//tensorflow/core/tpu/kernels:tpu_util"],
+    ) + [
+        ":tpu_compilation_cache_factory",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_local_lookup",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_rpc_lookup",
+        ":tpu_execute_op_options",
+        ":tpu_mesh_state_interface",
+        ":tpu_embedding_engine_state_interface",
+        ":tpu_op_consts",
+        ":tpu_pod_state",
+        ":tpu_fingerprint_lookup",
+        "@com_google_absl//absl/cleanup",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/tpu:proto_helper",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_load_retrieve_ops",
+    srcs = ["tpu_embedding_load_retrieve_ops.cc"],
+    hdrs = ["tpu_embedding_load_retrieve_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_embedding_configuration_proto_rewrite",
+        "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/core/tpu/ops:tpu_embedding_shape_util",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_enqueue_ops",
+    srcs = ["tpu_embedding_enqueue_ops.cc"],
+    hdrs = ["tpu_embedding_enqueue_ops.h"],
+    deps = [
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
 )
@@ -251,6 +351,18 @@ cc_library(
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
         "//tensorflow/core/platform:status",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_engine_state_interface",
+    srcs = [],
+    hdrs = ["tpu_embedding_engine_state_interface.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
     ],
 )
 
@@ -424,15 +536,14 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_key",
         ":tpu_program_group_interface",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -458,6 +569,8 @@ cc_library(
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -466,10 +579,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
 
@@ -493,8 +603,7 @@ cc_library(
         ":tpu_program_group_interface",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/platform:status",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -507,11 +616,11 @@ cc_library(
         ":tpu_compilation_cache_rpc_support_hdrs",
         ":tpu_program_group",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 
@@ -534,8 +643,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 tf_proto_library(
@@ -567,8 +675,7 @@ cc_library(
         ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
     ) + [
         ":tpu_compilation_cache_common_proto_cc",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -594,8 +701,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/platform:coding",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -723,6 +829,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_execute_op_options",
+    srcs = ["tpu_execute_op_options.cc"],
+    hdrs = ["tpu_execute_op_options.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "cross_replica_ops",
     srcs = ["cross_replica_ops.cc"],
     deps = [
@@ -750,6 +868,45 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/numeric:bits",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_ops",
+    srcs = ["tpu_embedding_ops.cc"],
+    deps = [
+        ":tpu_mesh_state_interface",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:sharding_util",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla/kernels:if_op",
+        "//tensorflow/compiler/tf2xla/kernels:while_op",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/lib:scatter",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:side_effect_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu/kernels:cross_replica_ops",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -883,6 +1040,7 @@ cc_library(
         ["//tensorflow/core/tpu/kernels:tpu_util"],
     ) + [
         ":tpu_compilation_cache_service",
+        "@com_google_absl//absl/cleanup",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/tpu:tpu_api",
@@ -1007,6 +1165,12 @@ cc_library(
         ":tpu_op_util",
         ":tpu_ordinal_selector",
         ":tpu_util_hdrs",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "//third_party/eigen3",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/tf2xla:sharding_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -1019,7 +1183,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/common_runtime:placer",
-        "//tensorflow/core/common_runtime:rendezvous_mgr",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:refcount",
@@ -1031,12 +1194,54 @@ cc_library(
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_fingerprint_lookup",
         "//tensorflow/core/tpu/kernels:tpu_op_consts",
+    ] + if_static(["//tensorflow/core/common_runtime:rendezvous_mgr"]),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "sharding_util_ops",
+    srcs = ["sharding_util_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/framework:kernel_def_proto_cc",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "sharding_util_ops_test",
+    srcs = ["sharding_util_ops_test.cc"],
+    deps = [
+        ":sharding_util_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )

@@ -90,7 +90,7 @@ class Master {
   MovingAverage last_1000_steps_ TF_GUARDED_BY(mu_);
 
   // Cumulative number of steps executed.
-  int64 step_count_ TF_GUARDED_BY(mu_);
+  int64_t step_count_ TF_GUARDED_BY(mu_);
 
   // If a session is not active for this many seconds, it will be
   // closed automatically.

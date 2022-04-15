@@ -73,9 +73,9 @@ class SparseDenseCMulTest : public OpsTestBase {
 TEST_F(SparseDenseCDivTest, DoNotBroadcastSparse_FewerDims) {
   MakeOp<float>();
   // [1] op [2, 1]
-  AddInputFromArray<int64>(TensorShape({1, 1}), {0});       // indices
+  AddInputFromArray<int64_t>(TensorShape({1, 1}), {0});     // indices
   AddInputFromArray<float>(TensorShape({1}), {1618});       // values
-  AddInputFromArray<int64>(TensorShape({1}), {1});          // shape
+  AddInputFromArray<int64_t>(TensorShape({1}), {1});        // shape
   AddInputFromArray<float>(TensorShape({2, 1}), {17, 19});  // dense
 
   ExpectHasSubstr(RunOpKernel().ToString(), "broadcasts dense to sparse only");
@@ -84,9 +84,9 @@ TEST_F(SparseDenseCDivTest, DoNotBroadcastSparse_FewerDims) {
 TEST_F(SparseDenseCDivTest, DoNotBroadcastSparse_SameDims) {
   MakeOp<float>();
   // [1, 1] op [2, 1]
-  AddInputFromArray<int64>(TensorShape({1, 2}), {0, 0});
+  AddInputFromArray<int64_t>(TensorShape({1, 2}), {0, 0});
   AddInputFromArray<float>(TensorShape({1}), {1618});
-  AddInputFromArray<int64>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int64_t>(TensorShape({2}), {1, 1});
   AddInputFromArray<float>(TensorShape({2, 1}), {17, 19});
 
   ExpectHasSubstr(RunOpKernel().ToString(), "broadcasts dense to sparse only");
@@ -98,19 +98,19 @@ TEST_F(SparseDenseCDivTest, SameShape) {
   // [2    ]  cdiv [dense: same shape, all 1's]
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
-  std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> indices(in);
-  std::initializer_list<int64> sh{3, 2};
-  const gtl::ArraySlice<int64> shape(sh);
+  std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
+  const gtl::ArraySlice<int64_t> indices(in);
+  std::initializer_list<int64_t> sh{3, 2};
+  const gtl::ArraySlice<int64_t> shape(sh);
 
   // Tensor dense(DT_FLOAT, TensorShape({3, 1}));
   Tensor dense(DT_FLOAT, TensorShape(shape));
   auto dense_flat = dense.flat<float>();
   dense_flat.setConstant(1.);
 
-  AddInputFromArray<int64>(indices_shape, indices);
+  AddInputFromArray<int64_t>(indices_shape, indices);
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<int64>(TensorShape({2}), shape);
+  AddInputFromArray<int64_t>(TensorShape({2}), shape);
   AddInputFromArray<float>(TensorShape(shape), dense_flat);
 
   TF_ASSERT_OK(RunOpKernel());
@@ -127,18 +127,18 @@ TEST_F(SparseDenseCDivTest, BroadcastDenseSameDims) {
   // [2    ]  cdiv [dense: shape [3,1], all 1's]
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
-  std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> indices(in);
-  std::initializer_list<int64> sh{3, 2};
-  const gtl::ArraySlice<int64> shape(sh);
+  std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
+  const gtl::ArraySlice<int64_t> indices(in);
+  std::initializer_list<int64_t> sh{3, 2};
+  const gtl::ArraySlice<int64_t> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({3, 1}));
   auto dense_flat = dense.flat<float>();
   dense_flat.setConstant(1.);
 
-  AddInputFromArray<int64>(indices_shape, indices);
+  AddInputFromArray<int64_t>(indices_shape, indices);
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<int64>(TensorShape({2}), shape);
+  AddInputFromArray<int64_t>(TensorShape({2}), shape);
   AddInputFromArray<float>(TensorShape({3, 1}), dense_flat);
 
   TF_ASSERT_OK(RunOpKernel());
@@ -154,18 +154,18 @@ TEST_F(SparseDenseCDivTest, BroadcastDenseFewerDims) {
   // [2    ]  cdiv [dense: shape [2]]
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
-  std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> indices(in);
-  std::initializer_list<int64> sh{3, 2};
-  const gtl::ArraySlice<int64> shape(sh);
+  std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
+  const gtl::ArraySlice<int64_t> indices(in);
+  std::initializer_list<int64_t> sh{3, 2};
+  const gtl::ArraySlice<int64_t> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({2}));
   auto dense_flat = dense.flat<float>();
   dense_flat.setConstant(1.);
 
-  AddInputFromArray<int64>(indices_shape, indices);
+  AddInputFromArray<int64_t>(indices_shape, indices);
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<int64>(TensorShape({2}), shape);
+  AddInputFromArray<int64_t>(TensorShape({2}), shape);
   AddInputFromArray<float>(TensorShape({2}), dense_flat);
 
   TF_ASSERT_OK(RunOpKernel());
@@ -186,19 +186,19 @@ TEST_F(SparseDenseCMulTest, BroadcastDense) {
   // [1   ?]  where ? remains implicitly zero.
   // [1.5 0]
   const auto indices_shape = TensorShape({4, 2});
-  std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> indices(in);
-  std::initializer_list<int64> sh{3, 2};
-  const gtl::ArraySlice<int64> shape(sh);
+  std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
+  const gtl::ArraySlice<int64_t> indices(in);
+  std::initializer_list<int64_t> sh{3, 2};
+  const gtl::ArraySlice<int64_t> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({2}));
   auto dense_flat = dense.flat<float>();
   dense_flat(0) = 0.5;
   dense_flat(1) = 0;
 
-  AddInputFromArray<int64>(indices_shape, indices);
+  AddInputFromArray<int64_t>(indices_shape, indices);
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<int64>(TensorShape({2}), shape);
+  AddInputFromArray<int64_t>(TensorShape({2}), shape);
   AddInputFromArray<float>(TensorShape({2}), dense_flat);
 
   TF_ASSERT_OK(RunOpKernel());
@@ -243,8 +243,8 @@ static ST MakeSparseTensor(Graph* g, int B, int M, int N, int nnz_inner) {
   Tensor vals(DT_FLOAT, TensorShape({total_nnz}));
   Tensor shape(DT_INT64, TensorShape({kNumDims}));
   vals.flat<float>().setRandom();
-  test::FillValues(&shape, gtl::ArraySlice<int64>({B, M, N}));
-  auto indices_mat = indices.matrix<int64>();
+  test::FillValues(&shape, gtl::ArraySlice<int64_t>({B, M, N}));
+  auto indices_mat = indices.matrix<int64_t>();
 
   int nnz_cnt = 0;
   std::unordered_set<int> picked;
@@ -287,7 +287,7 @@ static ST MakeSparseTensor(Graph* g, int B, int M, int N, int nnz_inner) {
         /*old_benchmark_api*/ false)                                           \
         .Run(state);                                                           \
     state.SetItemsProcessed(                                                   \
-        static_cast<int64>(state.iterations() * 8 * 4 * N * 2));               \
+        static_cast<int64_t>(state.iterations() * 8 * 4 * N * 2));             \
   }                                                                            \
   BENCHMARK(BM_SparseMatCMulDenseMat_##N##_##NNZ_INNER)
 

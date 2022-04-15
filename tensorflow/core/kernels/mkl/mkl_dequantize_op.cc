@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-using mkldnn::primitive_attr;
-using mkldnn::stream;
+using dnnl::primitive_attr;
+using dnnl::stream;
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename T>
+template <typename Device, typename T, bool native_format = false>
 class MklDequantizeOp : public OpKernel {
  public:
   explicit MklDequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -61,7 +61,7 @@ class MklDequantizeOp : public OpKernel {
 
       // Get MklShape
       MklDnnShape src_mkl_shape;
-      GetMklShape(ctx, kSrcIndex, &src_mkl_shape);
+      GetMklShape(ctx, kSrcIndex, &src_mkl_shape, native_format);
 
       // src_dims is the dimension of src_tensor
       // output_dims are same as src_dims
@@ -124,7 +124,7 @@ class MklDequantizeOp : public OpKernel {
 
       // Allocate MKL or TF output shape based on the above
       AllocateOutputSetMklShape(ctx, 0, &output_tensor, output_tf_shape,
-                                output_mkl_shape);
+                                output_mkl_shape, native_format);
       dst.SetUsrMem(dst_md, output_tensor);
       dst.SetUsrMemDataHandle(output_tensor, reorder_stream);
 
@@ -156,10 +156,10 @@ class MklDequantizeOp : public OpKernel {
                     dst.GetUsrMem()->get_desc(), attr);
       net.push_back(reorder(reorder_pd));
       std::vector<std::unordered_map<int, memory>> reorder_net_args;
-      reorder_net_args.push_back({{MKLDNN_ARG_FROM, *src.GetUsrMem()},
-                                  {MKLDNN_ARG_TO, *dst.GetUsrMem()}});
+      reorder_net_args.push_back(
+          {{DNNL_ARG_FROM, *src.GetUsrMem()}, {DNNL_ARG_TO, *dst.GetUsrMem()}});
       execute_primitives(net, reorder_stream, reorder_net_args);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -178,12 +178,12 @@ REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, quint8>);
+                        MklDequantizeOp<CPUDevice, quint8, true>);
 REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, qint8>);
+                        MklDequantizeOp<CPUDevice, qint8, true>);
 
 }  // namespace tensorflow
 

@@ -128,8 +128,8 @@ Status FastParseSerializedExample(
   if (!ParseExample(serialized_example, &parsed_example)) {
     return tf::errors::Internal("Failed to parse example");
   }
-  std::vector<tf::int64> dense_feature_last_example(config.dense.size(), -1);
-  std::vector<tf::int64> sparse_feature_last_example(config.sparse.size(), -1);
+  std::vector<int64_t> dense_feature_last_example(config.dense.size(), -1);
+  std::vector<int64_t> sparse_feature_last_example(config.sparse.size(), -1);
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
   for (size_t i = 0; i < parsed_example_size; ++i) {
@@ -193,8 +193,8 @@ Status FastParseSerializedExample(
 
         switch (config.dense[d].dtype) {
           case tf::DT_INT64: {
-            auto out_p = reinterpret_cast<tf::int64*>(out->data.raw) + offset;
-            LimitedArraySlice<tf::int64> slice(out_p, num_elements);
+            auto out_p = reinterpret_cast<int64_t*>(out->data.raw) + offset;
+            LimitedArraySlice<int64_t> slice(out_p, num_elements);
             if (!feature.ParseInt64List(&slice)) return parse_error();
             if (slice.EndDistance() != 0) {
               return shape_error(num_elements - slice.EndDistance(), "int64");
@@ -348,7 +348,7 @@ Status FastParseSerializedExample(
     const std::size_t offset = example_index * num_elements;
     switch (config.dense[d].dtype) {
       case tf::DT_INT64: {
-        std::copy_n(in.flat<tf::int64>().data(), num_elements,
+        std::copy_n(in.flat<int64_t>().data(), num_elements,
                     out->data.i64 + offset);
         break;
       }
@@ -569,9 +569,8 @@ Status FastParseExampleLite(
     const size_t num_elements_per_minibatch = num_elements / batch_size;
     switch (config.dense[d].dtype) {
       case tf::DT_INT64: {
-        FillAndCopyVarLen<tf::int64>(d, num_elements,
-                                     num_elements_per_minibatch, config,
-                                     varlen_dense_buffers, values);
+        FillAndCopyVarLen<int64_t>(d, num_elements, num_elements_per_minibatch,
+                                   config, varlen_dense_buffers, values);
         break;
       }
       case tf::DT_FLOAT: {
@@ -675,7 +674,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 template <typename T>
 tf::Tensor AsTensor(const std::vector<T>& val) {
   tf::Tensor ret(tf::DataTypeToEnum<T>::value,
-                 {static_cast<tf::int64>(val.size())});
+                 {static_cast<int64_t>(val.size())});
   std::copy_n(val.begin(), val.size(), ret.flat<T>().data());
   return ret;
 }
@@ -823,8 +822,8 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       std::string k(key.str, key.len);
       switch (sparse_output->type) {
         case kTfLiteInt64:
-          data->config.sparse.emplace_back(
-              k, tf::DataTypeToEnum<tf::int64>::value);
+          data->config.sparse.emplace_back(k,
+                                           tf::DataTypeToEnum<int64_t>::value);
           break;
         case kTfLiteFloat32:
           data->config.sparse.emplace_back(k, tf::DataTypeToEnum<float>::value);
@@ -861,8 +860,8 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       switch (dense_output->type) {
         case kTfLiteInt64:
           data->config.dense.emplace_back(
-              k, tf::DataTypeToEnum<tf::int64>::value, dense_shapes[i],
-              AsTensor<tf::int64>(std::vector<tf::int64>(
+              k, tf::DataTypeToEnum<int64_t>::value, dense_shapes[i],
+              AsTensor<int64_t>(std::vector<int64_t>(
                   dense_defaults->data.i64,
                   dense_defaults->data.i64 + elements_per_stride)),
               false, elements_per_stride);

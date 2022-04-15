@@ -37,7 +37,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
   }
 
   xla::Shape GetOutputShape(XlaOpKernelContext* ctx) const {
-    std::vector<int64> out_size;
+    std::vector<int64_t> out_size;
     auto status = ctx->ConstantInputAsIntVector(1, &out_size);
     CHECK_EQ(out_size.size(), 2) << status.ToString();
     xla::Shape output_shape =

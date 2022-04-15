@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_TOPK_REWRITER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TOPK_REWRITER_H_
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -25,7 +27,7 @@ namespace xla {
 // the CustomCall and it is more efficient to use that implementation.
 class TopkRewriter : public HloModulePass {
  public:
-  explicit TopkRewriter(std::function<bool(const HloSortInstruction*, int64)>
+  explicit TopkRewriter(std::function<bool(const HloSortInstruction*, int64_t)>
                             is_profitable_to_convert)
       : is_profitable_to_convert_(std::move(is_profitable_to_convert)) {}
 
@@ -33,10 +35,17 @@ class TopkRewriter : public HloModulePass {
 
   StatusOr<bool> Run(HloModule* module) override;
 
+ protected:
+  // Check if the sort instruction is in TopK.
+  absl::optional<int64_t> SortIsInTopK(HloInstruction* inst);
+
+  // Transform to CustomCall.
+  StatusOr<bool> TransformToCustomCall(HloModule* module);
+
  private:
   // Predicate that returns true if a sort instruction is profitable to be
   // converted into a custom call.
-  std::function<bool(const HloSortInstruction*, int64)>
+  std::function<bool(const HloSortInstruction*, int64_t)>
       is_profitable_to_convert_;
 };
 }  // namespace xla

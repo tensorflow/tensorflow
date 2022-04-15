@@ -22,13 +22,8 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 
-#include "rocm/rocm_config.h"
-
-#if TF_ROCM_VERSION < 40100
-#include "rocm/include/rocfft/hipfft.h"
-#else
 #include "rocm/include/hipfft/hipfft.h"
-#endif
+#include "rocm/rocm_config.h"
 
 #endif
 
@@ -77,15 +72,15 @@ class ROCMFftPlan : public fft::Plan {
 
   // Initialize function for batched plan
   port::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
-                          uint64 *elem_count, uint64 *input_embed,
-                          uint64 input_stride, uint64 input_distance,
-                          uint64 *output_embed, uint64 output_stride,
-                          uint64 output_distance, fft::Type type,
+                          uint64_t *elem_count, uint64 *input_embed,
+                          uint64_t input_stride, uint64 input_distance,
+                          uint64_t *output_embed, uint64 output_stride,
+                          uint64_t output_distance, fft::Type type,
                           int batch_count, ScratchAllocator *scratch_allocator);
 
   // Initialize function for 1d,2d, and 3d plan
   port::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
-                          uint64 *elem_count, fft::Type type,
+                          uint64_t *elem_count, fft::Type type,
                           ScratchAllocator *scratch_allocator);
 
   port::Status UpdateScratchAllocator(Stream *stream,

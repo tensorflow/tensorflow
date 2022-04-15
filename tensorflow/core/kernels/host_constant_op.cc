@@ -43,17 +43,14 @@ void _HostConstantOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, tensor_);
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// A special GPU kernel for int32.
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Const")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("output")
                             .TypeConstraint<int32>("dtype"),
                         _HostConstantOp);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 // HostConst: forced to generate output on the host.
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), _HostConstantOp);

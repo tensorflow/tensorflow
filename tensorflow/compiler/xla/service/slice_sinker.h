@@ -24,7 +24,7 @@ namespace xla {
 // operations and merges the group of elementwise operations.
 class SliceSinker : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "slice-sinker"; }
+  absl::string_view name() const override { return "slice-sinker"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

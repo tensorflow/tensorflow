@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -33,10 +34,6 @@ namespace cl {
 class CLArguments;
 }
 
-namespace metal {
-class MetalArguments;
-}
-
 class ArgumentsBinder {
  public:
   virtual absl::Status SetInt(const std::string& name, int value) = 0;
@@ -45,10 +42,10 @@ class ArgumentsBinder {
   virtual ~ArgumentsBinder() = default;
 };
 
-class Arguments {
+class Arguments : public ArgumentsBinder {
  public:
   Arguments() = default;
-  ~Arguments() = default;
+  ~Arguments() override = default;
 
   // Move only
   Arguments(Arguments&& args) = default;
@@ -59,26 +56,30 @@ class Arguments {
   void AddFloat(const std::string& name, float value = 0.0f);
   void AddHalf(const std::string& name, half value = half(0.0f));
   void AddInt(const std::string& name, int value = 0);
+  absl::Status SetInt(const std::string& name, int value) override;
+  absl::Status SetFloat(const std::string& name, float value) override;
+  absl::Status SetHalf(const std::string& name, half value) override;
   void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
   void AddObject(const std::string& name,
                  GPUObjectDescriptorPtr&& descriptor_ptr);
 
   void RenameArgs(const std::string& postfix, std::string* code) const;
-  absl::Status Merge(Arguments&& args, const std::string& postfix);
+  absl::Status Merge(Arguments&& args, const std::string& postfix,
+                     const std::vector<std::string>& exception_names = {});
+
+  absl::Status GetDescriptor(const std::string& name,
+                             GPUObjectDescriptor** descriptor) const;
+
+  int GetReadTexturesCount(const GpuInfo& gpu_info) const;
+  int GetWriteTexturesCount(const GpuInfo& gpu_info) const;
 
   void ReleaseCPURepresentation();
 
- private:
-  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
-      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
-                             Arguments* args);
+  void GetActiveArguments(const std::string& code);
 
-  friend class cl::CLArguments;
-  friend class metal::MetalArguments;
-  void GetActiveArguments(const std::string& args_prefix,
-                          const std::string& code);
+  void SetStateValueForAllObjects(const std::string& key,
+                                  const std::string& value);
 
   struct IntValue {
     int value;
@@ -87,8 +88,6 @@ class Arguments {
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
   };
-  std::map<std::string, IntValue> int_values_;
-
   struct FloatValue {
     float value;
 
@@ -96,8 +95,6 @@ class Arguments {
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
   };
-  std::map<std::string, FloatValue> float_values_;
-
   struct HalfValue {
     half value;
 
@@ -105,6 +102,72 @@ class Arguments {
     // to reduce amount of data transferred we adding this optimization
     bool active = false;
   };
+
+  const std::map<std::string, IntValue>& GetIntValues() const {
+    return int_values_;
+  }
+  const std::map<std::string, FloatValue>& GetFloatValues() const {
+    return float_values_;
+  }
+  const std::map<std::string, HalfValue>& GetHalfValues() const {
+    return half_values_;
+  }
+
+  const std::map<std::string, GPUObjectDescriptorPtr>& GetObjectRefs() const {
+    return object_refs_;
+  }
+  const std::map<std::string, GPUObjectDescriptorPtr>& GetObjects() const {
+    return objects_;
+  }
+  void MoveObjectRefs(std::map<std::string, GPUObjectDescriptorPtr>* result) {
+    *result = std::move(object_refs_);
+  }
+
+  absl::Status Compile(const GpuInfo& gpu_info,
+                       const std::map<std::string, std::string>& linkables,
+                       std::string* code);
+
+  absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
+                                    std::string* code) const;
+
+  absl::Status ResolveConstExpr(const GpuInfo& gpu_info,
+                                const std::string& object_name,
+                                const std::string& const_expr,
+                                std::string* result) const;
+
+  absl::Status ResolveSelectorsPass(
+      const GpuInfo& gpu_info,
+      const std::map<std::string, std::string>& linkables,
+      std::string* code) const;
+
+  absl::Status ResolveSelector(
+      const GpuInfo& gpu_info,
+      const std::map<std::string, std::string>& linkables,
+      const std::string& object_name, const std::string& selector,
+      const std::vector<std::string>& function_args,
+      const std::vector<std::string>& template_args, std::string* result) const;
+
+  void ResolveObjectNames(const std::string& object_name,
+                          const std::vector<std::string>& member_names,
+                          std::string* code) const;
+  absl::Status AddObjectsScalarArgs(const GpuInfo& gpu_info);
+  void ResolveArgsPass(std::string* code) const;
+
+ private:
+  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
+      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
+                             Arguments* args);
+
+  absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
+                                               std::string* code);
+
+  friend class cl::CLArguments;
+
+  static constexpr char kArgsPrefix[] = "args.";
+
+  std::map<std::string, IntValue> int_values_;
+  std::map<std::string, FloatValue> float_values_;
   std::map<std::string, HalfValue> half_values_;
 
   std::map<std::string, GPUObjectDescriptorPtr> object_refs_;

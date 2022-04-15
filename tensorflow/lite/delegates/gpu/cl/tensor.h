@@ -68,11 +68,10 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   int Slices() const override { return DivideRoundUp(shape_.c, 4); }
   int Batch() const override { return shape_.b; }
 
-  TensorDescriptor GetDescriptor() const { return descriptor_; }
+  TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
-  // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
 
   cl_mem GetMemoryPtr() const;
@@ -102,8 +101,14 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
 
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     CLContext* context);
+  absl::Status ToDescriptor(TensorDescriptor* desc,
+                            CLCommandQueue* queue) const;
 
  private:
+  friend absl::Status CreateSharedImage2DBufferTensor(
+      const CLContext& context, cl_mem memory, const BHWDC& shape,
+      const TensorDescriptor& descriptor, int width_pixel_alignment,
+      Tensor* result);
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
@@ -112,17 +117,22 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
 
   template <typename T>
   absl::Status WriteDataBHWDC(const T* in, CLCommandQueue* queue);
+  absl::Status WriteData(const void* ptr, CLCommandQueue* queue);
   template <typename T>
   absl::Status ReadDataBHWDC(T* out, CLCommandQueue* queue) const;
+  absl::Status ReadData(void* ptr, CLCommandQueue* queue) const;
 
   int3 GetFullTensorRegion() const;
   void Release();
 
   cl_mem memory_;
-  cl_mem image_buffer_memory_;  // for TensorStorageType::IMAGE_BUFFER only
+  cl_mem image_buffer_memory_;  // for IMAGE_BUFFER/TEXTURE_2D/SINGLE_TEXTURE_2D
   bool memory_owner_;
+  bool buffer_based_ = false;
   BHWDC shape_;
   TensorDescriptor descriptor_;
+  // for use with TEXTURE_2D and when texture created from buffer.
+  int aligned_texture_width_;
 };
 
 using TensorPtr = std::shared_ptr<Tensor>;
@@ -150,6 +160,18 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
+
+absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
+                                             cl_mem memory, const BHWC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int width_pixel_alignment,
+                                             Tensor* result);
+
+absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
+                                             cl_mem memory, const BHWDC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int width_pixel_alignment,
+                                             Tensor* result);
 
 template <DataType T>
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
@@ -181,13 +203,8 @@ absl::Status Tensor::ReadData(CLCommandQueue* queue,
 
 template <typename T>
 absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
   std::unique_ptr<uint8_t[]> data_copy;
-  data_copy.reset(new uint8_t[data_size]);
+  data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
   if (descriptor_.data_type == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16
     DataFromBHWDC(reinterpret_cast<const float*>(in), shape_, descriptor_,
@@ -198,51 +215,15 @@ absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
                   reinterpret_cast<T*>(data_copy.get()));
   }
 
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(
-          queue->EnqueueWriteBuffer(memory_, data_size, data_copy.get()));
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(queue->EnqueueWriteImage(memory_, GetFullTensorRegion(),
-                                               data_copy.get()));
-      break;
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  return absl::OkStatus();
+  return WriteData(data_copy.get(), queue);
 }
 
 template <typename T>
 absl::Status Tensor::ReadDataBHWDC(T* out, CLCommandQueue* queue) const {
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
   std::unique_ptr<uint8_t[]> data_copy;
-  data_copy.reset(new uint8_t[data_size]);
+  data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
 
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(
-          queue->EnqueueReadBuffer(memory_, data_size, data_copy.get()));
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(queue->EnqueueReadImage(memory_, GetFullTensorRegion(),
-                                              data_copy.get()));
-      break;
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
+  RETURN_IF_ERROR(ReadData(data_copy.get(), queue));
 
   if (descriptor_.data_type == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16

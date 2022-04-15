@@ -22,13 +22,18 @@ export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
 TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_package/setup.py" | cut -d= -f2 | sed "s/[ '-]//g")
 export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
+export PROJECT_NAME=${WHEEL_PROJECT_NAME:-tflite_runtime}
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"
-TENSORFLOW_TARGET=$1
+TENSORFLOW_TARGET=${TENSORFLOW_TARGET:-$1}
+if [ "${TENSORFLOW_TARGET}" = "rpi" ]; then
+  export TENSORFLOW_TARGET="armhf"
+fi
+export CROSSTOOL_PYTHON_INCLUDE_PATH=$(${PYTHON} -c "from sysconfig import get_paths as gp; print(gp()['include'])")
 
 # Fix container image for cross build.
 if [ ! -z "${CI_BUILD_HOME}" ] && [ `pwd` = "/workspace" ]; then
   # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
-  if [ "${TENSORFLOW_TARGET}" = "armhf" ]; then
+  if [ "${TENSORFLOW_TARGET}" = "armhf" ] && [ -f /usr/include/curl/curlbuild.h ]; then
     sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
     sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
   fi
@@ -43,11 +48,13 @@ fi
 # Build source tree.
 rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
 cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
-      "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_binary.py" \
       "${TENSORFLOW_LITE_DIR}/tools/pip_package/MANIFEST.in" \
       "${TENSORFLOW_LITE_DIR}/python/interpreter_wrapper" \
       "${BUILD_DIR}"
+cp  "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_binary.py" "${BUILD_DIR}/setup.py"
 cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
+   "${TENSORFLOW_LITE_DIR}/python/metrics/metrics_interface.py" \
+   "${TENSORFLOW_LITE_DIR}/python/metrics/metrics_portable.py" \
    "${BUILD_DIR}/tflite_runtime"
 echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
 echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
@@ -101,19 +108,21 @@ chmod u+w "${BUILD_DIR}/tflite_runtime/_pywrap_tensorflow_interpreter_wrapper${L
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
-    ${PYTHON} setup_with_binary.py bdist --plat-name=linux-armv7l \
-                       bdist_wheel --plat-name=linux-armv7l
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv7l}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   aarch64)
-    ${PYTHON} setup_with_binary.py bdist --plat-name=linux-aarch64 \
-                       bdist_wheel --plat-name=linux-aarch64
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-aarch64}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   *)
     if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
-      ${PYTHON} setup_with_binary.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
+      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
                          bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
     else
-      ${PYTHON} setup_with_binary.py bdist bdist_wheel
+      ${PYTHON} setup.py bdist bdist_wheel
     fi
     ;;
 esac
@@ -158,4 +167,3 @@ case "${TENSORFLOW_TARGET}" in
 esac
 
 cat "${BUILD_DIR}/debian/changelog"
-

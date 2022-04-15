@@ -27,10 +27,6 @@ Then the directive will may no longer be recognized. Furthermore, if the
 converted function is cached, such an action may be irreversible.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import inspect
 
 import gast

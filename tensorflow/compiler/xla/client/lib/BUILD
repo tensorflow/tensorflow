@@ -105,6 +105,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "broadcast",
+    srcs = ["broadcast.cc"],
+    hdrs = ["broadcast.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "constants_test",
     srcs = ["constants_test.cc"],
@@ -128,6 +144,24 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "dynamic_shaped_ops",
+    srcs = ["dynamic_shaped_ops.cc"],
+    hdrs = ["dynamic_shaped_ops.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:value_inference",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -326,6 +360,32 @@ cc_library(
 )
 
 cc_library(
+    name = "approx_topk",
+    srcs = ["approx_topk.cc"],
+    hdrs = ["approx_topk.h"],
+    deps = [
+        ":approx_topk_shape",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "approx_topk_shape",
+    srcs = ["approx_topk_shape.cc"],
+    hdrs = ["approx_topk_shape.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+    ],
+)
+
+cc_library(
     name = "slicing",
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
@@ -405,6 +465,7 @@ xla_test(
     srcs = ["quantize_test.cc"],
     # TODO(b/122119490): re-enable TAP after fixing.
     tags = [
+        "manual",
         "notap",
     ],
     deps = [
@@ -468,6 +529,7 @@ xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
     real_hardware_only = True,
+    shard_count = 5,
     tags = ["optonly"],
     deps = [
         ":arithmetic",

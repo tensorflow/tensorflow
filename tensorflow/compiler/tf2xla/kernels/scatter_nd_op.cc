@@ -40,8 +40,9 @@ Status ValidateUpdateShape(const TensorShape& buffer_shape,
         indices_shape.DebugString());
   }
 
-  const int64 num_index_dims = indices_shape.dim_size(indices_shape.dims() - 1);
-  const int64 batch_dim = indices_shape.dims() - 1;
+  const int64_t num_index_dims =
+      indices_shape.dim_size(indices_shape.dims() - 1);
+  const int64_t batch_dim = indices_shape.dims() - 1;
 
   auto shape_err = [&]() {
     return errors::InvalidArgument(

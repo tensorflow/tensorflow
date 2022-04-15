@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for device function for replicated training."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops

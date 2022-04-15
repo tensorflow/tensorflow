@@ -22,10 +22,14 @@ limitations under the License.
 namespace xla {
 namespace tridiagonal {
 
-StatusOr<XlaOp> ThomasSolver(XlaOp lower_diagonal, XlaOp main_diagonal,
-                             XlaOp upper_diagonal, XlaOp rhs);
+enum SolverAlgorithm { kThomas };
 
-StatusOr<XlaOp> ThomasSolver(XlaOp diagonals, XlaOp rhs);
+StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
+                                  XlaOp main_diagonal, XlaOp upper_diagonal,
+                                  XlaOp rhs);
+
+StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
+                                  XlaOp rhs);
 
 }  // namespace tridiagonal
 }  // namespace xla

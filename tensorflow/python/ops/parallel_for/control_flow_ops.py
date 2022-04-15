@@ -15,14 +15,12 @@
 """for_loop and pfor ops."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -69,12 +67,13 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
 
   def while_body(i, *ta_list):
     """Body of while loop."""
-    fn_output = nest.flatten(loop_fn(i))
+    fn_conv = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+    fn_output = nest.flatten(fn_conv(i))
     if len(fn_output) != len(flat_loop_fn_dtypes):
       raise ValueError(
-          "Number of expected outputs, %d, does not match the number of "
-          "actual outputs, %d, from loop_fn" % (len(flat_loop_fn_dtypes),
-                                                len(fn_output)))
+          f"Number of expected outputs {len(flat_loop_fn_dtypes)}, does not "
+          f"match the number of actual outputs {len(fn_output)} from loop_fn: "
+          f"{loop_fn} with output {fn_output}.")
     outputs = []
     del is_none_list[:]
     is_none_list.extend(x is None for x in fn_output)
@@ -203,6 +202,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
           "These primitives will override the disable.")
       def_function.run_functions_eagerly(False)
     f = def_function.function(f)
+
   outputs = f()
   if functions_run_eagerly is not None:
     def_function.run_functions_eagerly(functions_run_eagerly)
@@ -222,10 +222,9 @@ def _composite_to_tensors(value, is_batched=False):
   if _should_expand_composite(value):
     spec = value._type_spec
     if not isinstance(spec, type_spec.BatchableTypeSpec):
-      raise ValueError("CompositeTensor instance {} returned from "
+      raise ValueError(f"CompositeTensor instance {value} returned from "
                        "parallel_for or vectorized_map loop body must provide "
-                       "a `BatchableTypeSpec` (saw: {}).".format(
-                           value, spec))
+                       f"a `BatchableTypeSpec` (saw: {spec}).")
     if is_batched:
       return spec._to_batched_tensor_list(value)
     return spec._to_tensor_list(value)
@@ -258,7 +257,7 @@ def _loop_fn_has_config(loop_fn):
   else:
     loop_class = tf_decorator.unwrap(loop_fn)[1]
     if not hasattr(loop_class, "__call__"):
-      raise ValueError("loop_fn object did not have a __call__ method")
+      raise ValueError("`loop_fn` object did not have a __call__ method")
     argspec = tf_inspect.getargspec(loop_class.__call__)
     return PFOR_CONFIG_ARG in argspec.args
 
@@ -283,7 +282,8 @@ def _pfor_impl(loop_fn,
       loop_fn_outputs = loop_fn(loop_var, **{PFOR_CONFIG_ARG: pfor_config})
     else:
       assert pfor_config is None
-      loop_fn_outputs = loop_fn(loop_var)
+      f = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+      loop_fn_outputs = f(loop_var)
     loop_fn_output_tensors = nest.map_structure(_composite_to_tensors,
                                                 loop_fn_outputs)
 
@@ -309,9 +309,12 @@ def _pfor_impl(loop_fn,
   iters = ops.convert_to_tensor(iters)
   if parallel_iterations is not None:
     if parallel_iterations < 1:
-      raise ValueError("parallel_iterations must be None or a positive integer")
+      raise ValueError(
+          "Argument `parallel_iterations` must be None or a positive integer. "
+          f"Received: {parallel_iterations}.")
     if parallel_iterations == 1:
-      raise ValueError("Found parallel_iterations == 1. Use for_loop instead.")
+      raise ValueError(
+          "Found `parallel_iterations == 1`. Use `for_loop` instead.")
     if iters_value is not None and iters_value < parallel_iterations:
       parallel_iterations = None
   if parallel_iterations is None:
@@ -325,8 +328,8 @@ def _pfor_impl(loop_fn,
         flattened_output_tensors.append(output)
   else:
     if pfor_config is not None and pfor_config._has_reductions():  # pylint: disable=protected-access
-      raise ValueError("Setting parallel_iterations currently unsupported if"
-                       " reductions across iterations are performed.")
+      raise ValueError("Setting `parallel_iterations` currently unsupported if "
+                       "reductions across iterations are performed.")
     num_tiled_iterations = iters // parallel_iterations
     num_remaining_iterations = iters % parallel_iterations
     # TODO(agarwal): Avoid calling loop_fn twice. Generate the loop body inside

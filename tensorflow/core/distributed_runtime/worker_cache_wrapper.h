@@ -59,6 +59,11 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
     return wrapped_->GetEagerClientCache(eager_client_cache);
   }
 
+  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
+                                        coordination_client_cache) override {
+    return wrapped_->GetCoordinationClientCache(coordination_client_cache);
+  }
+
   // Set *locality with the DeviceLocality of the specified remote device
   // within its local environment.  Returns true if *locality
   // was set, using only locally cached data.  Returns false
@@ -84,7 +89,7 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
 
   // Return logs for the identified step in *ss.  Any returned data will no
   // longer be stored.
-  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
+  bool RetrieveLogs(int64_t step_id, StepStats* ss) override {
     return wrapped_->RetrieveLogs(step_id, ss);
   }
 

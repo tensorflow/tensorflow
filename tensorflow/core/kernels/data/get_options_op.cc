@@ -15,11 +15,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/get_options_op.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {

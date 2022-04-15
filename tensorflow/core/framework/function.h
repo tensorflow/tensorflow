@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
@@ -123,6 +124,11 @@ class FunctionDefHelper {
   // Node is used to construct FunctionDef.Node using initialization
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
+  //
+  // If the op has no inputs, then name is be specified.
+  //  Node n = {{}, "AssignVariable", {"resource", "val"}, {{"dtype",
+  //  "DT_FLOAT"},
+  //            {"update0"}, "CPU:0", "update1"}}
   struct Node {
     // When constructing a NodeDef, the first entry in ret is used as
     // the node name, the remaining values are ignored.
@@ -132,6 +138,18 @@ class FunctionDefHelper {
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
     std::string device;
+
+    // Required if the op has zero outputs. Otherwise, ret[0] used as name if
+    // name is left empty.
+    std::string name;
+
+    std::string GetName() const {
+      if (!name.empty()) return name;
+      CHECK(!ret.empty());
+      return ret[0];
+    }
+    std::vector<string> original_node_names;
+    std::vector<string> original_func_names;
 
     NodeDef ToNodeDef() const;
   };
@@ -190,7 +208,7 @@ class FunctionDefHelper {
     Node n = {{name}, "Const"};
     const DataType dtype = DataTypeToEnum<T>::value;
     n.attr.push_back({"dtype", dtype});
-    int64 num = vals.size();
+    int64_t num = vals.size();
     Tensor t(dtype, TensorShape({num}));
     for (size_t i = 0; i < vals.size(); ++i) {
       t.flat<T>()(i) = vals[i];
@@ -382,7 +400,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def);
+                            const FunctionDefLibrary& lib_def = {});
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -502,6 +520,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
+  void set_default_registry(const OpRegistryInterface* registry) {
+    default_registry_ = registry;
+  }
 
   // Returns a copy of `*this` with only the subset of functions that are
   // reachable from the nodes of `graph` or `func`.
@@ -566,8 +587,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Remove all functions in `funcs` and all gradients of functions in
   // `funcs_with_grads` from this library.
-  void Remove(const std::vector<string>& funcs,
-              const std::vector<string>& funcs_with_grads)
+  Status Remove(const std::vector<string>& funcs,
+                const std::vector<string>& funcs_with_grads)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove `func` from the library. Returns non-OK Status unless `func` is in
@@ -582,7 +603,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
-  const OpRegistryInterface* const default_registry_;
+  const OpRegistryInterface* default_registry_;
   gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
@@ -740,6 +761,37 @@ class FunctionLibraryRuntime {
 
     // If true, the function library runtime cache the function instantiation.
     bool use_function_cache = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow optimizations which should be targeted at a limited
+    // set of small functions.  For example, running kernels synchronously can
+    // be faster under some conditions.
+    bool allow_small_function_optimizations = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow graphs containing control flow nodes to be run on the
+    // single threaded executor.
+    bool allow_control_flow_sync_execution = false;
+
+    // TODO(b/176491312): Remove this if shape inference on import flag is
+    // removed. If True, allows mlir roundtrip to run shape inference on import.
+    bool shape_inference_on_tfe_dialect_import = true;
+
+    // Force int32 _Arg and _Retvals nodes to be left on device instead of
+    // pinning to host.
+    //
+    // Note that we do not pin int32 nodes to host for subgraphs running in
+    // TPU/XLA devices. So this is mainly used to handle the case of multi-CPU
+    // and GPU (non-XLA) graphs.
+    bool int_args_and_retvals_on_device = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function for XLA compilation on device_type. If empty,
+    // function is not compiled.
+    std::string xla_compile_device_type;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
@@ -776,25 +828,28 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64 step_id) : step_id(step_id) {}
+    explicit Options(const int64_t step_id) : step_id(step_id) {}
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
     // non-negative step IDs (contiguous, starting from 0), and
     // MasterSession generates 56-bit random step IDs whose MSB is
     // always 0, so a negative random step ID should suffice.
-    const int64 step_id = -std::abs(static_cast<int64>(random::New64()));
+    const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
 
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
-    absl::optional<int64> op_id = absl::nullopt;
+    absl::optional<int64_t> op_id = absl::nullopt;
 
     RendezvousInterface* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
+
+    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
@@ -818,6 +873,9 @@ class FunctionLibraryRuntime {
     // If True, hint that all kernels should be treated as "inexpensive", and
     // hence executed on the scheduling thread.
     bool run_all_kernels_inline = false;
+
+    // If not null, use this thread pool for intra op scheduling.
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // Returns a human readable representation of this.
     std::string DebugString() const;

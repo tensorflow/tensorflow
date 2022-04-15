@@ -105,6 +105,20 @@ TEST(TfOpUtilsTest, TraceMeWithTrailingWhitespaceTest) {
   EXPECT_EQ(TfOpEventName(kName), kNameTrimmed);
 }
 
+TEST(TfOpUtilsTest, InfeedEnqueueTest) {
+  const absl::string_view kName =
+      "input_pipeline_task0/while/body/_1/InfeedQueue/enqueue/"
+      "1:InfeedEnqueueTuple";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
+  EXPECT_EQ(tf_op.name,
+            "input_pipeline_task0/while/body/_1/InfeedQueue/enqueue/1");
+  EXPECT_EQ(tf_op.type, "InfeedEnqueueTuple");
+  EXPECT_EQ(TfOpEventName(kName), "InfeedEnqueueTuple");
+  EXPECT_TRUE(IsInfeedEnqueueOp(tf_op.type));
+  EXPECT_TRUE(IsInfeedEnqueueOp(tf_op));
+}
+
 TEST(TfOpUtilsTest, MemcpyHToDTest) {
   const absl::string_view kName = "MemcpyHToD";
   TfOp tf_op = ParseTfOpFullname(kName);
@@ -112,6 +126,8 @@ TEST(TfOpUtilsTest, MemcpyHToDTest) {
   EXPECT_EQ(tf_op.name, kName);
   EXPECT_EQ(tf_op.type, kMemcpyHToDOp);
   EXPECT_EQ(TfOpEventName(kName), kName);
+  EXPECT_TRUE(IsMemcpyHToDOp(tf_op.type));
+  EXPECT_TRUE(IsMemcpyHToDOp(tf_op));
 }
 
 TEST(TfOpUtilsTest, MemcpyDToHTest) {
@@ -121,6 +137,27 @@ TEST(TfOpUtilsTest, MemcpyDToHTest) {
   EXPECT_EQ(tf_op.name, kName);
   EXPECT_EQ(tf_op.type, kMemcpyDToHOp);
   EXPECT_EQ(TfOpEventName(kName), kName);
+  EXPECT_TRUE(IsMemcpyDToHOp(tf_op));
+}
+
+TEST(TfOpUtilsTest, MemcpyDToDTest) {
+  const absl::string_view kName = "MemcpyDToD";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kMemcpyDToD);
+  EXPECT_EQ(tf_op.name, kName);
+  EXPECT_EQ(tf_op.type, kMemcpyDToDOp);
+  EXPECT_EQ(TfOpEventName(kName), kName);
+  EXPECT_TRUE(IsMemcpyDToDOp(tf_op));
+}
+
+TEST(TfOpUtilsTest, MemcpyHToHTest) {
+  const absl::string_view kName = "MemcpyHToH";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kMemcpyHToH);
+  EXPECT_EQ(tf_op.name, kName);
+  EXPECT_EQ(tf_op.type, kMemcpyHToHOp);
+  EXPECT_EQ(TfOpEventName(kName), kName);
+  EXPECT_TRUE(IsMemcpyHToHOp(tf_op));
 }
 
 TEST(TfOpUtilsTest, JaxOpTest) {

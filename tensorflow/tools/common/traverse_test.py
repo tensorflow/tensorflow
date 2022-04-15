@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Python module traversal."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.platform import googletest
 from tensorflow.tools.common import test_module1
 from tensorflow.tools.common import test_module2

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for operations in eager execution."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import threading
 import weakref

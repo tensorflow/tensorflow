@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-void SetMinorToMajorLayout(Shape* shape, std::vector<int64> dimensions) {
+void SetMinorToMajorLayout(Shape* shape, std::vector<int64_t> dimensions) {
   shape->mutable_layout()->clear_minor_to_major();
   for (auto dimension : dimensions) {
     shape->mutable_layout()->add_minor_to_major(dimension);
@@ -37,7 +37,7 @@ TEST(IndexUtilTest, VectorIndexing) {
   Shape vector_shape = ShapeUtil::MakeShape(F32, {100});
   EXPECT_EQ(42,
             IndexUtil::MultidimensionalIndexToLinearIndex(vector_shape, {42}));
-  std::vector<int64> multi_index =
+  std::vector<int64_t> multi_index =
       IndexUtil::LinearIndexToMultidimensionalIndex(vector_shape, 42);
   EXPECT_EQ(1, multi_index.size());
   EXPECT_EQ(42, multi_index[0]);
@@ -55,7 +55,7 @@ TEST(IndexUtilTest, MatrixIndexingRowMajor) {
                                                                {9, 19}));
   EXPECT_EQ(53, IndexUtil::MultidimensionalIndexToLinearIndex(matrix_shape_01,
                                                               {3, 5}));
-  EXPECT_EQ(std::vector<int64>({3, 5}),
+  EXPECT_EQ(std::vector<int64_t>({3, 5}),
             IndexUtil::LinearIndexToMultidimensionalIndex(matrix_shape_01, 53));
 }
 
@@ -71,7 +71,7 @@ TEST(IndexUtilTest, MatrixIndexingColumnMajor) {
                                                                {9, 19}));
   EXPECT_EQ(65, IndexUtil::MultidimensionalIndexToLinearIndex(matrix_shape_10,
                                                               {3, 5}));
-  EXPECT_EQ(std::vector<int64>({3, 5}),
+  EXPECT_EQ(std::vector<int64_t>({3, 5}),
             IndexUtil::LinearIndexToMultidimensionalIndex(matrix_shape_10, 65));
 }
 
@@ -118,10 +118,10 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
   // Verify that converting a linear index to a multidimensional index and back
   // always returns the same value for different crazy shapes.  Shape has
   // 1440000000 elements. Inputs are randomly-ish selected.
-  std::vector<int64> linear_indexes = {0,        1439999999, 1145567336,
-                                       43883404, 617295214,  1117613654};
+  std::vector<int64_t> linear_indexes = {0,        1439999999, 1145567336,
+                                         43883404, 617295214,  1117613654};
 
-  std::vector<std::vector<int64>> minor_to_major_orders;
+  std::vector<std::vector<int64_t>> minor_to_major_orders;
   minor_to_major_orders.push_back({6, 5, 4, 3, 2, 1, 0});
   minor_to_major_orders.push_back({0, 1, 2, 3, 4, 5, 6});
   minor_to_major_orders.push_back({4, 5, 1, 2, 6, 0, 3});
@@ -130,7 +130,7 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
     Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30, 40, 30, 20, 10});
     SetMinorToMajorLayout(&shape, minor_to_major_order);
     for (auto linear_index : linear_indexes) {
-      std::vector<int64> multi_index =
+      std::vector<int64_t> multi_index =
           IndexUtil::LinearIndexToMultidimensionalIndex(shape, linear_index);
       EXPECT_EQ(linear_index, IndexUtil::MultidimensionalIndexToLinearIndex(
                                   shape, multi_index));
@@ -140,7 +140,7 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
 
 TEST(IndexUtilTest, BumpIndices2x2) {
   auto shape = ShapeUtil::MakeShape(S32, {2, 2});
-  std::vector<int64> indices = {0, 0};
+  std::vector<int64_t> indices = {0, 0};
   EXPECT_TRUE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
   EXPECT_THAT(indices, ::testing::ElementsAre(0, 1));
   EXPECT_TRUE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));

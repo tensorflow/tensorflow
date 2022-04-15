@@ -64,12 +64,17 @@ Status DeviceContext::CopyCPUTensorToDeviceSync(const Tensor* cpu_tensor,
 }
 
 const DeviceAttributes& DeviceBase::attributes() const {
-  LOG(FATAL) << "Device does not implement attributes()";
+  LOG(FATAL) << "DeviceBase does not implement attributes()";  // Crash OK
   std::abort();
 }
 
 const string& DeviceBase::name() const {
-  LOG(FATAL) << "Device does not implement name()";
+  LOG(FATAL) << "DeviceBase does not implement name()";  // Crash OK
+  std::abort();
+}
+
+const DeviceNameUtils::ParsedName& DeviceBase::parsed_name() const {
+  LOG(FATAL) << "DeviceBase does not implement parsed_name()";  // Crash OK
   std::abort();
 }
 

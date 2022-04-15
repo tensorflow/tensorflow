@@ -42,7 +42,7 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
     const TensorShape* min_rank_shape = broadcast_lhs ? &lhs_shape : &rhs_shape;
     const TensorShape* max_rank_shape = broadcast_lhs ? &rhs_shape : &lhs_shape;
 
-    std::vector<int64> broadcast_dims;
+    std::vector<int64_t> broadcast_dims;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("broadcast_dims",
                                                               &broadcast_dims));
     if (broadcast_dims.empty()) {
@@ -67,9 +67,9 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
             "broadcast_dims: [",
             absl::StrJoin(broadcast_dims, ","), "]; argument shapes: ",
             lhs_shape.DebugString(), " and ", rhs_shape.DebugString()));
-    std::vector<int64> sorted_broadcast_dims = broadcast_dims;
+    std::vector<int64_t> sorted_broadcast_dims = broadcast_dims;
     absl::c_sort(sorted_broadcast_dims);
-    std::set<int64> dims_set(broadcast_dims.begin(), broadcast_dims.end());
+    std::set<int64_t> dims_set(broadcast_dims.begin(), broadcast_dims.end());
     OP_REQUIRES(context,
                 dims_set.size() == broadcast_dims.size() &&
                     broadcast_dims == sorted_broadcast_dims,
@@ -78,7 +78,7 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
                     "broadcast_dims: [",
                     absl::StrJoin(broadcast_dims, ","), "]"));
 
-    std::vector<int64> broadcast_shape(max_rank_shape->dims(), 1LL);
+    std::vector<int64_t> broadcast_shape(max_rank_shape->dims(), 1LL);
     for (int i = 0; i < broadcast_dims.size(); ++i) {
       const int dim = broadcast_dims[i];
       OP_REQUIRES(

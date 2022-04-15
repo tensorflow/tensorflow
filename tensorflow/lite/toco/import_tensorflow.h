@@ -45,9 +45,6 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
     const std::string& input_file_contents);
 
-// Gets a list of supported ops by their names.
-std::vector<std::string> GetPotentiallySupportedOps();
-
 }  // namespace toco
 
 #endif  // TENSORFLOW_LITE_TOCO_IMPORT_TENSORFLOW_H_

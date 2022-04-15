@@ -41,9 +41,9 @@ enum class Padding {
 // Validates that the slices are acceptable for determining padding -- this can
 // be used to check the preconditions of MakePadding below to produce an error
 // message that can be returned to the user.
-Status ValidatePaddingValues(absl::Span<const int64> input_dimensions,
-                             absl::Span<const int64> window_dimensions,
-                             absl::Span<const int64> window_strides);
+Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
+                             absl::Span<const int64_t> window_dimensions,
+                             absl::Span<const int64_t> window_strides);
 
 // Returns the padding needed for the base area, given the base area dimensions,
 // window dimensions, strides, and the type of padding.
@@ -56,10 +56,10 @@ Status ValidatePaddingValues(absl::Span<const int64> input_dimensions,
 // Precondition: The number of dimensions (i.e., rank) in input_dimensions,
 // window_dimensions, and strides must match, which is equal to the number
 // of elements in the result vector.
-std::vector<std::pair<int64, int64>> MakePadding(
-    absl::Span<const int64> input_dimensions,
-    absl::Span<const int64> window_dimensions,
-    absl::Span<const int64> window_strides, Padding padding);
+std::vector<std::pair<int64_t, int64_t>> MakePadding(
+    absl::Span<const int64_t> input_dimensions,
+    absl::Span<const int64_t> window_dimensions,
+    absl::Span<const int64_t> window_strides, Padding padding);
 
 }  // namespace xla
 

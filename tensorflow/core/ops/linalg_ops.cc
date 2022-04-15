@@ -506,7 +506,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Output("output: T")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float, half, complex64, complex128}")
+    .Attr("T: {bfloat16, double, float, half, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       return MatrixTriangularSolveShapeFn(c);
     });
@@ -562,6 +562,7 @@ REGISTER_OP("TridiagonalSolve")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("partial_pivoting: bool = True")
+    .Attr("perturb_singular: bool = False")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(TridiagonalSolveShapeFn);
 

@@ -14,10 +14,7 @@
 # ==============================================================================
 """Tests for checkpoints tools."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import pathlib
 import os
 import time
 
@@ -119,6 +116,23 @@ class CheckpointsTest(test.TestCase):
         [("useful_scope/var4", [9, 9]), ("var1", [1, 10]), ("var2", [10, 10]),
          ("var3", [100, 100])])
 
+  def testFSPath(self):
+    checkpoint_dir = pathlib.Path(self.get_temp_dir())
+    with self.cached_session() as session:
+      v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)  # pylint: disable=unused-variable
+
+    reader = checkpoint_utils.load_checkpoint(checkpoint_dir)
+    self.assertAllEqual(reader.get_tensor("var1"), v1)
+
+    self.assertAllEqual(
+        checkpoint_utils.load_variable(checkpoint_dir, "var1"), v1)
+
+    self.assertEqual(
+        checkpoint_utils.list_variables(checkpoint_dir),
+        [("useful_scope/var4", [9, 9]), ("var1", [1, 10]), ("var2", [10, 10]),
+         ("var3", [100, 100])])
+
+
   def testInitFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
     with self.cached_session() as session:
@@ -134,24 +148,27 @@ class CheckpointsTest(test.TestCase):
             with variable_scope.variable_scope("other_useful_scope"):
               my4 = variable_scope.get_variable("var4", [9, 9])
         my3 = variable_scope.get_variable("my3", [100, 100])
+        my3b = variable_scope.get_variable("my3b", [100, 100])
 
         checkpoint_utils.init_from_checkpoint(checkpoint_dir, {
             "var1": "some_scope/my1",
             "useful_scope/": "some_scope/some_other_scope/other_useful_scope/",
         })
-        checkpoint_utils.init_from_checkpoint(checkpoint_dir, {
-            "var2": "some_scope/some_other_scope/my2",
-            "var3": my3,
-        })
+        checkpoint_utils.init_from_checkpoint(checkpoint_dir, [
+            ("var2", "some_scope/some_other_scope/my2"),
+            ("var3", my3),
+            ("var3", my3b),
+        ])
 
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(my1.eval(session), v1)
         self.assertAllEqual(my2.eval(session), v2)
         self.assertAllEqual(my3.eval(session), v3)
+        self.assertAllEqual(my3b.eval(session), v3)
         self.assertAllEqual(my4.eval(session), v4)
 
         # Check that tensors are not explicitly in the graph.
-        self.assertLess(len(str(session.graph.as_graph_def())), 29000)
+        self.assertLess(len(str(session.graph.as_graph_def())), 32000)
 
   def testInitialValueComesFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
@@ -415,6 +432,24 @@ class CheckpointIteratorTest(test.TestCase):
       gfile.MakeDirs(checkpoint_dir)
 
     save_path = os.path.join(checkpoint_dir, "model.ckpt")
+
+    a = resource_variable_ops.ResourceVariable(5)
+    self.evaluate(a.initializer)
+    checkpoint = trackable_utils.Checkpoint(a=a)
+    checkpoint.save(file_prefix=save_path)
+
+    num_found = 0
+    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+      num_found += 1
+    self.assertEqual(num_found, 1)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWorksWithFSPath(self):
+    checkpoint_dir = pathlib.Path(self.get_temp_dir()) / "one_checkpoint_found"
+    if not gfile.Exists(checkpoint_dir):
+      gfile.MakeDirs(checkpoint_dir)
+
+    save_path = checkpoint_dir / "model.ckpt"
 
     a = resource_variable_ops.ResourceVariable(5)
     self.evaluate(a.initializer)

@@ -68,7 +68,7 @@ XLA_TEST_F(DynamicUpdateSliceTest, ShardedInPlaceDUS) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments, MakeFakeArguments(module.get()));
-  fake_arguments[0] = LiteralUtil::CreateR0<int32>(0);
+  fake_arguments[0] = LiteralUtil::CreateR0<int32_t>(0);
 
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
@@ -172,7 +172,7 @@ ENTRY main {
   Literal indices =
       Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {8, 2, 4}));
   indices
-      .Populate<int>([&](absl::Span<const int64> indices) -> int {
+      .Populate<int>([&](absl::Span<const int64_t> indices) -> int {
         auto i = indices[2] + indices[1] * 4 + indices[0] * 2 * 4;
         switch (indices[2]) {
           case 0:

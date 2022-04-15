@@ -20,6 +20,7 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
@@ -47,6 +48,8 @@ namespace traceme_internal {
 // REQUIRED: The address range [out, out + str.size()] must have been allocated.
 TF_ATTRIBUTE_ALWAYS_INLINE inline char* Append(char* out,
                                                absl::string_view str) {
+  DCHECK(!absl::StrContains(str, '#'))
+      << "'#' is not a valid character in TraceMeEncode";
   const size_t str_size = str.size();
   if (TF_PREDICT_TRUE(str_size > 0)) {
     memcpy(out, str.data(), str_size);

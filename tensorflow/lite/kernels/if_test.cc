@@ -36,7 +36,7 @@ namespace {
 class SimpleIfTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_->AddSubgraphs(2);
+    AddSubgraphs(2);
     builder_->BuildAddSubgraph(interpreter_->subgraph(1));
     builder_->BuildMulSubgraph(interpreter_->subgraph(2));
     builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
@@ -70,7 +70,7 @@ TEST_F(SimpleIfTest, TestIfFalse) {
 class DynamicSubgraphIfTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_->AddSubgraphs(2);
+    AddSubgraphs(2);
     builder_->BuildAddSubgraph(interpreter_->subgraph(1));
     builder_->BuildPadSubgraph(interpreter_->subgraph(2));
     builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());

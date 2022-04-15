@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 #include <random>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -31,9 +32,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
+using ::testing::ElementsAre;
 
 namespace {
 
@@ -346,8 +350,8 @@ TEST(TensorBundleTest, SwapBytes) {
   // Cast to uint64*/int64* to make DataTypeToEnum<T> happy
   TestByteSwap(reinterpret_cast<const uint64*>(forward_64),
                reinterpret_cast<const uint64*>(swapped_64), arr_len_64);
-  TestByteSwap(reinterpret_cast<const int64*>(forward_64),
-               reinterpret_cast<const int64*>(swapped_64), arr_len_64);
+  TestByteSwap(reinterpret_cast<const int64_t*>(forward_64),
+               reinterpret_cast<const int64_t*>(swapped_64), arr_len_64);
   TestByteSwap(reinterpret_cast<const double*>(forward_64),
                reinterpret_cast<const double*>(swapped_64), arr_len_64);
 
@@ -533,7 +537,7 @@ TEST(TensorBundleTest, Basic) {
   TestBasic<int8>();
   TestBasic<complex64>();
   TestBasic<complex128>();
-  TestBasic<int64>();
+  TestBasic<int64_t>();
   TestBasic<bool>();
   TestBasic<qint32>();
   TestBasic<quint8>();
@@ -550,7 +554,7 @@ TEST(TensorBundleTest, Endianness) {
   TestEndianness<int8>();
   TestEndianness<complex64>();
   TestEndianness<complex128>();
-  TestEndianness<int64>();
+  TestEndianness<int64_t>();
   TestEndianness<bool>();
   TestEndianness<qint32>();
   TestEndianness<quint8>();
@@ -694,7 +698,7 @@ TEST(TensorBundleTest, NonStandardShapes) {
   TestNonStandardShapes<int8>();
   TestNonStandardShapes<complex64>();
   TestNonStandardShapes<complex128>();
-  TestNonStandardShapes<int64>();
+  TestNonStandardShapes<int64_t>();
   TestNonStandardShapes<bool>();
   TestNonStandardShapes<qint32>();
   TestNonStandardShapes<quint8>();
@@ -793,7 +797,7 @@ TEST(TensorBundleTest, StringTensors) {
 class VariantObject {
  public:
   VariantObject() {}
-  VariantObject(const string& metadata, int64 value)
+  VariantObject(const string& metadata, int64_t value)
       : metadata_(metadata), value_(value) {}
 
   string TypeName() const { return "TEST VariantObject"; }
@@ -801,21 +805,21 @@ class VariantObject {
     data->set_type_name(TypeName());
     data->set_metadata(metadata_);
     Tensor val_t = Tensor(DT_INT64, TensorShape({}));
-    val_t.scalar<int64>()() = value_;
+    val_t.scalar<int64_t>()() = value_;
     *(data->add_tensors()) = val_t;
   }
   bool Decode(const VariantTensorData& data) {
     EXPECT_EQ(data.type_name(), TypeName());
     data.get_metadata(&metadata_);
     EXPECT_EQ(data.tensors_size(), 1);
-    value_ = data.tensors(0).scalar<int64>()();
+    value_ = data.tensors(0).scalar<int64_t>()();
     return true;
   }
   bool operator==(const VariantObject other) const {
     return metadata_ == other.metadata_ && value_ == other.value_;
   }
   string metadata_;
-  int64 value_;
+  int64_t value_;
 };
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantObject, "TEST VariantObject");
@@ -885,6 +889,43 @@ TEST(TensorBundleTest, DirectoryStructure) {
                           "merged.data-00001-of-00002"});
 }
 
+TEST(TensorBundleTest, SortForSequentialAccess) {
+  Env* env = Env::Default();
+  const std::vector<string> kBundlePrefixes = {Prefix("worker0"),
+                                               Prefix("worker1")};
+  BundleWriter writer0(env, kBundlePrefixes[0]);
+  for (int i = 0; i < 3; ++i) {
+    TF_EXPECT_OK(
+        writer0.Add(strings::StrCat("tensor-0-", i), Constant_2x3<float>(0.)));
+  }
+  TF_ASSERT_OK(writer0.Finish());
+
+  BundleWriter writer1(env, kBundlePrefixes[1]);
+  for (int i = 2; i >= 0; --i) {
+    TF_EXPECT_OK(
+        writer1.Add(strings::StrCat("tensor-1-", i), Constant_2x3<float>(0.)));
+  }
+  TF_ASSERT_OK(writer1.Finish());
+
+  const string kMerged = Prefix("merged");
+  TF_ASSERT_OK(
+      MergeBundles(env, {kBundlePrefixes[0], kBundlePrefixes[1]}, kMerged));
+
+  // We now have:
+  //   merged.data-00000-of-00002 with tensor-0-0, tensor-0-1, tensor-0-2
+  //   merged.data-00001-of-00002 with tensor-1-2, tensor-1-1, tensor-1-0
+
+  BundleReader reader(env, kMerged);
+  TF_ASSERT_OK(reader.status());
+  std::vector<string> tensor_names = {"tensor-1-0", "tensor-0-1", "tensor-1-2",
+                                      "tensor-0-0", "tensor-1-1", "tensor-0-2"};
+  TF_ASSERT_OK(reader.SortForSequentialAccess<string>(
+      tensor_names, [](const string& element) { return element; }));
+  EXPECT_THAT(tensor_names,
+              ElementsAre("tensor-0-0", "tensor-0-1", "tensor-0-2",
+                          "tensor-1-2", "tensor-1-1", "tensor-1-0"));
+}
+
 TEST(TensorBundleTest, Error) {
   {  // Dup keys.
     BundleWriter writer(Env::Default(), Prefix("dup"));
@@ -900,7 +941,7 @@ TEST(TensorBundleTest, Error) {
   }
   {  // Not found.
     BundleReader reader(Env::Default(), Prefix("nonexist"));
-    EXPECT_TRUE(absl::StrContains(reader.status().ToString(), "Not found"));
+    EXPECT_EQ(reader.status().code(), error::NOT_FOUND);
   }
 }
 
@@ -1139,7 +1180,7 @@ BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 4096);
 BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 1048576);
 
 static void BM_BundleWriterSmallTensor(::testing::benchmark::State& state) {
-  const int64 bytes = state.range(0);
+  const int64_t bytes = state.range(0);
   Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
   BundleWriter writer(Env::Default(), Prefix("foo"));
   int suffix = 0;
@@ -1152,7 +1193,7 @@ BENCHMARK(BM_BundleWriterSmallTensor)->Range(1, 1 << 20);
 
 static void BM_BundleWriterLargeTensor(::testing::benchmark::State& state) {
   const int mb = state.range(0);
-  const int64 bytes = static_cast<int64>(mb) * (1 << 20);
+  const int64_t bytes = static_cast<int64_t>(mb) * (1 << 20);
   Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
   for (auto s : state) {
     BundleWriter writer(Env::Default(), Prefix("foo"));

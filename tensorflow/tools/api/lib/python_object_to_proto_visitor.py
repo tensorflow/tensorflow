@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +14,6 @@
 #
 # ==============================================================================
 """A visitor class that generates protobufs for each python object."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import enum
 import sys
@@ -101,11 +96,17 @@ _NORMALIZE_TYPE[(
     'tensorflow.python.framework.ops.Tensor')] = (
         "<class 'tensorflow.python.framework.ops.Tensor'>")
 _NORMALIZE_TYPE['typing.Generic'] = "<class 'typing.Generic'>"
-# TODO(mdan): Remove once the golden files are generated in Python 3.7.
+# TODO(b/203104448): Remove once the golden files are generated in Python 3.7.
 _NORMALIZE_TYPE["<class 'typing._GenericAlias'>"] = 'typing.Union'
-# TODO(mdan): Remove once the golden files are generated in Python 3.9.
+# TODO(b/203104448): Remove once the golden files are generated in Python 3.9.
 _NORMALIZE_TYPE["<class 'typing._UnionGenericAlias'>"] = 'typing.Union'
-
+# TODO(b/203104448): Remove once the golden files are generated in Python 3.8.
+_NORMALIZE_TYPE[
+    "<class 'typing_extensions._ProtocolMeta'>"] = ("<class "
+                                                    "'typing._ProtocolMeta'>")
+# TODO(b/203104448): Remove once the golden files are generated in Python 3.8.
+_NORMALIZE_TYPE[
+    "<class 'typing_extensions.Protocol'>"] = "<class 'typing.Protocol'>"
 
 if sys.version_info.major == 3 and sys.version_info.minor >= 8:
   _NORMALIZE_TYPE["<class '_collections._tuplegetter'>"] = "<type 'property'>"

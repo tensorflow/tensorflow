@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -69,9 +69,9 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
                 errors::InvalidArgument("sparse matrix must have rank 2 or 3; ",
                                         "but dense_shape has size ", rank));
 
-    auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 num_rows = dense_shape((rank == 2) ? 0 : 1);
-    const int64 num_cols = dense_shape((rank == 2) ? 1 : 2);
+    auto dense_shape = dense_shape_t.vec<int64_t>();
+    const int64_t num_rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape((rank == 2) ? 1 : 2);
 
     auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
     auto row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
@@ -92,17 +92,18 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
     auto dense_ptr = dense_t.flat<T>().data();
 
     // Process the individual batches in parallel using a threadpool.
-    auto shard = [&](int64 batch_begin, int64 batch_end) {
-      for (int64 batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
-        const int64 csr_batch_offset = batch_ptrs(batch_idx);
-        const int64 dense_batch_offset = batch_idx * num_rows * num_cols;
+    auto shard = [&](int64_t batch_begin, int64_t batch_end) {
+      for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
+           ++batch_idx) {
+        const int64_t csr_batch_offset = batch_ptrs(batch_idx);
+        const int64_t dense_batch_offset = batch_idx * num_rows * num_cols;
 
         for (int row_idx = 0; row_idx < num_rows; ++row_idx) {
-          const int64 row_offset = batch_idx * (num_rows + 1) + row_idx;
-          const int64 col_begin = row_ptr(row_offset);
-          const int64 col_end = row_ptr(row_offset + 1);
-          for (int64 i = col_begin; i < col_end; ++i) {
-            const int64 col_idx = col_ind(csr_batch_offset + i);
+          const int64_t row_offset = batch_idx * (num_rows + 1) + row_idx;
+          const int64_t col_begin = row_ptr(row_offset);
+          const int64_t col_end = row_ptr(row_offset + 1);
+          for (int64_t i = col_begin; i < col_end; ++i) {
+            const int64_t col_idx = col_ind(csr_batch_offset + i);
             dense_ptr[dense_batch_offset + (row_idx * num_cols) + col_idx] =
                 values(csr_batch_offset + i);
           }
@@ -142,10 +143,10 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
                                         "but dense_shape has size ", rank));
 
     const int batch_size = csr_sparse_matrix->batch_size();
-    const int64 total_nnz = csr_sparse_matrix->total_nnz();
+    const int64_t total_nnz = csr_sparse_matrix->total_nnz();
 
-    auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
+    auto dense_shape = dense_shape_t.vec<int64_t>();
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor indices_t;
     OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, TensorShape({total_nnz, rank}),
@@ -156,7 +157,7 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
                                        TensorShape({total_nnz}), &values_t));
 
     functor::CSRSparseMatrixToCOOSparseMatrix<Device> csr_to_coo;
-    auto indices = indices_t.matrix<int64>();
+    auto indices = indices_t.matrix<int64_t>();
 
     auto csr_row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
     auto coo_col_ind = csr_sparse_matrix->col_indices().vec<int32>();
@@ -195,11 +196,10 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
     OP_REQUIRES_OK(
         c, TensorShapeUtils::MakeShape(dense_shape.data(), dense_shape.size(),
                                        &dense_tensor_shape));
-    OP_REQUIRES_OK(
-        c,
-        functor::DoScatterNd<Device, T, int64, scatter_nd_op::UpdateOp::ASSIGN>(
-            c, indices_t, values_t, dense_tensor_shape, &dense_t,
-            true /*allocate*/));
+    OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, int64_t,
+                                           scatter_nd_op::UpdateOp::ASSIGN>(
+                          c, indices_t, values_t, dense_tensor_shape, &dense_t,
+                          true /*allocate*/));
     c->set_output(0, dense_t);
   }
 };
@@ -238,11 +238,11 @@ namespace functor {
 template <>
 struct COOSparseMatrixToSparseTensor<GPUDevice> {
   Status operator()(OpKernelContext* ctx,
-                    TTypes<int64>::ConstVec host_dense_shape,
+                    TTypes<int64_t>::ConstVec host_dense_shape,
                     TTypes<int>::ConstVec host_batch_ptrs,
                     TTypes<int>::Vec coo_row_ind,
                     TTypes<int>::ConstVec coo_col_ind,
-                    TTypes<int64>::Matrix indices);
+                    TTypes<int64_t>::Matrix indices);
 };
 extern template struct COOSparseMatrixToSparseTensor<GPUDevice>;
 

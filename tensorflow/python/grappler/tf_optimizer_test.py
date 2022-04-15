@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for the swig wrapper tf_optimizer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
@@ -113,7 +110,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
       ]
       buf, _ = control_flow_ops.while_loop(_Cond, _Body, loop_vars, shape_inv)
 
-      f = -array_ops.ones_like(buf, optimize=False)
+      f = -array_ops.ones_like(buf, optimize=False)  # pylint: disable=invalid-unary-operand-type
       buf_shape = array_ops.shape(buf)
       f_shape = array_ops.shape(f)
       ops.add_to_collection('train_op', buf_shape)

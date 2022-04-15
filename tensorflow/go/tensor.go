@@ -98,20 +98,14 @@ func NewTensor(value interface{}) (*Tensor, error) {
 
 	raw := tensorData(t.c)
 
-	runtime.SetFinalizer(t, func(t *Tensor) {
-		if dataType == String {
-			t.clearTStrings(raw, nflattened)
-		}
-
-		t.finalize()
-	})
+	runtime.SetFinalizer(t, (*Tensor).finalize)
 
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
 
 	if isAllArray(val.Type()) {
 		// We have arrays all the way down, or just primitive types. We can
 		// just copy the memory in as it is all contiguous.
-		if err := copyPtr(buf, unpackEFace(value).data, int(val.Type().Size())); err != nil {
+		if _, err := copyPtr(buf, unpackEFace(value).data, int(val.Type().Size())); err != nil {
 			return nil, err
 		}
 	} else {
@@ -119,7 +113,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		// not be contiguous with the others or in the order we might
 		// expect, so we need to work our way down to each slice of
 		// primitives and copy them individually
-		if err := encodeTensorWithSlices(buf, val, shape); err != nil {
+		if _, err := encodeTensorWithSlices(buf, val, shape); err != nil {
 			return nil, err
 		}
 	}
@@ -213,14 +207,6 @@ func newTensorFromC(c *C.TF_Tensor) *Tensor {
 	t := &Tensor{c: c, shape: shape}
 	runtime.SetFinalizer(t, (*Tensor).finalize)
 	return t
-}
-
-func (t *Tensor) clearTStrings(raw []byte, n int64) {
-	tstrs := (*(*[]C.TF_TString)(unsafe.Pointer(&raw)))[:n]
-
-	for _, tstr := range tstrs {
-		C.TF_TString_Dealloc(&tstr)
-	}
 }
 
 func (t *Tensor) finalize() { C.TF_DeleteTensor(t.c) }
@@ -431,11 +417,17 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 	typ := val.Type()
 	for typ.Kind() == reflect.Array || typ.Kind() == reflect.Slice {
 		shape = append(shape, int64(val.Len()))
+		// If slice elements are slices, verify that all of them have the same size.
+		// Go's type system makes that guarantee for arrays.
 		if val.Len() > 0 {
-			// In order to check tensor structure properly in general case we need to iterate over all slices of the tensor to check sizes match
-			// Since we already going to iterate over all elements in encodeTensor() let's
-			// 1) do the actual check in encodeTensor() to save some cpu cycles here
-			// 2) assume the shape is represented by lengths of elements with zero index in each dimension
+			if val.Type().Elem().Kind() == reflect.Slice {
+				expected := val.Index(0).Len()
+				for i := 1; i < val.Len(); i++ {
+					if val.Index(i).Len() != expected {
+						return shape, dt, fmt.Errorf("mismatched slice lengths: %d and %d", val.Index(i).Len(), expected)
+					}
+				}
+			}
 			val = val.Index(0)
 		}
 		typ = typ.Elem()
@@ -486,13 +478,13 @@ func sizeVarUint(v uint64) int {
 
 // encodeTensorWithSlices writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) error {
+func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) (int, error) {
 	// If current dimension is a slice, verify that it has the expected size
 	// Go's type system makes that guarantee for arrays.
 	if v.Kind() == reflect.Slice {
 		expected := int(shape[0])
 		if v.Len() != expected {
-			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
+			return 0, fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 		}
 	} else if v.Kind() == reflect.String {
 		s := v.Interface().(string)
@@ -501,7 +493,7 @@ func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) err
 		ptr := unsafe.Pointer(&tstr)
 		return copyPtr(w, ptr, C.sizeof_TF_TString)
 	} else if v.Kind() != reflect.Array {
-		return fmt.Errorf("unsupported type %v", v.Type())
+		return 0, fmt.Errorf("unsupported type %v", v.Type())
 	}
 
 	// Once we have just a single dimension we can just copy the data
@@ -514,15 +506,17 @@ func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) err
 		return copyPtr(w, ptr, v.Len()*int(elt.Type().Size()))
 	}
 
+	n := 0
 	subShape := shape[1:]
 	for i := 0; i < v.Len(); i++ {
-		err := encodeTensorWithSlices(w, v.Index(i), subShape)
+		j, err := encodeTensorWithSlices(w, v.Index(i), subShape)
 		if err != nil {
-			return err
+			return n + j, err
 		}
+		n += j
 	}
 
-	return nil
+	return n, nil
 }
 
 // It isn't safe to use reflect.SliceHeader as it uses a uintptr for Data and
@@ -536,15 +530,14 @@ type sliceHeader struct {
 // copyPtr copies the backing data for a slice or array directly into w. Note
 // we don't need to worry about byte ordering because we want the natural byte
 // order for the machine we're running on.
-func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) error {
+func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) (int, error) {
 	// Convert our slice header into a []byte so we can call w.Write
 	b := *(*[]byte)(unsafe.Pointer(&sliceHeader{
 		Data: ptr,
 		Len:  l,
 		Cap:  l,
 	}))
-	_, err := w.Write(b)
-	return err
+	return w.Write(b)
 }
 
 func bug(format string, args ...interface{}) error {

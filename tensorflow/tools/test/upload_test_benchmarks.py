@@ -76,10 +76,6 @@ Example retrieval GQL statements:
   SELECT * FROM Test WHERE test = <test-name> AND start = <latest-datetime>
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import datetime
 import fcntl

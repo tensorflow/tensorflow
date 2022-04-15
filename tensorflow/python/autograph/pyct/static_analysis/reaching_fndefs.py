@@ -18,10 +18,6 @@ A function definition is said to reach a statement if that function may exist
 (and therefore may be called) when that statement executes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.pyct import anno

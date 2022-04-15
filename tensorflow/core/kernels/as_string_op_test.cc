@@ -58,7 +58,7 @@ TEST_F(AsStringGraphTest, Int8) {
 TEST_F(AsStringGraphTest, Int64) {
   TF_ASSERT_OK(Init(DT_INT64));
 
-  AddInputFromArray<int64>(TensorShape({3}), {-42, 0, 42});
+  AddInputFromArray<int64_t>(TensorShape({3}), {-42, 0, 42});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({3}));
   test::FillValues<tstring>(&expected, {"-42", "0", "42"});
@@ -222,7 +222,7 @@ TEST_F(AsStringGraphTest, LongFill) {
 TEST_F(AsStringGraphTest, FillWithZero) {
   TF_ASSERT_OK(Init(DT_INT64, /*fill=*/"0", /*width=*/4));
 
-  AddInputFromArray<int64>(TensorShape({3}), {-42, 0, 42});
+  AddInputFromArray<int64_t>(TensorShape({3}), {-42, 0, 42});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({3}));
   test::FillValues<tstring>(&expected, {"-042", "0000", "0042"});
@@ -232,7 +232,7 @@ TEST_F(AsStringGraphTest, FillWithZero) {
 TEST_F(AsStringGraphTest, FillWithSpace) {
   TF_ASSERT_OK(Init(DT_INT64, /*fill=*/" ", /*width=*/4));
 
-  AddInputFromArray<int64>(TensorShape({3}), {-42, 0, 42});
+  AddInputFromArray<int64_t>(TensorShape({3}), {-42, 0, 42});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({3}));
   test::FillValues<tstring>(&expected, {" -42", "   0", "  42"});
@@ -242,7 +242,7 @@ TEST_F(AsStringGraphTest, FillWithSpace) {
 TEST_F(AsStringGraphTest, FillWithChar1) {
   TF_ASSERT_OK(Init(DT_INT64, /*fill=*/"-", /*width=*/4));
 
-  AddInputFromArray<int64>(TensorShape({3}), {-42, 0, 42});
+  AddInputFromArray<int64_t>(TensorShape({3}), {-42, 0, 42});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({3}));
   test::FillValues<tstring>(&expected, {"-42 ", "0   ", "42  "});

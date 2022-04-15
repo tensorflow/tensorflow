@@ -19,12 +19,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-#if GOOGLE_CUDA
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY5(xlog1py, Eigen::half, float, double, complex64, complex128);
-#elif TENSORFLOW_USE_ROCM
-// TODO(ROCm): enable complex64 / complex128 after compiler fix.
-DEFINE_BINARY3(xlog1py, Eigen::half, float, double);
 #endif
+#endif
+
 }  // namespace functor
 }  // namespace tensorflow
 

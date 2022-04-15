@@ -104,8 +104,8 @@ class GrpcSessionDebugTest : public ::testing::Test {
 
   void DeleteDumpDir() {
     if (Env::Default()->IsDirectory(dump_dir_).ok()) {
-      int64 undeleted_files = 0;
-      int64 undeleted_dirs = 0;
+      int64_t undeleted_files = 0;
+      int64_t undeleted_dirs = 0;
       ASSERT_TRUE(
           Env::Default()
               ->DeleteRecursively(dump_dir_, &undeleted_files, &undeleted_dirs)

@@ -34,13 +34,14 @@ namespace tosa {
 // Lowers the Pack operator to TOSA.
 llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
                                     Value result_value,
-                                    SmallVector<Value, 8>& inputs,
+                                    SmallVectorImpl<Value>& inputs,
                                     int32_t axis);
 
 // Lowers the Unpack operator to TOSA.
-llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
-                                           Operation* op, Value input_value,
-                                           int32_t axis);
+llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
+                                                   Operation* op,
+                                                   Value input_value,
+                                                   int32_t axis);
 
 // Lowers the Select operator to TOSA.
 llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
@@ -72,7 +73,7 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
 // Lowers ConcatV2 to TOSA.
 llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
                                         Operation* op, Value result_value,
-                                        SmallVector<Value, 8>& values,
+                                        SmallVectorImpl<Value>& values,
                                         int32_t axis);
 
 // Lowers SpaceToBatchND to TOSA.
@@ -97,7 +98,7 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
 // Lowers Squeeze to TOSA.
 llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value input_value,
-                                       SmallVector<int32_t, 8>& squeeze_dims);
+                                       SmallVectorImpl<int32_t>& squeeze_dims);
 
 // Lowers ELU to a sequence of TOSA ops.
 llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
@@ -105,7 +106,8 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Softmax to a sequence of TOSA ops.
 llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
-                                       Value result_value, Value logits_value);
+                                       Value result_value, Value logits_value,
+                                       double beta);
 
 // Lowers LogSoftmax to a sequence of TOSA ops.
 llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
@@ -127,17 +129,14 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
                                             StringAttr data_format);
 
 // Lowers Split to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
-                                          Operation* op, Value result_value,
-                                          Value input_value, int32_t num_split,
-                                          int32_t axis);
+llvm::Optional<SmallVector<Value>> convertSplitOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, int32_t num_split, int32_t axis);
 
 // Lowers SplitV to a sequence of TOSA ops.
-llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
-                                           Operation* op, Value result_value,
-                                           Value input_value,
-                                           SmallVector<int32_t, 4>& size_split,
-                                           int32_t axis);
+llvm::Optional<SmallVector<Value>> convertSplitVOp(
+    PatternRewriter& rewriter, Operation* op, Value result_value,
+    Value input_value, SmallVectorImpl<int32_t>& size_split, int32_t axis);
 
 // Lowers StridedSlice to a sequence of TOSA ops.
 llvm::Optional<Value> convertStridedSliceOp(
@@ -169,39 +168,53 @@ llvm::Optional<Value> convertRoundingDivideByPOT(PatternRewriter& rewriter,
                                                  Value rshift_value);
 
 // Lowers ReduceAll to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceAllOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems);
 
 // Lowers ReduceAny to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceAnyOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems);
 
 // Lowers ReduceMin to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMinOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems);
 
 // Lowers ReduceMax to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMaxOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems);
 
 // Lowers ReduceProd to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceProdOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
+                                          Operation* op,
+                                          RankedTensorType output_type,
+                                          Value input_value,
+                                          ElementsAttr axes_elems);
 
 // Lowers ReduceSum to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceSumOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems);
 
 // Lowers ReduceMean to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMeanOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims);
+llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
+                                          Operation* op,
+                                          RankedTensorType output_type,
+                                          Value input_value,
+                                          ElementsAttr axes_elem);
 
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
@@ -212,22 +225,21 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
-                                        Operation* op,
-                                        RankedTensorType output_type,
+                                        Operation* op, ShapedType output_type,
                                         Value input_value, double scale,
                                         int64_t zeropoint);
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
 llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
-                                          Operation* op,
-                                          RankedTensorType output_type,
-                                          Value input_value, double scale,
-                                          int64_t zeropoint);
+                                          Operation* op, ShapedType output_type,
+                                          Value input_value,
+                                          ArrayRef<float> scale,
+                                          ArrayRef<float> zeropoint,
+                                          int64_t dim);
 
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
+                                         Operation* op, ShapedType output_type,
                                          Value input_value, double min,
                                          double max, int64_t num_bits,
                                          bool narrow_range);

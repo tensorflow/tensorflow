@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <locale>
 #include <string>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace text {
@@ -47,12 +50,24 @@ class StringNGramsOp : public tensorflow::OpKernel {
                     ngram_width - 1);
   }
 
-  int get_num_ngrams(const int length, const int ngram_width) const {
+  StatusOr<int> get_num_ngrams(const int length, const int ngram_width) const {
+    int64 limit = kint32max;
     int pad_width = get_pad_width(ngram_width);
+    if (pad_width > limit / 2 - length) {
+      return errors::InvalidArgument(
+          "Pad width could lead to integer overflow, got pad_width = ",
+          pad_width);
+    }
     return std::max(0, ((length + 2 * pad_width) - ngram_width) + 1);
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
+    for (int ngram_width : ngram_widths_) {
+      OP_REQUIRES(
+          context, ngram_width > 0,
+          errors::InvalidArgument("ngram_widths must contain positive values"));
+    }
+
     const tensorflow::Tensor* data;
     OP_REQUIRES_OK(context, context->input("data", &data));
     const auto& input_data = data->flat<tstring>().data();
@@ -61,16 +76,28 @@ class StringNGramsOp : public tensorflow::OpKernel {
     OP_REQUIRES_OK(context, context->input("data_splits", &splits));
     const auto& splits_vec = splits->flat<SPLITS_TYPE>();
 
-    // Validate that the splits are valid indices into data
+    // Validate that the splits are valid indices into data, only if there are
+    // splits specified.
     const int input_data_size = data->flat<tstring>().size();
     const int splits_vec_size = splits_vec.size();
-    for (int i = 0; i < splits_vec_size; ++i) {
-      bool valid_splits = splits_vec(i) >= 0;
-      valid_splits = valid_splits && (splits_vec(i) <= input_data_size);
-      OP_REQUIRES(
-          context, valid_splits,
-          errors::InvalidArgument("Invalid split value ", splits_vec(i),
-                                  ", must be in [0,", input_data_size, "]"));
+    if (splits_vec_size > 0) {
+      int prev_split = splits_vec(0);
+      OP_REQUIRES(context, prev_split == 0,
+                  errors::InvalidArgument("First split value must be 0, got ",
+                                          prev_split));
+      for (int i = 1; i < splits_vec_size; ++i) {
+        bool valid_splits = splits_vec(i) >= prev_split;
+        valid_splits = valid_splits && (splits_vec(i) <= input_data_size);
+        OP_REQUIRES(context, valid_splits,
+                    errors::InvalidArgument(
+                        "Invalid split value ", splits_vec(i), ", must be in [",
+                        prev_split, ", ", input_data_size, "]"));
+        prev_split = splits_vec(i);
+      }
+      OP_REQUIRES(context, prev_split == input_data_size,
+                  errors::InvalidArgument(
+                      "Last split value must be data size. Expected ",
+                      input_data_size, ", got ", prev_split));
     }
 
     int num_batch_items = splits_vec.size() - 1;
@@ -94,8 +121,11 @@ class StringNGramsOp : public tensorflow::OpKernel {
     for (int i = 1; i <= num_batch_items; ++i) {
       int length = splits_vec(i) - splits_vec(i - 1);
       int num_ngrams = 0;
-      for (int ngram_width : ngram_widths_)
-        num_ngrams += get_num_ngrams(length, ngram_width);
+      for (int ngram_width : ngram_widths_) {
+        auto ngrams_or = get_num_ngrams(length, ngram_width);
+        OP_REQUIRES_OK(context, ngrams_or.status());
+        num_ngrams += ngrams_or.ValueOrDie();
+      }
       if (preserve_short_ && length > 0 && num_ngrams == 0) {
         num_ngrams = 1;
       }
@@ -115,7 +145,9 @@ class StringNGramsOp : public tensorflow::OpKernel {
       for (int ngram_width : ngram_widths_) {
         auto output_start = &ngrams_data[output_start_idx];
         int length = splits_vec(i + 1) - splits_vec(i);
-        int num_ngrams = get_num_ngrams(length, ngram_width);
+        auto ngrams_or = get_num_ngrams(length, ngram_width);
+        OP_REQUIRES_OK(context, ngrams_or.status());
+        int num_ngrams = ngrams_or.ValueOrDie();
         CreateNgrams(data_start, output_start, num_ngrams, ngram_width);
         output_start_idx += num_ngrams;
       }
@@ -134,6 +166,16 @@ class StringNGramsOp : public tensorflow::OpKernel {
         // We don't have to worry about dynamic padding sizes here: if padding
         // was dynamic, every sequence would have had sufficient padding to
         // generate at least one ngram.
+
+        // If reached here, pad_width should be > 0, pad_width_ = -1,
+        // which indicates max(ngram_widths) - 1 cannot be used here since
+        // ngram_width is not known.
+        OP_REQUIRES(
+            context, pad_width_ >= 0,
+            errors::InvalidArgument("Pad width should be >= 0 when "
+                                    "preserve_short_sequences is True and "
+                                    "ngram_widths are not provided, got ",
+                                    pad_width_));
         int ngram_width = data_length + 2 * pad_width_;
         auto output_start = &ngrams_data[output_start_idx];
         int num_ngrams = 1;
@@ -174,13 +216,31 @@ class StringNGramsOp : public tensorflow::OpKernel {
         ngram->append(left_pad_);
         ngram->append(separator_);
       }
+      // Only output first num_tokens - 1 pairs of data and separator
       for (int n = 0; n < num_tokens - 1; ++n) {
         ngram->append(data[data_start_index + n]);
         ngram->append(separator_);
       }
-      ngram->append(data[data_start_index + num_tokens - 1]);
-      for (int n = 0; n < right_padding; ++n) {
-        ngram->append(separator_);
+      // Handle case when there are no tokens or no right padding as these can
+      // result in consecutive separators.
+      if (num_tokens > 0) {
+        // If we have tokens, then output last and then pair each separator with
+        // the right padding that follows, to ensure ngram ends either with the
+        // token or with the right pad.
+        ngram->append(data[data_start_index + num_tokens - 1]);
+        for (int n = 0; n < right_padding; ++n) {
+          ngram->append(separator_);
+          ngram->append(right_pad_);
+        }
+      } else {
+        // If we don't have tokens, then the last item inserted into the ngram
+        // has been the separator from the left padding loop above. Hence,
+        // output right pad and separator and make sure to finish with a
+        // padding, not a separator.
+        for (int n = 0; n < right_padding - 1; ++n) {
+          ngram->append(right_pad_);
+          ngram->append(separator_);
+        }
         ngram->append(right_pad_);
       }
 
@@ -208,8 +268,8 @@ REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                         StringNGramsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                             .Device(tensorflow::DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
-                        StringNGramsOp<int64>);
+                            .TypeConstraint<int64_t>("Tsplits"),
+                        StringNGramsOp<int64_t>);
 
 }  // namespace text
 }  // namespace tensorflow

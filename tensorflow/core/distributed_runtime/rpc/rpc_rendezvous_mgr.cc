@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
-#include <unordered_set>
-
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -40,7 +38,7 @@ namespace {
 
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  RpcRemoteRendezvous(const WorkerEnv* env, int64 step_id)
+  RpcRemoteRendezvous(const WorkerEnv* env, int64_t step_id)
       : BaseRemoteRendezvous(env, step_id) {}
 
  protected:
@@ -59,7 +57,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
  public:
   RpcRecvTensorCall() : wi_(nullptr), dst_device_(nullptr) {}
 
-  void Init(WorkerInterface* wi, int64 step_id, StringPiece key,
+  void Init(WorkerInterface* wi, int64_t step_id, StringPiece key,
             AllocatorAttributes alloc_attrs, Device* dst_device,
             const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
     wi_ = wi;
@@ -272,12 +270,12 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   call->Init(rwi, step_id_, parsed.FullKey(), recv_args.alloc_attrs, dst_device,
              recv_args, std::move(done));
 
-  // Record "call" in active_ so that it can be aborted cleanly.
+  // Record "call" in calls_ so that it can be aborted cleanly.
   RegisterCall(call, recv_args);
 
   // RendezvousMgr already aborted, shouldn't send RPC call any more
   if (!call->status().ok()) {
-    DeregisterCall(call);
+    DeregisterCall(call, recv_args);
     // NOTE: `*sess` can potentially be deleted before we return from
     // `call->done()(...)`, so we must release the worker before calling the
     // callback.
@@ -289,9 +287,9 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   // Start "call".
   Ref();
-  call->Start([this, call, worker_cache]() {
-    // Removes "call" from active_. Prevent StartAbort().
-    DeregisterCall(call);
+  call->Start([this, call, recv_args, worker_cache]() {
+    // Removes "call" from calls_. Prevent StartAbort().
+    DeregisterCall(call, recv_args);
     // If StartAbort was called prior to DeregisterCall, then the
     // current status should be bad.
     Status s = call->status();
@@ -310,7 +308,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
     : BaseRendezvousMgr(env) {}
 
-BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
+BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64_t step_id,
                                                const WorkerEnv* worker_env) {
   return new RpcRemoteRendezvous(worker_env, step_id);
 }

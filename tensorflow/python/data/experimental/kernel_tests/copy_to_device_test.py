@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.copy_to_device()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -25,6 +21,7 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -316,8 +313,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     device_dataset = device_dataset.apply(
         prefetching_ops.map_on_gpu(gpu_map_func))
-    options = dataset_ops.Options()
-    options.experimental_optimization.autotune = False
+    options = options_lib.Options()
+    options.autotune.enabled = False
     device_dataset = device_dataset.with_options(options)
 
     with ops.device("/gpu:0"):

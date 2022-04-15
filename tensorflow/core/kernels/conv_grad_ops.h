@@ -175,7 +175,7 @@ struct LaunchConv2DBackpropInputOp {
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format);
 };
 
@@ -185,7 +185,7 @@ struct LaunchConv2DBackpropFilterOp {
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 
@@ -196,7 +196,7 @@ struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
                   const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
 };
 
@@ -206,7 +206,7 @@ struct LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T> {
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

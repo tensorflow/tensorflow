@@ -61,19 +61,19 @@ Status FlattenAtrousConv(const GraphDef& input_graph_def,
         // The atrous rate value is inferred from the block shape.
         Tensor block_shape =
             GetNodeTensorAttr(space_to_batch_block_shape_node, "value");
-        const int32 block_height = block_shape.flat<int32>()(0);
-        const int32 block_width = block_shape.flat<int32>()(1);
+        const int32_t block_height = block_shape.flat<int32>()(0);
+        const int32_t block_width = block_shape.flat<int32>()(1);
 
         // Compute the upsampled filter.
         const Tensor& filter = GetNodeTensorAttr(filter_node, "value");
-        const int32 filter_height = filter.dim_size(0);
-        const int32 filter_width = filter.dim_size(1);
-        const int32 in_channels = filter.dim_size(2);
-        const int32 out_channels = filter.dim_size(3);
+        const int32_t filter_height = filter.dim_size(0);
+        const int32_t filter_width = filter.dim_size(1);
+        const int32_t in_channels = filter.dim_size(2);
+        const int32_t out_channels = filter.dim_size(3);
 
-        const int32 upsampled_filter_height =
+        const int32_t upsampled_filter_height =
             (filter_height - 1) * block_height + 1;
-        const int32 upsampled_filter_width =
+        const int32_t upsampled_filter_width =
             (filter_width - 1) * block_width + 1;
         Tensor upsampled_filter(
             DT_FLOAT,

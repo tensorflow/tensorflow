@@ -49,8 +49,7 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
   (*fused_node.mutable_attr())["f"] = std::move(attr);
 
   graph_utils::CopyAttribute("Targuments", parent_map_node, &fused_node);
-  for (auto key : {"output_shapes", "output_types"})
-    graph_utils::CopyAttribute(key, map_node, &fused_node);
+  graph_utils::CopyShapesAndTypesAttrs(map_node, &fused_node);
 
   auto value_or_false = [](const AttrValue* attr) {
     if (!attr) return false;
@@ -72,6 +71,8 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
       gtl::FindOrNull(map_node.attr(), "preserve_cardinality");
   (*fused_node.mutable_attr())["preserve_cardinality"].set_b(
       value_or_false(first_cardinality) && value_or_false(second_cardinality));
+
+  graph_utils::MaybeSetFusedMetadata(parent_map_node, map_node, &fused_node);
 
   return fused_node;
 }
@@ -146,11 +147,6 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
-}
-
-void MapFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
-                         const GraphDef& optimize_output, double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");

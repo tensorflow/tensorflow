@@ -14,10 +14,6 @@
 # ==============================================================================
 """Classes and functions to handle debug-dump data of TensorFlow Debugger."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import glob
 import json
@@ -224,7 +220,7 @@ def has_inf_or_nan(datum, tensor):
     # arrays.
     return False
   elif (np.issubdtype(tensor.dtype, np.floating) or
-        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.complexfloating) or
         np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
   else:

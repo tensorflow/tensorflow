@@ -36,14 +36,12 @@ constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_inputs, bool preserve_intermediates,
-                           int tensor_alignment)
+                           bool preserve_all_tensors, int tensor_alignment)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
       persistent_arena_(kDefaultArenaAlignment),
-      preserve_inputs_(preserve_inputs),
-      preserve_intermediates_(preserve_intermediates),
+      preserve_all_tensors_(preserve_all_tensors),
       tensor_alignment_(tensor_alignment) {}
 
 ArenaPlanner::~ArenaPlanner() {}
@@ -132,13 +130,11 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
   }
 
-  // Queue all graph inputs for allocation. If preserve_inputs_ is true, make
-  // sure they never be overwritten.
+  // Queue all graph inputs for allocation and make sure they are never
+  // overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
-      if (preserve_inputs_) {
-        refcounts[tensor_index]++;
-      }
+      refcounts[tensor_index]++;
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }
@@ -168,7 +164,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
     // them for deallocation.
-    if (!preserve_intermediates_) {
+    if (!preserve_all_tensors_) {
       TfLiteIntArray* node_inputs = node.inputs;
       for (int j = 0; j < node_inputs->size; ++j) {
         int tensor_index = node_inputs->data[j];
@@ -203,7 +199,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     for (int j = 0; j < node_temporaries->size; ++j) {
       int tensor_index = node_temporaries->data[j];
       alloc_node_[tensor_index] = i;
-      if (!preserve_intermediates_) {
+      if (!preserve_all_tensors_) {
         dealloc_node_[tensor_index] = i;
       }
     }
@@ -213,10 +209,6 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   TF_LITE_ENSURE_STATUS(Commit());
 
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
-    // TODO(ahentz): we could do this only for the tensors that were modified
-    // in CalculateAllocations(), instead of redoing it for tensors that
-    // already had proper pointers. However we must be very careful, because
-    // SimpleMemoryArena::Commit() could move the base pointer.
     TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
   }
 
@@ -251,6 +243,12 @@ TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
 
 bool ArenaPlanner::HasNonPersistentMemory() {
   return arena_.GetBufferSize() != 0;
+}
+
+void ArenaPlanner::DumpDebugInfo(const std::vector<int>& execution_plan) const {
+  arena_.DumpDebugInfo("kTfLiteArenaRw Dump:", execution_plan);
+  persistent_arena_.DumpDebugInfo("kTfLiteArenaRwPersistent Dump:",
+                                  execution_plan);
 }
 
 TfLiteStatus ArenaPlanner::Commit() {

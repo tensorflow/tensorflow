@@ -30,6 +30,14 @@ extern const char kXlaHostTransferOriginalTypeAttr[];
 // or "false".
 extern const char kXlaHostTransferIsLowerBitsAttr[];
 
+// XLA frontend attribute name which specifies the name of host side handler
+// associates with this transfer.
+extern const char kXlaHostTransferHandlerNameAttr[];
+
+// XLA frontend attribute value of the name of TensorFlow Rendezvous Host
+// Command Handler.
+extern const char kXlaHostTransferTfRendezvousHandlerName[];
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SIDE_EFFECT_UTIL_H_

@@ -353,7 +353,7 @@ TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
   ASSERT_EQ(actual_tensors.size(), 1);
   auto expected_tensors = EvaluateNodes(item.graph, fetch, {{"a", a_t}});
   ASSERT_EQ(expected_tensors.size(), 1);
-  test::ExpectTensorEqual<int64>(actual_tensors[0], expected_tensors[0]);
+  test::ExpectTensorEqual<int64_t>(actual_tensors[0], expected_tensors[0]);
 }
 
 // TODO(rmlarsen): Reenable this test when the issues with

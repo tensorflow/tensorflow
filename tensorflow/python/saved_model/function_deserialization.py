@@ -14,24 +14,23 @@
 # ==============================================================================
 """Tools for deserializing `Function`s."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
+import pprint
 import re
 from absl import logging
 
-from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
@@ -44,7 +43,7 @@ def _is_tensor(t):
   return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
-# TODO(edloper): Update this to just use ConcreteFunction.__call__ with the
+# TODO(b/205016027): Update this to just use ConcreteFunction.__call__ with the
 # structured signature.
 def _call_concrete_function(function, inputs):
   """Calls a restored Function with structured inputs.
@@ -58,7 +57,7 @@ def _call_concrete_function(function, inputs):
   Args:
     function: ConcreteFunction to call.
     inputs: Structured inputs compatible with
-        `function.graph.structured_input_signature`.
+      `function.graph.structured_input_signature`.
 
   Returns:
     The structured function output.
@@ -72,7 +71,9 @@ def _call_concrete_function(function, inputs):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
-  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
+    elif isinstance(expected, resource_variable_ops.VariableSpec):
+      tensor_inputs.append(arg)
+  result = function._call_flat(tensor_inputs, function.captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result
@@ -119,15 +120,16 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
   return True
 
 
-def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
+def _deserialize_function_spec_as_nonmethod(function_spec_proto):
   """Deserialize a FunctionSpec object from its proto representation."""
-  typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  typeless_fullargspec = nested_structure_coder.decode_proto(
+      function_spec_proto.fullargspec)
 
   # Convert a method function into a non method.
   if function_spec_proto.is_method:
     if not typeless_fullargspec.args:
       raise NotImplementedError(
-          "Missing support to deserialize a method function without a named "
+          "Cannot deserialize a method function without a named "
           "'self' argument.")
     args = typeless_fullargspec.args[1:]
   else:
@@ -141,7 +143,8 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       kwonlyargs=typeless_fullargspec.kwonlyargs,
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
-  input_signature = coder.decode_proto(function_spec_proto.input_signature)
+  input_signature = nested_structure_coder.decode_proto(
+      function_spec_proto.input_signature)
 
   # See `tf.function` and the JitCompile proto for details.
   jit_compile = {
@@ -150,13 +153,14 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_lib.FunctionSpec(fullargspec=fullargspec,
-                                   is_method=False,
-                                   input_signature=input_signature,
-                                   jit_compile=jit_compile)
+  return function_spec_lib.FunctionSpec(
+      fullargspec=fullargspec,
+      is_method=False,
+      input_signature=input_signature,
+      jit_compile=jit_compile)
 
 
-# TODO(allenl): The fact that we can't derive ConcreteFunction calling
+# TODO(b/205016761): The fact that we can't derive ConcreteFunction calling
 # conventions from the serialized input spec right now is unfortunate. Merging
 # these would be good, maybe by adding TensorSpec names to cache keys so renamed
 # keyword arguments would yield different ConcreteFunctions.
@@ -171,10 +175,8 @@ def setup_bare_concrete_function(saved_bare_concrete_function,
   concrete_function._num_positional_args = (
       saved_bare_concrete_function.allowed_positional_arguments)
   if saved_bare_concrete_function.HasField("function_spec"):
-    coder = nested_structure_coder.StructureCoder()
     function_spec = _deserialize_function_spec_as_nonmethod(
-        saved_bare_concrete_function.function_spec,
-        coder)
+        saved_bare_concrete_function.function_spec)
     concrete_function._set_function_spec(function_spec)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
@@ -188,9 +190,11 @@ class RestoredFunction(def_function.Function):
   """
 
   def __init__(self, python_function, name, function_spec, concrete_functions):
-    # TODO(mdan): We may enable autograph once exceptions are supported.
+    # TODO(b/205016819): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
-        python_function, name, autograph=False,
+        python_function,
+        name,
+        autograph=False,
         jit_compile=function_spec.jit_compile)
     self.concrete_functions = concrete_functions
     self._function_spec = function_spec
@@ -227,18 +231,17 @@ def recreate_function(saved_function, concrete_functions):
 
   Args:
     saved_function: `SavedFunction` proto.
-    concrete_functions: map from function name to `ConcreteFunction`.
-      As a side effect of this function, the `FunctionSpec` from
-      `saved_function` is added to each `ConcreteFunction` in this map.
+    concrete_functions: map from function name to `ConcreteFunction`. As a side
+      effect of this function, the `FunctionSpec` from `saved_function` is added
+      to each `ConcreteFunction` in this map.
 
   Returns:
     A `Function`.
   """
-  # TODO(andresp): Construct a `Function` with the cache populated
+  # TODO(b/205017389): Construct a `Function` with the cache populated
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-  coder = nested_structure_coder.StructureCoder()
 
   # Note: handling method functions is tricky since make_decorator does not
   # allows control of "ismethod". Additionally since restored functions do
@@ -250,8 +253,7 @@ def recreate_function(saved_function, concrete_functions):
   # there are SavedModels which have "ismethod" populated and have an extra
   # argument that they expect to be ignored, we do it at deserialization.
   function_spec = _deserialize_function_spec_as_nonmethod(
-      saved_function.function_spec,
-      coder)
+      saved_function.function_spec)
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function or raises an error if no matching function."""
@@ -267,6 +269,13 @@ def recreate_function(saved_function, concrete_functions):
     for allow_conversion in [False, True]:
       for function_name in saved_function.concrete_functions:
         function = concrete_functions[function_name]
+        if any([inp is None for inp in function.captured_inputs]):
+          raise ValueError("Looks like you are trying to run a loaded "
+                           "non-Keras model that was trained using "
+                           "tf.distribute.experimental.ParameterServerStrategy "
+                           "with variable partitioning, which is not currently "
+                           "supported. Try using Keras to define your model "
+                           "if possible.")
         if _concrete_function_callable_with(function, inputs, allow_conversion):
           return _call_concrete_function(function, inputs)
 
@@ -274,21 +283,21 @@ def recreate_function(saved_function, concrete_functions):
 
     def _pretty_format_positional(positional):
       return "Positional arguments ({} total):\n    * {}".format(
-          len(positional), "\n    * ".join(str(a) for a in positional))
+          len(positional),
+          "\n    * ".join(pprint.pformat(a) for a in positional))
 
     for index, function_name in enumerate(saved_function.concrete_functions):
       concrete_function = concrete_functions[function_name]
       positional, keyword = concrete_function.structured_input_signature
       signature_descriptions.append(
-          "Option {}:\n  {}\n  Keyword arguments: {}"
-          .format(index + 1, _pretty_format_positional(positional), keyword))
+          "Option {}:\n  {}\n  Keyword arguments: {}".format(
+              index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call loaded from the SavedModel. "
-        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
-        "these arguments to match one of the following {} option(s):\n\n{}"
-        .format(_pretty_format_positional(args), kwargs,
-                len(saved_function.concrete_functions),
-                "\n\n".join(signature_descriptions)))
+        "Could not find matching concrete function to call loaded from the "
+        f"SavedModel. Got:\n  {_pretty_format_positional(args)}\n  Keyword "
+        f"arguments: {kwargs}\n\n Expected these arguments to match one of the "
+        f"following {len(saved_function.concrete_functions)} option(s):\n\n"
+        f"{(chr(10)+chr(10)).join(signature_descriptions)}")
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
@@ -297,11 +306,9 @@ def recreate_function(saved_function, concrete_functions):
   for cf in concrete_function_objects:
     cf._set_function_spec(function_spec)  # pylint: disable=protected-access
 
-  restored_function = RestoredFunction(
-      restored_function_body,
-      restored_function_body.__name__,
-      function_spec,
-      concrete_function_objects)
+  restored_function = RestoredFunction(restored_function_body,
+                                       restored_function_body.__name__,
+                                       function_spec, concrete_function_objects)
 
   return tf_decorator.make_decorator(
       restored_function_body,
@@ -309,16 +316,25 @@ def recreate_function(saved_function, concrete_functions):
       decorator_argspec=function_spec.fullargspec)
 
 
-def load_function_def_library(library, load_shared_name_suffix=None):
+def load_function_def_library(library,
+                              saved_object_graph=None,
+                              load_shared_name_suffix=None,
+                              wrapper_function=None):
   """Load a set of functions as concrete functions without captured inputs.
 
   Functions names are manipulated during load such that they do not overlap
   with previously created ones.
 
+  Gradients are re-registered under new names. Ops that reference the gradients
+  are updated to reflect the new registered names.
+
   Args:
     library: FunctionDefLibrary proto message.
-    load_shared_name_suffix: If specified, used to uniquify shared
-      names. Otherwise, a unique name is generated.
+    saved_object_graph: SavedObjectGraph proto message. If not passed in,
+      concrete function structured signatures and outputs will not be set.
+    load_shared_name_suffix: If specified, used to uniquify shared names.
+      Otherwise, a unique name is generated.
+    wrapper_function: An object that will be wrapped on newly created functions.
 
   Returns:
     Map of original function names in the library to instances of
@@ -337,8 +353,8 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   # the global default graph when executing eagerly, we create a temporary
   # Graph.
   #
-  # TODO(allenl): Make this Graph creation unnecessary when executing eagerly by
-  # fixing function_def_to_graph_def.
+  # TODO(b/205023033): Make this Graph creation unnecessary when executing
+  # eagerly by fixing function_def_to_graph_def.
   if ops.executing_eagerly_outside_functions():
     graph = ops.Graph()
   else:
@@ -346,8 +362,50 @@ def load_function_def_library(library, load_shared_name_suffix=None):
 
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
-  for fdef in _sort_function_defs(library, library_function_names):
-    copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
+
+  # Custom gradient functions must be re-registered under new UIDs.
+  library_gradient_names = {}  # Maps old op type to old function name
+  new_gradient_op_types = {}  # Maps old gradient op type to new op type.
+  gradients_to_register = {}  # Maps old function name to new op type
+  for gdef in library.registered_gradients:
+    if gdef.registered_op_type:
+      new_op_type = custom_gradient.generate_name()
+      old_op_type = compat.as_bytes(gdef.registered_op_type)
+
+      library_gradient_names[old_op_type] = gdef.gradient_func
+      new_gradient_op_types[old_op_type] = new_op_type
+      gradients_to_register[gdef.gradient_func] = new_op_type
+
+  function_deps = {}
+  for fdef in library.function:
+    function_deps[fdef.signature.name] = _list_function_deps(
+        fdef, library_function_names, library_gradient_names)
+
+  loaded_gradients = {}
+  for fdef in _sort_function_defs(library, function_deps):
+    orig_name = _fix_fdef_in_place(fdef, functions, load_shared_name_suffix,
+                                   new_gradient_op_types)
+
+    # Setup function signatures and outputs
+    #
+    # When concrete functions are created normally (i.e. when they're originally
+    # created and not loaded via saved model), the inputs and outputs are
+    # calculated based on the values passed in by the user and returned from the
+    # original function, respectively. We don't have access to those anymore at
+    # restore time, so we must instead pass them to the FuncGraph explicitly.
+    structured_input_signature = None
+    structured_outputs = None
+    if (saved_object_graph is not None and
+        orig_name in saved_object_graph.concrete_functions):
+      # TODO(b/204324043): Offload the deserialization of the protos to the
+      # first class objects by passing the actual protos. This is blocked on
+      # importing `nested_structure_coder` in function.py causing a circular
+      # dependency.
+      proto = saved_object_graph.concrete_functions[orig_name]
+      structured_input_signature = nested_structure_coder.decode_proto(
+          proto.canonicalized_input_signature)
+      structured_outputs = nested_structure_coder.decode_proto(
+          proto.output_signature)
 
     # There is no need to copy all functions into the function def graph. It
     # leads to a O(n^2) increase of memory when importing functions and the
@@ -355,10 +413,15 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # function before and passed in explicitly (due to the topologic sort
     # import).
     with graph.as_default():
-      func_graph = function_def_lib.function_def_to_graph(copy)
-    _restore_gradient_functions(func_graph, renamed_functions)
+      func_graph = function_def_lib.function_def_to_graph(
+          fdef,
+          structured_input_signature=structured_input_signature,
+          structured_outputs=structured_outputs)
+    # Restores gradients for function-call ops (not the same as ops that use
+    # custom gradients)
+    _restore_gradient_functions(func_graph, renamed_functions, loaded_gradients)
 
-    for dep in _list_function_deps(fdef, library_function_names):
+    for dep in function_deps[orig_name]:
       functions[dep].add_to_graph(func_graph)
 
     # We do not initialize the new ConcreteFunction's function_spec and/or
@@ -366,10 +429,17 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # signatures, respectively). ConcreteFunction that are part of a saved
     # function is set up later by recreate_function(); and bare ConcreteFunction
     # is set up by by setup_bare_concrete_function().
-    func = function_lib.ConcreteFunction(func_graph)
+    # However, we copy the FunctionDef attributes to the new ConcreteFunction,
+    # excluding the "_input_shapes", which may cause an error during input shape
+    # initialization at a later stage.
+    if "_input_shapes" in fdef.attr:
+      del fdef.attr["_input_shapes"]
+    func = function_lib.ConcreteFunction(func_graph, attrs=fdef.attr)
+    if wrapper_function:
+      func = wrapper_function(func)
     func.add_to_graph(graph)
 
-    functions[fdef.signature.name] = func
+    functions[orig_name] = func
     renamed_functions[func.name] = func
     if any(op.type == "TRTEngineOp" for op in func_graph.get_operations()):
       # TODO(b/150708051): Remove this hack once TensorRT SavedModel integration
@@ -377,31 +447,63 @@ def load_function_def_library(library, load_shared_name_suffix=None):
       # with previous behavior.
       func.add_to_graph(ops.get_default_graph())
 
+    if orig_name in gradients_to_register:
+      gradient_op_type = gradients_to_register[orig_name]
+      loaded_gradients[compat.as_bytes(gradient_op_type)] = func
+      ops.RegisterGradient(gradient_op_type)(_gen_gradient_func(func))
+
   return functions
 
 
-def _restore_gradient_functions(func_graph, renamed_functions):
+def _gen_gradient_func(func):
+  """Wraps a deserialized function."""
+
+  def gradient_func(unused_op, *result_grads):
+    # Replace all `None` arguments, because the traced custom gradient function
+    # expects tensors. Replacing with zeros is correct since the `None` values
+    # occur when the gradient is unconnected, and thus the gradient is
+    # "statically proven to be zero." See `tf.UnconnectedGradients` for details.
+    result_grads = [
+        x if x is not None else default_gradient.zeros_like(t)
+        for (x, t) in zip(result_grads, func.graph.inputs)
+    ]
+
+    return func(*result_grads)
+
+  return gradient_func
+
+
+def _restore_gradient_functions(func_graph, renamed_functions,
+                                loaded_gradients):
   """Populate function op's _gradient_function with default gradient."""
   for op in func_graph.get_operations():
-    # TODO(andresp): This code assumes that the gradient registered for this
+    # TODO(b/205024208): This code assumes that the gradient registered for this
     # function call is the default gradient for the function and not a custom
     # one.
     if op.type in ["StatefulPartitionedCall", "PartitionedCall"]:
       function = renamed_functions[compat.as_bytes(
           op.node_def.attr["f"].func.name)]
       op._gradient_function = function._get_gradient_function()  # pylint: disable=protected-access
+    try:
+      gradient_op_type = op.get_attr("_gradient_op_type")
+    except ValueError:
+      pass
+    else:
+      if gradient_op_type in loaded_gradients:
+        grad_fn = loaded_gradients[gradient_op_type]
+        grad_fn._num_positional_args = len(op.inputs)  # pylint: disable=protected-access
+        grad_fn._arg_keywords = [inp.name for inp in op.inputs]  # pylint: disable=protected-access
 
 
-def _sort_function_defs(library, library_function_names):
+def _sort_function_defs(library, function_deps):
   """Return a topologic sort of FunctionDefs in a library."""
   edges = collections.defaultdict(list)
   in_count = collections.defaultdict(lambda: 0)
 
-  for fdef in library.function:
-    for dep in _list_function_deps(fdef, library_function_names):
-      edges[dep].append(fdef.signature.name)
-      in_count[fdef.signature.name] += 1
-
+  for fname, deps in function_deps.items():
+    for dep in deps:
+      edges[dep].append(fname)
+      in_count[fname] += 1
   ready = [
       fdef.signature.name
       for fdef in library.function
@@ -418,17 +520,19 @@ def _sort_function_defs(library, library_function_names):
 
   if len(output) != len(library.function):
     failed_to_resolve = sorted(set(in_count.keys()) - set(output))
-    raise ValueError("There is a cyclic-dependency between functions. ",
-                     "Could not resolve %r." % (failed_to_resolve,))
+    raise ValueError("There is a cyclic dependency between functions. ",
+                     f"Could not resolve {failed_to_resolve}.")
 
   reverse = {fdef.signature.name: fdef for fdef in library.function}
   return [reverse[x] for x in output]
 
 
-def _check_op_has_custom_gradients(node_def):
-  """Returns True if op has custom gradients."""
-  return ("_gradient_op_type" in node_def.attr and
-          node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"])
+def _get_gradient_op_type(node_def):
+  """Returns the custom gradient op type."""
+  if ("_gradient_op_type" in node_def.attr and
+      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
+    return node_def.attr["_gradient_op_type"].s
+  return None
 
 
 def fix_node_def(node_def, functions, shared_name_suffix):
@@ -471,49 +575,59 @@ def fix_node_def(node_def, functions, shared_name_suffix):
           shared_name + compat.as_bytes(shared_name_suffix))
 
 
-def _fix_fdef(orig_fdef, functions, shared_name_suffix):
+def _fix_fdef_in_place(fdef, functions, shared_name_suffix,
+                       new_gradient_op_types):
   """Fixes a FunctionDef proto to be loaded in current context.
 
   In particular, when loading a function library into an eager context, one
   must rename the functions to avoid conflicts with existent functions.
 
   Args:
-    orig_fdef: FunctionDef proto to fix. It is not modified.
+    fdef: FunctionDef proto to fix. It is mutated in-place.
     functions: map from function name to a ConcreteFunction instance.
     shared_name_suffix: A unique string for this load which helps to avoid
       `shared_name` collisions across loads. Two functions from the same load
       using the same `shared_name` still need to share, but functions from
       different loads with the same `shared_name` should not.
+    new_gradient_op_types: map from old gradient op type to newly generated op
+      type.
 
   Returns:
-    A fixed copy of the original FunctionDef.
+    orig_name: original value of fdef.signature.name
   """
-  fdef = function_pb2.FunctionDef()
-  fdef.CopyFrom(orig_fdef)
-  contains_custom_gradients = False
+  orig_name = fdef.signature.name
+  contains_unsaved_custom_gradients = False
 
   for node_def in fdef.node_def:
     fix_node_def(node_def, functions, shared_name_suffix)
-    if not contains_custom_gradients:
-      contains_custom_gradients = _check_op_has_custom_gradients(node_def)
-  if contains_custom_gradients:
+    op_type = _get_gradient_op_type(node_def)
+    if op_type is not None:
+      if op_type in new_gradient_op_types:
+        node_def.attr["_gradient_op_type"].s = compat.as_bytes(
+            new_gradient_op_types[op_type])
+      else:
+        contains_unsaved_custom_gradients = True
+  if contains_unsaved_custom_gradients:
     logging.warning(
-        "Importing a function (%s) with ops with custom gradients. Will likely "
-        "fail if a gradient is requested.", fdef.signature.name)
+        "Importing a function (%s) with ops with unsaved custom gradients. Will"
+        " likely fail if a gradient is requested.", fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
-  return fdef
+  return orig_name
 
 
-def _list_function_deps(fdef, library_function_names):
+def _list_function_deps(fdef, library_function_names, library_gradient_names):
   """Find functions referenced in `fdef`."""
-  # TODO(andresp): Recurse into list attributes and into NameAttrList attrs both
-  # when listing deps and when fixing them. `function_def_to_graph` also
+  # TODO(b/205023953): Recurse into list attributes and into NameAttrList attrs
+  # both when listing deps and when fixing them. `function_def_to_graph` also
   # requires fixes.
   deps = set()
   for node_def in fdef.node_def:
+    grad_op_type = _get_gradient_op_type(node_def)
     if node_def.op in library_function_names:
       deps.add(node_def.op)
+    elif grad_op_type and grad_op_type in library_gradient_names:
+      deps.add(library_gradient_names[grad_op_type])
     else:
       for _, attr_value in node_def.attr.items():
         if attr_value.WhichOneof("value") == "func":

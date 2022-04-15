@@ -35,22 +35,22 @@ class SummaryWriterInterface : public ResourceBase {
   virtual Status Flush() = 0;
 
   // These are called in the OpKernel::Compute methods for the summary ops.
-  virtual Status WriteTensor(int64 global_step, Tensor t, const string& tag,
+  virtual Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
                              const string& serialized_metadata) = 0;
 
-  virtual Status WriteScalar(int64 global_step, Tensor t,
+  virtual Status WriteScalar(int64_t global_step, Tensor t,
                              const string& tag) = 0;
 
-  virtual Status WriteHistogram(int64 global_step, Tensor t,
+  virtual Status WriteHistogram(int64_t global_step, Tensor t,
                                 const string& tag) = 0;
 
-  virtual Status WriteImage(int64 global_step, Tensor t, const string& tag,
+  virtual Status WriteImage(int64_t global_step, Tensor t, const string& tag,
                             int max_images, Tensor bad_color) = 0;
 
-  virtual Status WriteAudio(int64 global_step, Tensor t, const string& tag,
+  virtual Status WriteAudio(int64_t global_step, Tensor t, const string& tag,
                             int max_outputs_, float sample_rate) = 0;
 
-  virtual Status WriteGraph(int64 global_step,
+  virtual Status WriteGraph(int64_t global_step,
                             std::unique_ptr<GraphDef> graph) = 0;
 
   virtual Status WriteEvent(std::unique_ptr<Event> e) = 0;

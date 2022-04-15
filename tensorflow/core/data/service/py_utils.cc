@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/py_utils.h"
 
+#include <string>
+
 #include "tensorflow/core/data/service/credentials_factory.h"
 
 namespace tensorflow {
@@ -25,8 +27,12 @@ std::string DefaultProtocol() {
   if (CredentialsFactory::Exists("grpc+loas")) {
     return "grpc+loas";
   }
-  LOG(WARNING) << "loas credentials factory is not available, falling back to "
-                  "using insecure credentials.";
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(WARNING)
+        << "loas credentials factory is not available, falling back to "
+           "using insecure credentials.";
+  });
 #endif  // PLATFORM_GOOGLE
   return "grpc";
 }

@@ -13,20 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -56,14 +61,18 @@ StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
 Status IrEmitterNested::CodegenNestedComputation() {
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
-  std::vector<int64> argument_dereferenceable_bytes;
-  for (const HloInstruction* param :
-       nested_computation_.parameter_instructions()) {
+  std::vector<int64_t> argument_dereferenceable_bytes;
+  const auto& params = nested_computation_.parameter_instructions();
+  const auto n = params.size() + 1;
+  io_hlos.reserve(n - 1);
+  argument_types.reserve(n);
+  argument_dereferenceable_bytes.reserve(n);
+  for (const HloInstruction* param : params) {
     io_hlos.push_back(param);
     const Shape& param_shape = param->shape();
     argument_types.push_back(
         llvm_ir::ShapeToIrType(param_shape, module_)->getPointerTo());
-    int64 param_size =
+    int64_t param_size =
         llvm_ir::ByteSizeOf(param_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(param_size);
   }
@@ -73,7 +82,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
     const Shape& root_shape = root->shape();
     argument_types.push_back(
         llvm_ir::ShapeToIrType(root_shape, module_)->getPointerTo());
-    int64 root_size = llvm_ir::ByteSizeOf(
+    int64_t root_size = llvm_ir::ByteSizeOf(
         root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
   }
@@ -89,9 +98,9 @@ Status IrEmitterNested::CodegenNestedComputation() {
       ir_emitter_context_->llvm_module());   // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
-    int64 arg_size = argument_dereferenceable_bytes[arg_no];
+    int64_t arg_size = argument_dereferenceable_bytes[arg_no];
     if (arg_size > 0) {
-      function->addDereferenceableAttr(arg_no + 1, arg_size);
+      function->addDereferenceableParamAttr(arg_no, arg_size);
     }
   }
 
@@ -178,6 +187,57 @@ Status IrEmitterNested::EmitTargetElementLoop(
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
+}
+
+Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() != HloOpcode::kConstant) {
+      continue;
+    }
+    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
+    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
+    llvm::ArrayType* global_type =
+        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
+    llvm::Constant* initializer =
+        should_emit_initializer
+            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
+            : llvm::ConstantAggregateZero::get(global_type);
+    if (should_emit_initializer) {
+      VLOG(3) << "Emitted initializer for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+    }
+
+    // These globals will be looked up by name by GpuExecutable so we need to
+    // give them an external linkage.  Not all of their uses are visible in
+    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
+    // merely preserves their names (like available_externally), we also need
+    // to ensure that they stick around even if they're "unused".
+    //
+    // We may have to be more clever here in the future if we notice that we're
+    // keeping around too many globals because of their linkage.
+    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
+
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        global_type, /*isConstant=*/should_emit_initializer,
+        llvm::GlobalValue::ExternalLinkage,
+        /*Initializer=*/initializer, global_name,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/0,
+        /*isExternallyInitialized=*/false);
+    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
+    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
+        global_for_const);
+
+    GpuExecutable::ConstantInfo info;
+    info.symbol_name = global_name;
+
+    if (!should_emit_initializer) {
+      auto base = static_cast<const uint8_t*>(literal.untyped_data());
+      info.content.assign(base, base + literal.size_bytes());
+    }
+    ir_emitter_context_->constants().push_back(std::move(info));
+  }
+  return Status::OK();
 }
 
 }  // namespace gpu

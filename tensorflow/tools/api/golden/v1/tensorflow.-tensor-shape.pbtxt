@@ -1,6 +1,7 @@
 path: "tensorflow.TensorShape"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
+  is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dims"
@@ -55,8 +56,16 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_subtype_of"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "merge_with"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_common_supertype"
+    argspec: "args=[\'self\', \'others\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "most_specific_compatible_shape"

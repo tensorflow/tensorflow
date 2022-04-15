@@ -78,6 +78,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   int output_batch_size = input_size->data[0];
   for (int dim = 0; dim < spatial_dims_num; ++dim) {
     // Number of batch must be multiple of (block_shape[dim]).
+    TF_LITE_ENSURE(context, block_shape[dim] != 0);
     TF_LITE_ENSURE_EQ(context, output_batch_size % block_shape[dim], 0);
     output_batch_size = output_batch_size / block_shape[dim];
     output_size->data[dim + 1] = input_size->data[dim + 1] * block_shape[dim] -
@@ -165,9 +166,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(
-          context, "Type %d is currently not supported by BatchToSpace.",
-          op_context.input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %d is currently not supported by BatchToSpace.",
+                         op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_BATCH_TO_SPACE_ND

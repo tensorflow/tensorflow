@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -48,6 +48,8 @@ namespace {
 
 constexpr char kElseFuncNameAttr[] = "_else_func_name";
 constexpr char kThenFuncNameAttr[] = "_then_func_name";
+constexpr char kXlaPropagateCompileTimeConsts[] =
+    "_xla_propagate_compile_time_consts";
 
 struct RegionControlFlowToFunctional
     : public TF::RegionControlFlowToFunctionalPassBase<
@@ -97,6 +99,21 @@ llvm::SmallVector<Value, 4> CollectExternValues(Region& first, Region& second) {
   return llvm::to_vector<4>(extern_values);
 }
 
+// Copies over optional attributes from source region op `src` to the given
+// functional op `dst` and appropriately overrides any necessary attributes.
+void CopyAndOverrideAttributes(Operation* src, Operation* dst,
+                               OpBuilder* builder) {
+  CopyDeviceAndUnderscoredAttributes(src, dst);
+
+  // Explicitly override attribute to propagate constants to the functions
+  // before compiling to XLA. This is necessary along with conversion to
+  // functional format because inlined regions may have moved loop invariant ops
+  // outside of the region which may cause some new legalization failures.
+  // TODO(b/126739593): Enable this attribute in TensorFlow by default. Also,
+  // see b/185542519 for the context.
+  dst->setAttr(kXlaPropagateCompileTimeConsts, builder->getBoolAttr(true));
+}
+
 // Extracts the contents of a region with a single block into a new function.
 // `extern_values` is the set of external values that the region refers to.
 //
@@ -135,7 +152,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
 
   // Replace all external uses with function arguments.
   for (auto it : llvm::enumerate(extern_values)) {
-    Value arg = first_block.addArgument(it.value().getType());
+    Value arg = first_block.addArgument(it.value().getType(), loc);
     replaceAllUsesInRegionWith(it.value(), arg, func_region);
   }
 
@@ -150,7 +167,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   // Replace the existing terminator with a return.
   terminator = first_block.getTerminator();
   builder.setInsertionPoint(terminator);
-  builder.create<ReturnOp>(terminator->getLoc(), return_values);
+  builder.create<func::ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
 
   outlined_func.setPrivate();
@@ -164,8 +181,8 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
 // terminator of the region. if `allow_to_bool` is true, also allows a single
 // ToBoolOp between the region yield and the call. Returns none if the region
 // does not conform to this pattern.
-llvm::Optional<CallOp> IsSingleCallRegion(Region& region,
-                                          bool allow_to_bool = false) {
+llvm::Optional<func::CallOp> IsSingleCallRegion(Region& region,
+                                                bool allow_to_bool = false) {
   if (!llvm::hasSingleElement(region)) return llvm::None;
 
   Block& block = region.front();
@@ -186,7 +203,7 @@ llvm::Optional<CallOp> IsSingleCallRegion(Region& region,
   }
 
   // Check if there is a Call before the Yield.
-  CallOp call = dyn_cast<CallOp>(*it++);
+  func::CallOp call = dyn_cast<func::CallOp>(*it++);
   if (!call) return llvm::None;
 
   // All call results should feed into expected consumer
@@ -211,7 +228,8 @@ using ArgMatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 // Returns whether the arguments of the given 2 calls are match (after looking
 // through cast ops). `matcher` is the predicate used to check if two arguments
 // match.
-bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
+bool MatchCallArgs(func::CallOp first, func::CallOp second,
+                   ArgMatcherFn matcher) {
   if (first.getNumOperands() != second.getNumOperands()) return false;
 
   Region& first_region = *first->getParentRegion();
@@ -260,8 +278,8 @@ struct TrivialTransformInfo {
   // If such a trivial transformation is possible, stash the relevant
   // information needed for the transformation, else indicate that a trivial
   // transformation is not possible by setting `can_transform` to false.
-  TrivialTransformInfo(llvm::Optional<CallOp> first_call,
-                       llvm::Optional<CallOp> second_call,
+  TrivialTransformInfo(llvm::Optional<func::CallOp> first_call,
+                       llvm::Optional<func::CallOp> second_call,
                        ArgMatcherFn arg_matcher) {
     if (!first_call || !second_call) return;
 
@@ -345,7 +363,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
   auto if_op = builder.create<IfOp>(
       if_region.getLoc(), if_region.getResultTypes(), cond, extern_values,
       then_name, else_name, if_region.is_stateless());
-  CopyDeviceAndUnderscoredAttributes(if_region, if_op);
+  CopyAndOverrideAttributes(if_region, if_op, &builder);
+
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
 
@@ -425,7 +444,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
       while_region.parallel_iterations(), while_region.is_stateless(),
       while_region.shape_invariant());
-  CopyDeviceAndUnderscoredAttributes(while_region, while_op);
+  CopyAndOverrideAttributes(while_region, while_op, &builder);
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(

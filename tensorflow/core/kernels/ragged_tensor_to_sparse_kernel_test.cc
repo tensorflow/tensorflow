@@ -37,11 +37,11 @@ class RaggedTensorToSparseTest : public ::tensorflow::OpsTestBase {
   // populates the `splits` input with the given values.
   template <typename T>
   void BuildRaggedTensorToSparseGraph(
-      const std::vector<std::vector<int64>>& rt_nested_splits,
+      const std::vector<std::vector<int64_t>>& rt_nested_splits,
       const TensorShape& rt_dense_values_shape,
       const std::vector<T>& rt_dense_values) {
     const auto& dtype = DataTypeToEnum<T>::v();
-    int64 num_splits = rt_nested_splits.size();
+    int64_t num_splits = rt_nested_splits.size();
     TF_ASSERT_OK(NodeDefBuilder("tested_op", "RaggedTensorToSparse")
                      .Input(FakeInput(num_splits))  // rt_nested_splits
                      .Input(FakeInput(dtype))       // rt_dense_values
@@ -50,8 +50,8 @@ class RaggedTensorToSparseTest : public ::tensorflow::OpsTestBase {
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
     for (const auto& splits : rt_nested_splits) {
-      int64 splits_size = splits.size();
-      AddInputFromArray<int64>(TensorShape({splits_size}), splits);
+      int64_t splits_size = splits.size();
+      AddInputFromArray<int64_t>(TensorShape({splits_size}), splits);
     }
     AddInputFromArray<T>(rt_dense_values_shape, rt_dense_values);
   }
@@ -63,13 +63,13 @@ TEST_F(RaggedTensorToSparseTest, OneSplits_Values1D) {
                                       TensorShape({6}),     // values.shape
                                       {1, 2, 3, 4, 5, 6});  // values
   TF_ASSERT_OK(RunOpKernel());
-  test::ExpectTensorEqual<int64>(
+  test::ExpectTensorEqual<int64_t>(
       *GetOutput(kSparseIndicesOutput),
-      test::AsTensor<int64>({0, 0, 0, 1, 0, 2, 2, 0, 2, 1, 3, 0}, {6, 2}));
+      test::AsTensor<int64_t>({0, 0, 0, 1, 0, 2, 2, 0, 2, 1, 3, 0}, {6, 2}));
   test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
                                test::AsTensor<int>({1, 2, 3, 4, 5, 6}));
-  test::ExpectTensorEqual<int64>(*GetOutput(kSparseDenseShapeOutput),
-                                 test::AsTensor<int64>({4, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
+                                   test::AsTensor<int64_t>({4, 3}));
 }
 
 TEST_F(RaggedTensorToSparseTest, EmptyRows) {
@@ -79,13 +79,13 @@ TEST_F(RaggedTensorToSparseTest, EmptyRows) {
                                       TensorShape({6}),      // values.shape
                                       {1, 2, 3, 4, 5, 6});   // values
   TF_ASSERT_OK(RunOpKernel());
-  test::ExpectTensorEqual<int64>(
+  test::ExpectTensorEqual<int64_t>(
       *GetOutput(kSparseIndicesOutput),
-      test::AsTensor<int64>({1, 0, 1, 1, 1, 2, 1, 3, 3, 0, 3, 1}, {6, 2}));
+      test::AsTensor<int64_t>({1, 0, 1, 1, 1, 2, 1, 3, 3, 0, 3, 1}, {6, 2}));
   test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
                                test::AsTensor<int>({1, 2, 3, 4, 5, 6}));
-  test::ExpectTensorEqual<int64>(*GetOutput(kSparseDenseShapeOutput),
-                                 test::AsTensor<int64>({5, 4}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
+                                   test::AsTensor<int64_t>({5, 4}));
 }
 
 TEST_F(RaggedTensorToSparseTest, OneSplits_Values2D) {
@@ -95,17 +95,17 @@ TEST_F(RaggedTensorToSparseTest, OneSplits_Values2D) {
       TensorShape({6, 2}),                       // values.shape
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});  // values
   TF_ASSERT_OK(RunOpKernel());
-  std::vector<int64> expected_splits_12_3 = {
+  std::vector<int64_t> expected_splits_12_3 = {
       0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 2, 0, 0, 2, 1,
       2, 0, 0, 2, 0, 1, 2, 1, 0, 2, 1, 1, 3, 0, 0, 3, 0, 1};
   std::vector<int> expected_values = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-  test::ExpectTensorEqual<int64>(
+  test::ExpectTensorEqual<int64_t>(
       *GetOutput(kSparseIndicesOutput),
-      test::AsTensor<int64>(expected_splits_12_3, {12, 3}));
+      test::AsTensor<int64_t>(expected_splits_12_3, {12, 3}));
   test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
                                test::AsTensor<int>(expected_values));
-  test::ExpectTensorEqual<int64>(*GetOutput(kSparseDenseShapeOutput),
-                                 test::AsTensor<int64>({4, 3, 2}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
+                                   test::AsTensor<int64_t>({4, 3, 2}));
 }
 
 TEST_F(RaggedTensorToSparseTest, TwoSplits_Values1D) {
@@ -121,18 +121,18 @@ TEST_F(RaggedTensorToSparseTest, TwoSplits_Values1D) {
       TensorShape({15}),                                     // values.shape
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});  // values
   TF_ASSERT_OK(RunOpKernel());
-  std::vector<int64> expected_splits_15_3 = {
+  std::vector<int64_t> expected_splits_15_3 = {
       0, 0, 0, 0, 1, 0, 0, 1, 1, 2, 0, 0, 2, 0, 1, 2, 0, 2, 2, 0, 3, 2, 0,
       4, 2, 1, 0, 2, 1, 1, 2, 1, 2, 3, 1, 0, 3, 1, 1, 3, 1, 2, 3, 1, 3};
   std::vector<int> expected_values = {1, 2,  3,  4,  5,  6,  7, 8,
                                       9, 10, 11, 12, 13, 14, 15};
   test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
                                test::AsTensor<int>(expected_values));
-  test::ExpectTensorEqual<int64>(
+  test::ExpectTensorEqual<int64_t>(
       *GetOutput(kSparseIndicesOutput),
-      test::AsTensor<int64>(expected_splits_15_3, {15, 3}));
-  test::ExpectTensorEqual<int64>(*GetOutput(kSparseDenseShapeOutput),
-                                 test::AsTensor<int64>({4, 3, 5}));
+      test::AsTensor<int64_t>(expected_splits_15_3, {15, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
+                                   test::AsTensor<int64_t>({4, 3, 5}));
 }
 
 TEST_F(RaggedTensorToSparseTest, ShapeFn) {

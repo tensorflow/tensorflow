@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -113,9 +115,9 @@ std::string Node::DebugString() const {
   } else if (IsSink()) {
     strings::StrAppend(&ret, " sink}");
   } else {
-    strings::StrAppend(&ret, " op device:");
-    strings::StrAppend(&ret, "{", assigned_device_name(), "}");
-    strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
+    strings::StrAppend(&ret, " op device:", "{requested: '", requested_device(),
+                       "', assigned: '", assigned_device_name(), "'}", " def:{",
+                       SummarizeNode(*this), "}}");
   }
   return ret;
 }
@@ -173,17 +175,113 @@ void Node::UpdateProperties() {
   }
 }
 
+void Node::ClearTypeInfo() {
+  if (props_->node_def.has_experimental_type()) {
+    MaybeCopyOnWrite();
+    props_->node_def.clear_experimental_type();
+  }
+}
+
+void Node::RunForwardTypeInference() {
+  VLOG(4) << "Forward type inference: " << props_->node_def.DebugString();
+
+  if (props_->fwd_type_fn == nullptr) {
+    return;
+  }
+
+  std::vector<Node*> input_nodes(props_->input_types.size(), nullptr);
+  std::vector<int> input_idx(props_->input_types.size(), 0);
+  for (const auto& edge : in_edges_) {
+    if (edge->IsControlEdge()) {
+      continue;
+    }
+    DCHECK(edge->dst_input() < input_nodes.size()) << DebugString();
+    int i = edge->dst_input();
+    input_nodes.at(i) = edge->src();
+    input_idx.at(i) = edge->src_output();
+  }
+
+  // Note: technically, we could use a very generic type when some of the inputs
+  // are unknown. But there is an expectation that a node will have complete
+  // inputs soon, so updating intermediate types is largely unnecessary.
+
+  for (const auto* node : input_nodes) {
+    if (node == nullptr) {
+      // Incomplete inputs, bail.
+      ClearTypeInfo();
+      return;
+    }
+  }
+
+  static FullTypeDef* no_type = new FullTypeDef();
+
+  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
+  for (int i = 0; i < input_nodes.size(); i++) {
+    const auto* node = input_nodes[i];
+    if (node->def().has_experimental_type()) {
+      const auto& node_t = node->def().experimental_type();
+      if (node_t.type_id() != TFT_UNSET) {
+        int ix = input_idx[i];
+        if (ix >= node_t.args_size()) {
+          LOG(WARNING) << name() << " has bad type information: input " << i
+                       << " should have an output " << ix
+                       << " but instead only has " << node_t.args_size()
+                       << " outputs: " << node_t.DebugString()
+                       << "\nThis indicates either "
+                          "a bug in op registration or a corrupted graph.";
+          ClearTypeInfo();
+          return;
+        }
+        input_types.emplace_back(node_t.args(ix));
+      } else {
+        input_types.emplace_back(*no_type);
+      }
+    } else {
+      // Incomplete inputs, bail.
+      ClearTypeInfo();
+      return;
+    }
+  }
+
+  // TODO(b/224775462): Populate with types from function references.
+  TypeRefMap type_vars;
+
+  const auto infer_type = props_->fwd_type_fn(input_types, type_vars);
+  if (!infer_type.ok()) {
+    // TODO(mdan): Turn this into an error, once all offenders are clean.
+    LOG(WARNING) << name()
+                 << " failed type inference; this is likely caused by"
+                    " a graph in which inconsistent types went "
+                    "undetected. This will become an error in the "
+                    "future.\nNode information:\n"
+                 << props_->node_def.DebugString()
+                 << "\nType inference error:\n"
+                 << infer_type.status().ToString();
+    props_->node_def.clear_experimental_type();
+    return;
+  }
+  const FullTypeDef infer_typedef = infer_type.ValueOrDie();
+  if (infer_typedef.type_id() != TFT_UNSET) {
+    MaybeCopyOnWrite();
+    *(props_->node_def.mutable_experimental_type()) = infer_typedef;
+  } else {
+    props_->node_def.clear_experimental_type();
+  }
+}
+
 const std::string& Node::name() const { return props_->node_def.name(); }
 const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
 const OpDef& Node::op_def() const { return *props_->op_def; }
 
+NodeDef* Node::mutable_def() { return &props_->node_def; }
+
 int32 Node::num_inputs() const { return props_->input_types.size(); }
-DataType Node::input_type(int32 i) const { return props_->input_types[i]; }
+DataType Node::input_type(int32_t i) const { return props_->input_types[i]; }
 const DataTypeVector& Node::input_types() const { return props_->input_types; }
 
 int32 Node::num_outputs() const { return props_->output_types.size(); }
-DataType Node::output_type(int32 o) const { return props_->output_types[o]; }
+DataType Node::output_type(int32_t o) const { return props_->output_types[o]; }
 const DataTypeVector& Node::output_types() const {
   return props_->output_types;
 }
@@ -207,6 +305,7 @@ gtl::iterator_range<NeighborIter> Node::in_nodes() const {
 }
 
 void Node::MaybeCopyOnWrite() {
+  // TODO(mdan): As nodes become more dynamic, this may not be worth the cost.
   // NodeProperties may be shared between Nodes. Make a copy if so.
   if (!props_.unique()) {
     props_ = std::make_shared<NodeProperties>(*props_);
@@ -240,6 +339,16 @@ void Node::set_original_node_names(const std::vector<std::string>& names) {
   if (!names.empty()) {
     *props_->node_def.mutable_experimental_debug_info()
          ->mutable_original_node_names() = {names.begin(), names.end()};
+  }
+}
+
+void Node::set_original_func_names(const std::vector<std::string>& names) {
+  MaybeCopyOnWrite();
+  props_->node_def.mutable_experimental_debug_info()
+      ->clear_original_func_names();
+  if (!names.empty()) {
+    *props_->node_def.mutable_experimental_debug_info()
+         ->mutable_original_func_names() = {names.begin(), names.end()};
   }
 }
 
@@ -331,11 +440,12 @@ NodeDebugInfo::NodeDebugInfo(
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
     : name(node_name) {
   if (has_experimental_debug_info) {
-    const auto& names = experimental_debug_info.original_node_names();
-    original_node_names.assign(names.begin(), names.end());
+    const auto& node_names = experimental_debug_info.original_node_names();
+    original_node_names.assign(node_names.begin(), node_names.end());
+    const auto& func_names = experimental_debug_info.original_func_names();
+    original_func_names.assign(func_names.begin(), func_names.end());
   }
 }
-
 // InputTensor
 
 bool InputTensor::operator==(const InputTensor& other) const {
@@ -413,6 +523,21 @@ Graph::~Graph() {
   // destroy them.
 }
 
+std::unique_ptr<Graph> Graph::Clone() {
+  std::unique_ptr<Graph> new_graph(new Graph(flib_def()));
+  new_graph->Copy(*this);
+  return new_graph;
+}
+
+void Graph::Clear() {
+  // Do a direct iteration clearing nodes removing the RemoveNode helper method.
+  // This could avoid this helper and clear directly if it becomes performance
+  // sensitive.
+  for (Node* n : nodes()) {
+    if (!n->IsSource() && !n->IsSink()) RemoveNode(n);
+  }
+}
+
 const VersionDef& Graph::versions() const { return *versions_; }
 void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 
@@ -445,9 +570,13 @@ void Graph::Copy(const Graph& src) {
     Node* dst_copy = node_map[e->dst()];
     AddEdge(src_copy, e->src_output(), dst_copy, e->dst_input());
   }
+}
 
-  types_ = src.types_;
-  node_name_to_out_type_ = src.node_name_to_out_type_;
+StatusOr<Node*> Graph::AddNode(NodeDef node_def) {
+  Status s;
+  Node* out = AddNode(std::move(node_def), &s);
+  TF_RETURN_IF_ERROR(s);
+  return out;
 }
 
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
@@ -468,10 +597,30 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
 
-  Node* node = AllocateNode(
-      std::make_shared<NodeProperties>(&op_reg_data->op_def,
-                                       std::move(node_def), inputs, outputs),
-      nullptr, node_class);
+  if (node_def.has_experimental_type()) {
+    VLOG(3) << "AddNode: node has type set, skipping type constructor "
+            << node_def.name();
+  } else {
+    if (op_reg_data->type_ctor != nullptr) {
+      VLOG(3) << "AddNode: found type constructor for " << node_def.name();
+      Status s =
+          full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                    *(node_def.mutable_experimental_type()));
+      if (!s.ok()) {
+        *status = errors::InvalidArgument("type error: ", s.ToString());
+        VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+                << ": " << s;
+        return nullptr;
+      }
+    } else {
+      VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+    }
+  }
+
+  Node* node = AllocateNode(std::make_shared<NodeProperties>(
+                                &op_reg_data->op_def, std::move(node_def),
+                                inputs, outputs, op_reg_data->fwd_type_fn),
+                            nullptr, node_class);
   return node;
 }
 
@@ -546,6 +695,7 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   CHECK(dest->in_edges_.insert(e).second);
   edges_.push_back(e);
   ++num_edges_;
+
   return e;
 }
 
@@ -878,26 +1028,6 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
     result[n->name()] = n;
   }
   return result;
-}
-
-void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
-  TypeRef t = {std::make_shared<FullTypeDef>(ft)};
-  auto ret = types_.emplace(t);
-  if (ret.second == false) {
-    t = *ret.first;
-  }
-
-  node_name_to_out_type_.emplace(string(name), t);
-}
-
-void Graph::NodeType(StringPiece name, FullTypeDef** result) {
-  *result = nullptr;
-  auto it = node_name_to_out_type_.find(string(name));
-  if (it == node_name_to_out_type_.end()) {
-    *result = nullptr;
-    return;
-  }
-  *result = it->second.full_type.get();
 }
 
 std::string Edge::DebugString() const {

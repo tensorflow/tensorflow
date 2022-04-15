@@ -525,20 +525,28 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       RETURN_IF_ERROR(gl_interop_fabric_->Start());
     }
 #endif
-    for (int i = 0; i < inputs_.size(); i++) {
-      RETURN_IF_ERROR(CopyFromExternalInput(i));
+    for (const auto& input : inputs_) {
+      RETURN_IF_ERROR(input->CopyFromExternalObject());
     }
 
     RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
 
-    for (int i = 0; i < outputs_.size(); i++) {
-      RETURN_IF_ERROR(CopyToExternalOutput(i));
+    bool has_async_copies = false;
+    for (const auto& output : outputs_) {
+      RETURN_IF_ERROR(output->CopyToExternalObject());
+      if (output->def().external_def.object_def.object_type ==
+          ObjectType::CPU_MEMORY) {
+        has_async_copies = true;
+      }
     }
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
+    if (has_async_copies) {
+      RETURN_IF_ERROR(queue_->WaitForCompletion());
+    }
     return absl::OkStatus();
   }
 
@@ -644,6 +652,26 @@ TensorStorageType GetStorageTypeFromOptions(const Environment& env,
   return TensorStorageType::UNKNOWN;
 }
 
+CreateGpuModelInfo GetCreateInfo(const Environment& environment,
+                                 const InferenceOptions& options) {
+  CreateGpuModelInfo create_info;
+  create_info.precision = GetPrecision(environment, options);
+  create_info.storage_type = GetStorageTypeFromOptions(environment, options);
+  if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
+    create_info.hints.Add(ModelHints::kReduceKernelsCount);
+    create_info.hints.Add(ModelHints::kFastTuning);
+  } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
+    create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+  }
+  if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                            InferencePriority::MIN_LATENCY) ==
+      PriorityImportance::HIGHER) {
+    create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
+    create_info.hints.Add(ModelHints::kReuseConvWeights);
+  }
+  return create_info;
+}
+
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   explicit InferenceBuilderImpl(Environment* environment)
@@ -653,16 +681,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const InferenceEnvironmentOptions& env_options,
                           const GraphFloat32& graph) {
     context_ = absl::make_unique<InferenceContext>();
-    InferenceContext::CreateInferenceInfo create_info;
-    create_info.precision = GetPrecision(*environment_, options);
-    create_info.storage_type =
-        GetStorageTypeFromOptions(*environment_, options);
-    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
-      create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      create_info.hints.Add(ModelHints::kFastTuning);
-    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
-      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
-    }
+    CreateGpuModelInfo create_info = GetCreateInfo(*environment_, options);
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
 #ifdef CL_DELEGATE_ALLOW_GL
@@ -684,9 +703,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   absl::Status Initialize(const InferenceEnvironmentOptions& env_options,
-                          const absl::Span<const uint8_t> serialized_model,
-                          std::vector<int64_t>* in_refs = nullptr,
-                          std::vector<int64_t>* out_refs = nullptr) {
+                          const absl::Span<const uint8_t> serialized_model) {
     context_ = absl::make_unique<InferenceContext>();
     RETURN_IF_ERROR(
         context_->RestoreDeserialized(serialized_model, environment_));
@@ -706,12 +723,6 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
     inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
     outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
-    if (in_refs) {
-      *in_refs = context_->GetInputRefs();
-    }
-    if (out_refs) {
-      *out_refs = context_->GetOutputRefs();
-    }
     return absl::OkStatus();
   }
 
@@ -915,17 +926,9 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     InferenceContext context;
-    InferenceContext::CreateInferenceInfo create_info;
-    create_info.precision = GetPrecision(environment_, options);
-    create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
-    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
-      create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      create_info.hints.Add(ModelHints::kFastTuning);
-    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
-      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
-    }
+    CreateGpuModelInfo create_info = GetCreateInfo(environment_, options);
     RETURN_IF_ERROR(context.InitFromGraph(create_info, model, &environment_,
                                           serialized_model));
     return absl::OkStatus();
@@ -948,7 +951,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
     RETURN_IF_ERROR(
         builder_impl->Initialize(resolved_options, options_, model));
@@ -958,8 +961,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
   absl::Status NewInferenceBuilder(
       const absl::Span<const uint8_t> serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
-      std::vector<int64_t>* out_refs) final {
+      std::unique_ptr<InferenceBuilder>* builder) final {
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.
@@ -970,8 +972,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
 
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model,
-                                             in_refs, out_refs));
+    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model));
     *builder = std::move(builder_impl);
     return absl::OkStatus();
   }

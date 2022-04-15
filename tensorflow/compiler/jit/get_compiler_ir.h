@@ -32,12 +32,13 @@ enum class IrExportStage {
   HLO_SERIALIZED,
   OPTIMIZED_HLO,
   OPTIMIZED_HLO_SERIALIZED,
+  OPTIMIZED_HLO_PROTO_SERIALIZED,
   OPTIMIZED_HLO_DOT
 };
 
 // Returns the IR format of the selected stage for a given function `func_name`
 // using library runtime `runtime` on a device `dev` with given `inputs`.
-xla::StatusOr<std::string> GetCompilerIr(
+StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
     absl::Span<const TensorHandle* const> inputs);

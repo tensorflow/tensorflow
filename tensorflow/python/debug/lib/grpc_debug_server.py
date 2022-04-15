@@ -14,10 +14,6 @@
 # ==============================================================================
 """gRPC debug server in Python."""
 # pylint: disable=g-bad-import-order
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import json
 import threading
@@ -391,7 +387,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     finally:
       self._server_lock.release()
 
-  def request_watch(self, node_name, output_slot, debug_op, breakpoint=False):
+  def request_watch(self, node_name, output_slot, debug_op, breakpoint=False):  # pylint: disable=redefined-builtin
     """Request enabling a debug tensor watchpoint or breakpoint.
 
     This will let the server send a EventReply to the client side

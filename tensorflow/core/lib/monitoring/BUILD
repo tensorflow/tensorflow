@@ -12,6 +12,9 @@ package(
         "//tensorflow/core/platform:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
         "//tensorflow/compiler/xla/pjrt:__subpackages__",
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -60,6 +63,7 @@ cc_library(
         ":metric_def",
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -76,13 +80,13 @@ cc_library(
     deps = [
         ":collection_registry",
         ":metric_def",
-        ":mobile_counter",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -92,7 +96,6 @@ cc_library(
     deps = [
         ":collection_registry",
         ":metric_def",
-        ":mobile_gauge",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:macros",
@@ -114,48 +117,12 @@ cc_library(
 )
 
 cc_library(
-    name = "mobile_counter",
-    textual_hdrs = ["mobile_counter.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "mobile_gauge",
-    textual_hdrs = ["mobile_gauge.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
-    name = "mobile_sampler",
-    textual_hdrs = ["mobile_sampler.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":metric_def",
-        "//tensorflow/core/framework:summary_proto_cc",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
     name = "sampler",
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
     deps = [
         ":collection_registry",
         ":metric_def",
-        ":mobile_sampler",
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/histogram",
@@ -163,19 +130,6 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
-    ],
-)
-
-cc_library(
-    name = "mobile_percentile_sampler",
-    textual_hdrs = ["mobile_percentile_sampler.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":collection_registry",
-        ":metric_def",
-        ":types",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -187,7 +141,6 @@ cc_library(
     deps = [
         ":collection_registry",
         ":metric_def",
-        ":mobile_percentile_sampler",
         ":types",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform",
@@ -201,13 +154,10 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "collection_registry.h",
         "counter.h",
         "gauge.h",
         "metric_def.h",
-        "mobile_counter.h",
-        "mobile_gauge.h",
-        "mobile_percentile_sampler.h",
-        "mobile_sampler.h",
         "percentile_sampler.h",
         "sampler.h",
         "timed.h",
@@ -233,17 +183,6 @@ filegroup(
 )
 
 filegroup(
-    name = "legacy_lib_monitoring_lib_internal_public_headers",
-    srcs = [
-        "mobile_counter.h",
-        "mobile_gauge.h",
-        "mobile_percentile_sampler.h",
-        "mobile_sampler.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
     name = "legacy_lib_monitoring_all_headers",
     srcs = [
         "collected_metrics.h",
@@ -251,10 +190,6 @@ filegroup(
         "counter.h",
         "gauge.h",
         "metric_def.h",
-        "mobile_counter.h",
-        "mobile_gauge.h",
-        "mobile_percentile_sampler.h",
-        "mobile_sampler.h",
         "percentile_sampler.h",
         "sampler.h",
         "types.h",

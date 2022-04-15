@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
@@ -52,7 +51,6 @@ class GpuTracer : public profiler::ProfilerInterface {
   // GpuTracer interface:
   Status Start() override;
   Status Stop() override;
-  Status CollectData(RunMetadata* run_metadata) override;
   Status CollectData(XSpace* space) override;
 
  private:
@@ -140,7 +138,6 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
-  options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMORY);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
@@ -157,7 +154,6 @@ Status GpuTracer::DoStart() {
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
-  AnnotationStack::Enable(true);
   cupti_tracer_->Enable(options_, cupti_collector_.get());
   return Status::OK();
 }
@@ -175,7 +171,6 @@ Status GpuTracer::Start() {
 
 Status GpuTracer::DoStop() {
   cupti_tracer_->Disable();
-  AnnotationStack::Enable(false);
   return Status::OK();
 }
 
@@ -185,34 +180,6 @@ Status GpuTracer::Stop() {
     profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
   }
   return Status::OK();
-}
-
-Status GpuTracer::CollectData(RunMetadata* run_metadata) {
-  switch (profiling_state_) {
-    case State::kNotStarted:
-      VLOG(1) << "No trace data collected, session wasn't started";
-      return Status::OK();
-    case State::kStartedOk:
-      return errors::FailedPrecondition("Cannot collect trace before stopping");
-    case State::kStartedError:
-      LOG(ERROR) << "Cannot collect, xprof failed to start";
-      return Status::OK();
-    case State::kStoppedError:
-      VLOG(1) << "No trace data collected";
-      return Status::OK();
-    case State::kStoppedOk: {
-      // Input run_metadata is shared by profiler interfaces, we need append.
-      StepStats step_stats;
-      if (cupti_collector_) {
-        cupti_collector_->Export(&step_stats);
-      }
-      for (auto& dev_stats : *step_stats.mutable_dev_stats()) {
-        run_metadata->mutable_step_stats()->add_dev_stats()->Swap(&dev_stats);
-      }
-      return Status::OK();
-    }
-  }
-  return errors::Internal("Invalid profiling state: ", profiling_state_);
 }
 
 Status GpuTracer::CollectData(XSpace* space) {

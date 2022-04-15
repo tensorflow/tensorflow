@@ -17,30 +17,20 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
+source tensorflow/tools/ci_build/release/mac_build_utils.sh
 install_bazelisk
 
-# Pick a more recent version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+# Selects a version of Xcode.
+export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
-# Set up and install MacOS pip dependencies.
-install_macos_pip_deps_no_venv python3.7
+# Set up python version via pyenv
+export PYENV_VERSION=3.7.9
+setup_python_from_pyenv_macos "${PYENV_VERSION}"
 
-# Export required variables for running pip_new.sh
-export OS_TYPE="MACOS"
-export CONTAINER_TYPE="CPU"
-export TF_PYTHON_VERSION='python3.7'
-export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
-export TF_BUILD_BOTH_CPU_PACKAGES=1
+PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/pip-whl"
+bazel_build_wheel ${PIP_WHL_DIR}
 
-# Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=release_cpu_macos"
-export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
-export TF_TEST_TARGETS="//tensorflow/python/..."
-export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
-export TF_TEST_FILTER_TAGS='-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py37,-v1only,-gpu,-tpu,-benchmark-test'
-#export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
-export TF_PROJECT_NAME="tensorflow"
-export TF_PIP_TEST_ROOT="pip_test"
-
-./tensorflow/tools/ci_build/builds/pip_new.sh
+for WHL_PATH in $(ls "${PIP_WHL_DIR}"/tensorflow*.whl); do
+  bazel_test_wheel ${WHL_PATH}
+done

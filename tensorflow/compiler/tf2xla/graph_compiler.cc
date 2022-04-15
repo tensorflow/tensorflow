@@ -268,7 +268,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RET_CHECK(arguments.size() == expressions.size());
 
   std::vector<xla::XlaOp> handles;
-  for (int64 i = 0, end = expressions.size(); i < end; ++i) {
+  for (int64_t i = 0, end = expressions.size(); i < end; ++i) {
     if (arguments[i].kind == XlaCompiler::Argument::kConstant) {
       continue;
     }
@@ -297,7 +297,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   // The output handle of `Call` computation is a tuple type. Unzip it so
   // that it can fit into future computations.
   int computation_output = 0;
-  for (int64 i = 0; i < n->num_outputs(); ++i) {
+  for (int64_t i = 0; i < n->num_outputs(); ++i) {
     if (result.outputs[i].is_constant) {
       xla_op_context.SetConstantOutput(i, result.outputs[i].constant_value);
     } else {
@@ -312,7 +312,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
 
-  for (int64 i = 0, end = result.resource_updates.size(); i < end; i++) {
+  for (int64_t i = 0, end = result.resource_updates.size(); i < end; i++) {
     if (result.resource_updates[i].modified) {
       XlaResource* resource =
           expressions[result.resource_updates[i].input_index]->resource();

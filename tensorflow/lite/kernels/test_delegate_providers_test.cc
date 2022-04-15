@@ -35,7 +35,8 @@ TEST(KernelTestDelegateProvidersTest, DelegateProvidersParams) {
 }
 
 TEST(KernelTestDelegateProvidersTest, CreateTfLiteDelegates) {
-#if !defined(__Fuchsia__) && !defined(TFLITE_WITHOUT_XNNPACK)
+#if !defined(__Fuchsia__) && !defined(__s390x__) && \
+    !defined(TFLITE_WITHOUT_XNNPACK)
   KernelTestDelegateProviders providers;
   providers.MutableParams()->Set<bool>("use_xnnpack", true);
   EXPECT_GE(providers.CreateAllDelegates().size(), 1);

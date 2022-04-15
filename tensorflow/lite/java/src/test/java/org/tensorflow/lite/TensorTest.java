@@ -24,6 +24,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ReadOnlyBufferException;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
@@ -33,7 +34,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.Tensor.QuantizationParams;
 
-/** Unit tests for {@link org.tensorflow.lite.Tensor}. */
+/** Unit tests for {@link TensorImpl}. */
 @RunWith(JUnit4.class)
 public final class TensorTest {
 
@@ -53,10 +54,11 @@ public final class TensorTest {
       "tensorflow/lite/java/src/testdata/quantized.bin";
 
   private NativeInterpreterWrapper wrapper;
-  private Tensor tensor;
+  private TensorImpl tensor;
 
   @Before
   public void setUp() {
+    TestInit.init();
     wrapper = new NativeInterpreterWrapper(MODEL_PATH);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
@@ -86,6 +88,7 @@ public final class TensorTest {
     assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);
     assertThat(tensor.numDimensions()).isEqualTo(4);
     assertThat(tensor.name()).isEqualTo("output");
+    assertThat(tensor.asReadOnlyBuffer().capacity()).isEqualTo(tensor.numBytes());
   }
 
   @Test
@@ -103,6 +106,16 @@ public final class TensorTest {
       tensor.copyTo(null);
       fail();
     } catch (IllegalArgumentException e) {
+      // Success.
+    }
+  }
+
+  @Test
+  public void testModifyReadOnlyBuffer() {
+    try {
+      assertThat(tensor.asReadOnlyBuffer().putFloat(0.f));
+      fail();
+    } catch (ReadOnlyBufferException e) {
       // Success.
     }
   }
@@ -448,12 +461,12 @@ public final class TensorTest {
   @Test
   public void testNumDimensions() {
     int scalar = 1;
-    assertThat(Tensor.computeNumDimensions(scalar)).isEqualTo(0);
+    assertThat(TensorImpl.computeNumDimensions(scalar)).isEqualTo(0);
     int[][] array = {{2, 4}, {1, 9}};
-    assertThat(Tensor.computeNumDimensions(array)).isEqualTo(2);
+    assertThat(TensorImpl.computeNumDimensions(array)).isEqualTo(2);
     try {
       int[] emptyArray = {};
-      Tensor.computeNumDimensions(emptyArray);
+      TensorImpl.computeNumDimensions(emptyArray);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
@@ -463,21 +476,21 @@ public final class TensorTest {
   @Test
   public void testNumElements() {
     int[] scalarShape = {};
-    assertThat(Tensor.computeNumElements(scalarShape)).isEqualTo(1);
+    assertThat(TensorImpl.computeNumElements(scalarShape)).isEqualTo(1);
     int[] vectorShape = {3};
-    assertThat(Tensor.computeNumElements(vectorShape)).isEqualTo(3);
+    assertThat(TensorImpl.computeNumElements(vectorShape)).isEqualTo(3);
     int[] matrixShape = {3, 4};
-    assertThat(Tensor.computeNumElements(matrixShape)).isEqualTo(12);
+    assertThat(TensorImpl.computeNumElements(matrixShape)).isEqualTo(12);
     int[] degenerateShape = {3, 4, 0};
-    assertThat(Tensor.computeNumElements(degenerateShape)).isEqualTo(0);
+    assertThat(TensorImpl.computeNumElements(degenerateShape)).isEqualTo(0);
   }
 
   @Test
   public void testFillShape() {
     int[][][] array = {{{23}, {14}, {87}}, {{12}, {42}, {31}}};
-    int num = Tensor.computeNumDimensions(array);
+    int num = TensorImpl.computeNumDimensions(array);
     int[] shape = new int[num];
-    Tensor.fillShape(array, 0, shape);
+    TensorImpl.fillShape(array, 0, shape);
     assertThat(num).isEqualTo(3);
     assertThat(shape[0]).isEqualTo(2);
     assertThat(shape[1]).isEqualTo(3);
@@ -537,7 +550,7 @@ public final class TensorTest {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH);
     // Test input of string[1]
     wrapper.resizeInput(0, new int[] {1});
-    Tensor stringTensor = wrapper.getInputTensor(0);
+    TensorImpl stringTensor = wrapper.getInputTensor(0);
     byte[][] bytes1DStringData = new byte[][] {{0x00, 0x01, 0x02, 0x03}};
     stringTensor.setTo(bytes1DStringData);
 

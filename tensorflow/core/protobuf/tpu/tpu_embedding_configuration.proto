@@ -3,23 +3,45 @@ syntax = "proto3";
 package tensorflow.tpu;
 
 import "tensorflow/core/protobuf/tpu/optimization_parameters.proto";
-import "tensorflow/core/protobuf/tpu/tpu_embedding_output_layout.proto";
 
 message TPUEmbeddingConfiguration {
   // Description of the various embedding tables.
   message TableDescriptor {
     // Name of the table.
     string name = 1;
+
     // Size of the vocabulary (i.e., number of rows) in the table.
     int64 vocabulary_size = 2;
+
     // The embedding dimension (i.e., the width of the embedding table).
     int32 dimension = 3;
+
     // Number of features mapped to this table.
     int32 num_features = 4;
+
     // Details of the learning algorithm used to update the embedding
     // parameters.
     OptimizationParameters optimization_parameters = 5;
   }
+
+  // Description of different input features.
+  message FeatureDescriptor {
+    // Name of the input feature.
+    string name = 1;
+
+    // Index of the corresponding table in the TableDescriptor list.
+    int32 table_id = 2;
+
+    // Static shape of the inputs (excluding the reduction axis). Note that
+    // the shape of the actual inputs provided using the infeed op must be
+    // strictly smaller than input_shape. The outputs received at the TensorCore
+    // will have rank = input_shape.size() + 1. The innermost axis corresponds
+    // to the embedding dimension. If the input has shape [m, n, k] (excluding
+    // the reduction axis) and the embedding dimension is d, the output received
+    // at the TensorCore will have shape [m, n, k, d].
+    repeated int32 input_shape = 3;
+  }
+
   repeated TableDescriptor table_descriptor = 1;
 
   // Mode. Should the embedding layer program be run for inference (just forward
@@ -104,6 +126,9 @@ message TPUEmbeddingConfiguration {
   // models to reuse embedding lookup statistics.
   string profile_data_directory = 9;
 
-  // Extended output layout information; deprecated and now ignored.
-  TPUEmbeddingOutputLayout output_layout = 8 [deprecated = true];
+  repeated FeatureDescriptor feature_descriptor = 10;
+
+  // Old TPU embedding output layout.
+  reserved "output_layout";
+  reserved 8;
 }

@@ -46,7 +46,7 @@ class StatsPublisherInterface {
   //
   // This method may return a null pointer, if no handler was created.
   virtual std::unique_ptr<ProfileHandler> GetProfileHandler(
-      uint64 step, int64 execution_count, const RunOptions& ropts) = 0;
+      uint64 step, int64_t execution_count, const RunOptions& ropts) = 0;
 
   virtual ~StatsPublisherInterface() {}
 };

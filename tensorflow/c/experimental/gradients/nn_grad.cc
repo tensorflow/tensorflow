@@ -143,7 +143,7 @@ class BiasAddGradientFunction : public GradientFunction {
     // Grad for bias
     std::string name = "bias_add_grad";
     TF_RETURN_IF_ERROR(BiasAddGrad(ctx, upstream_grad, &grad_inputs[1],
-                                   name.c_str(), data_format.c_str()));
+                                   data_format.c_str(), name.c_str()));
 
     return Status::OK();
   }

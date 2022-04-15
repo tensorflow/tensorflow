@@ -28,14 +28,14 @@ namespace {
 
 class ShapePartitionAssignerTest : public HloTestBase {
  protected:
-  typedef std::vector<int64> Vec;
+  typedef std::vector<int64_t> Vec;
 
-  void RunR2Test(const Shape& shape, int64 max_target_partition_count,
-                 const std::vector<int64>* expected_partitions) {
+  void RunR2Test(const Shape& shape, int64_t max_target_partition_count,
+                 const std::vector<int64_t>* expected_partitions) {
     ShapePartitionAssigner assigner(shape);
     // Iterate through 1..max_target_partition_count.
-    for (int64 i = 1; i <= max_target_partition_count; ++i) {
-      std::vector<int64> actual_partitions =
+    for (int64_t i = 1; i <= max_target_partition_count; ++i) {
+      std::vector<int64_t> actual_partitions =
           assigner.Run(/*target_partition_count=*/i);
       EXPECT_THAT(actual_partitions, expected_partitions[i - 1]);
     }
@@ -43,13 +43,13 @@ class ShapePartitionAssignerTest : public HloTestBase {
 };
 
 TEST_F(ShapePartitionAssignerTest, Shape13WithLayout10) {
-  std::vector<int64> expected_partitions[] = {{1} /* 1 */, {1, 2} /* 2 */};
+  std::vector<int64_t> expected_partitions[] = {{1} /* 1 */, {1, 2} /* 2 */};
   RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {1, 3}, {1, 0}), 2,
             expected_partitions);
 }
 
 TEST_F(ShapePartitionAssignerTest, Shape31WithLayout01) {
-  std::vector<int64> expected_partitions[] = {
+  std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */, {1, 2} /* 2 */
   };
   RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {3, 1}, {0, 1}), 2,
@@ -57,22 +57,22 @@ TEST_F(ShapePartitionAssignerTest, Shape31WithLayout01) {
 }
 
 TEST_F(ShapePartitionAssignerTest, Shape53WithLayout10) {
-  std::vector<int64> expected_partitions[] = {{1} /* 1 */, {2} /* 2 */,
-                                              {3} /* 3 */, {4} /* 4 */,
-                                              {5} /* 5 */, {3, 2} /* 6 */};
+  std::vector<int64_t> expected_partitions[] = {{1} /* 1 */, {2} /* 2 */,
+                                                {3} /* 3 */, {4} /* 4 */,
+                                                {5} /* 5 */, {3, 2} /* 6 */};
   RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0}), 6,
             expected_partitions);
 }
 
 TEST_F(ShapePartitionAssignerTest, Shape53WithLayout01) {
-  std::vector<int64> expected_partitions[] = {
+  std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */, {2} /* 2 */, {3} /* 3 */, {2, 2} /* 4 */};
   RunR2Test(ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {0, 1}), 4,
             expected_partitions);
 }
 
 TEST_F(ShapePartitionAssignerTest, Shape532WithLayout210) {
-  std::vector<int64> expected_partitions[] = {
+  std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */,     {2} /* 2 */,     {3} /* 3 */,     {4} /* 4 */,
       {5} /* 5 */,     {3, 2} /* 6 */,  {3, 2} /* 7 */,  {4, 2} /* 8 */,
       {3, 3} /* 9 */,  {3, 3} /* 10 */, {3, 3} /* 11 */, {4, 3} /* 12 */,
@@ -82,7 +82,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout210) {
 }
 
 TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
-  std::vector<int64> expected_partitions[] = {
+  std::vector<int64_t> expected_partitions[] = {
       {1} /* 1 */,     {2} /* 2 */,     {3} /* 3 */,     {2, 2} /* 4 */,
       {2, 2} /* 5 */,  {3, 2} /* 6 */,  {3, 2} /* 7 */,  {3, 2} /* 8 */,
       {3, 3} /* 9 */,  {3, 3} /* 10 */, {3, 3} /* 11 */, {3, 4} /* 12 */,
@@ -93,7 +93,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
 
 class ShapePartitionIteratorTest : public HloTestBase {
  protected:
-  typedef std::vector<std::pair<int64, int64>> Partition;
+  typedef std::vector<std::pair<int64_t, int64_t>> Partition;
 };
 
 TEST_F(ShapePartitionIteratorTest, Shape53WithLayout10) {
@@ -147,13 +147,13 @@ TEST_F(ShapePartitionIteratorTest, Shape532WithLayout210) {
 
 class RandomShapePartitionIteratorTest : public HloTestBase {
  protected:
-  typedef std::vector<std::pair<int64, int64>> Partition;
+  typedef std::vector<std::pair<int64_t, int64_t>> Partition;
   RandomShapePartitionIteratorTest()
       : generator_(rd_()), distribution_(1, 10) {}
 
-  std::vector<int64> RandR4Dims() { return {Rand(), Rand(), Rand(), Rand()}; }
+  std::vector<int64_t> RandR4Dims() { return {Rand(), Rand(), Rand(), Rand()}; }
 
-  int64 Rand() { return distribution_(generator_); }
+  int64_t Rand() { return distribution_(generator_); }
 
   std::random_device rd_;
   std::mt19937 generator_;
@@ -166,24 +166,24 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   // Choose random number of outer dimensions to partition.
   const int num_outer_dims_to_partition = 1 + (Rand() % 3);
   // Choose random outer dimension partition counts.
-  std::vector<int64> dim_sizes(num_outer_dims_to_partition);
-  std::vector<int64> dim_partition_counts(num_outer_dims_to_partition);
-  int64 total_dim_size = 1;
+  std::vector<int64_t> dim_sizes(num_outer_dims_to_partition);
+  std::vector<int64_t> dim_partition_counts(num_outer_dims_to_partition);
+  int64_t total_dim_size = 1;
   for (int i = 0; i < num_outer_dims_to_partition; ++i) {
-    const int64 dimension = shape.layout().minor_to_major(
+    const int64_t dimension = shape.layout().minor_to_major(
         shape.layout().minor_to_major_size() - 1 - i);
     dim_sizes[i] = shape.dimensions(dimension);
     total_dim_size *= dim_sizes[i];
     // Choose dimension partition count in [1, dim_size]
-    const int64 dim_partition_count = 1 + Rand() % dim_sizes[i];
+    const int64_t dim_partition_count = 1 + Rand() % dim_sizes[i];
     dim_partition_counts[i] = dim_partition_count;
   }
   // Iterate through all partition: for each partition record covered
   // index ranges by dimension.
-  std::vector<std::map<int64, int64>> ranges(num_outer_dims_to_partition);
+  std::vector<std::map<int64_t, int64_t>> ranges(num_outer_dims_to_partition);
   ShapePartitionIterator partition_iterator(shape, dim_partition_counts);
-  const int64 partition_count = partition_iterator.GetTotalPartitionCount();
-  for (int64 i = 0; i < partition_count; ++i) {
+  const int64_t partition_count = partition_iterator.GetTotalPartitionCount();
+  for (int64_t i = 0; i < partition_count; ++i) {
     const auto& dim_partition = partition_iterator.GetPartition(i);
     for (int dim = 0; dim < dim_partition.size(); ++dim) {
       ranges[dim].insert(
@@ -194,7 +194,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   // Check that partitions cover entire dimension size range (for each
   // partitioned dimension).
   for (int i = 0; i < ranges.size(); ++i) {
-    int64 expected_index = 0;
+    int64_t expected_index = 0;
     for (auto& r : ranges[i]) {
       EXPECT_EQ(expected_index, r.first);
       expected_index = r.second;

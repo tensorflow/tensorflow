@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_test_mkl",
+    "tf_copts",
     "tf_cuda_library",
     "tf_mkl_kernel_library",
 )
@@ -111,6 +112,7 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+            "//tensorflow/core/distributed_runtime:session_mgr",
             "//tensorflow/core/distributed_runtime:device_resolver_distributed",
             "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
             "//tensorflow/core/distributed_runtime:worker_cache",
@@ -181,12 +183,16 @@ tf_cuda_library(
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
+        "//tensorflow/core/distributed_runtime:master_env",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service",
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -198,10 +204,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime:worker_interface",
             "//tensorflow/core/distributed_runtime:remote_device",
             "//tensorflow/core/distributed_runtime:server_lib",
+            "//tensorflow/core/distributed_runtime:session_mgr",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
-            "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
         ],
     }),
@@ -219,9 +225,11 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:context_distributed_manager",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core/kernels:math",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -391,6 +399,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         ],
     }),
 )
@@ -485,7 +494,8 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
         ":copy_to_device_node",
@@ -494,6 +504,7 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -504,6 +515,7 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -607,6 +619,7 @@ cc_library(
         "execute.h",
         "execute_node.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":context",
         ":copy_to_device_node",
@@ -616,6 +629,7 @@ cc_library(
         ":kernel_and_device",
         ":placement_utils",
         ":tensor_handle",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -627,6 +641,7 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/c/eager:abstract_function",
         "//tensorflow/core/platform:errors",
     ] + select({
@@ -722,6 +737,7 @@ tf_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -740,6 +756,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

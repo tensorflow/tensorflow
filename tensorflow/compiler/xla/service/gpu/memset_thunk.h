@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MEMSET_THUNK_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -38,6 +37,8 @@ class MemzeroThunk : public Thunk {
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const BufferAllocation::Slice& destination() const { return dest_; }
+
  private:
   const BufferAllocation::Slice dest_;
 };
@@ -46,7 +47,7 @@ class MemzeroThunk : public Thunk {
 // destination chunk must have size divisible by 32 bits.
 class Memset32BitValueThunk : public Thunk {
  public:
-  explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32 value,
+  explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32_t value,
                                  const BufferAllocation::Slice& dest)
       : Thunk(Kind::kMemset32BitValue, thunk_info),
         value_(value),
@@ -54,8 +55,11 @@ class Memset32BitValueThunk : public Thunk {
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const BufferAllocation::Slice& destination() const { return dest_; }
+  uint32_t value() const { return value_; }
+
  private:
-  const uint32 value_;
+  const uint32_t value_;
   const BufferAllocation::Slice dest_;
 };
 

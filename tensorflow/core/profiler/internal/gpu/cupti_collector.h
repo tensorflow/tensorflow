@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -41,18 +40,23 @@ struct MemcpyDetails {
   bool async;
   // This contains CUpti_ActivityMemcpyKind for activity event (on device).
   // For events from other CuptiTracerEventSource, it is always 0.
-  int8 kind;
+  int8 copy_kind;
   // CUpti_ActivityMemoryKind of source.
   int8 src_mem_kind;
   // CUpti_ActivityMemoryKind of destination.
   int8 dst_mem_kind;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
 struct MemAllocDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  int8 kind;
+  int8 mem_kind;
   // The virtual address of allocation. 0 if it is a free operation.
   uint64 address;
 };
@@ -69,9 +73,14 @@ struct MemsetDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  int8 kind;
+  int8 mem_kind;
   // Whether or not the memset is asynchronous.
   bool async;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
 struct KernelDetails {
@@ -93,6 +102,11 @@ struct KernelDetails {
   uint32 grid_y;
   // Z-dimension of a grid.
   uint32 grid_z;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
 inline std::string ToXStat(const KernelDetails& kernel_info,
@@ -108,7 +122,7 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
 }
 
 // Gets the name of the CUpti_ActivityMemoryKind value.
-absl::string_view GetMemoryKindName(int8 kind);
+absl::string_view GetMemoryKindName(int8_t memory_kind);
 
 enum class CuptiTracerEventType {
   Unsupported = 0,
@@ -160,8 +174,8 @@ struct CuptiTracerEvent {
   uint32 device_id = 0;
   uint32 correlation_id = kInvalidCorrelationId;
   uint32 thread_id = kInvalidThreadId;
-  int64 context_id = kInvalidContextId;
-  int64 stream_id = kInvalidStreamId;
+  int64_t context_id = kInvalidContextId;
+  int64_t stream_id = kInvalidStreamId;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -236,7 +250,6 @@ class CuptiTraceCollector {
   virtual void Flush() = 0;
 
   // Consumer side functions (i.e. called by GPU tracer);
-  virtual void Export(StepStats* step_stats) {}
   virtual bool Export(XSpace* space, uint64 end_gpu_ns) { return true; }
   virtual std::string ReportNumEventsIfDropped() { return ""; }
 

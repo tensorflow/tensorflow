@@ -27,19 +27,41 @@ def TFKernelToLLVMPass : Pass<"tf-kernel-to-llvm", "ModuleOp"> {
   ];
 }
 
-def EmbedTFFrameworkFunctionAndAllocPass
-    : Pass<"embed-tf-framework-func-and-alloc", "ModuleOp"> {
-  let summary = "Pass to embed TF Framework for allocation and context";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkFunctionAndAllocPass()";
+def EmbedTFFrameworkPass
+    : Pass<"embed-tf-framework", "ModuleOp"> {
+  let summary = "Pass to embed TF Framework for allocation and assertions,";
+  let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
-def EmbedTFFrameworkAssertPass
-    : Pass<"embed-tf-framework-assert", "ModuleOp"> {
-  let summary = "Pass to rewrite assertions to TF framework calls";
-  let constructor = "tf_framework::CreateEmbedTFFrameworkAssertPass()";
+def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
+  let summary = "Pass to rewrite TFAssertOps to CondBranchOp";
+  let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
-def BufferReusePass : FunctionPass<"buffer-reuse"> {
+def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite all TF operations to JIT invocations";
+  let constructor = "transforms::CreateTFToJITInvocationPass()";
+  let options = [
+      ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
+                 "llvm::cl::ZeroOrMore">,
+      ListOption<"unroll_factors_", "unroll-factors", "int64_t",
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore">,
+      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
+             /*default=*/"", "Max rank that this kernel supports">,
+      Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
+             "Enable the denormal flush to zero mode when generating code">,
+      Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
+             "Enable the 64 bit indexing for GPU kernels">,
+      Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
+             "CPU codegen (false implies GPU)">,
+      Option<"jit_i64_indexed_for_large_tensors_",
+             "jit_i64_indexed_for_large_tensors", "bool", /*default=*/"false",
+             "Enable JIT compilation of i64-indexed kernels for large input "
+             "tensors.">,
+  ];
+}
+
+def BufferReusePass : Pass<"buffer-reuse", "mlir::func::FuncOp"> {
   let summary = "Pass to find and annotate candidates for buffer reuse.";
   let constructor = "transforms::CreateBufferReusePass()";
 }
@@ -55,10 +77,24 @@ def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "Module
   let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
+def TiledLoopBufferizePass : Pass<"tiled-loop-bufferize", "mlir::func::FuncOp"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "transforms::CreateTiledLoopBufferizePass()";
+}
+
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
   let constructor = "transforms::CreateFinalBufferizePass()";
+  let options = [
+      Option<"alignment_", "alignment", "uint64_t",
+             /*default=*/"64", "Memory alignment">,
+  ];
+}
+
+def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
+  let summary = "Pass to transform the IR to be on signless integers.";
+  let constructor = "transforms::CreateConvertToSignlessPass()";
 }
 
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
@@ -82,34 +118,37 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
            "fatbin.">,
     Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
            "Print generated PTX code per target architecture.">,
+    Option<"print_llvmir_", "print-llvmir", "bool", /*default=*/"false",
+           "Print llvm ir when lowering code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
 
-def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
+def ParallelLoopsToSequential : Pass<"parallel-loops-to-sequential", "mlir::func::FuncOp"> {
   let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
   let constructor = "transforms::CreateParallelLoopsToSequential()";
 }
 
 def PropagateTfAbiKnowledgeToKernels
-    : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
+    : Pass<"propagate-tf-abi-knowledge-to-kernels", "mlir::func::FuncOp"> {
   let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
   let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
 }
 
 def PropagateShapeKnowledgeToKernels
-    : FunctionPass<"propagate-shape-knowledge-to-kernels"> {
+    : Pass<"propagate-shape-knowledge-to-kernels", "mlir::func::FuncOp"> {
   let summary = "Pass to propagate shape information into kernels";
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
-def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
+def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
+  let dependentDialects = ["LLVM::LLVMDialect"];
 }
 
 def MapParallelLoopsPass
-    : FunctionPass<"map-parallel-loops-to-gpu"> {
+    : Pass<"map-parallel-loops-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Greedily maps loops to GPU hardware dimensions.";
   let constructor = "transforms::CreateMapParallelLoopsPass()";
   let description = [{
@@ -118,7 +157,7 @@ def MapParallelLoopsPass
 }
 
 def FuseInnerParallelLoopsPass
-    : FunctionPass<"fuse-inner-parallel-loops"> {
+    : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
   let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
   let description = [{
@@ -128,10 +167,34 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
-def ShapeSimplification
-    : FunctionPass<"kernelgen-shape-simplification"> {
-  let summary = "Simplify shape ops";
-  let constructor = "transforms::CreateShapeSimplification()";
+def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
+  let summary = "Pass to create vectorized operations for CPU.";
+  let constructor = "transforms::CreateVectorizationPass()";
+  let description = [{
+    Takes linalg loops on buffers and vectorizes the loads/stores and operations
+    in between. This is intended for the CPU backend.
+  }];
+}
+
+def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::func::FuncOp"> {
+  let summary = "Pass to remove dead code in VectorizationPass.";
+  let constructor = "transforms::CreateVectorizationCleanupPass()";
+  let description = [{
+    VectorizationPass creates some memory transfers that are unneeded but cannot
+    be safely removed by current generic infrastructure. This removes the
+    specific operations.
+  }];
+}
+
+def CopyCleanupPass : Pass<"copy-cleanup", "mlir::func::FuncOp"> {
+  let summary = "Pass to remove copies which are consumed by a GenericOp.";
+  let constructor = "transforms::CreateCopyCleanupPass()";
+  let description = [{
+    We can have GenericOps which have operands that are a copy, but the copy is
+    not used by any other op. In this case, the GenericOp can just use the
+    buffer which is the source of the copy, and we can remove the Alloc and the
+    copy.
+  }];
 }
 
 #endif // TF_KERNEL_GEN_PASSES

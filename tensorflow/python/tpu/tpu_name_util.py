@@ -14,10 +14,6 @@
 # ======================================
 """Helper functions for TPU device names."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Text
 from tensorflow.python.util.tf_export import tf_export
 

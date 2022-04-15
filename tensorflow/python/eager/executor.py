@@ -14,10 +14,6 @@
 # ==============================================================================
 """Executor for eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import pywrap_tfe
 
 
@@ -47,7 +43,7 @@ class Executor(object):
 
   def __del__(self):
     try:
-      # pywrap_tfe.TFE_ExecutorWaitForAllPendingNodes(self._handle)
+      self.wait()
       pywrap_tfe.TFE_DeleteExecutor(self._handle)
     except TypeError:
       # Suppress some exceptions, mainly for the case when we're running on

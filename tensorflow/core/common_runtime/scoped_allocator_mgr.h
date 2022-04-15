@@ -32,26 +32,26 @@ class ScopedAllocatorContainer : public core::RefCounted {
  public:
   // Establishes a reachable ScopedAllocator.
   Status AddScopedAllocator(
-      const Tensor& backing_tensor, int32 scope_id,
+      const Tensor& backing_tensor, int32_t scope_id,
       const std::string& scope_name,
       const gtl::ArraySlice<ScopedAllocator::Field>& fields,
-      int32 expected_call_count);
+      int32_t expected_call_count);
 
-  ScopedAllocatorInstance* GetInstance(int32 scope_id);
-  ScopedAllocator* GetAllocator(int32 scope_id);
+  ScopedAllocatorInstance* GetInstance(int32_t scope_id);
+  ScopedAllocator* GetAllocator(int32_t scope_id);
 
   // Retire the scope_id.
-  void Drop(int32 scope_id, ScopedAllocator* sa);
+  void Drop(int32_t scope_id, ScopedAllocator* sa);
 
  protected:
   friend class ScopedAllocatorMgr;
-  ScopedAllocatorContainer(const ScopedAllocatorMgr* mgr, int64 step_id)
+  ScopedAllocatorContainer(const ScopedAllocatorMgr* mgr, int64_t step_id)
       : mgr_(mgr), step_id_(step_id) {}
   ~ScopedAllocatorContainer();
 
  private:
   const ScopedAllocatorMgr* mgr_;
-  int64 step_id_;
+  int64_t step_id_;
   mutex mu_;
   struct SAField {
     int32 field_index;
@@ -59,9 +59,9 @@ class ScopedAllocatorContainer : public core::RefCounted {
       ScopedAllocator* scoped_allocator;
       ScopedAllocatorInstance* instance;
     };
-    SAField(int32 fi, ScopedAllocatorInstance* sai)
+    SAField(int32_t fi, ScopedAllocatorInstance* sai)
         : field_index(fi), instance(sai) {}
-    SAField(int32 fi, ScopedAllocator* sa)
+    SAField(int32_t fi, ScopedAllocator* sa)
         : field_index(fi), scoped_allocator(sa) {}
     SAField()
         : field_index(ScopedAllocator::kBackingIndex),
@@ -77,23 +77,23 @@ class ScopedAllocatorMgr {
       : device_name_(device_name) {}
   ~ScopedAllocatorMgr();
 
-  ScopedAllocatorContainer* GetContainer(int64 step_id);
+  ScopedAllocatorContainer* GetContainer(int64_t step_id);
 
   // Establishes a reachable ScopedAllocator.
   Status AddScopedAllocator(
-      const Tensor& backing_tensor, int64 step_id, int32 scope_id,
+      const Tensor& backing_tensor, int64_t step_id, int32_t scope_id,
       const std::string& scope_name,
       const gtl::ArraySlice<ScopedAllocator::Field>& fields,
-      int32 expected_call_count);
+      int32_t expected_call_count);
 
-  void Cleanup(int64 step_id);
+  void Cleanup(int64_t step_id);
 
   // Populate the bytes and offset members of Field.  Instance allocaters get
   // consecutive scope_id values following that of the base ScopedAllocator.
   // Returns the total number of bytes required to be allocated in the
   // backing tensor, for convenience.  (The same value can be obtained
   // by summing offset and bytes in the last field.)
-  static size_t PopulateFields(int32 scope_id,
+  static size_t PopulateFields(int32_t scope_id,
                                const gtl::ArraySlice<TensorShape>& shapes,
                                const DataType dtype,
                                std::vector<ScopedAllocator::Field>* fields);
@@ -103,7 +103,7 @@ class ScopedAllocatorMgr {
  private:
   std::string device_name_;
   mutex mu_;
-  std::unordered_map<int64, ScopedAllocatorContainer*> per_step_map_
+  std::unordered_map<int64_t, ScopedAllocatorContainer*> per_step_map_
       TF_GUARDED_BY(mu_);
 };
 

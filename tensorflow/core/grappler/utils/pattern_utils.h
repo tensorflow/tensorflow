@@ -182,7 +182,9 @@ class SubGraphMatcher {
 
   // If a given pattern is matched, this function returns true as well as the
   // matched node and remove node info is populated.
-  bool GetMatchedNodes(const OpTypePattern& pattern, MutableNodeView* node_view,
+  bool GetMatchedNodes(const OpTypePattern& pattern,
+                       const std::unordered_set<string>& nodes_to_preserve,
+                       MutableNodeView* node_view,
                        std::map<string, int>* matched_nodes_map,
                        std::set<int>* remove_node_indices);
 
@@ -200,9 +202,13 @@ class SubGraphMatcher {
   // potential matched nodes (i.e. when DoesOpTypePatternMatch returns "true").
   // It performs a sanity check if the candidate nodes for removal in subgraph
   // fusion is indeed safe to remove.
-  bool HasRemoveNodeExternalDependents() {
+  bool IsSafeNodesToRemove(
+      const std::unordered_set<string>& nodes_to_preserve) {
     for (const auto& node_idx : remove_node_indices_) {
       auto node_view = graph_view_->GetNode(node_idx);
+      // Check if the node to be removed is in the nodes to be preserved.
+      string node_name = node_view->GetName();
+      if (nodes_to_preserve.count(node_name) > 0) return false;
       // Traverse all the Regular Fanouts. Fanouts are stored as vector of
       // vector, std::vector<std::vector<MutableFaninView>>. Note that
       // a MutableNodeView's fanouts are stored in a nested vector of
@@ -211,12 +217,12 @@ class SubGraphMatcher {
       for (const auto& fanouts : fanouts_by_ports) {
         for (const auto& fanout : fanouts) {
           if (!matched_node_indices_.count(fanout.node_index())) {
-            return true;
+            return false;
           }
         }
       }
     }
-    return false;
+    return true;
   }
 };
 

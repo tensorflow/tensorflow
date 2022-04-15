@@ -25,8 +25,9 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running TFLite interpreter.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running TFLite interpreter. By default,
+    this is set to the platform default value -1.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
@@ -42,6 +43,20 @@ and the following optional parameters:
     there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `max_profiling_buffer_entries`: `int` (default=1024) \
+    The initial max number of profiling events that will be stored during each
+    inference run. It is only meaningful when `enable_op_profiling` is set to
+     `true`. Note, the actual value of this parameter will be adjusted if the
+     model has more nodes than the specified value of this parameter. Also, when
+     `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+     profiling buffer entries will be increased dynamically.
+*   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
+    Whether allowing dynamic increase on the number of profiling buffer entries.
+    It is only meaningful when `enable_op_profiling` is set to `true`.
+    Note, allowing dynamic buffer size increase may cause more profiling
+    overhead, thus it is preferred to set `max_profiling_buffer_entries` to a
+    large-enough value.
+
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
@@ -58,6 +73,15 @@ and the following optional parameters:
     will include allocated memory size of each tensor etc. Enabling this could
     help understand TfLite graph and memory usage, particularly when there are
     dynamic-shaped tensors in the graph.
+*  `report_peak_memory_footprint`: `bool` (default=false) \
+    Whether to report the peak memory footprint by periodically checking the
+    memory footprint. Internally, a separate thread will be spawned for this
+    periodic check. Therefore, the performance benchmark result could be
+    affected.
+*  `memory_footprint_check_interval_ms`: `int` (default=50) \
+   The interval in millisecond between two consecutive memory footprint checks.
+   This is only used when --report_peak_memory_footprint is set to true.
+
 *  `dry_run`: `bool` (default=false) \
     Whether to run the tool just with simply loading the model, allocating
     tensors etc. but without actually invoking any op kernels.
@@ -65,6 +89,12 @@ and the following optional parameters:
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+*  `release_dynamic_tensors`: `bool` (default=false) \
+    Whether to configure the Interpreter to immediately release the memory of
+    dynamic tensors in the graph once they are not used.
+*  `optimize_memory_for_large_tensors`: `int` (default=0) \
+    Whether to optimize memory usage for large tensors with sacrificing latency.
+    When the feature is enabled, `release_dynamic_tensors` is also enabled.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following
@@ -110,11 +140,14 @@ where applicable. For details about each parameter, please refer to
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
+* `delegate_serialize_dir`: `str` (default="")
+* `delegate_serialize_token`: `str` (default="")
 
 #### GPU delegate
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_inference_for_sustained_speed`: `bool` (default=false)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
@@ -132,6 +165,8 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_allow_dynamic_dimensions`:`bool` (default=false)
+*   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)
@@ -142,7 +177,13 @@ the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
 
 #### XNNPACK delegate
-*   `use_xnnpack`: `bool` (default=false)
+*   `use_xnnpack`: `bool` (default=false) \
+Note if this option is explicitly set to `false`, the TfLite runtime will use
+its original CPU kernels for model execution. In other words, after enabling
+the feature that the XNNPACK delegate is applied by default in TfLite runtime,
+explictly setting this flag to `false` will cause the benchmark tool to disable
+the feature at runtime, and to use the original non-delegated CPU execution path
+for model benchmarking.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
@@ -155,6 +196,14 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 As some delegates are only available on certain platforms, when running the
 benchmark tool on a particular platform, specifying `--help` will print out all
 supported parameters.
+
+### Use multiple delegates
+When multiple delegates are specified to be used in the commandline flags, the
+order of delegates applied to the TfLite runtime will be same as their enabling
+commandline flag is specified. For example, "--use_xnnpack=true --use_gpu=true"
+means applying the XNNPACK delegate first, and then the GPU delegate secondly.
+In comparison, "--use_gpu=true --use_xnnpack=true" means applying the GPU
+delegate first, and then the XNNPACK delegate secondly.
 
 ## To build/install/run
 

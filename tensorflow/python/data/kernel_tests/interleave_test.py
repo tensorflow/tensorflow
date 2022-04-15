@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.interleave()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import multiprocessing
 import os
 
@@ -27,6 +23,7 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -283,8 +280,8 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
         count).interleave(
             lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
             cycle_length, block_length, num_parallel_calls)
-    options = dataset_ops.Options()
-    options.experimental_deterministic = False
+    options = options_lib.Options()
+    options.deterministic = False
     dataset = dataset.with_options(options)
     expected_output = [
         element for element in _interleave(
@@ -349,12 +346,37 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
           cycle_length=10,
           num_parallel_calls=10,
           deterministic=local_determinism)
-      opts = dataset_ops.Options()
-      opts.experimental_deterministic = global_determinism
+      opts = options_lib.Options()
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testName(self, num_parallel_calls):
+
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).interleave(
+        fn, num_parallel_calls=num_parallel_calls, name="interleave")
+    self.assertDatasetProduces(dataset, [42])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testMapFuncMustReturnDataset(self, num_parallel_calls):
+
+    def map_fn(x):
+      return [x]
+
+    with self.assertRaisesRegex(
+        TypeError, "The `map_func` argument must return a `Dataset` object."):
+      dataset_ops.Dataset.from_tensors(42).interleave(
+          map_fn, num_parallel_calls=num_parallel_calls)
 
 
 class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
@@ -363,11 +385,12 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(
               cycle_length=2,
               block_length=[1, 3],
               num_parallel_calls=[None, 1, 2])))
-  def testCore(self, cycle_length, block_length, num_parallel_calls):
+  def test(self, verify_fn, cycle_length, block_length, num_parallel_calls):
 
     num_repeats = 2
     input_values = np.array([2, 3], dtype=np.int64)
@@ -379,10 +402,27 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               cycle_length, block_length, num_parallel_calls)
 
     num_outputs = np.sum(input_values) * num_repeats
-    self.run_core_tests(_build_dataset, num_outputs)
+    verify_fn(self, _build_dataset, num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testNested(self, verify_fn, num_parallel_calls):
+
+    def build_ds():
+
+      inner_ds = dataset_ops.Dataset.from_tensor_slices(range(10))
+      ds = dataset_ops.Dataset.from_tensors(inner_ds).repeat(10)
+      return ds.interleave(
+          lambda x: x, cycle_length=5, num_parallel_calls=num_parallel_calls)
+
+    verify_fn(self, build_ds, num_outputs=100)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
 
     def _map_fn(i):
       return sparse_tensor.SparseTensorValue(
@@ -396,7 +436,7 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return dataset_ops.Dataset.range(10).map(_map_fn).interleave(
           _interleave_fn, cycle_length=1)
 
-    self.run_core_tests(_build_dataset, 20)
+    verify_fn(self, _build_dataset, num_outputs=20)
 
 
 if __name__ == "__main__":

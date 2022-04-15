@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -47,7 +46,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   auto x_array =
       LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
 
-  int64 allocation_count_before = allocator_->allocation_count();
+  int64_t allocation_count_before = allocator_->allocation_count();
 
   // Override the allocator via 'options'. Tests that allocation and
   // deallocation happen on the right allocator.
@@ -65,7 +64,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   EXPECT_GT(allocator_->allocation_count(), allocation_count_before);
 
   // Deallocate result and verify that deallocate was called once.
-  int64 deallocation_count_before = allocator_->deallocation_count();
+  int64_t deallocation_count_before = allocator_->deallocation_count();
   result.reset();
   EXPECT_EQ(deallocation_count_before + 1, allocator_->deallocation_count());
 }
@@ -85,8 +84,8 @@ XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
       continue;
     }
 
-    int64 device_allocation_count_before = allocator->allocation_count(d);
-    int64 allocation_count_before = allocator->allocation_count();
+    int64_t device_allocation_count_before = allocator->allocation_count(d);
+    int64_t allocation_count_before = allocator->allocation_count();
 
     auto result = ExecuteLocallyOrDie(
         computation, {}, ExecutableBuildOptions().set_device_ordinal(d),

@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
 #define TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
 
+#include <string>
+
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+class CoordinationServiceAgent;
 class ImmediateExecutionContext;
 class ServerDef;
+class WorkerEnv;
+class WorkerCacheInterface;
 
 class ImmediateExecutionDistributedManager {
  public:
@@ -45,6 +50,9 @@ class ImmediateExecutionDistributedManager {
   // Check if the remote task is alive.
   virtual Status CheckRemoteAlive(const std::string& remote_task_name,
                                   bool* is_alive) = 0;
+
+  // Get pointer to the coordination service agent instance.
+  virtual CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;
 };
 }  // namespace tensorflow
 

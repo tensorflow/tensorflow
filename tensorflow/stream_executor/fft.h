@@ -91,32 +91,32 @@ class FftSupport {
   virtual ~FftSupport() {}
 
   // Creates a 1d FFT plan.
-  virtual std::unique_ptr<Plan> Create1dPlan(Stream *stream, uint64 num_x,
+  virtual std::unique_ptr<Plan> Create1dPlan(Stream *stream, uint64_t num_x,
                                              Type type, bool in_place_fft) = 0;
 
   // Creates a 2d FFT plan.
-  virtual std::unique_ptr<Plan> Create2dPlan(Stream *stream, uint64 num_x,
-                                             uint64 num_y, Type type,
+  virtual std::unique_ptr<Plan> Create2dPlan(Stream *stream, uint64_t num_x,
+                                             uint64_t num_y, Type type,
                                              bool in_place_fft) = 0;
 
   // Creates a 3d FFT plan.
-  virtual std::unique_ptr<Plan> Create3dPlan(Stream *stream, uint64 num_x,
-                                             uint64 num_y, uint64 num_z,
+  virtual std::unique_ptr<Plan> Create3dPlan(Stream *stream, uint64_t num_x,
+                                             uint64_t num_y, uint64 num_z,
                                              Type type, bool in_place_fft) = 0;
 
   // Creates a 1d FFT plan with scratch allocator.
   virtual std::unique_ptr<Plan> Create1dPlanWithScratchAllocator(
-      Stream *stream, uint64 num_x, Type type, bool in_place_fft,
+      Stream *stream, uint64_t num_x, Type type, bool in_place_fft,
       ScratchAllocator *scratch_allocator) = 0;
 
   // Creates a 2d FFT plan with scratch allocator.
   virtual std::unique_ptr<Plan> Create2dPlanWithScratchAllocator(
-      Stream *stream, uint64 num_x, uint64 num_y, Type type, bool in_place_fft,
-      ScratchAllocator *scratch_allocator) = 0;
+      Stream *stream, uint64_t num_x, uint64 num_y, Type type,
+      bool in_place_fft, ScratchAllocator *scratch_allocator) = 0;
 
   // Creates a 3d FFT plan with scratch allocator.
   virtual std::unique_ptr<Plan> Create3dPlanWithScratchAllocator(
-      Stream *stream, uint64 num_x, uint64 num_y, uint64 num_z, Type type,
+      Stream *stream, uint64_t num_x, uint64 num_y, uint64 num_z, Type type,
       bool in_place_fft, ScratchAllocator *scratch_allocator) = 0;
 
   // Creates a batched FFT plan.
@@ -137,9 +137,9 @@ class FftSupport {
   // output_distance: Indicates the distance between the first element of two
   //                  consecutive signals in a batch of the output data.
   virtual std::unique_ptr<Plan> CreateBatchedPlan(
-      Stream *stream, int rank, uint64 *elem_count, uint64 *input_embed,
-      uint64 input_stride, uint64 input_distance, uint64 *output_embed,
-      uint64 output_stride, uint64 output_distance, Type type,
+      Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,
+      uint64_t input_stride, uint64 input_distance, uint64 *output_embed,
+      uint64_t output_stride, uint64 output_distance, Type type,
       bool in_place_fft, int batch_count) = 0;
 
   // Creates a batched FFT plan with scratch allocator.
@@ -160,9 +160,9 @@ class FftSupport {
   // output_distance: Indicates the distance between the first element of two
   //                  consecutive signals in a batch of the output data.
   virtual std::unique_ptr<Plan> CreateBatchedPlanWithScratchAllocator(
-      Stream *stream, int rank, uint64 *elem_count, uint64 *input_embed,
-      uint64 input_stride, uint64 input_distance, uint64 *output_embed,
-      uint64 output_stride, uint64 output_distance, Type type,
+      Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,
+      uint64_t input_stride, uint64 input_distance, uint64 *output_embed,
+      uint64_t output_stride, uint64 output_distance, Type type,
       bool in_place_fft, int batch_count,
       ScratchAllocator *scratch_allocator) = 0;
 
@@ -211,34 +211,34 @@ class FftSupport {
 // fft::FftSupport base class. Assumes that it's emitted somewhere inside the
 // ::stream_executor namespace.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES                   \
-  std::unique_ptr<fft::Plan> Create1dPlan(Stream *stream, uint64 num_x,        \
+  std::unique_ptr<fft::Plan> Create1dPlan(Stream *stream, uint64_t num_x,      \
                                           fft::Type type, bool in_place_fft)   \
       override;                                                                \
-  std::unique_ptr<fft::Plan> Create2dPlan(Stream *stream, uint64 num_x,        \
-                                          uint64 num_y, fft::Type type,        \
+  std::unique_ptr<fft::Plan> Create2dPlan(Stream *stream, uint64_t num_x,      \
+                                          uint64_t num_y, fft::Type type,      \
                                           bool in_place_fft) override;         \
   std::unique_ptr<fft::Plan> Create3dPlan(                                     \
-      Stream *stream, uint64 num_x, uint64 num_y, uint64 num_z,                \
+      Stream *stream, uint64_t num_x, uint64 num_y, uint64 num_z,              \
       fft::Type type, bool in_place_fft) override;                             \
   std::unique_ptr<fft::Plan> Create1dPlanWithScratchAllocator(                 \
-      Stream *stream, uint64 num_x, fft::Type type, bool in_place_fft,         \
+      Stream *stream, uint64_t num_x, fft::Type type, bool in_place_fft,       \
       ScratchAllocator *scratch_allocator) override;                           \
   std::unique_ptr<fft::Plan> Create2dPlanWithScratchAllocator(                 \
-      Stream *stream, uint64 num_x, uint64 num_y, fft::Type type,              \
+      Stream *stream, uint64_t num_x, uint64 num_y, fft::Type type,            \
       bool in_place_fft, ScratchAllocator *scratch_allocator) override;        \
   std::unique_ptr<fft::Plan> Create3dPlanWithScratchAllocator(                 \
-      Stream *stream, uint64 num_x, uint64 num_y, uint64 num_z,                \
+      Stream *stream, uint64_t num_x, uint64 num_y, uint64 num_z,              \
       fft::Type type, bool in_place_fft, ScratchAllocator *scratch_allocator)  \
       override;                                                                \
   std::unique_ptr<fft::Plan> CreateBatchedPlan(                                \
-      Stream *stream, int rank, uint64 *elem_count, uint64 *input_embed,       \
-      uint64 input_stride, uint64 input_distance, uint64 *output_embed,        \
-      uint64 output_stride, uint64 output_distance, fft::Type type,            \
+      Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,     \
+      uint64_t input_stride, uint64 input_distance, uint64 *output_embed,      \
+      uint64_t output_stride, uint64 output_distance, fft::Type type,          \
       bool in_place_fft, int batch_count) override;                            \
   std::unique_ptr<fft::Plan> CreateBatchedPlanWithScratchAllocator(            \
-      Stream *stream, int rank, uint64 *elem_count, uint64 *input_embed,       \
-      uint64 input_stride, uint64 input_distance, uint64 *output_embed,        \
-      uint64 output_stride, uint64 output_distance, fft::Type type,            \
+      Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,     \
+      uint64_t input_stride, uint64 input_distance, uint64 *output_embed,      \
+      uint64_t output_stride, uint64 output_distance, fft::Type type,          \
       bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) \
       override;                                                                \
   void UpdatePlanWithScratchAllocator(Stream *stream, fft::Plan *plan,         \

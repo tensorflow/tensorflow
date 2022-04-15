@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"  // for DeviceLocality
@@ -70,9 +71,16 @@ class WorkerCacheInterface {
                                       DeviceLocality* locality,
                                       StatusCallback done) = 0;
 
+  // TODO(b/189159585): Define a general client cache maker function to
+  // construct client cache of different types sharing the same underling RPC
+  // channels, to replace the eager and coordination cache function.
   // Build and return a EagerClientCache object wrapping that channel.
   virtual Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) = 0;
+
+  // Build and return a CoordinationClientCache object wrapping that channel.
+  virtual Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coordination_client_cache) = 0;
 
   // Start/stop logging activity.
   virtual void SetLogging(bool active) {}
@@ -82,7 +90,7 @@ class WorkerCacheInterface {
 
   // Return logs for the identified step in *ss.  Any returned data will no
   // longer be stored.
-  virtual bool RetrieveLogs(int64 step_id, StepStats* ss) { return false; }
+  virtual bool RetrieveLogs(int64_t step_id, StepStats* ss) { return false; }
 };
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_CACHE_H_

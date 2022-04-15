@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.shuffle_and_repeat()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -160,9 +156,11 @@ class ShuffleAndRepeatCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return dataset_ops.Dataset.range(20).apply(
         shuffle_ops.shuffle_and_repeat(buffer_size=5, count=5, seed=seed))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
-    self.run_core_tests(lambda: self._build_ds(10), 100)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, lambda: self._build_ds(10), num_outputs=100)
 
 
 if __name__ == "__main__":

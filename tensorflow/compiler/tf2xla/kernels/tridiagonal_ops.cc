@@ -39,7 +39,8 @@ class TridiagonalSolveOp : public XlaOpKernel {
       return;
     }
 
-    auto result = xla::tridiagonal::ThomasSolver(diagonals, rhs);
+    auto result = xla::tridiagonal::TridiagonalSolver(xla::tridiagonal::kThomas,
+                                                      diagonals, rhs);
     if (!result.ok()) {
       ctx->SetStatus(result.status());
       return;

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for multi_worker_util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import test

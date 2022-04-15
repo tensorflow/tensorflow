@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -56,7 +55,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 using TestTypes = ::testing::Types<
 // TODO(b/183565702): Support integer convs on GPU.
 #if !XLA_TEST_BACKEND_GPU
-    int32,
+    int32_t,
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
     Eigen::half,
@@ -262,8 +261,8 @@ TYPED_TEST(Convolve_1x1x4x4_1x1x3x3_Same, Types) { this->RunTest(); }
 
 XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   XlaBuilder builder(TestName());
-  std::vector<int64> input_dims = {1, 4, 2, 3, 3};
-  std::vector<int64> filter_dims = {2, 2, 2, 3, 3};
+  std::vector<int64_t> input_dims = {1, 4, 2, 3, 3};
+  std::vector<int64_t> filter_dims = {2, 2, 2, 3, 3};
   Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
   Shape filter_shape = ShapeUtil::MakeShape(F32, filter_dims);
   {
@@ -328,8 +327,8 @@ class Convolve2D_1x3x3x5_3x3x5x3_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 3, 3, 5};
-    std::vector<int64> filter_dims = {3, 3, 5, 3};
+    std::vector<int64_t> input_dims = {1, 3, 3, 5};
+    std::vector<int64_t> filter_dims = {3, 3, 5, 3};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -387,8 +386,8 @@ class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 3, 3, 5};
-    std::vector<int64> filter_dims = {3, 3, 1, 15};
+    std::vector<int64_t> input_dims = {1, 3, 3, 5};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 15};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -453,8 +452,8 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 5};
-    std::vector<int64> filter_dims = {3, 3, 1, 5};
+    std::vector<int64_t> input_dims = {1, 4, 4, 5};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 5};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -523,8 +522,8 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 512};
-    std::vector<int64> filter_dims = {3, 3, 1, 512};
+    std::vector<int64_t> input_dims = {1, 4, 4, 512};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 512};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -587,8 +586,8 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid_Output_Batch_In_Lanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 512};
-    std::vector<int64> filter_dims = {3, 3, 1, 512};
+    std::vector<int64_t> input_dims = {1, 4, 4, 512};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 512};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -656,8 +655,8 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Input_Batch_in_Lanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {256, 4, 4, 512};
-    std::vector<int64> filter_dims = {3, 3, 1, 512};
+    std::vector<int64_t> input_dims = {256, 4, 4, 512};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 512};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -725,8 +724,8 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Both_Batch_in_Lanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {256, 4, 4, 512};
-    std::vector<int64> filter_dims = {3, 3, 1, 512};
+    std::vector<int64_t> input_dims = {256, 4, 4, 512};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 512};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -796,8 +795,8 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid_Output_Batch_In_Lanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 5};
-    std::vector<int64> filter_dims = {3, 3, 1, 5};
+    std::vector<int64_t> input_dims = {1, 4, 4, 5};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 5};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -871,8 +870,8 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 160};
-    std::vector<int64> filter_dims = {3, 3, 1, 160};
+    std::vector<int64_t> input_dims = {1, 4, 4, 160};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 160};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -935,8 +934,8 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 160};
-    std::vector<int64> filter_dims = {3, 3, 1, 160};
+    std::vector<int64_t> input_dims = {1, 4, 4, 160};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 160};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1005,8 +1004,8 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 160};
-    std::vector<int64> filter_dims = {3, 3, 1, 160};
+    std::vector<int64_t> input_dims = {1, 4, 4, 160};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 160};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1075,8 +1074,8 @@ class Convolve2D_1x4x4x1024_3x3x1x1024_Depthwise_Valid
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 4, 4, 1024};
-    std::vector<int64> filter_dims = {3, 3, 1, 1024};
+    std::vector<int64_t> input_dims = {1, 4, 4, 1024};
+    std::vector<int64_t> filter_dims = {3, 3, 1, 1024};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1138,8 +1137,8 @@ class Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 2, 2, 6};
-    std::vector<int64> filter_dims = {2, 2, 2, 12};
+    std::vector<int64_t> input_dims = {1, 2, 2, 6};
+    std::vector<int64_t> filter_dims = {2, 2, 2, 12};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1203,8 +1202,8 @@ class Convolve2D_1x2x2x1024_2x2x128x512_Grouped_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 2, 2, 1024};
-    std::vector<int64> filter_dims = {2, 2, 128, 512};
+    std::vector<int64_t> input_dims = {1, 2, 2, 1024};
+    std::vector<int64_t> filter_dims = {2, 2, 128, 512};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1267,8 +1266,8 @@ class Convolve2D_1x2x2x1024_2x2x128x8_Grouped_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 2, 2, 1024};
-    std::vector<int64> filter_dims = {2, 2, 128, 8};
+    std::vector<int64_t> input_dims = {1, 2, 2, 1024};
+    std::vector<int64_t> filter_dims = {2, 2, 128, 8};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1331,8 +1330,8 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 2, 2, 12};
-    std::vector<int64> filter_dims = {2, 2, 3, 4};
+    std::vector<int64_t> input_dims = {1, 2, 2, 12};
+    std::vector<int64_t> filter_dims = {2, 2, 3, 4};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1395,8 +1394,8 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid_Filter_OF_In_Sublanes
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 2, 2, 12};
-    std::vector<int64> filter_dims = {2, 2, 4, 3};
+    std::vector<int64_t> input_dims = {1, 2, 2, 12};
+    std::vector<int64_t> filter_dims = {2, 2, 4, 3};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1461,8 +1460,8 @@ class Convolve2D_1x1x1x12_1x1x3x4_Grouped_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
-    std::vector<int64> input_dims = {1, 1, 1, 12};
-    std::vector<int64> filter_dims = {1, 1, 3, 4};
+    std::vector<int64_t> input_dims = {1, 1, 1, 12};
+    std::vector<int64_t> filter_dims = {1, 1, 3, 4};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -1565,8 +1564,6 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
 INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
                         ConvolveWithAndWithoutCanonicalization,
                         ::testing::Values(true, false));
-
-
 
 XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   XlaBuilder builder(TestName());
@@ -1779,6 +1776,42 @@ ENTRY TestComputation {
   %parameter.1 = f32[10,5]{1,0} parameter(0)
   %parameter.2 = f32[5,7]{1,0} parameter(1)
   ROOT %convolution.3 = f32[10,7]{1,0} convolution(f32[10,5]{1,0} %parameter.1, f32[5,7]{1,0} %parameter.2), dim_labels=bf_io->bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,5,5,1] parameter(0)
+  %p1 = f32[3,3,1,32] parameter(1)
+  %conv = f32[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
+  %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,4,5,5,1] parameter(0)
+  %p1 = f32[3,3,3,1,32] parameter(1)
+  %conv = f32[8,4,5,5,32] convolution(p0, p1), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,4,5,5,32] broadcast(%bias), dimensions={4}
+  %add = f32[8,4,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,4,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }

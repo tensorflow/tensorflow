@@ -41,30 +41,29 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
     var->copy_on_read_mode.store(true);
     return Status::OK();
   }
-  PersistentTensor unused;
-  Tensor* tmp;
+  Tensor tmp;
   if (std::is_same<T, Variant>::value) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        var->tensor()->dtype(), var->tensor()->shape(), &unused, &tmp, attr));
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(var->tensor()->dtype(),
+                                          var->tensor()->shape(), &tmp, attr));
 
     const auto elements_in = var->tensor()->flat<Variant>();
-    auto elements_out = tmp->flat<Variant>();
-    for (int64 i = 0; i < elements_in.size(); ++i) {
+    auto elements_out = tmp.flat<Variant>();
+    for (int64_t i = 0; i < elements_in.size(); ++i) {
       elements_out(i) = elements_in(i);
     }
   } else {
     AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
     attr.set_nic_compatible(true);
-    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-        var->tensor()->dtype(), var->tensor()->shape(), &unused, &tmp, attr));
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(var->tensor()->dtype(),
+                                          var->tensor()->shape(), &tmp, attr));
     functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
-    copy_functor(ctx->eigen_device<Device>(), tmp->flat<T>(),
+    copy_functor(ctx->eigen_device<Device>(), tmp.flat<T>(),
                  const_cast<const Tensor*>(var->tensor())->flat<T>());
   }
-  *var->tensor() = *tmp;
+  *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
   return Status::OK();
 }
@@ -172,10 +171,8 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
   auto shared_locks = absl::make_unique<std::vector<tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
-  for (auto input : acquire_order) {
-    Var* var;
-    mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, input, sparse, &var);
-    core::ScopedUnref scoped_unref(var);
+  for (auto acquire : acquire_order) {
+    mutex* mu = mutexes[acquire];
     if (mu != nullptr) {
       if (!sparse || do_lock) {
         locks->emplace_back(*mu);
@@ -200,30 +197,29 @@ Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
-    PersistentTensor unused;
-    Tensor* tmp;
+    Tensor tmp;
     if (std::is_same<T, Variant>::value) {
       AllocatorAttributes attr;
       attr.set_on_host(true);
-      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-          tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_temp(tensor->dtype(), tensor->shape(), &tmp, attr));
 
       const auto elements_in = tensor->flat<Variant>();
-      auto elements_out = tmp->flat<Variant>();
-      for (int64 i = 0; i < elements_in.size(); ++i) {
+      auto elements_out = tmp.flat<Variant>();
+      for (int64_t i = 0; i < elements_in.size(); ++i) {
         elements_out(i) = elements_in(i);
       }
     } else {
       AllocatorAttributes attr;
       attr.set_gpu_compatible(true);
       attr.set_nic_compatible(true);
-      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-          tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_temp(tensor->dtype(), tensor->shape(), &tmp, attr));
       functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
-      copy_functor(ctx->eigen_device<Device>(), tmp->flat<T>(),
+      copy_functor(ctx->eigen_device<Device>(), tmp.flat<T>(),
                    const_cast<const Tensor*>(tensor)->flat<T>());
     }
-    *tensor = *tmp;
+    *tensor = tmp;
   }
   return Status::OK();
 }

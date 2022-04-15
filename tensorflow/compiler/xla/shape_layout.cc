@@ -47,8 +47,32 @@ void ShapeLayout::SetToDefaultLayout() {
 }
 
 bool ShapeLayout::MatchesLayoutInShape(const Shape& shape,
-                                       bool minor_to_major_only) const {
+                                       bool minor_to_major_only,
+                                       bool ignore_fully_empty_tiling) const {
   auto equal = Shape::Equal().IgnoreDynamicDimension();
+  if (ignore_fully_empty_tiling) {
+    bool fully_empty_tiling = true;
+    auto check_tiling = [&fully_empty_tiling](const Shape& subshape,
+                                              const xla::ShapeIndex& index) {
+      if (!fully_empty_tiling) {
+        return;
+      }
+      if (subshape.IsArray() && !subshape.layout().tiles().empty()) {
+        fully_empty_tiling = false;
+      }
+    };
+    ShapeUtil::ForEachSubshape(shape, check_tiling);
+    if (fully_empty_tiling) {
+      equal.MinorToMajorOnlyInLayout();
+    } else {
+      fully_empty_tiling = true;
+      // Check the other shape.
+      ShapeUtil::ForEachSubshape(shape_, check_tiling);
+      if (fully_empty_tiling) {
+        equal.MinorToMajorOnlyInLayout();
+      }
+    }
+  }
   if (minor_to_major_only) {
     equal.MinorToMajorOnlyInLayout();
   }
@@ -74,7 +98,6 @@ void ShapeLayout::ResetLayout(const Layout& layout) {
 
 void ShapeLayout::ResetLayout(const Layout& layout,
                               ShapeIndexView shape_index) {
-  CHECK(shape_.IsTuple());
   *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
       layout;
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));

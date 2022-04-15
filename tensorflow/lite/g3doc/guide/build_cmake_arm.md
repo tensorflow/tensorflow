@@ -7,8 +7,7 @@ The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
 , TensorFlow devel docker image
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
-**Note:** This feature is currently experimental and available since version 2.4
-and may change.
+**Note:** This feature is available since version 2.4.
 
 ### Prerequisites
 
@@ -125,7 +124,7 @@ target has lower glibc version, you need to use older GCC toolchain.
 #### Run CMake
 
 ```sh
-ARMCC_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -funsafe-math-optimizations"
+ARMCC_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -funsafe-math-optimizations -mfp16-format=ieee"
 ARMCC_PREFIX=${HOME}/toolchains/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
 cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
   -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
@@ -138,7 +137,9 @@ cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
 ```
 
 **Note:** Since ARMv7 architecture is diverse, you may need to update
-ARMCC_FLAGS for your target device profiles.
+ARMCC_FLAGS for your target device profiles. For example, when compiling with
+XNNPACK enabled (i.e. `XNNPACK=ON`) in Tensorflow Lite 2.8, please add
+`-mfp16-format=ieee` to ARMCC_FLAGS.
 
 ## Build for Raspberry Pi Zero (ARMv6)
 

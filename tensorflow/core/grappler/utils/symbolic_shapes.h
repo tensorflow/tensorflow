@@ -38,7 +38,7 @@ int Rank(const TensorShapeProto& shape);
 // Returns the number of coefficients in the shape or -1 if unknown.
 // TODO(bsteiner) Add a function that computes the minimum size of the tensor,
 // ie the size assuming all the symbolic dimensions take the value 1.
-int64 NumCoefficients(const TensorShapeProto& shape);
+int64_t NumCoefficients(const TensorShapeProto& shape);
 
 // Shapes are symbolically equal, if they have the same rank, they are known or
 // symbolically defined, and have matching dimensions.
@@ -68,8 +68,8 @@ bool CompareSymbolicallyShapedTensorSizes(
 
 // Returns the ratio of the sizes of the 2 shapes if known statically, or -1
 // otherwise.
-int64 ComputeSizeRatio(const TensorShapeProto& numerator,
-                       const TensorShapeProto& denominator);
+int64_t ComputeSizeRatio(const TensorShapeProto& numerator,
+                         const TensorShapeProto& denominator);
 
 }  // namespace grappler
 }  // end namespace tensorflow

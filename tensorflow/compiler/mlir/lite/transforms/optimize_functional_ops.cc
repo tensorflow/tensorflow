@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -35,7 +36,19 @@ namespace {
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
     : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeFunctionalOpsPass)
+
   void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-optimize-functional-ops";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Optimize TensorFlow functional ops";
+  }
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -46,7 +59,7 @@ void UpdateFuncType(FuncOp func) {
   Operation* terminator = func.front().getTerminator();
   auto return_types = llvm::to_vector<4>(terminator->getOperandTypes());
 
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   if (llvm::makeArrayRef(return_types) == func_type.getResults()) return;
 
   auto updated_type =
@@ -107,7 +120,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
       return failure();
 
     // Identify the branch to inline.
-    bool cond_value = (*cond.int_value_begin()).getSExtValue();
+    bool cond_value = (*cond.value_begin<APInt>()).getSExtValue();
     FuncOp func = cond_value ? then_func : else_func;
 
     // Make sure that the function has exactly one block to simplify inlining.
@@ -145,16 +158,15 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 };
 
 void OptimizeFunctionalOpsPass::runOnOperation() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
 
-  patterns.insert<FoldIfOp>(&getContext());
+  patterns.add<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
   (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
-PassRegistration<OptimizeFunctionalOpsPass> pass(
-    "tfl-optimize-functional-ops", "Optimize TensorFlow functional ops");
+PassRegistration<OptimizeFunctionalOpsPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {

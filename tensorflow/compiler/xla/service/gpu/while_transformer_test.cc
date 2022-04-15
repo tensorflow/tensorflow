@@ -35,10 +35,10 @@ class WhileTransformerTest : public HloTestBase {
         condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}
 
   std::unique_ptr<HloComputation> BuildConditionComputation(
-      const int64 tuple_index, const int64 limit) {
+      const int64_t tuple_index, const int64_t limit) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(limit)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(limit)));
     auto loop_state = builder.AddInstruction(HloInstruction::CreateParameter(
         0, GetLoopStateShape(tuple_index), "loop_state"));
     auto induction_variable =
@@ -51,8 +51,8 @@ class WhileTransformerTest : public HloTestBase {
   }
 
   std::unique_ptr<HloComputation> BuildBodyComputation(
-      const int64 ind_var_tuple_index, const int64 data_tuple_index,
-      const int64 increment) {
+      const int64_t ind_var_tuple_index, const int64_t data_tuple_index,
+      const int64_t increment) {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     // Create param instruction to access loop state.
     auto loop_state = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -62,7 +62,7 @@ class WhileTransformerTest : public HloTestBase {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, ind_var_tuple_index));
     auto inc = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(increment)));
+        LiteralUtil::CreateR0<int32_t>(increment)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(data_tuple_index).
@@ -84,12 +84,12 @@ class WhileTransformerTest : public HloTestBase {
 
   HloInstruction* BuildWhileInstruction(HloComputation* condition,
                                         HloComputation* body,
-                                        const int64 ind_var_tuple_index,
-                                        const int64 ind_var_init) {
+                                        const int64_t ind_var_tuple_index,
+                                        const int64_t ind_var_init) {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init =
         builder.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(ind_var_init)));
+            LiteralUtil::CreateR0<int32_t>(ind_var_init)));
     auto data_init = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
             {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
@@ -106,7 +106,7 @@ class WhileTransformerTest : public HloTestBase {
     return while_hlo;
   }
 
-  Shape GetLoopStateShape(const int64 ind_var_tuple_index) {
+  Shape GetLoopStateShape(const int64_t ind_var_tuple_index) {
     if (ind_var_tuple_index == 0) {
       return ShapeUtil::MakeTupleShape(
           {induction_variable_shape_, data_shape_});

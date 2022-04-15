@@ -18,8 +18,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -77,8 +77,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             ShapeLayout(result_shape_with_layout);
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-            backend().default_stream_executor());
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
@@ -93,7 +92,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
 // Returns a list shapes with all the possible layouts of this shape, including
 // a shape with no layout.
 std::vector<Shape> AllLayoutsOf(const Shape& s) {
-  std::vector<int64> layout_vec(s.dimensions_size());
+  std::vector<int64_t> layout_vec(s.dimensions_size());
   std::iota(layout_vec.begin(), layout_vec.end(), 0);
 
   std::vector<Shape> shapes;
@@ -106,236 +105,6 @@ std::vector<Shape> AllLayoutsOf(const Shape& s) {
   } while (std::next_permutation(layout_vec.begin(), layout_vec.end()));
 
   return shapes;
-}
-
-TEST_F(LayoutAssignmentTest, BatchNormInference) {
-  const int64 kFeatureIndex = 1;
-
-  // The shape of the data operand to BatchNormInference and of the output of
-  // the BatchNormInference call.
-  Shape shape = ShapeUtil::MakeShape(F32, {42, 12, 1, 100});
-
-  // The shape of the scale, offset, mean, and variance inputs to
-  // BatchNormTraining.  These are rank 1, with as many elements are in the
-  // kFeatureIndex dim of shape.
-  Shape aux_shape =
-      ShapeUtil::MakeShape(F32, {shape.dimensions(kFeatureIndex)});
-
-  for (const Shape& input_shape : AllLayoutsOf(shape)) {
-    for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(absl::StrCat(
-          "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
-          ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
-
-      auto builder = HloComputation::Builder(TestName());
-      auto* operand = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape, "operand"));
-      auto* scale = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, aux_shape, "scale"));
-      auto* offset = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, aux_shape, "offset"));
-      auto* mean = builder.AddInstruction(
-          HloInstruction::CreateParameter(3, aux_shape, "mean"));
-      auto* variance = builder.AddInstruction(
-          HloInstruction::CreateParameter(4, aux_shape, "variance"));
-
-      auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
-      auto* feature_index =
-          builder.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
-
-      auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
-          shape,
-          {operand, scale, offset, mean, variance, epsilon, feature_index},
-          kCudnnBatchNormForwardInferenceCallTarget));
-
-      auto module = CreateNewVerifiedModule();
-      HloComputation* computation =
-          module->AddEntryComputation(builder.Build(batchnorm));
-
-      ComputationLayout computation_layout(computation->ComputeProgramShape());
-
-      if (input_shape.has_layout()) {
-        *computation_layout.mutable_parameter_layout(0) =
-            ShapeLayout(input_shape);
-      }
-
-      if (result_shape.has_layout()) {
-        *computation_layout.mutable_result_layout() = ShapeLayout(result_shape);
-      }
-
-      GpuLayoutAssignment layout_assignment(
-          &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-          backend().default_stream_executor());
-      EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
-
-      // The first operand to batchnorm should have the same layout as the
-      // result.
-      EXPECT_TRUE(LayoutUtil::Equal(batchnorm->operand(0)->shape().layout(),
-                                    batchnorm->shape().layout()))
-          << batchnorm->ToString();
-    }
-  }
-}
-
-TEST_F(LayoutAssignmentTest, BatchNormTraining) {
-  const int64 kFeatureIndex = 1;
-
-  // The shape of the data operand to BatchNormTraining.
-  Shape shape = ShapeUtil::MakeShape(F32, {42, 12, 1, 100});
-
-  // The shape of the offset and scale inputs to BatchNormTraining.  These are
-  // rank 1, with as many elements are in the kFeatureIndex dim of shape.
-  Shape offset_scale_shape =
-      ShapeUtil::MakeShape(F32, {shape.dimensions(kFeatureIndex)});
-
-  // Shape of the output of our BatchNormTraining op.
-  Shape batchnorm_shape = ShapeUtil::MakeTupleShape(
-      {shape, offset_scale_shape, offset_scale_shape});
-
-  // Enumerate all combinations of shapes.
-  for (const Shape& input_shape : AllLayoutsOf(shape)) {
-    for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(absl::StrCat(
-          "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
-          ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
-
-      auto builder = HloComputation::Builder(TestName());
-      auto* operand = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape, "operand"));
-      auto* scale = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, offset_scale_shape, "scale"));
-      auto* offset = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, offset_scale_shape, "offset"));
-
-      auto* epsilon = builder.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
-      auto* feature_index =
-          builder.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
-
-      auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
-          batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
-          kCudnnBatchNormForwardTrainingCallTarget));
-
-      auto module = CreateNewVerifiedModule();
-      HloComputation* computation =
-          module->AddEntryComputation(builder.Build(batchnorm));
-
-      ComputationLayout computation_layout(computation->ComputeProgramShape());
-
-      if (input_shape.has_layout()) {
-        *computation_layout.mutable_parameter_layout(0) =
-            ShapeLayout(input_shape);
-      }
-
-      if (result_shape.has_layout()) {
-        *computation_layout.mutable_result_layout() =
-            ShapeLayout(ShapeUtil::MakeTupleShape(
-                {result_shape, offset_scale_shape, offset_scale_shape}));
-      }
-
-      GpuLayoutAssignment layout_assignment(
-          &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-          backend().default_stream_executor());
-      EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
-
-      // The first operand to batchnorm should have the same layout as the
-      // first element of the result tuple.
-      EXPECT_TRUE(
-          LayoutUtil::Equal(batchnorm->operand(0)->shape().layout(),
-                            batchnorm->shape().tuple_shapes(0).layout()))
-          << batchnorm->ToString();
-    }
-  }
-}
-
-TEST_F(LayoutAssignmentTest, BatchNormGrad) {
-  const int64 kFeatureIndex = 1;
-
-  // The shape of the data operand to BatchNormTraining.
-  Shape shape = ShapeUtil::MakeShape(F32, {42, 12, 1, 100});
-
-  // The shape of the scale, mean, and variance inputs to BatchNormGrad.  These
-  // are rank 1, with as many elements are in the kFeatureIndex dim of shape.
-  Shape scale_shape =
-      ShapeUtil::MakeShape(F32, {shape.dimensions(kFeatureIndex)});
-
-  // Shape of the output of our BatchNormGrad op.
-  Shape batchnorm_shape =
-      ShapeUtil::MakeTupleShape({shape, scale_shape, scale_shape});
-
-  // Enumerate all combinations of shapes plus whether we're constraining param
-  // 0 or param 4.
-  for (const Shape& input_shape : AllLayoutsOf(shape)) {
-    for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      for (int constrained_param_no : {0, 4}) {
-        SCOPED_TRACE(absl::StrCat(
-            "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
-            ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
-
-        auto builder = HloComputation::Builder(TestName());
-        auto* operand = builder.AddInstruction(
-            HloInstruction::CreateParameter(0, shape, "operand"));
-        auto* scale = builder.AddInstruction(
-            HloInstruction::CreateParameter(1, scale_shape, "scale"));
-        auto* mean = builder.AddInstruction(
-            HloInstruction::CreateParameter(2, scale_shape, "mean"));
-        auto* var = builder.AddInstruction(
-            HloInstruction::CreateParameter(3, scale_shape, "var"));
-        auto* grad_offset = builder.AddInstruction(
-            HloInstruction::CreateParameter(4, shape, "var"));
-
-        auto* epsilon = builder.AddInstruction(
-            HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
-        auto* feature_index =
-            builder.AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<int64>(kFeatureIndex)));
-
-        auto* batchnorm =
-            builder.AddInstruction(HloInstruction::CreateCustomCall(
-                batchnorm_shape,
-                {operand, scale, mean, var, grad_offset, epsilon,
-                 feature_index},
-                kCudnnBatchNormBackwardCallTarget));
-
-        auto module = CreateNewVerifiedModule();
-        HloComputation* computation =
-            module->AddEntryComputation(builder.Build(batchnorm));
-
-        ComputationLayout computation_layout(
-            computation->ComputeProgramShape());
-
-        if (input_shape.has_layout()) {
-          *computation_layout.mutable_parameter_layout(constrained_param_no) =
-              ShapeLayout(input_shape);
-        }
-
-        if (result_shape.has_layout()) {
-          *computation_layout.mutable_result_layout() =
-              ShapeLayout(ShapeUtil::MakeTupleShape(
-                  {result_shape, scale_shape, scale_shape}));
-        }
-
-        GpuLayoutAssignment layout_assignment(
-            &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-            backend().default_stream_executor());
-        EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
-
-        // The first and fourth operands to the batchnorm call should have the
-        // same layout as the first element of the result tuple.
-        EXPECT_TRUE(
-            LayoutUtil::Equal(batchnorm->operand(0)->shape().layout(),
-                              batchnorm->shape().tuple_shapes(0).layout()))
-            << batchnorm->ToString();
-        EXPECT_TRUE(
-            LayoutUtil::Equal(batchnorm->operand(4)->shape().layout(),
-                              batchnorm->shape().tuple_shapes(0).layout()))
-            << batchnorm->ToString();
-      }
-    }
-  }
 }
 
 TEST_F(LayoutAssignmentTest, DotLayout) {
@@ -355,9 +124,8 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-      backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
   EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
   Shape expected_shape =
@@ -365,6 +133,34 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::ShapeWithLayout(expected_shape),
                       op::ShapeWithLayout(expected_shape)));
+}
+
+TEST_F(LayoutAssignmentTest, DotLayoutS8) {
+  const char* hlo_text = R"(
+  HloModule DotLayout
+  ENTRY int8_t {
+    p0 = s8[1024,65536] parameter(0)
+    p1 = s8[65536,65536] parameter(1)
+    ROOT out = s32[1024,65536] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape_p0 =
+      ShapeUtil::MakeShapeWithLayout(S8, {1024, 65536}, {1, 0});
+  Shape expected_shape_p1 =
+      ShapeUtil::MakeShapeWithLayout(S8, {65536, 65536}, {0, 1});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::ShapeWithLayout(expected_shape_p0),
+                      op::ShapeWithLayout(expected_shape_p1)));
 }
 
 TEST_F(LayoutAssignmentTest, SortLayout) {
@@ -393,9 +189,8 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-      backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
   EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
   Shape expected_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 2}, {1, 0});
@@ -420,9 +215,8 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
-      backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
   EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
   Shape expected_shape = ShapeUtil::MakeShapeWithLayout(C64, {8, 32}, {1, 0});

@@ -22,20 +22,26 @@ namespace tensorflow {
 Status CustomDeviceTensorHandle::Shape(PartialTensorShape* shape) const {
   int num_dims;
   TF_RETURN_IF_ERROR(NumDims(&num_dims));
-  std::vector<int64> dims(num_dims);
+  std::vector<int64_t> dims(num_dims);
   for (int i = 0; i < num_dims; ++i) {
     TF_RETURN_IF_ERROR(Dim(i, &dims[i]));
   }
   return PartialTensorShape::MakePartialShape(dims.data(), num_dims, shape);
 }
 
-Status CustomDeviceTensorHandle::NumElements(int64* num_elements) const {
+Status CustomDeviceTensorHandle::NumElements(int64_t* num_elements) const {
   *num_elements = 1;
   int num_dims;
   TF_RETURN_IF_ERROR(NumDims(&num_dims));
   for (int i = 0; i < num_dims; ++i) {
-    int64 dim;
+    int64_t dim;
     TF_RETURN_IF_ERROR(Dim(i, &dim));
+    if (dim < 0) {
+      return errors::InvalidArgument(
+          absl::StrCat("Tried to compute the number of elements of a tensor "
+                       "representing varying shapes. ",
+                       DebugString()));
+    }
     *num_elements *= dim;
   }
   return Status::OK();

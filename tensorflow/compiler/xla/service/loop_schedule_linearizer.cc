@@ -40,14 +40,14 @@ struct ComputationInstructionOrdering {
     }
   }
 
-  int32 NodeIdForInstruction(const HloInstruction& instr) {
-    int32 instruction_id = instr.unique_id();
+  int32_t NodeIdForInstruction(const HloInstruction& instr) {
+    int32_t instruction_id = instr.unique_id();
     auto it = node_id_to_graph_id.find(instruction_id);
 
     if (it != node_id_to_graph_id.end()) {
       return it->second;
     }
-    int32 node_id = graph_cycles.NewNode();
+    int32_t node_id = graph_cycles.NewNode();
     node_id_to_graph_id[instruction_id] = node_id;
     return node_id;
   }
@@ -55,12 +55,12 @@ struct ComputationInstructionOrdering {
   // Returns `false` if adding an edge would have introduced a cycle. Does not
   // add an edge in that case. Returns `true` otherwise.
   bool InsertEdge(const HloInstruction& source, const HloInstruction& dest) {
-    int32 source_id = NodeIdForInstruction(source);
-    int32 dest_id = NodeIdForInstruction(dest);
+    int32_t source_id = NodeIdForInstruction(source);
+    int32_t dest_id = NodeIdForInstruction(dest);
     return graph_cycles.InsertEdge(source_id, dest_id);
   }
 
-  absl::flat_hash_map<int32, int32> node_id_to_graph_id;
+  absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id;
 
   tensorflow::GraphCycles graph_cycles;
 };
@@ -107,7 +107,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
       // into account.
       HloInstruction* write = value_at_root.defining_instruction();
 
-      for (const HloUse& use : value_at_input.uses()) {
+      for (const HloUse& use : value_at_input.GetUses()) {
         HloInstruction* read = use.instruction;
 
         if (read != write &&

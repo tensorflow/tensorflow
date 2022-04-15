@@ -28,7 +28,7 @@ class TupleUtil {
   // The instructions are generated into the computation containing
   // `input_tuple`.
   static HloInstruction* ExtractPrefix(HloInstruction* input_tuple,
-                                       int64 elements);
+                                       int64_t elements);
 
   // Generates HLO instructions to create a tuple that consists of the values in
   // `trailing_values` appended to `input_tuple` (which must be of tuple shape).

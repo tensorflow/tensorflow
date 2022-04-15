@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gather_expander.h"
+
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
@@ -26,8 +27,9 @@ limitations under the License.
 
 namespace xla {
 
-static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
-    HloInstruction* start_indices, int64 index_vector_dim) {
+namespace {
+StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
+    HloInstruction* start_indices, int64_t index_vector_dim) {
   const Shape& start_indices_shape = start_indices->shape();
 
   if (start_indices_shape.dimensions_size() == index_vector_dim) {
@@ -38,9 +40,9 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     return start_indices;
   }
 
-  std::vector<int64> permutation;
+  std::vector<int64_t> permutation;
   permutation.reserve(start_indices_shape.dimensions_size());
-  for (int64 i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
       permutation.push_back(i);
     }
@@ -53,8 +55,8 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
 // specific cases in the while loop that does the heavy lifting.
 //
 // See the "High Level Algorithm" section for a broader picture.
-static StatusOr<HloInstruction*> CanonicalizeGatherIndices(
-    HloInstruction* start_indices, int64 index_vector_dim) {
+StatusOr<HloInstruction*> CanonicalizeGatherIndices(
+    HloInstruction* start_indices, int64_t index_vector_dim) {
   // Transpose the non-index-vector dimensions to the front.
   TF_ASSIGN_OR_RETURN(
       HloInstruction * transposed_start_indices,
@@ -63,7 +65,7 @@ static StatusOr<HloInstruction*> CanonicalizeGatherIndices(
       index_vector_dim == start_indices->shape().dimensions_size();
 
   // The number of dimensions in start_indices that are index dimensions.
-  const int64 index_dims_in_start_indices = indices_are_scalar ? 0 : 1;
+  const int64_t index_dims_in_start_indices = indices_are_scalar ? 0 : 1;
 
   // If there is only one index (i.e. start_indices has rank 1 and this gather
   // is really just a dynamic slice) add a leading degenerate dimension for
@@ -83,12 +85,12 @@ static StatusOr<HloInstruction*> CanonicalizeGatherIndices(
 
 // Expands out or contracts away the gather dimensions in the accumulator
 // produced by the while loop.
-static StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
+StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
     const Shape& start_indices_shape, HloInstruction* accumulator,
-    int64 index_vector_dim) {
-  std::vector<int64> batch_dim_bounds;
+    int64_t index_vector_dim) {
+  std::vector<int64_t> batch_dim_bounds;
   batch_dim_bounds.reserve(start_indices_shape.dimensions_size());
-  for (int64 i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
+  for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
       batch_dim_bounds.push_back(start_indices_shape.dimensions(i));
     }
@@ -107,9 +109,9 @@ static StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
 
 // Expand an index vector from the start_indices tensor into a vector that can
 // be used to dynamic-slice out of the gather operand.
-static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
+StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     HloInstruction* index_vector, const GatherDimensionNumbers& dim_numbers,
-    int64 operand_rank) {
+    int64_t operand_rank) {
   HloComputation* computation = index_vector->parent();
   const Shape& index_shape = index_vector->shape();
 
@@ -129,7 +131,8 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   std::vector<HloInstruction*> expanded_index_components;
 
   for (int i = 0; i < operand_rank; i++) {
-    int64 index_vector_dim_index = FindIndex(dim_numbers.start_index_map(), i);
+    int64_t index_vector_dim_index =
+        FindIndex(dim_numbers.start_index_map(), i);
     if (index_vector_dim_index != dim_numbers.start_index_map_size()) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * component_to_concat,
@@ -147,7 +150,7 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
 
 // This generates the body of the while that implements the main data movement
 // behavior of gather using dynamic-slice and dynamic-update-slice.
-static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
+StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
     const HloInstruction& gather, HloInstruction* induction_var,
     const std::vector<HloInstruction*>& incoming_loop_state) {
   const GatherDimensionNumbers& dim_numbers = gather.gather_dimension_numbers();
@@ -182,7 +185,7 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
         PadVectorWithZeros(induction_var_as_vector,
                            /*zeros_to_prepend=*/0, /*zeros_to_append=*/1));
 
-    int64 index_vector_size = start_indices->shape().dimensions(1);
+    int64_t index_vector_size = start_indices->shape().dimensions(1);
     TF_ASSIGN_OR_RETURN(
         HloInstruction * index_vector_2d,
         MakeDynamicSliceHlo(start_indices, index_into_start_indices,
@@ -203,8 +206,7 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_with_dims_collapsed,
-      ElideDegenerateDims(gathered_slice,
-                          AsInt64Slice(dim_numbers.collapsed_slice_dims())));
+      ElideDegenerateDims(gathered_slice, dim_numbers.collapsed_slice_dims()));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_for_update,
@@ -229,14 +231,14 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
       {operand, start_indices, updated_accumulator}};
 }
 
-static HloInstruction* CreateGatherLoopAccumulatorInitValue(
+HloInstruction* CreateGatherLoopAccumulatorInitValue(
     HloComputation* computation, PrimitiveType element_type,
-    absl::Span<const int64> slice_sizes, int64 gather_loop_trip_count,
+    absl::Span<const int64_t> slice_sizes, int64_t gather_loop_trip_count,
     const GatherDimensionNumbers& dim_numbers) {
-  std::vector<int64> accumulator_state_shape_dims;
+  std::vector<int64_t> accumulator_state_shape_dims;
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
-  for (int64 i = 0; i < slice_sizes.size(); i++) {
+  for (int64_t i = 0; i < slice_sizes.size(); i++) {
     if (!absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
       accumulator_state_shape_dims.push_back(slice_sizes[i]);
     }
@@ -249,15 +251,15 @@ static HloInstruction* CreateGatherLoopAccumulatorInitValue(
 // except that it has the dimensions in the wrong order -- the batch dimensions
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
-static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
-    HloInstruction* accumulator, absl::Span<const int64> offset_dims,
-    int64 output_rank) {
-  std::vector<int64> permutation;
+StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
+    HloInstruction* accumulator, absl::Span<const int64_t> offset_dims,
+    int64_t output_rank) {
+  std::vector<int64_t> permutation;
   permutation.reserve(output_rank);
 
-  int64 batch_idx_counter = 0;
-  int64 offset_idx_counter = output_rank - offset_dims.size();
-  for (int64 i = 0; i < output_rank; i++) {
+  int64_t batch_idx_counter = 0;
+  int64_t offset_idx_counter = output_rank - offset_dims.size();
+  for (int64_t i = 0; i < output_rank; i++) {
     bool is_offset_dim = absl::c_binary_search(offset_dims, i);
     if (is_offset_dim) {
       permutation.push_back(offset_idx_counter++);
@@ -270,14 +272,14 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
 }
 
 // Computes how many trips a loop implementing this gather op would take.
-static int64 GatherLoopTripCount(HloInstruction* gather_instr) {
+int64_t GatherLoopTripCount(HloInstruction* gather_instr) {
   HloInstruction* start_indices = gather_instr->mutable_operand(1);
   const Shape& start_indices_shape = start_indices->shape();
   const GatherDimensionNumbers& dim_numbers =
       gather_instr->gather_dimension_numbers();
 
-  int64 trip_count = 1;
-  for (int64 i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
+  int64_t trip_count = 1;
+  for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != dim_numbers.index_vector_dim()) {
       trip_count *= start_indices_shape.dimensions(i);
     }
@@ -285,6 +287,11 @@ static int64 GatherLoopTripCount(HloInstruction* gather_instr) {
   return trip_count;
 }
 
+int64_t GatherIsBroadcast(HloInstruction* gather_instr) {
+  return absl::c_equal(gather_instr->gather_slice_sizes(),
+                       gather_instr->operand(0)->shape().dimensions());
+}
+}  // namespace
 // High Level Algorithm
 //
 // We follow the following steps in sequence:
@@ -324,16 +331,39 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     HloInstruction* gather_instr) {
   CHECK(!ShapeUtil::IsZeroElementArray(gather_instr->shape()));
 
+  if (GatherIsBroadcast(gather_instr)) {
+    if (ShapeUtil::IsZeroElementArray(gather_instr->operand(0)->shape())) {
+      return MakeScalarLike(gather_instr, 0);
+    }
+    Shape broadcast_operand_shape = ShapeUtil::FilterDimensions(
+        [&](int64_t dim) {
+          return !absl::c_linear_search(
+              gather_instr->gather_dimension_numbers().collapsed_slice_dims(),
+              dim);
+        },
+        gather_instr->operand(0)->shape());
+    TF_ASSIGN_OR_RETURN(HloInstruction * broadcast_operand,
+                        MakeReshapeHlo(broadcast_operand_shape,
+                                       gather_instr->mutable_operand(0)));
+    gather_instr->SetupDerivedInstruction(broadcast_operand);
+    HloInstruction* broadcast =
+        MakeBroadcastHlo(broadcast_operand,
+                         gather_instr->gather_dimension_numbers().offset_dims(),
+                         gather_instr->shape());
+    gather_instr->SetupDerivedInstruction(broadcast);
+    return broadcast;
+  }
+
   HloComputation* computation = gather_instr->parent();
   HloInstruction* operand = gather_instr->mutable_operand(0);
   HloInstruction* start_indices = gather_instr->mutable_operand(1);
   const Shape& output_shape = gather_instr->shape();
-  int64 output_rank = output_shape.dimensions_size();
+  int64_t output_rank = output_shape.dimensions_size();
 
   const GatherDimensionNumbers& dim_numbers =
       gather_instr->gather_dimension_numbers();
 
-  int64 gather_loop_trip_count = GatherLoopTripCount(gather_instr);
+  int64_t gather_loop_trip_count = GatherLoopTripCount(gather_instr);
   if (!IsInt32(gather_loop_trip_count)) {
     return Unimplemented(
         "Gather operations with more than 2147483647 gather indices are not "
@@ -374,8 +404,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
                                    dim_numbers.index_vector_dim()));
 
   return PermuteBatchAndOffsetDims(accumulator_with_batch_dims_decanonicalized,
-                                   AsInt64Slice(dim_numbers.offset_dims()),
-                                   output_rank);
+                                   dim_numbers.offset_dims(), output_rank);
 }
 
 bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
@@ -386,7 +415,9 @@ bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
          // In kEliminateSimpleGathers mode, we only simplify instructions
          // which can be represented without a loop -- i.e. we only simplify
          // gathers which have a trip count of 1.
-         (mode_ == kEliminateAllGathers || GatherLoopTripCount(inst) == 1);
+         (mode_ == kEliminateAllGathers || GatherLoopTripCount(inst) == 1 ||
+          absl::c_equal(inst->gather_slice_sizes(),
+                        inst->operand(0)->shape().dimensions()));
 }
 
 }  // namespace xla

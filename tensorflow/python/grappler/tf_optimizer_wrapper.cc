@@ -58,52 +58,57 @@ void DetectDevices(
 }
 
 PYBIND11_MODULE(_pywrap_tf_optimizer, m) {
-  m.def(
-      "TF_OptimizeGraph",
-      [](tensorflow::grappler::Cluster* cluster,
-         const py::bytes& serialized_config_proto,
-         const py::bytes& serialized_metagraph, bool verbose,
-         const std::string& graph_id,
-         bool strip_default_attributes) -> py::bytes {
-        tensorflow::ConfigProto config_proto;
-        if (!config_proto.ParseFromString(
-                std::string(serialized_config_proto))) {
-          throw std::invalid_argument(
-              "The ConfigProto could not be parsed as a valid protocol buffer");
-        }
-        tensorflow::MetaGraphDef metagraph;
-        if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
-          throw std::invalid_argument(
-              "The MetaGraphDef could not be parsed as a valid protocol "
-              "buffer");
-        }
+  m.def("TF_OptimizeGraph",
+        [](tensorflow::grappler::Cluster* cluster,
+           const std::string& serialized_config_proto,
+           const std::string& serialized_metagraph, bool verbose,
+           const std::string& graph_id,
+           bool strip_default_attributes) -> py::bytes {
+          std::string out_graph_bytes;
+          {
+            py::gil_scoped_release gil_release;
+            tensorflow::ConfigProto config_proto;
+            if (!config_proto.ParseFromString(serialized_config_proto)) {
+              throw std::invalid_argument(
+                  "The ConfigProto could not be parsed as a valid protocol "
+                  "buffer");
+            }
+            tensorflow::MetaGraphDef metagraph;
+            if (!metagraph.ParseFromString(serialized_metagraph)) {
+              throw std::invalid_argument(
+                  "The MetaGraphDef could not be parsed as a valid protocol "
+                  "buffer");
+            }
 
-        tensorflow::grappler::ItemConfig item_config;
-        // This disables graph optimizations in the older graph optimizer, which
-        // tend to overlap / be redundant with those in Grappler.
-        item_config.apply_optimizations = false;
-        item_config.ignore_user_placement = false;
-        std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-            tensorflow::grappler::GrapplerItemFromMetaGraphDef(
-                graph_id, metagraph, item_config);
-        if (!grappler_item) {
-          throw std::invalid_argument(
-              "Failed to import metagraph, check error log for more info.");
-        }
+            tensorflow::grappler::ItemConfig item_config;
+            // This disables graph optimizations in the older graph optimizer,
+            // which tend to overlap / be redundant with those in Grappler.
+            item_config.apply_optimizations = false;
+            item_config.ignore_user_placement = false;
+            std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
+                tensorflow::grappler::GrapplerItemFromMetaGraphDef(
+                    graph_id, metagraph, item_config);
+            if (!grappler_item) {
+              throw std::invalid_argument(
+                  "Failed to import metagraph, check error log for more info.");
+            }
 
-        tensorflow::DeviceBase* cpu_device = nullptr;
-        tensorflow::GraphDef out_graph;
-        tensorflow::grappler::MetaOptimizer optimizer(cpu_device, config_proto);
+            tensorflow::DeviceBase* cpu_device = nullptr;
+            tensorflow::GraphDef out_graph;
+            tensorflow::grappler::MetaOptimizer optimizer(cpu_device,
+                                                          config_proto);
 
-        MaybeRaiseRegisteredFromStatus(
-            optimizer.Optimize(cluster, *grappler_item, &out_graph));
-        if (strip_default_attributes) {
-          tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
-                                             out_graph.mutable_node());
-        }
-        if (verbose) {
-          optimizer.PrintResult();
-        }
-        return out_graph.SerializeAsString();
-      });
+            MaybeRaiseRegisteredFromStatusWithGIL(
+                optimizer.Optimize(cluster, *grappler_item, &out_graph));
+            if (strip_default_attributes) {
+              tensorflow::StripDefaultAttributes(
+                  *tensorflow::OpRegistry::Global(), out_graph.mutable_node());
+            }
+            if (verbose) {
+              optimizer.PrintResult();
+            }
+            out_graph_bytes = out_graph.SerializeAsString();
+          }
+          return py::bytes(std::move(out_graph_bytes));
+        });
 }

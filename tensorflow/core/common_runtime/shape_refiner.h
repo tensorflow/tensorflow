@@ -47,8 +47,8 @@ class ExtendedInferenceContext {
     }
   }
 
-  DataType input_type(int64 idx) const { return input_types_[idx]; }
-  DataType output_type(int64 idx) const { return output_types_[idx]; }
+  DataType input_type(int64_t idx) const { return input_types_[idx]; }
+  DataType output_type(int64_t idx) const { return output_types_[idx]; }
 
   shape_inference::InferenceContext* get_context() {
     return inference_context_.get();
@@ -129,7 +129,7 @@ class ShapeRefiner {
 
   // Getters and setters for graph_def_version_.
   int32 graph_def_version() const { return graph_def_version_; }
-  void set_graph_def_version(int32 version) { graph_def_version_ = version; }
+  void set_graph_def_version(int32_t version) { graph_def_version_ = version; }
 
   void set_require_shape_inference_fns(bool require_shape_inference_fns) {
     require_shape_inference_fns_ = require_shape_inference_fns;
@@ -232,7 +232,7 @@ class ShapeRefiner {
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
   Status EvaluateConstantIntScalarEdge(
-      const Node* node, int dst_idx, bool* evaluated, int64* result,
+      const Node* node, int dst_idx, bool* evaluated, int64_t* result,
       shape_inference::InferenceContext* outer_context);
 
   // This function tries to materialize as much information about the 'node''s
@@ -310,7 +310,7 @@ class ShapeRefiner {
   // becomes a concern.
   //
   // Only tensors less than 1KiB are currently stored in the cache.
-  static constexpr int64 kMaxTensorSize = 1024;
+  static constexpr int64_t kMaxTensorSize = 1024;
   std::unordered_map<string, Tensor> const_tensor_map_;
 
   bool require_shape_inference_fns_ = true;

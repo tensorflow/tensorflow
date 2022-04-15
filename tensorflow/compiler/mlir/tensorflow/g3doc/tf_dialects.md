@@ -43,9 +43,10 @@ systems in general.
 
 Operations in this dialect usually operate on tensor and scalar types defined in
 the standard dialect. The extra defined types are specific to TensorFlow: `QINT`
-types like !tf.qint8 (etc), `QUINT` types like !tf.quint8, all of the `REF`
-types like !tf.uint8ref, as well as !tf.string, !tf.resource, and !tf.variant
-which correspond to the tensorflow types of the same name.
+types like !tf_type.qint8 (etc), `QUINT` types like !tf_type.quint8, all of the
+`REF` types like !tf_type.uint8ref, as well as !tf_type.string,
+!tf_type.resource, and !tf_type.variant which correspond to the tensorflow types
+of the same name.
 
 ### Example:
 
@@ -62,7 +63,7 @@ func some_function(%input : tensor<*xf32>) -> tensor<*xf32> {
   // Operations have sequential execution semantics in a basic block, there are
   // no control dependencies.  The compiler can reorder operations according to
   // the as-if rule ( https://en.wikipedia.org/wiki/As-if_rule ).
-  %three = constant splat<tensor<f32>, 3.0>
+  %three = arith.constant splat<tensor<f32>, 3.0>
   %mul = tf.Mul %input, %three : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
 
   // Only control flow v2 is supported in TF dialect.

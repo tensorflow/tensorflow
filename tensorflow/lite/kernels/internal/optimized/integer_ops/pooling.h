@@ -144,7 +144,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape, const int8* input_data,
                         const RuntimeShape& output_shape, int8* output_data) {
   ruy::profiler::ScopeLabel label("AveragePool/8bitWith32bitAccumulator");
@@ -192,6 +192,7 @@ inline void AveragePool(const PoolParams& params,
               std::min(params.filter_height, input_height - in_y_origin);
           const int filter_count =
               (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
+          if (filter_count == 0) return false;
           memset(acc, 0, tranche_depth * sizeof(acc[0]));
           const int8* input_ptr =
               input_data + depth_base +
@@ -267,6 +268,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 }  // namespace optimized_integer_ops

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.experimental.parse_example_dataset()."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from absl.testing import parameterized
@@ -30,6 +26,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -397,11 +394,13 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         aname:
-            np.array(
-                [[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
+            np.array(  # pylint: disable=too-many-function-args
+                [[1, 1], [-1, -1]],
+                dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
-            np.array(
-                ["b0_str", ""], dtype=bytes).reshape(2, 1, 1, 1, 1),
+            np.array(  # pylint: disable=too-many-function-args
+                ["b0_str", ""],
+                dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
 
     # No defaults, values required
@@ -445,11 +444,13 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         aname:
-            np.array(
-                [[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
+            np.array(  # pylint: disable=too-many-function-args
+                [[1, 1], [-1, -1]],
+                dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
-            np.array(
-                ["b0_str", "b1"], dtype=bytes).reshape(2, 1, 1, 1, 1),
+            np.array(  # pylint: disable=too-many-function-args
+                ["b0_str", "b1"],
+                dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
 
     # No defaults, values required
@@ -506,13 +507,13 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         "a":
-            np.array(
-                [[1, 1], [3, -3], [3, -3]], dtype=np.float32).reshape(3, 1, 2,
-                                                                      1),
+            np.array(  # pylint: disable=too-many-function-args
+                [[1, 1], [3, -3], [3, -3]],
+                dtype=np.float32).reshape(3, 1, 2, 1),
         "b":
-            np.array(
-                ["tmp_str", "b1", "tmp_str"], dtype=bytes).reshape(3, 1, 1, 1,
-                                                                   1),
+            np.array(  # pylint: disable=too-many-function-args
+                ["tmp_str", "b1", "tmp_str"],
+                dtype=bytes).reshape(3, 1, 1, 1, 1),
     }
 
     self._test(
@@ -771,7 +772,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         aname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [
                     [0, 0, 0, 0],
                     [1, 1, 0, 0],
@@ -780,7 +781,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
                 ],
                 dtype=np.float32).reshape(4, 2, 2, 1),
         bname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
                 dtype=bytes).reshape(4, 2, 1, 1, 1),
         cname:
@@ -809,7 +810,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     # Test with padding values.
     expected_output_custom_padding = dict(expected_output)
-    expected_output_custom_padding[aname] = np.array(
+    expected_output_custom_padding[aname] = np.array(  # pylint: disable=too-many-function-args
         [
             [-2, -2, -2, -2],
             [1, 1, -2, -2],
@@ -899,6 +900,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         example(
             features=features({
                 "rt_c": float_feature([3, 4, 5, 6, 7, 8]),
+                "rt_f_values": float_feature([0, 1, 2, 3, 4]),
             })),
         example(
             features=features({
@@ -912,6 +914,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
             features=features({
                 "rt_c": float_feature([1, 2, -1]),
                 "rt_d": bytes_feature([b"hi"]),
+                "rt_f_values": float_feature([0, 1, 2]),
             }))
     ]
 
@@ -922,10 +925,14 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         row_splits_dtype=dtypes.int32)
     expected_rt_d = ragged_factory_ops.constant_value(
         [[], [], [], [b"hi"]], row_splits_dtype=dtypes.int64)
+    expected_rt_f = ragged_factory_ops.constant_value(
+        [[0.0, 1.0, 2.0, 3.0, 4.0], [], [], [0.0, 1.0, 2.0]],
+        row_splits_dtype=dtypes.int32)
 
     expected_output = {
         "rt_c": expected_rt_c,
         "rt_d": expected_rt_d,
+        "rt_f": expected_rt_f,
     }
 
     self._test(
@@ -935,6 +942,9 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
             "rt_d":
                 parsing_ops.RaggedFeature(
                     dtypes.string, row_splits_dtype=dtypes.int64),
+            "rt_f":
+                parsing_ops.RaggedFeature(
+                    dtypes.float32, value_key="rt_f_values"),
         },
         expected_values=expected_output,
         create_iterator_twice=True)
@@ -1134,8 +1144,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
             num_parallel_calls=10,
             deterministic=local_determinism))
 
-    opts = dataset_ops.Options()
-    opts.experimental_deterministic = global_determinism
+    opts = options_lib.Options()
+    opts.deterministic = global_determinism
     dataset = dataset.with_options(opts)
 
     expected = list(range(num_elements))
@@ -1161,14 +1171,16 @@ class ParseExampleDatasetCheckpointTest(tf_record_test_base.FeaturesTestBase,
         reader_num_threads=5,
         parser_num_threads=10)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     num_repeat = 5
     batch_size = 2
     num_outputs = self._num_records * self._num_files * num_repeat // batch_size
     # pylint: disable=g-long-lambda
-    self.run_core_tests(
-        lambda: self._parse_example_dataset(
+    verify_fn(
+        self, lambda: self._parse_example_dataset(
             num_repeat=num_repeat, batch_size=batch_size), num_outputs)
 
 

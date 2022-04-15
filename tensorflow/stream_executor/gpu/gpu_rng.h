@@ -64,7 +64,7 @@ class GpuRng : public rng::RngSupport {
   bool DoPopulateRandGaussian(Stream* stream, double mean, double stddev,
                               DeviceMemory<double>* v) override;
 
-  bool SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) override;
+  bool SetSeed(Stream* stream, const uint8* seed, uint64_t seed_bytes) override;
 
  private:
   // Actually performs the work of generating random numbers - the public

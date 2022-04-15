@@ -14,10 +14,6 @@
 # ==============================================================================
 """Perturb a `LinearOperator` with a rank `K` update."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -36,6 +32,7 @@ __all__ = [
 
 
 @tf_export("linalg.LinearOperatorLowRankUpdate")
+@linear_operator.make_composite_tensor
 class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   """Perturb a `LinearOperator` with a rank `K` update.
 
@@ -236,8 +233,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       is_positive_definite = True
       is_self_adjoint = True
 
-    values = base_operator.graph_parents + [u, diag_update, v]
-    with ops.name_scope(name, values=values):
+    with ops.name_scope(name):
 
       # Create U and V.
       self._u = linear_operator_util.convert_nonref_to_tensor(u, name="u")
@@ -254,9 +250,6 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       # Create base_operator L.
       self._base_operator = base_operator
-      graph_parents = base_operator.graph_parents + [
-          self.u, self._diag_update, self.v]
-      graph_parents = [p for p in graph_parents if p is not None]
 
       super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
@@ -266,7 +259,6 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      self._set_graph_parents(graph_parents)
 
       # Create the diagonal operator D.
       self._set_diag_operators(diag_update, is_diag_update_positive)
@@ -336,6 +328,16 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     """If this operator is `A = L + U D V^H`, this is the `L`."""
     return self._base_operator
 
+  def _assert_self_adjoint(self):
+    # Recall this operator is:
+    #   A = L + UDV^H.
+    # So in one case self-adjoint depends only on L
+    if self.u is self.v and self.diag_update is None:
+      return self.base_operator.assert_self_adjoint()
+    # In all other cases, sufficient conditions for self-adjoint can be found
+    # efficiently. However, those conditions are not necessary conditions.
+    return super(LinearOperatorLowRankUpdate, self).assert_self_adjoint()
+
   def _shape(self):
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape,
@@ -361,9 +363,17 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     return array_ops.concat(
         [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
+  def _get_uv_as_tensors(self):
+    """Get (self.u, self.v) as tensors (in case they were refs)."""
+    u = ops.convert_to_tensor_v2_with_dispatch(self.u)
+    if self.v is self.u:
+      v = u
+    else:
+      v = ops.convert_to_tensor_v2_with_dispatch(self.v)
+    return u, v
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    u = self.u
-    v = self.v
+    u, v = self._get_uv_as_tensors()
     l = self.base_operator
     d = self.diag_operator
 
@@ -389,7 +399,8 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     #                  = det(C) det(D) det(L)
     # where C is sometimes known as the capacitance matrix,
     #   C := D^{-1} + V^H L^{-1} U
-    det_c = linalg_ops.matrix_determinant(self._make_capacitance())
+    u, v = self._get_uv_as_tensors()
+    det_c = linalg_ops.matrix_determinant(self._make_capacitance(u=u, v=v))
     det_d = self.diag_operator.determinant()
     det_l = self.base_operator.determinant()
     return det_c * det_d * det_l
@@ -397,13 +408,15 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   def _diag_part(self):
     # [U D V^T]_{ii} = sum_{jk} U_{ij} D_{jk} V_{ik}
     #                = sum_{j}  U_{ij} D_{jj} V_{ij}
-    product = self.u * math_ops.conj(self.v)
+    u, v = self._get_uv_as_tensors()
+    product = u * math_ops.conj(v)
     if self.diag_update is not None:
       product *= array_ops.expand_dims(self.diag_update, axis=-2)
     return (
         math_ops.reduce_sum(product, axis=-1) + self.base_operator.diag_part())
 
   def _log_abs_determinant(self):
+    u, v = self._get_uv_as_tensors()
     # Recall
     #   det(L + UDV^H) = det(D^{-1} + V^H L^{-1} U) det(D) det(L)
     #                  = det(C) det(D) det(L)
@@ -412,11 +425,11 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
     if self._use_cholesky:
       chol_cap_diag = array_ops.matrix_diag_part(
-          linalg_ops.cholesky(self._make_capacitance()))
+          linalg_ops.cholesky(self._make_capacitance(u=u, v=v)))
       log_abs_det_c = 2 * math_ops.reduce_sum(
           math_ops.log(chol_cap_diag), axis=[-1])
     else:
-      det_c = linalg_ops.matrix_determinant(self._make_capacitance())
+      det_c = linalg_ops.matrix_determinant(self._make_capacitance(u=u, v=v))
       log_abs_det_c = math_ops.log(math_ops.abs(det_c))
       if self.dtype.is_complex:
         log_abs_det_c = math_ops.cast(log_abs_det_c, dtype=self.dtype)
@@ -439,11 +452,17 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     #   = L^{-H} - L^{-H} V C^{-H} U^H L^{-H}
     l = self.base_operator
     if adjoint:
-      v = self.u
-      u = self.v
+      # If adjoint, U and V have flipped roles in the operator.
+      v, u = self._get_uv_as_tensors()
+      # Capacitance should still be computed with u=self.u and v=self.v, which
+      # after the "flip" on the line above means u=v, v=u. I.e. no need to
+      # "flip" in the capacitance call, since the call to
+      # matrix_solve_with_broadcast below is done with the `adjoint` argument,
+      # and this takes care of things.
+      capacitance = self._make_capacitance(u=v, v=u)
     else:
-      v = self.v
-      u = self.u
+      u, v = self._get_uv_as_tensors()
+      capacitance = self._make_capacitance(u=u, v=v)
 
     # L^{-1} rhs
     linv_rhs = l.solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
@@ -452,10 +471,10 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     # C^{-1} V^H L^{-1} rhs
     if self._use_cholesky:
       capinv_vh_linv_rhs = linalg_ops.cholesky_solve(
-          linalg_ops.cholesky(self._make_capacitance()), vh_linv_rhs)
+          linalg_ops.cholesky(capacitance), vh_linv_rhs)
     else:
       capinv_vh_linv_rhs = linear_operator_util.matrix_solve_with_broadcast(
-          self._make_capacitance(), vh_linv_rhs, adjoint=adjoint)
+          capacitance, vh_linv_rhs, adjoint=adjoint)
     # U C^{-1} V^H M^{-1} rhs
     u_capinv_vh_linv_rhs = math_ops.matmul(u, capinv_vh_linv_rhs)
     # L^{-1} U C^{-1} V^H L^{-1} rhs
@@ -464,15 +483,19 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     # L^{-1} - L^{-1} U C^{-1} V^H L^{-1}
     return linv_rhs - linv_u_capinv_vh_linv_rhs
 
-  def _make_capacitance(self):
+  def _make_capacitance(self, u, v):
     # C := D^{-1} + V^H L^{-1} U
     # which is sometimes known as the "capacitance" matrix.
 
     # L^{-1} U
-    linv_u = self.base_operator.solve(self.u)
+    linv_u = self.base_operator.solve(u)
     # V^H L^{-1} U
-    vh_linv_u = math_ops.matmul(self.v, linv_u, adjoint_a=True)
+    vh_linv_u = math_ops.matmul(v, linv_u, adjoint_a=True)
 
     # D^{-1} + V^H L^{-1} V
     capacitance = self._diag_operator.inverse().add_to_tensor(vh_linv_u)
     return capacitance
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("base_operator", "u", "diag_update", "v", "is_diag_update_positive")

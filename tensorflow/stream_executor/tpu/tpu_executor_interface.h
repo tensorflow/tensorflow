@@ -44,8 +44,8 @@ class TpuExecutorInterface
   };
 
   virtual StatusOr<std::unique_ptr<TemporaryDeviceMemory>>
-  CreateTemporaryDeviceMemory(int64 memory_space, int64 byte_offset,
-                              int64 size) {
+  CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
+                              int64_t size) {
     LOG(FATAL) << "Unimplemented.";
   }
 

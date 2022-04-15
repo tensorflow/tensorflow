@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
@@ -56,9 +57,10 @@ class UnsortedSegmentReduce : public XlaOpKernel {
     auto indices = ctx->Input(1);
     TensorShape indices_shape = ctx->InputShape(1);
 
-    int64 num_segments;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(2, &num_segments));
-
+    int64_t num_segments;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntScalar(
+                       2, &num_segments, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES(ctx, data_shape.dims() >= indices_shape.dims(),
                 errors::InvalidArgument(type_string(),
                                         " requires that indices' rank be"
@@ -99,13 +101,13 @@ class UnsortedSegmentReduce : public XlaOpKernel {
     buffer_dims_are_dynamic.insert(buffer_dims_are_dynamic.begin(),
                                    num_segments_is_dynamic);
     // Build the segment shape part.
-    for (int64 i = indices_shape.dims(); i < data_shape.dims(); ++i) {
+    for (int64_t i = indices_shape.dims(); i < data_shape.dims(); ++i) {
       buffer_dims.push_back(xla::GetDimensionSize(data, i));
       buffer_dims_are_dynamic.push_back(
           ctx->InputXlaShape(0)->is_dynamic_dimension(i));
     }
 
-    for (int64 i = 0; i < buffer_dims.size(); ++i) {
+    for (int64_t i = 0; i < buffer_dims.size(); ++i) {
       if (buffer_dims_are_dynamic[i]) {
         // For each dynamic dimension, call set-dimension-size on it.
         buffer = xla::SetDimensionSize(buffer, buffer_dims[i], i);

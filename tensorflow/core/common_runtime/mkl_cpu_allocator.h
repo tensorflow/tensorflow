@@ -29,7 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/numa.h"
-
+#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 #ifdef _WIN32
 typedef unsigned int uint;
 #endif
@@ -84,13 +85,14 @@ class MklSmallSizeAllocator : public Allocator {
     return stats_;
   }
 
-  void ClearStats() override {
+  bool ClearStats() override {
     mutex_lock l(mutex_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = 0;
     stats_.largest_alloc_size = 0;
     stats_.bytes_in_use = 0;
     stats_.bytes_limit = 0;
+    return true;
   }
 
  private:
@@ -181,8 +183,12 @@ class MklCPUAllocator : public Allocator {
     // it in MklSmallSizeAllocator.
     small_size_allocator_ =
         new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
+
+    BFCAllocator::Options large_allocator_opts;
+    large_allocator_opts.allow_growth = kAllowGrowth;
     large_size_allocator_ =
-        new BFCAllocator(sub_allocator_, max_mem_bytes, kAllowGrowth, kName);
+        new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes, kName,
+                         large_allocator_opts);
     return Status::OK();
   }
 
@@ -216,7 +222,7 @@ class MklCPUAllocator : public Allocator {
     // otherwise call large-size allocator (BFC). We found that BFC allocator
     // does not deliver good performance for small allocations when
     // inter_op_parallelism_threads is high.
-    if (num_bytes < kSmallAllocationsThreshold) {
+    if (UseSystemAlloc() || num_bytes < kSmallAllocationsThreshold) {
       return small_size_allocator_->AllocateRaw(alignment, num_bytes);
     } else {
       mutex_lock l(mutex_);
@@ -225,11 +231,10 @@ class MklCPUAllocator : public Allocator {
       return ptr;
     }
   }
-
   inline void DeallocateRaw(void* ptr) override {
     // Check if ptr is for "small" allocation. If it is, then call Free
     // directly. Otherwise, call BFC to handle free.
-    if (IsSmallSizeAllocation(ptr)) {
+    if (UseSystemAlloc() || IsSmallSizeAllocation(ptr)) {
       small_size_allocator_->DeallocateRaw(ptr);
     } else {
       mutex_lock l(mutex_);
@@ -237,7 +242,6 @@ class MklCPUAllocator : public Allocator {
       large_size_allocator_->DeallocateRaw(ptr);
     }
   }
-
   absl::optional<AllocatorStats> GetStats() override {
     auto s_stats = small_size_allocator_->GetStats();
     auto l_stats = large_size_allocator_->GetStats();
@@ -257,14 +261,14 @@ class MklCPUAllocator : public Allocator {
     return stats_;
   }
 
-  void ClearStats() override {
-    small_size_allocator_->ClearStats();
-    large_size_allocator_->ClearStats();
+  bool ClearStats() override {
+    bool stats_cleared = small_size_allocator_->ClearStats();
+    stats_cleared &= large_size_allocator_->ClearStats();
+    return stats_cleared;
   }
 
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
-
   static inline void* MallocHook(size_t size) {
     VLOG(3) << "MklCPUAllocator: In MallocHook";
     return cpu_allocator()->AllocateRaw(kAlignment, size);

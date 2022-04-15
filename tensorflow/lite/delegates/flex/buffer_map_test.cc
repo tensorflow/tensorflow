@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 
+#include <sys/types.h>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
@@ -77,8 +79,8 @@ tensorflow::Tensor MakeTensor(const std::vector<int>& shape,
   return buffer_map.GetTensor(0);
 }
 
-std::vector<tensorflow::int64> GetTensorShape(const tensorflow::Tensor& t) {
-  std::vector<tensorflow::int64> shape(t.dims());
+std::vector<int64_t> GetTensorShape(const tensorflow::Tensor& t) {
+  std::vector<int64_t> shape(t.dims());
   for (int i = 0; i < t.dims(); ++i) {
     shape[i] = t.dim_size(i);
   }
@@ -160,6 +162,32 @@ TEST(BufferMapTest, SetFromTfLiteStringTwice) {
               ElementsAre("", "", "", "s3", "", "", "s1", "s2"));
 }
 
+TEST(BufferMapTest, SetFromTfLiteBuiltinResource) {
+  BufferMap buffer_map;
+
+  // Constructs a fake resource tensor.
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+    TfLiteTensorDataFree(t);
+    TfLiteIntArrayFree(t->dims);
+    delete t;
+  });
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->type = kTfLiteResource;
+  tensor->dims = ConvertVectorToTfLiteIntArray({1});
+  TfLiteTensorRealloc(sizeof(int32_t), tensor.get());
+  tensor->delegate = nullptr;
+  tensor->data.i32[0] = 1;
+
+  buffer_map.SetFromTfLite(0, tensor.get());
+  // Also check details of the tensor.
+  tensorflow::Tensor out_tensor = buffer_map.GetTensor(0);
+  ASSERT_EQ(out_tensor.dtype(), tensorflow::DT_RESOURCE);
+  ASSERT_EQ(out_tensor.NumElements(), 1);
+  tensorflow::ResourceHandle handle =
+      out_tensor.flat<tensorflow::ResourceHandle>()(0);
+  EXPECT_EQ(handle.name(), "tflite_resource_variable:1");
+}
+
 TEST(BufferMapTest, SetFromTensorFlow) {
   tensorflow::Tensor t1 =
       MakeTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
@@ -221,9 +249,3 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -1,4 +1,4 @@
-"""Skylark makros for building pasta."""
+"""Starlark macros for building pasta."""
 
 def copy_srcs(srcs):
     """Copies srcs from 'pasta' to parent directory."""

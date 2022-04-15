@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -35,12 +36,19 @@ struct NodeProperties {
 
   NodeProperties(const OpDef* _op_def, NodeDef&& _node_def,
                  DataTypeVector inputs, DataTypeVector outputs)
+      : NodeProperties(_op_def, std::move(_node_def), inputs, outputs,
+                       nullptr) {}
+
+  NodeProperties(const OpDef* _op_def, NodeDef&& _node_def,
+                 DataTypeVector inputs, DataTypeVector outputs,
+                 ForwardTypeInferenceFn fwd_type_fn)
       : op_def(_op_def),
         node_def(std::move(_node_def)),
         input_types(std::move(inputs)),
         input_types_slice(input_types),
         output_types(std::move(outputs)),
-        output_types_slice(output_types) {}
+        output_types_slice(output_types),
+        fwd_type_fn(fwd_type_fn) {}
 
   // Resets the 'props' shared pointer to point to a new NodeProperties created
   // from the given NodeDef. 'op_registry' is used to look up the OpDef
@@ -56,6 +64,7 @@ struct NodeProperties {
   DataTypeSlice input_types_slice;
   DataTypeVector output_types;
   DataTypeSlice output_types_slice;
+  ForwardTypeInferenceFn fwd_type_fn;
 };
 
 }  // namespace tensorflow

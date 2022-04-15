@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for working with and creating SaveableObjects."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import six
 
@@ -39,9 +35,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-
+from tensorflow.python.util.tf_export import tf_export
 
 # Op names which identify variable reads which should be saved.
 _VARIABLE_OPS = set(["Variable",
@@ -103,7 +100,8 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
               # A SaveSpec tensor value of `None` indicates that the variable is
               # uninitialized.
               return None
-            x = v.read_value()
+            # Read the variable without making a copy to limit memory usage.
+            x = v.read_value_no_copy()
             # To allow variables placed on non-CPU devices to be checkpointed,
             # we copy them to CPU on the same machine first.
             with ops.device("/device:CPU:0"):
@@ -116,20 +114,28 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     else:
       raise ValueError(
           "Saveable is neither a resource variable nor a read operation."
-          " Got: %s" % repr(var))
+          f" Got: {repr(var)}")
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
                                     dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
+    """Restores tensors. Raises ValueError if incompatible shape found."""
     restored_tensor = restored_tensors[0]
     if restored_shapes is not None:
       restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
     # Copy the restored tensor to the variable's device.
     with ops.device(self._var_device):
       restored_tensor = array_ops.identity(restored_tensor)
-      return resource_variable_ops.shape_safe_assign_variable_handle(
-          self.handle_op, self._var_shape, restored_tensor)
+      try:
+        assigned_variable = resource_variable_ops.shape_safe_assign_variable_handle(
+            self.handle_op, self._var_shape, restored_tensor)
+      except ValueError as e:
+        raise ValueError(
+            f"Received incompatible tensor with shape {restored_tensor.shape} "
+            f"when attempting to restore variable with shape {self._var_shape} "
+            f"and name {self.name}.") from e
+      return assigned_variable
 
 
 def _tensor_comes_from_variable(v):
@@ -154,7 +160,7 @@ def saveable_objects_for_op(op, name):
   if not isinstance(name, six.string_types):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
-        "trackable operations. Name is not a string: %s" % name)
+        f"trackable operations. Name is not a string: {name}")
   if isinstance(op, saveable_object.SaveableObject):
     yield op
   elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
@@ -168,15 +174,15 @@ def saveable_objects_for_op(op, name):
         yield variable
         continue
       if not isinstance(variable, variables.Variable):
-        raise ValueError("Slices must all be Variables: %s" % variable)
+        raise ValueError(f"Slices must all be Variables: {variable}")
       if not variable._save_slice_info:
-        raise ValueError("Slices must all be slices: %s" % variable)
+        raise ValueError(f"Slices must all be slices: {variable}")
       if slice_name is None:
         slice_name = variable._save_slice_info.full_name
       elif slice_name != variable._save_slice_info.full_name:
         raise ValueError(
-            "Slices must all be from the same tensor: %s != %s" %
-            (slice_name, variable._save_slice_info.full_name))
+            f"Slices must all be from the same tensor: {slice_name} != "
+            f"{variable._save_slice_info.full_name}")
       if variable.op.type in ["Variable", "VariableV2",
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(
@@ -188,7 +194,7 @@ def saveable_objects_for_op(op, name):
   elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
-    for attr, factory in op._gather_saveables_for_checkpoint().items():
+    for attr, factory in saveable_objects_from_trackable(op).items():
       if attr == trackable.VARIABLE_VALUE_KEY:
         # Keep original name for classes masquerading as variables.
         full_name = name
@@ -209,13 +215,13 @@ def saveable_objects_for_op(op, name):
     else:
       if context.executing_eagerly():
         raise ValueError("Can only save/restore ResourceVariables when "
-                         "executing eagerly, got type: %s." % type(op))
+                         f"executing eagerly, got type: {type(op)}.")
 
       variable = ops.convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
-        raise TypeError("names_to_saveables must be a dict mapping string "
-                        "names to Tensors/Variables. Not a variable: %s" %
-                        variable)
+        raise TypeError(
+            "names_to_saveables must be a dict mapping string "
+            f"names to Tensors/Variables. Not a variable: {variable}")
       if variable.op.type in ["Variable", "VariableV2",
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(variable, "", name)
@@ -242,7 +248,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   """
   if not isinstance(op_list, (list, tuple, set)):
     raise TypeError("Variables to save should be passed in a dict or a "
-                    "list: %s" % op_list)
+                    f"list. Got {op_list}")
   # List casting is necessary to support sets.
   op_list = nest.flatten(list(op_list))
   # When ResourceVariables are converted to Tensors, read ops are added to the
@@ -260,22 +266,22 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
       if var.name in names_to_saveables:
-        raise ValueError("At least two variables have the same name: %s" %
-                         var.name)
+        raise ValueError(
+            f"At least two variables have the same name: {var.name}")
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.Variable) and var._save_slice_info:
       name = var._save_slice_info.full_name
       if name in names_to_saveables:
         if not isinstance(names_to_saveables[name], list):
           raise ValueError("Mixing slices and non-slices with the same name: "
-                           "%s" % name)
+                           f"{name}")
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
     elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
-          for factory in var._gather_saveables_for_checkpoint().values()]
+          for factory in saveable_objects_from_trackable(var).values()]
       names_to_saveables.update(
           op_list_to_dict(trackable_saveables))
     else:
@@ -286,15 +292,14 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         if not isinstance(var, resource_variable_ops.BaseResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
-              "is enabled, type: %s." % type(var))
+              f"is enabled. Got type: {type(var)}.")
         set_var = names_to_saveables.setdefault(var._shared_name, var)
         if set_var is not var:
           raise ValueError(
-              ("Two different ResourceVariable objects with the same "
-               "shared_name '%s' were passed to the Saver. This likely means "
-               "that they were created in different Graphs or isoWlation "
-               "contexts, and may not be checkpointed together.") %
-              (var._shared_name,))
+              "Two different ResourceVariable objects with the same "
+              f"shared_name '{var._shared_name}' were passed to the Saver. This"
+              " likely means that they were created in different Graphs or "
+              "isolated contexts, and may not be checkpointed together.")
       else:
         if convert_variable_to_tensor:
           if isinstance(var, resource_variable_ops.BaseResourceVariable):
@@ -302,14 +307,13 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
           else:
             var = ops.convert_to_tensor(var, as_ref=True)
           if not _tensor_comes_from_variable(var):
-            raise TypeError("Variable to save is not a Variable: %s" % var)
+            raise TypeError(f"Variable to save is not a Variable: {var}")
         if var.op.type == "ReadVariableOp":
           name = var.op.inputs[0].op.name
         else:
           name = var.op.name
         if name in names_to_saveables:
-          raise ValueError("At least two variables have the same name: %s" %
-                           name)
+          raise ValueError(f"At least two variables have the same name: {name}")
         names_to_saveables[name] = var
 
     # pylint: enable=protected-access
@@ -329,8 +333,8 @@ def _add_saveable(saveables, seen_ops, saveable):
     ValueError: If the saveable has already been processed.
   """
   if saveable.op is not None and saveable.op in seen_ops:
-    raise ValueError("The same saveable will be restored with two names: %s" %
-                     saveable.name)
+    raise ValueError("The same saveable will be restored with two names: "
+                     f"{saveable.name}")
   saveables.append(saveable)
   seen_ops.add(saveable.op)
 
@@ -364,34 +368,14 @@ def validate_and_slice_inputs(names_to_saveables):
   return saveables
 
 
-def trace_save_restore_functions(object_to_save):
-  """Gathers all SaveableObjects and traces the save and restore ops."""
-  saveable_map = {}  # Maps name -> (save function, restore function)
-  for name, saveable_factory in (
-      object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
-    if not callable(saveable_factory):
-      if isinstance(saveable_factory, saveable_object.SaveableObject):
-        logging.debug(
-            "Trackable {} should return callable factories, not SaveableObjects"
-            " in `_gather_saveables_for_checkpoint`. This could lead to "
-            "problems loading the SavedModel back into Python."
-            .format(object_to_save))
-      continue
+def trace_save_restore_functions(saveable_factory, obj):
+  """Traces save and restore functions."""
+  if is_factory_for_restored_saveable_object(saveable_factory):
+    return (saveable_factory.keywords["save_function"],
+            saveable_factory.keywords["restore_function"])
 
-    if is_factory_for_restored_saveable_object(saveable_factory):
-      saveable_map[name] = (saveable_factory.keywords["save_function"],
-                            saveable_factory.keywords["restore_function"])
-    else:
-      concrete_save_fn, concrete_restore_fn = _trace_save_and_restore_function(
-          saveable_factory, object_to_save)
-      if concrete_save_fn is not None:
-        saveable_map[name] = (concrete_save_fn, concrete_restore_fn)
-  return saveable_map
-
-
-def _trace_save_and_restore_function(saveable_factory, object_to_save):
-  """Traces the save and restore concrete functions."""
-  saveables = []
+  saveables = []  # Store the saveables in a data structure accessible to both
+                  # the save and restore functions.
 
   @def_function.function(
       input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
@@ -409,18 +393,14 @@ def _trace_save_and_restore_function(saveable_factory, object_to_save):
                     "slice_spec": spec.slice_spec})
     return ret
 
-  concrete_save_fn = save_fn.get_concrete_function()
-  if any(isinstance(saveable, trackable.PythonStateSaveable)
-         for saveable in saveables):
-    logging.warn(
-        "Note that object {} stores python values into the checkpoint. "
-        "These values will not be restored when loading the SavedModel "
-        "into python.".format(object_to_save))
-    return None, None
-  if any(isinstance(saveable, trackable.NoRestoreSaveable)
-         for saveable in saveables):
+  concrete_save = save_fn.get_concrete_function()
+
+  # The SaveableObjects are produced when `save_fn` is traced.
+  saveables = validate_saveables_for_saved_model(saveables, obj)
+  if not saveables:
     return None, None
 
+  # Use the SaveSpecs to define the input signature of the restore function.
   restored_type_specs = []
   tensor_structure = []
   for saveable in saveables:
@@ -437,10 +417,25 @@ def _trace_save_and_restore_function(saveable_factory, object_to_save):
     for saveable, restored_tensors in zip(saveables,
                                           structured_restored_tensors):
       saveable.restore(restored_tensors, restored_shapes=None)
-    return 1
+    return 1  # Return dummy tensor
 
-  concrete_restore_fn = restore_fn.get_concrete_function()
-  return concrete_save_fn, concrete_restore_fn
+  concrete_restore = restore_fn.get_concrete_function()
+  return concrete_save, concrete_restore
+
+
+def validate_saveables_for_saved_model(saveables, obj):
+  """Makes sure SaveableObjects are compatible with SavedModel."""
+  if any(isinstance(saveable, trackable.PythonStateSaveable)
+         for saveable in saveables):
+    logging.warn(
+        f"Note that object {obj} stores python values into the checkpoint. "
+        "These values will not be restored when loading the SavedModel "
+        "into python.")
+    return []
+  if any(isinstance(saveable, trackable.NoRestoreSaveable)
+         for saveable in saveables):
+    return []
+  return saveables
 
 
 class RestoredSaveableObject(saveable_object.SaveableObject):
@@ -506,3 +501,44 @@ def create_saveable_object(factory, name, call_with_mapped_captures):
 def is_factory_for_restored_saveable_object(factory):
   return (isinstance(factory, functools.partial) and
           factory.func is RestoredSaveableObject)
+
+
+@tf_export("__internal__.tracking.saveable_objects_from_trackable", v1=[])
+def saveable_objects_from_trackable(obj):
+  if trackable_has_serialize_to_tensor(obj):
+    def create_saveable(name=""):
+      return TrackableSaveable(obj, name)
+    return {"": create_saveable}
+  else:
+    return obj._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
+
+
+class TrackableSaveable(saveable_object.SaveableObject):
+  """A SaveableObject that defines `Trackable` checkpointing steps."""
+
+  def __init__(self, obj, name):
+    self._trackable = obj
+    tensor_dict = obj._serialize_to_tensors()  # pylint: disable=protected-access
+    specs = []
+    self._local_names = []
+    for tensor_name, tensor in tensor_dict.items():
+      self._local_names.append(tensor_name)
+      spec_name = name + trackable_utils.escape_local_name(tensor_name)
+      specs.append(saveable_object.SaveSpec(tensor, "", spec_name))
+    super(TrackableSaveable, self).__init__(obj, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    del restored_shapes  # Unused.
+    restored_tensor_dict = {}
+    for n, local_name in enumerate(self._local_names):
+      restored_tensor_dict[local_name] = restored_tensors[n]
+    return self._trackable._restore_from_tensors(restored_tensor_dict)  # pylint: disable=protected-access
+
+
+def trackable_has_serialize_to_tensor(obj):
+  # pylint: disable=protected-access
+  obj_serialize_fn = obj._serialize_to_tensors
+  if hasattr(obj_serialize_fn, "__func__"):
+    obj_serialize_fn = obj_serialize_fn.__func__
+  return trackable.Trackable._serialize_to_tensors != obj_serialize_fn
+  # pylint: enable=protected-access

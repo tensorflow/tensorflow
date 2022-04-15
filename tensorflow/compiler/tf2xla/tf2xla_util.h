@@ -30,6 +30,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Some strings which are needed in TF2XLA context.
+// TODO(b/228344955) use inline constexpr with C++17
+
+// Marks a node for XLA-TPU compilation. The attribute value indicates the
+// associated compilation cluster and replication metadata op.
+extern const absl::string_view kTpuReplicateAttr;
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
+extern const absl::string_view kCompileDeviceTypeAttr;
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
+extern const absl::string_view kReplicationInfoAttr;
+// Marks a node inside of an XLA compilation cluster to be placed outside of the
+// cluster.
+extern const absl::string_view kXlaOutsideCompilationAttr;
+
+// Attributes that need to be propagated during rewrites (e.g., in
+// functionalization)
+extern const std::array<absl::string_view, 5> kAttrsToPropagate;
+
 // ValidateConfig returns OK iff config is valid.
 Status ValidateConfig(const tf2xla::Config& config);
 
@@ -143,9 +163,6 @@ Status RewriteAssociatedFunction(
     const AssociatedFunctionInfo& associated_function,
     const string& rewritten_function_name);
 
-// Attribute to mark nodes to be executed on host.
-extern const char kXlaOutsideCompilationAttrName[];
-
 // Class to act as cache for FunctionLibraryRuntime::Handle objects.
 class CachedFunctionHandles {
  public:
@@ -177,12 +194,12 @@ struct OutEdgeInfo {
 };
 
 // Replaces node `n` with a new node whose NodeDef is `node_def`.
-xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
+StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
 
 // Helper function that builds an Identity node.
-xla::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
-                                       DataType dtype, const Node* input,
-                                       absl::optional<string> requested_device);
+StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
+                                  DataType dtype, const Node* input,
+                                  absl::optional<string> requested_device);
 
 // For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
 // body functions to use the Const nodes instead of original _Arg nodes.
@@ -212,17 +229,14 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
 Status RewriteTensorListWithConstElement(Graph* g,
                                          FunctionLibraryDefinition* fld);
 
-extern const char kTpuReplicateAttrName[];
-
 inline bool IsConstTraversableOpType(const Node* node) {
   return node->type_string() == "Identity" ||
          node->type_string() == "IdentityN" || node->IsWhileNode();
 }
 
 // Determines whether a loop body is invariant for the given argument index.
-xla::StatusOr<bool> IsLoopInvariant(
-    const FunctionBody* loop_body, int index,
-    const FunctionLibraryDefinition* lookup_fld);
+StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
+                               const FunctionLibraryDefinition* lookup_fld);
 
 }  // namespace tensorflow
 

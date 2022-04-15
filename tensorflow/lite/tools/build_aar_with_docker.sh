@@ -41,7 +41,7 @@ function print_usage {
 ARGUMENTS=$@
 BUILD_FLAGS=""
 TARGET_ARCHS=x86,x86_64,arm64-v8a,armeabi-v7a
-FLAG_CHECKPOINT="r2.4" # TODO(b/163918542) Set default to lastest release.
+FLAG_CHECKPOINT=""
 
 if [ "$#" -gt 4 ]; then
   echo "ERROR: Too many arguments."
@@ -91,8 +91,11 @@ if [ ! -d /tensorflow_src ]; then
   exit 0
 else
   # Running inside docker container, download the SDK first.
-  android update sdk --no-ui -a \
-    --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
+  sdkmanager --licenses
+  sdkmanager \
+    "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+    "platform-tools" \
+    "platforms;android-${ANDROID_API_LEVEL}"
 
   cd /tensorflow_src
 
@@ -112,6 +115,11 @@ else
 
   # Pull the latest code from tensorflow.
   git pull -a
+
+  # Get the latest stable branch.
+  if [ -z ${FLAG_CHECKPOINT} ]; then
+    FLAG_CHECKPOINT="v$(git tag -l | grep "^v[0-9\.]*$" | cut -c2- | sort -t. -rn -k1 -k2 -k3 | head -n1)"
+  fi
   git checkout ${FLAG_CHECKPOINT}
 
   # Configure Bazel.

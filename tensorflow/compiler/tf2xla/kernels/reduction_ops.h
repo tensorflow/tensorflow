@@ -55,7 +55,7 @@ class XlaReductionOp : public XlaOpKernel {
   virtual xla::XlaOp BuildFinalizer(
       xla::XlaBuilder* builder, const xla::XlaOp& input,
       const xla::XlaOp& reduce_output,
-      const std::vector<int64>& dimensions_to_reduce);
+      const std::vector<int64_t>& dimensions_to_reduce);
 
   void Compile(XlaOpKernelContext* ctx) override;
 

@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_KEY_VALUE_SORT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_KEY_VALUE_SORT_H_
 
+#include <stdint.h>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/types.h"
 
 extern "C" {
 
@@ -34,13 +35,12 @@ extern "C" {
 // - xla::ExecutableRunOptions = 'run_options' (char*)
 // - pointers to the parameter buffers (char**)
 // - pointers to the buffer tables = nullptr for thread local functions (char**)
-// - profile counters = 'prof_counters' (int64*)
+// - profile counters = 'prof_counters' (int64_t*)
 extern void __xla_cpu_runtime_KeyValueSort(
-    tensorflow::int64 a, tensorflow::int64 b, tensorflow::int64 c,
-    char** values, tensorflow::int32 values_count,
-    tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
-    char* run_options, tensorflow::int64* prof_counters,
-    void (*less_than)(char*, char*, char**, char**, tensorflow::int64*));
+    int64_t a, int64_t b, int64_t c, char** values, int32_t values_count,
+    int32_t* values_primitive_type_size_in_bytes, bool is_stable,
+    char* run_options, int64_t* prof_counters,
+    void (*less_than)(char*, char*, char**, char**, int64_t*));
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_KEY_VALUE_SORT_H_

@@ -53,11 +53,10 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
     }
   }
 
-  std::unique_ptr<GlobalData> MakeR3Data(absl::Span<const int64> bounds,
-                                         absl::Span<const int64> minor_to_major,
-                                         Shape* r3_shape,
-                                         Array3D<float>* r3_array, float start,
-                                         float end, int seed) {
+  std::unique_ptr<GlobalData> MakeR3Data(
+      absl::Span<const int64_t> bounds,
+      absl::Span<const int64_t> minor_to_major, Shape* r3_shape,
+      Array3D<float>* r3_array, float start, float end, int seed) {
     *r3_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
     r3_array->FillRandom(start, end, seed);
     auto r3_data = LiteralUtil::CreateR3FromArray3D(*r3_array).Relayout(
@@ -67,11 +66,10 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
     return r3_global_data;
   }
 
-  std::unique_ptr<GlobalData> MakeR2Data(absl::Span<const int64> bounds,
-                                         absl::Span<const int64> minor_to_major,
-                                         Shape* r2_shape,
-                                         Array2D<float>* r2_array, float start,
-                                         float end, int seed) {
+  std::unique_ptr<GlobalData> MakeR2Data(
+      absl::Span<const int64_t> bounds,
+      absl::Span<const int64_t> minor_to_major, Shape* r2_shape,
+      Array2D<float>* r2_array, float start, float end, int seed) {
     *r2_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
     r2_array->FillRandom(start, end, seed);
     auto r2_data = LiteralUtil::CreateR2FromArray2D(*r2_array).Relayout(
@@ -302,9 +300,9 @@ XLA_TEST_F(BroadcastSimpleTest, InDimensionAndDegenerateBroadcasting) {
 }
 
 struct R3ImplicitBroadcastSpec {
-  std::array<int64, 3> output_bounds;
-  std::array<int64, 3> minor2major_layout;
-  std::array<int64, 3> input_bounds;
+  std::array<int64_t, 3> output_bounds;
+  std::array<int64_t, 3> minor2major_layout;
+  std::array<int64_t, 3> input_bounds;
   HloOpcode op;
 } kR3ImplicitBroadcastTestCases[] = {
     {{{1, 1, 1}}, {{2, 1, 0}}, {{1, 1, 1}}, HloOpcode::kAdd},
@@ -347,7 +345,7 @@ XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
 
   Array3D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1],
                                 spec.output_bounds[2]);
-  auto Each = ([&](absl::Span<const int64> indices, float* value) {
+  auto Each = ([&](absl::Span<const int64_t> indices, float* value) {
     float r3_implicit = r3_implicit_array(indices[0] % spec.input_bounds[0],
                                           indices[1] % spec.input_bounds[1],
                                           indices[2] % spec.input_bounds[2]);
@@ -358,9 +356,9 @@ XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
   int n1 = expected_array.n1();
   int n2 = expected_array.n2();
   int n3 = expected_array.n3();
-  for (int64 i = 0; i < n1; i++) {
-    for (int64 j = 0; j < n2; j++) {
-      for (int64 k = 0; k < n3; k++) {
+  for (int64_t i = 0; i < n1; i++) {
+    for (int64_t j = 0; j < n2; j++) {
+      for (int64_t k = 0; k < n3; k++) {
         Each({i, j, k}, &expected_array(i, j, k));
       }
     }
@@ -477,10 +475,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_1_2) {
 }
 
 struct R2ImplicitBroadcastSpec {
-  std::array<int64, 2> output_bounds;
-  std::array<int64, 2> minor2major_layout;
-  std::array<int64, 2> input_bounds1;
-  std::array<int64, 2> input_bounds2;
+  std::array<int64_t, 2> output_bounds;
+  std::array<int64_t, 2> minor2major_layout;
+  std::array<int64_t, 2> input_bounds1;
+  std::array<int64_t, 2> input_bounds2;
   HloOpcode op1;
   HloOpcode op2;
 } kR2ImplicitBroadcastTestCases[] = {
@@ -602,7 +600,7 @@ XLA_TEST_P(BroadcastR2ImplicitTest, Doit) {
 
   Array2D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1]);
 
-  expected_array.Each([&](int64 i, int64 j, float* v) {
+  expected_array.Each([&](int64_t i, int64_t j, float* v) {
     float v1 = r2_implicit_array1(i % spec.input_bounds1[0],
                                   j % spec.input_bounds1[1]);
     float v2 = r2_array(i, j);

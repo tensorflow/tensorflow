@@ -13,17 +13,15 @@
 # limitations under the License.
 # =============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import _memory_checker_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class MemoryCheckerTest(test.TestCase):
 
   def testNoLeakEmpty(self):
@@ -121,24 +119,23 @@ class MemoryCheckerTest(test.TestCase):
       memory_checker.assert_no_leak_if_all_possibly_except_one()
 
   def testNoNewPythonObjectsEmpty(self):
-    self.skipTest('TODO(b/150324603): Flaky test.')
     with MemoryChecker() as memory_checker:
       memory_checker.record_snapshot()
       memory_checker.record_snapshot()
 
-    # TODO(kkb): All the builtins below are unexpected, locate and fix it.
-    memory_checker.assert_no_new_python_objects(
-        threshold={'builtins.weakref': 1,
-                   'builtins.function': 1})
+    memory_checker.assert_no_new_python_objects()
 
   def testNewPythonObjects(self):
     with MemoryChecker() as memory_checker:
       memory_checker.record_snapshot()
-      x = constant_op.constant(1)  # pylint: disable=unused-variable
+      x = constant_op.constant(1)
       memory_checker.record_snapshot()
 
     with self.assertRaisesRegex(AssertionError, 'New Python objects'):
       memory_checker.assert_no_new_python_objects()
+
+    # use x to avoid any potential for optimizing it away.
+    self.assertIsNot(x, None)
 
   def testNewPythonObjectBelowThreshold(self):
 
@@ -147,21 +144,11 @@ class MemoryCheckerTest(test.TestCase):
 
     with MemoryChecker() as memory_checker:
       memory_checker.record_snapshot()
-      foo = Foo()  # pylint: disable=unused-variable
+      foo = Foo()
+      del foo
       memory_checker.record_snapshot()
 
-    # TODO(kkb): `{'builtins.weakref': 1, 'builtins.function': 1}` is
-    # unexpected, locate and fix it.
-    memory_checker.assert_no_new_python_objects(threshold={
-        '__main__.Foo': 1,
-        'builtins.weakref': 1,
-        'builtins.function': 1,
-    })
-    memory_checker.assert_no_new_python_objects(threshold={
-        '__main__.Foo': 2,
-        'builtins.weakref': 1,
-        'builtins.function': 1,
-    })
+    memory_checker.assert_no_new_python_objects()
 
 
 if __name__ == '__main__':

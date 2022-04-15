@@ -48,35 +48,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "choose_fastest_benchmark",
-    srcs = ["choose_fastest_benchmark.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/benchmarks:benchmark_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "choose_fastest_branch_benchmark",
-    srcs = ["choose_fastest_branch_benchmark.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/benchmarks:benchmark_base",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "csv_dataset_benchmark",
     srcs = ["csv_dataset_benchmark.py"],
     tags = ["no_pip"],
@@ -125,25 +96,6 @@ tf_py_test(
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:map_defun",
         "//tensorflow/python/eager:function",
-    ],
-)
-
-tf_py_test(
-    name = "map_vectorization_benchmark",
-    srcs = ["map_vectorization_benchmark.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/benchmarks:benchmark_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//third_party/py/numpy",
     ],
 )
 

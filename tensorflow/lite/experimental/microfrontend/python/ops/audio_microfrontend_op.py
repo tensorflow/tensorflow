@@ -14,10 +14,6 @@
 # ==============================================================================
 """AudioMicrofrontend Op creates filterbanks from audio data."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.lite.experimental.microfrontend.ops import gen_audio_microfrontend_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library

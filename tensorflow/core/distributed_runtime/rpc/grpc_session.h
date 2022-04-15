@@ -111,7 +111,7 @@ class GrpcSession : public Session {
   // Takes ownership of `*master`.
   void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
   // Allows subclasses to customize Session creation.
-  void SetHandleAndGraphVersion(string handle, int64 graph_version)
+  void SetHandleAndGraphVersion(string handle, int64_t graph_version)
       TF_LOCKS_EXCLUDED(mu_);
 
  private:
@@ -123,7 +123,7 @@ class GrpcSession : public Session {
   string handle_ TF_GUARDED_BY(mu_);
 
   // The current version of the graph.
-  int64 current_graph_version_ TF_GUARDED_BY(mu_);
+  int64_t current_graph_version_ TF_GUARDED_BY(mu_);
 
   bool is_local_ = false;
 

@@ -15,10 +15,6 @@
 """Unit tests for tf_should_use."""
 
 # pylint: disable=unused-import
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import gc
 import sys

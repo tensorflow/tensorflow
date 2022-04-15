@@ -82,22 +82,26 @@ class PoolAllocator : public Allocator {
   // consistency with other threads is not important.
 
   // Number of Get() requests satisfied from pool.
-  int64 get_from_pool_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t get_from_pool_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return get_from_pool_count_;
   }
   // Number of Put() requests.
-  int64 put_count() const TF_NO_THREAD_SAFETY_ANALYSIS { return put_count_; }
+  int64_t put_count() const TF_NO_THREAD_SAFETY_ANALYSIS { return put_count_; }
   // Number of Get() requests requiring a fresh allocation.
-  int64 allocated_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t allocated_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return allocated_count_;
   }
   // Number of pool evictions.
-  int64 evicted_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t evicted_count() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return evicted_count_;
   }
   // Current size limit.
   size_t size_limit() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return pool_size_limit_;
+  }
+
+  AllocatorMemoryType GetMemoryType() const override {
+    return allocator_->GetMemoryType();
   }
 
  private:
@@ -127,10 +131,10 @@ class PoolAllocator : public Allocator {
   std::multimap<const size_t, PtrRecord*> pool_ TF_GUARDED_BY(mutex_);
   PtrRecord* lru_head_ TF_GUARDED_BY(mutex_) = nullptr;
   PtrRecord* lru_tail_ TF_GUARDED_BY(mutex_) = nullptr;
-  int64 get_from_pool_count_ TF_GUARDED_BY(mutex_) = 0;
-  int64 put_count_ TF_GUARDED_BY(mutex_) = 0;
-  int64 allocated_count_ TF_GUARDED_BY(mutex_) = 0;
-  int64 evicted_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t get_from_pool_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t put_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t allocated_count_ TF_GUARDED_BY(mutex_) = 0;
+  int64_t evicted_count_ TF_GUARDED_BY(mutex_) = 0;
 };
 
 // Do-nothing rounder. Passes through sizes unchanged.
@@ -161,6 +165,10 @@ class BasicCPUAllocator : public SubAllocator {
   void Free(void* ptr, size_t num_bytes) override;
 
   bool SupportsCoalescing() const override { return false; }
+
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kHostPageable;
+  }
 
  private:
   int numa_node_;

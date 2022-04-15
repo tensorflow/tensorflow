@@ -37,12 +37,12 @@ namespace {
 // consists of matmul. The host's step db should be created only for the step
 // observed on the host.
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
-  constexpr int64 kFirstStepNum = 123;
-  constexpr int64 kSecondStepNum = 456;
-  constexpr int64 kFirstStepId = 0;
-  constexpr int64 kSecondStepId = 1;
-  constexpr int64 kFirstCorrelationId = 100;
-  constexpr int64 kSecondCorrelationId = 200;
+  constexpr int64_t kFirstStepNum = 123;
+  constexpr int64_t kSecondStepNum = 456;
+  constexpr int64_t kFirstStepId = 0;
+  constexpr int64_t kSecondStepId = 1;
+  constexpr int64_t kFirstCorrelationId = 100;
+  constexpr int64_t kSecondCorrelationId = 200;
 
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
@@ -84,8 +84,8 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
       ConvertDeviceTraceXPlaneToStepEvents(*device_plane);
   EXPECT_EQ(device_step_events.size(), 1);
   EXPECT_EQ(device_step_events[0].Events().size(), 1);
-  StepEvents host_step_events = ConvertHostThreadsXPlaneToStepEvents(
-      *host_plane, true, device_step_events);
+  StepEvents host_step_events =
+      ConvertHostThreadsXPlaneToStepEvents(*host_plane, &device_step_events);
   // Should contain only the step which is also present on the device.
   EXPECT_EQ(host_step_events.size(), 1);
   // TraceContext should be added as a step marker.

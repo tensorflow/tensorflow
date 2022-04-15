@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -32,16 +36,18 @@ namespace data {
 /* static */ constexpr const char* const TensorSliceDatasetOp::kComponents;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kToutputTypes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kOutputShapes;
-
-constexpr char kCurIndex[] = "i";
+/* static */ constexpr const char* const TensorSliceDatasetOp::kIsFiles;
 
 class TensorSliceDatasetOp::Dataset : public DatasetBase {
  public:
-  explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
-      : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
+  explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors,
+                   bool is_files)
+      : DatasetBase(DatasetContext(ctx)),
+        tensors_(std::move(tensors)),
+        is_files_(is_files) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
-      gtl::InlinedVector<int64, 4> element_dim_sizes;
+      gtl::InlinedVector<int64_t, 4> element_dim_sizes;
       // Handle scalar here. Check that everyone matches here? Or fail
       // at runtime?
       for (int i = 1; i < t.dims(); ++i) {
@@ -58,10 +64,10 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
-  Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const override {
-    *split_provider =
-        absl::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0));
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    split_providers->push_back(
+        absl::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0)));
     return Status::OK();
   }
 
@@ -75,13 +81,30 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return tensors_[0].dim_size(0); }
+  int64_t CardinalityInternal() const override {
+    return tensors_[0].dim_size(0);
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return tensors_[0].dim_size(0);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
   }
 
   Status CheckExternalState() const override { return Status::OK(); }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    out_tensors->clear();
+    out_tensors->reserve(tensors_.size());
+    for (int i = 0; i < tensors_.size(); ++i) {
+      out_tensors->push_back(MaybeCopySubSlice(tensors_[i], index));
+    }
+    return Status::OK();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -91,8 +114,13 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->serialize_data_tensors()) {
+      if (!ctx->is_graph_rewrite()) {
         TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
+        if (is_files_) {
+          Node* file_node;
+          TF_RETURN_IF_ERROR(
+              b->AddIdentity(ctx, "FileIdentity", &node, &file_node));
+        }
       } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
         DCHECK_NE(ctx->input_list(), nullptr);
@@ -102,6 +130,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     }
     AttrValue dtypes;
     b->BuildAttrValue(dtypes_, &dtypes);
+    AttrValue is_files;
+    b->BuildAttrValue(is_files_, &is_files);
     TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
                                      {{kToutputTypes, dtypes}}, output));
     return Status::OK();
@@ -114,10 +144,12 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      split_provider_ = ctx->split_provider();
-      if (split_provider_ == nullptr) {
+      if (ctx->split_providers().empty()) {
         split_provider_ = std::make_shared<IndexSplitProvider>(
             dataset()->tensors_[0].dim_size(0));
+      } else {
+        TF_ASSIGN_OR_RETURN(split_provider_,
+                            GetSingleSplitProvider(ctx, dataset()));
       }
       return Status::OK();
     }
@@ -130,15 +162,11 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       if (*end_of_sequence) {
         return Status::OK();
       }
-      int64 index = split.scalar<int64>()();
-      out_tensors->clear();
+      int64_t index = split.scalar<int64_t>()();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
-        const Tensor& t = dataset()->tensors_[i];
-        out_tensors->emplace_back(ctx->allocator({}), t.dtype(),
-                                  dataset()->shapes_[i]);
-        TF_RETURN_IF_ERROR(
-            batch_util::CopySliceToElement(t, &out_tensors->back(), index));
+        out_tensors->push_back(
+            MaybeCopySubSlice(dataset()->tensors_[i], index));
       }
       *end_of_sequence = false;
       return Status::OK();
@@ -170,12 +198,16 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   DataTypeVector dtypes_;
   std::vector<TensorShape> shapes_;
   std::vector<PartialTensorShape> partial_shapes_;
+  bool is_files_;
 };
 
 TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kToutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  if (ctx->HasAttr(kIsFiles)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kIsFiles, &is_files_));
+  }
 }
 
 void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
@@ -187,7 +219,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, inputs[0].dims() > 0,
       errors::InvalidArgument("All components must be at least 1-dimensional"));
-  const int64 num_slices = inputs[0].dim_size(0);
+  const int64_t num_slices = inputs[0].dim_size(0);
   for (const Tensor& t : inputs) {
     components.push_back(t);
     OP_REQUIRES(ctx, t.dims() > 0,
@@ -198,7 +230,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
         errors::InvalidArgument(
             "All components must have the same size in the 0th dimension"));
   }
-  *output = new Dataset(ctx, std::move(components));
+  *output = new Dataset(ctx, std::move(components), is_files_);
   OP_REQUIRES_OK(ctx,
                  VerifyTypesMatch((*output)->output_dtypes(), output_types_));
   OP_REQUIRES_OK(
@@ -206,6 +238,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("TensorSliceDataset").Device(DEVICE_CPU),
                         TensorSliceDatasetOp);
 }  // namespace

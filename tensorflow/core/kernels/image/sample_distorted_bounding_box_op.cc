@@ -273,8 +273,8 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     OP_REQUIRES(context,
                 FastBoundsCheck(width_raw, std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("image width cannot be >= int32 max"));
-    const int32 height = static_cast<int32>(height_raw);
-    const int32 width = static_cast<int32>(width_raw);
+    const int32_t height = static_cast<int32>(height_raw);
+    const int32_t width = static_cast<int32>(width_raw);
 
     // Ensure that the supplied bounding boxes are sane and convert them to
     // Rectangles.
@@ -323,10 +323,10 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
                                       boxes(b, i)));
         }
 
-        const int32 x_min = static_cast<int32>(boxes(b, 1) * width);
-        const int32 y_min = static_cast<int32>(boxes(b, 0) * height);
-        const int32 x_max = static_cast<int32>(boxes(b, 3) * width);
-        const int32 y_max = static_cast<int32>(boxes(b, 2) * height);
+        const int32_t x_min = static_cast<int32>(boxes(b, 1) * width);
+        const int32_t y_min = static_cast<int32>(boxes(b, 0) * height);
+        const int32_t x_max = static_cast<int32>(boxes(b, 3) * width);
+        const int32_t y_max = static_cast<int32>(boxes(b, 2) * height);
 
         bounding_boxes.push_back(Rectangle(x_min, y_min, x_max, y_max));
       }

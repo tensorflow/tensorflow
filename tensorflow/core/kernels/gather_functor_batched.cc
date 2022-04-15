@@ -27,7 +27,7 @@ namespace functor {
 // Forward declarations of the functor specializations for GPU.
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                               \
   template <>                                                           \
-  int64 GatherFunctorBatched<GPUDevice, T, Index>::operator()(          \
+  int64_t GatherFunctorBatched<GPUDevice, T, Index>::operator()(        \
       OpKernelContext* ctx, typename TTypes<T, 4>::ConstTensor Tparams, \
       typename TTypes<Index>::ConstFlat Tindices,                       \
       typename TTypes<T, 4>::Tensor Tout);                              \
@@ -35,7 +35,7 @@ namespace functor {
 
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \
-  DECLARE_GPU_SPECS_INDEX(T, int64)
+  DECLARE_GPU_SPECS_INDEX(T, int64_t)
 
 TF_CALL_int64(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);

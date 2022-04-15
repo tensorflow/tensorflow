@@ -260,6 +260,20 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
         TF_LITE_ADD(optimized_ops, Add, int32_t);
       }
     }
+  } else if (output->type == kTfLiteInt64) {
+    if (kernel_type == kReference) {
+      if (need_broadcast) {
+        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int64_t);
+      } else {
+        TF_LITE_ADD(reference_ops, Add, int64_t);
+      }
+    } else {
+      if (need_broadcast) {
+        TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, int64_t);
+      } else {
+        TF_LITE_ADD(optimized_ops, Add, int64_t);
+      }
+    }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
@@ -324,10 +338,14 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
       if (need_broadcast) {
         TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int16_t);
       } else {
-        reference_ops::Add(
-            op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
-            GetTensorShape(input2), GetTensorData<int16_t>(input2),
-            GetTensorShape(output), GetTensorData<int16_t>(output), false);
+        if (kernel_type == kReference) {
+          reference_ops::Add(
+              op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+              GetTensorShape(input2), GetTensorData<int16_t>(input2),
+              GetTensorShape(output), GetTensorData<int16_t>(output), false);
+        } else {
+          TF_LITE_ADD(optimized_integer_ops, Add, int16_t);
+        }
       }
     } else {
       if (kernel_type == kReference) {
@@ -384,7 +402,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
+      output->type == kTfLiteInt64) {
     EvalAdd<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {

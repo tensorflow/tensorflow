@@ -1,0 +1,2260 @@
+node {
+  name: "current_loss_scale/Initializer/initial_value"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@current_loss_scale"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "current_loss_scale"
+  op: "VarHandleOp"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@current_loss_scale"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "current_loss_scale"
+    }
+  }
+}
+node {
+  name: "current_loss_scale/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "current_loss_scale:0"
+}
+node {
+  name: "current_loss_scale/Assign"
+  op: "AssignVariableOp"
+  input: "current_loss_scale:0"
+  input: "current_loss_scale/Initializer/initial_value:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "current_loss_scale/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "current_loss_scale:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "good_steps/Initializer/initial_value"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@good_steps"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "good_steps"
+  op: "VarHandleOp"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@good_steps"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "good_steps"
+    }
+  }
+}
+node {
+  name: "good_steps/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "good_steps:0"
+}
+node {
+  name: "good_steps/Assign"
+  op: "AssignVariableOp"
+  input: "good_steps:0"
+  input: "good_steps/Initializer/initial_value:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "good_steps/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "good_steps:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "normalize_element/component_0"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_BOOL
+        tensor_shape {
+          dim {
+            size: 9
+          }
+        }
+        bool_val: true
+        bool_val: false
+        bool_val: true
+        bool_val: false
+        bool_val: true
+        bool_val: false
+        bool_val: true
+        bool_val: false
+        bool_val: true
+      }
+    }
+  }
+}
+node {
+  name: "TensorSliceDataset"
+  op: "TensorSliceDataset"
+  input: "normalize_element/component_0:0"
+  attr {
+    key: "Toutput_types"
+    value {
+      list {
+        type: DT_BOOL
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "OneShotIterator"
+  op: "OneShotIterator"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@TensorSliceDataset"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dataset_factory"
+    value {
+      func {
+        name: "_make_dataset_tPO4q8xaXYQ"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_BOOL
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "IteratorToStringHandle"
+  op: "IteratorToStringHandle"
+  input: "OneShotIterator:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@TensorSliceDataset"
+      }
+    }
+  }
+}
+node {
+  name: "IteratorGetNext"
+  op: "IteratorGetNext"
+  input: "OneShotIterator:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@TensorSliceDataset"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_BOOL
+      }
+    }
+  }
+}
+node {
+  name: "cond/Switch"
+  op: "Switch"
+  input: "IteratorGetNext:0"
+  input: "IteratorGetNext:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_t"
+  op: "Identity"
+  input: "cond/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_f"
+  op: "Identity"
+  input: "cond/Switch:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/pred_id"
+  op: "Identity"
+  input: "IteratorGetNext:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/Const"
+  op: "Const"
+  input: "^cond/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond/Const_1"
+  op: "Const"
+  input: "^cond/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: nan
+      }
+    }
+  }
+}
+node {
+  name: "cond/Merge"
+  op: "Merge"
+  input: "cond/Const_1:0"
+  input: "cond/Const:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "IsFinite"
+  op: "IsFinite"
+  input: "cond/Merge:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Rank"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "range/start"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "range/delta"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "range"
+  op: "Range"
+  input: "range/start:0"
+  input: "Rank:0"
+  input: "range/delta:0"
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "All"
+  op: "All"
+  input: "IsFinite:0"
+  input: "range:0"
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "Rank_1/packed"
+  op: "Pack"
+  input: "All:0"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Rank_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "range_1/start"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "range_1/delta"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "range_1"
+  op: "Range"
+  input: "range_1/start:0"
+  input: "Rank_1:0"
+  input: "range_1/delta:0"
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "All_1/input"
+  op: "Pack"
+  input: "All:0"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "All_1"
+  op: "All"
+  input: "All_1/input:0"
+  input: "range_1:0"
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "cond_1/Switch"
+  op: "Switch"
+  input: "All_1:0"
+  input: "All_1:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/switch_t"
+  op: "Identity"
+  input: "cond_1/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/switch_f"
+  op: "Identity"
+  input: "cond_1/Switch:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/pred_id"
+  op: "Identity"
+  input: "All_1:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/ReadVariableOp/Switch"
+  op: "Switch"
+  input: "good_steps:0"
+  input: "cond_1/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@good_steps"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "cond_1/ReadVariableOp/Switch:1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/add/y"
+  op: "Const"
+  input: "^cond_1/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/add"
+  op: "AddV2"
+  input: "cond_1/ReadVariableOp:0"
+  input: "cond_1/add/y:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/GreaterEqual/y"
+  op: "Const"
+  input: "^cond_1/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/GreaterEqual"
+  op: "GreaterEqual"
+  input: "cond_1/add:0"
+  input: "cond_1/GreaterEqual/y:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/cond/Switch"
+  op: "Switch"
+  input: "cond_1/GreaterEqual:0"
+  input: "cond_1/GreaterEqual:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/switch_t"
+  op: "Identity"
+  input: "cond_1/cond/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/switch_f"
+  op: "Identity"
+  input: "cond_1/cond/Switch:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/pred_id"
+  op: "Identity"
+  input: "cond_1/GreaterEqual:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/ReadVariableOp/Switch"
+  op: "Switch"
+  input: "current_loss_scale:0"
+  input: "cond_1/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@current_loss_scale"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/ReadVariableOp/Switch_1"
+  op: "Switch"
+  input: "cond_1/cond/ReadVariableOp/Switch:1"
+  input: "cond_1/cond/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@current_loss_scale"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "cond_1/cond/ReadVariableOp/Switch_1:1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/cond/mul/y"
+  op: "Const"
+  input: "^cond_1/cond/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/mul"
+  op: "Mul"
+  input: "cond_1/cond/ReadVariableOp:0"
+  input: "cond_1/cond/mul/y:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/cond/IsFinite"
+  op: "IsFinite"
+  input: "cond_1/cond/mul:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/Switch"
+  op: "Switch"
+  input: "cond_1/cond/IsFinite:0"
+  input: "cond_1/cond/IsFinite:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/switch_t"
+  op: "Identity"
+  input: "cond_1/cond/cond/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/switch_f"
+  op: "Identity"
+  input: "cond_1/cond/cond/Switch:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/pred_id"
+  op: "Identity"
+  input: "cond_1/cond/IsFinite:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/AssignVariableOp/Switch"
+  op: "Switch"
+  input: "cond_1/cond/ReadVariableOp/Switch_1:1"
+  input: "cond_1/cond/cond/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@current_loss_scale"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/AssignVariableOp/Switch_1"
+  op: "Switch"
+  input: "cond_1/cond/mul:0"
+  input: "cond_1/cond/cond/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@cond_1/cond/mul"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/AssignVariableOp"
+  op: "AssignVariableOp"
+  input: "cond_1/cond/cond/AssignVariableOp/Switch:1"
+  input: "cond_1/cond/cond/AssignVariableOp/Switch_1:1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "cond_1/cond/cond/AssignVariableOp/Switch:1"
+  input: "^cond_1/cond/cond/AssignVariableOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/control_dependency"
+  op: "Identity"
+  input: "cond_1/cond/cond/switch_t:0"
+  input: "^cond_1/cond/cond/AssignVariableOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@cond_1/cond/cond/switch_t"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/NoOp"
+  op: "NoOp"
+  input: "^cond_1/cond/cond/switch_f"
+}
+node {
+  name: "cond_1/cond/cond/control_dependency_1"
+  op: "Identity"
+  input: "cond_1/cond/cond/switch_f:0"
+  input: "^cond_1/cond/cond/NoOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@cond_1/cond/cond/switch_f"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/cond/Merge"
+  op: "Merge"
+  input: "cond_1/cond/cond/control_dependency_1:0"
+  input: "cond_1/cond/cond/control_dependency:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/cond/Const"
+  op: "Const"
+  input: "^cond_1/cond/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/AssignVariableOp/Switch"
+  op: "Switch"
+  input: "cond_1/ReadVariableOp/Switch:1"
+  input: "cond_1/cond/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@good_steps"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/AssignVariableOp"
+  op: "AssignVariableOp"
+  input: "cond_1/cond/AssignVariableOp/Switch:1"
+  input: "cond_1/cond/Const:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/cond/ReadVariableOp_1"
+  op: "ReadVariableOp"
+  input: "cond_1/cond/AssignVariableOp/Switch:1"
+  input: "^cond_1/cond/AssignVariableOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/cond/group_deps"
+  op: "NoOp"
+  input: "^cond_1/cond/AssignVariableOp"
+  input: "^cond_1/cond/cond/Merge"
+}
+node {
+  name: "cond_1/cond/control_dependency"
+  op: "Identity"
+  input: "cond_1/cond/switch_t:0"
+  input: "^cond_1/cond/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@cond_1/cond/switch_t"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/Const_1"
+  op: "Const"
+  input: "^cond_1/cond/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/AssignAddVariableOp/Switch"
+  op: "Switch"
+  input: "cond_1/ReadVariableOp/Switch:1"
+  input: "cond_1/cond/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@good_steps"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/AssignAddVariableOp"
+  op: "AssignAddVariableOp"
+  input: "cond_1/cond/AssignAddVariableOp/Switch:0"
+  input: "cond_1/cond/Const_1:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/cond/ReadVariableOp_2"
+  op: "ReadVariableOp"
+  input: "cond_1/cond/AssignAddVariableOp/Switch:0"
+  input: "^cond_1/cond/AssignAddVariableOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/cond/control_dependency_1"
+  op: "Identity"
+  input: "cond_1/cond/switch_f:0"
+  input: "^cond_1/cond/AssignAddVariableOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@cond_1/cond/switch_f"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/cond/Merge"
+  op: "Merge"
+  input: "cond_1/cond/control_dependency_1:0"
+  input: "cond_1/cond/control_dependency:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond_1/ReadVariableOp_1/Switch"
+  op: "Switch"
+  input: "current_loss_scale:0"
+  input: "cond_1/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@current_loss_scale"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/ReadVariableOp_1"
+  op: "ReadVariableOp"
+  input: "cond_1/ReadVariableOp_1/Switch:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/truediv/y"
+  op: "Const"
+  input: "^cond_1/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/truediv"
+  op: "RealDiv"
+  input: "cond_1/ReadVariableOp_1:0"
+  input: "cond_1/truediv/y:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/Maximum/y"
+  op: "Const"
+  input: "^cond_1/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/Maximum"
+  op: "Maximum"
+  input: "cond_1/truediv:0"
+  input: "cond_1/Maximum/y:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/Const"
+  op: "Const"
+  input: "^cond_1/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT64
+        tensor_shape {
+        }
+        int64_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/AssignVariableOp/Switch"
+  op: "Switch"
+  input: "good_steps:0"
+  input: "cond_1/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@good_steps"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/AssignVariableOp"
+  op: "AssignVariableOp"
+  input: "cond_1/AssignVariableOp/Switch:0"
+  input: "cond_1/Const:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/ReadVariableOp_2"
+  op: "ReadVariableOp"
+  input: "cond_1/AssignVariableOp/Switch:0"
+  input: "^cond_1/AssignVariableOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+}
+node {
+  name: "cond_1/AssignVariableOp_1"
+  op: "AssignVariableOp"
+  input: "cond_1/ReadVariableOp_1/Switch:0"
+  input: "cond_1/Maximum:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/ReadVariableOp_3"
+  op: "ReadVariableOp"
+  input: "cond_1/ReadVariableOp_1/Switch:0"
+  input: "^cond_1/AssignVariableOp_1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "cond_1/group_deps"
+  op: "NoOp"
+  input: "^cond_1/AssignVariableOp"
+  input: "^cond_1/AssignVariableOp_1"
+}
+node {
+  name: "cond_1/control_dependency"
+  op: "Identity"
+  input: "cond_1/switch_f:0"
+  input: "^cond_1/group_deps"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@cond_1/switch_f"
+      }
+    }
+  }
+}
+node {
+  name: "cond_1/Merge"
+  op: "Merge"
+  input: "cond_1/control_dependency:0"
+  input: "cond_1/cond/Merge:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Equal"
+  op: "Equal"
+  input: "All_1:0"
+  input: "IteratorGetNext:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "incompatible_shape_error"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Rank"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/range/start"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/range/delta"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/range"
+  op: "Range"
+  input: "assert_equal_1/range/start:0"
+  input: "assert_equal_1/Rank:0"
+  input: "assert_equal_1/range/delta:0"
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "assert_equal_1/All"
+  op: "All"
+  input: "assert_equal_1/Equal:0"
+  input: "assert_equal_1/range:0"
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/Const_2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Switch"
+  op: "Switch"
+  input: "assert_equal_1/All:0"
+  input: "assert_equal_1/All:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/switch_t"
+  op: "Identity"
+  input: "assert_equal_1/Assert/AssertGuard/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/switch_f"
+  op: "Identity"
+  input: "assert_equal_1/Assert/AssertGuard/Switch:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/pred_id"
+  op: "Identity"
+  input: "assert_equal_1/All:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/NoOp"
+  op: "NoOp"
+  input: "^assert_equal_1/Assert/AssertGuard/switch_t"
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/control_dependency"
+  op: "Identity"
+  input: "assert_equal_1/Assert/AssertGuard/switch_t:0"
+  input: "^assert_equal_1/Assert/AssertGuard/NoOp"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@assert_equal_1/Assert/AssertGuard/switch_t"
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert/data_0"
+  op: "Const"
+  input: "^assert_equal_1/Assert/AssertGuard/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert/data_1"
+  op: "Const"
+  input: "^assert_equal_1/Assert/AssertGuard/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert/data_3"
+  op: "Const"
+  input: "^assert_equal_1/Assert/AssertGuard/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert/Switch"
+  op: "Switch"
+  input: "assert_equal_1/All:0"
+  input: "assert_equal_1/Assert/AssertGuard/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@assert_equal_1/All"
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert/Switch_1"
+  op: "Switch"
+  input: "All_1:0"
+  input: "assert_equal_1/Assert/AssertGuard/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@All_1"
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert/Switch_2"
+  op: "Switch"
+  input: "IteratorGetNext:0"
+  input: "assert_equal_1/Assert/AssertGuard/pred_id:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@TensorSliceDataset"
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Assert"
+  op: "Assert"
+  input: "assert_equal_1/Assert/AssertGuard/Assert/Switch:0"
+  input: "assert_equal_1/Assert/AssertGuard/Assert/data_0:0"
+  input: "assert_equal_1/Assert/AssertGuard/Assert/data_1:0"
+  input: "assert_equal_1/Assert/AssertGuard/Assert/Switch_1:0"
+  input: "assert_equal_1/Assert/AssertGuard/Assert/data_3:0"
+  input: "assert_equal_1/Assert/AssertGuard/Assert/Switch_2:0"
+  attr {
+    key: "T"
+    value {
+      list {
+        type: DT_STRING
+        type: DT_STRING
+        type: DT_BOOL
+        type: DT_STRING
+        type: DT_BOOL
+      }
+    }
+  }
+  attr {
+    key: "summarize"
+    value {
+      i: 3
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/control_dependency_1"
+  op: "Identity"
+  input: "assert_equal_1/Assert/AssertGuard/switch_f:0"
+  input: "^assert_equal_1/Assert/AssertGuard/Assert"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@assert_equal_1/Assert/AssertGuard/switch_f"
+      }
+    }
+  }
+}
+node {
+  name: "assert_equal_1/Assert/AssertGuard/Merge"
+  op: "Merge"
+  input: "assert_equal_1/Assert/AssertGuard/control_dependency_1:0"
+  input: "assert_equal_1/Assert/AssertGuard/control_dependency:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "Identity"
+  op: "Identity"
+  input: "cond_1/Merge:0"
+  input: "^assert_equal_1/Assert/AssertGuard/Merge"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "init"
+  op: "NoOp"
+  input: "^current_loss_scale/Assign"
+  input: "^good_steps/Assign"
+}
+library {
+  function {
+    signature {
+      name: "_make_dataset_tPO4q8xaXYQ"
+      output_arg {
+        name: "optimizedatasetv2"
+        type: DT_VARIANT
+      }
+      description: "Factory function for a dataset."
+      is_stateful: true
+    }
+    node_def {
+      name: "ModelDataset/normalize_element/component_0"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_BOOL
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_BOOL
+            tensor_shape {
+              dim {
+                size: 9
+              }
+            }
+            bool_val: true
+            bool_val: false
+            bool_val: true
+            bool_val: false
+            bool_val: true
+            bool_val: false
+            bool_val: true
+            bool_val: false
+            bool_val: true
+          }
+        }
+      }
+    }
+    node_def {
+      name: "ModelDataset/TensorSliceDataset"
+      op: "TensorSliceDataset"
+      input: "ModelDataset/normalize_element/component_0:output:0"
+      attr {
+        key: "Toutput_types"
+        value {
+          list {
+            type: DT_BOOL
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "ModelDataset"
+      op: "ModelDataset"
+      input: "ModelDataset/TensorSliceDataset:handle:0"
+      attr {
+        key: "algorithm"
+        value {
+          i: 0
+        }
+      }
+      attr {
+        key: "cpu_budget"
+        value {
+          i: 0
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_types"
+        value {
+          list {
+            type: DT_BOOL
+          }
+        }
+      }
+      attr {
+        key: "ram_budget"
+        value {
+          i: 0
+        }
+      }
+    }
+    node_def {
+      name: "optimizations_enabled"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+              }
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "optimizations_disabled"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+              }
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "optimizations_default"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+                size: 4
+              }
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "OptimizeDatasetV2"
+      op: "OptimizeDatasetV2"
+      input: "ModelDataset:handle:0"
+      input: "optimizations_enabled:output:0"
+      input: "optimizations_disabled:output:0"
+      input: "optimizations_default:output:0"
+      attr {
+        key: "optimization_configs"
+        value {
+          list {
+            s: "autotune_buffer_sizes:autotune:true"
+            s: "batch_parallelization:autotune:true"
+            s: "disable_prefetch_legacy_autotune:autotune:true"
+            s: "enable_gradient_descent:autotune:true"
+            s: "map_parallelization:autotune:true"
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "output_types"
+        value {
+          list {
+            type: DT_BOOL
+          }
+        }
+      }
+    }
+    ret {
+      key: "optimizedatasetv2"
+      value: "OptimizeDatasetV2:handle:0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+  }
+}
+versions {
+  producer: 725
+  min_consumer: 12
+}

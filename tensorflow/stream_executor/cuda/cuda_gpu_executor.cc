@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 
+#include <utility>
+
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
@@ -185,27 +187,9 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
 static std::string GetBinaryDir(bool strip_exe) {
-  char exe_path[PATH_MAX] = {0};
-#if defined(__APPLE__)
-  uint32_t buffer_size = 0U;
-  _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
-#else
-#if defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
-#else
-  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
-#endif
-#endif
-  // Make sure it's null-terminated:
-  exe_path[sizeof(exe_path) - 1] = 0;
-
+  std::string exe_path = port::GetExecutablePath();
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
-    std::string ret = exe_path;
     std::vector<std::string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
     return absl::StrJoin(components, "/");
@@ -379,6 +363,67 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+namespace {
+absl::uint128 Fingerprint128(const absl::string_view s) {
+  auto fp = tensorflow::Fingerprint128(s);
+  return absl::MakeUint128(fp.high64, fp.low64);
+}
+}  // namespace
+
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+GpuExecutor::CreateOrShareConstant(Stream* stream,
+                                   const std::vector<uint8_t>& content) {
+  absl::MutexLock lock{&shared_constants_mu_};
+  // We assume all constants are uniquely identified by this hash. In the
+  // (highly unlikely) event of a hash collision, the program will likely crash
+  // (because the cached constant that will be returned by mistake is unlikely
+  // to have the correct size).
+  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
+      reinterpret_cast<const char*>(content.data()), content.size()));
+  // Must insert nullptr first to get an iterator to the insertion point.
+  auto insert_result = shared_constants_.insert(
+      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+  auto it = insert_result.first;
+  bool was_already_in_cache = !insert_result.second;
+  std::shared_ptr<DeviceMemoryBase> shared_constant;
+
+  if (was_already_in_cache) {
+    shared_constant = it->second.lock();
+  }
+
+  if (shared_constant == nullptr) {
+    // Either the constant wasn't found in the cache, or it was but its
+    // weak_ptr had expired.
+    DeviceMemoryBase* new_constant =
+        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    if (new_constant->opaque() == nullptr) {
+      return port::InternalError(absl::StrFormat(
+          "Failed to allocate %d bytes for new constant", content.size()));
+    }
+
+    port::Status status =
+        stream->ThenMemcpy(new_constant, content.data(), content.size())
+            .BlockHostUntilDone();
+    if (!status.ok()) {
+      Deallocate(new_constant);
+      status.Update(port::InternalError(absl::StrFormat(
+          "Memcpy to device address %p failed", new_constant->opaque())));
+      return status;
+    }
+
+    // Capturing 'this' in the custom deleter means this executor must
+    // outlive all shared uses of this constant.
+    shared_constant = std::shared_ptr<DeviceMemoryBase>(
+        new_constant, [this](DeviceMemoryBase* p) {
+          Deallocate(p);
+          delete p;
+        });
+    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+  }
+
+  return shared_constant;
+}
+
 port::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
                                             KernelMetadata* kernel_metadata) {
   int value;
@@ -423,10 +468,11 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   void** kernel_params = const_cast<void**>(args.argument_addresses().data());
 
-  return GpuDriver::LaunchKernel(
-      context_, cufunc, block_dims.x, block_dims.y, block_dims.z, thread_dims.x,
-      thread_dims.y, thread_dims.z, args.number_of_shared_bytes(), custream,
-      kernel_params, nullptr /* = extra */);
+  return GpuDriver::LaunchKernel(context_, kernel.name(), cufunc, block_dims.x,
+                                 block_dims.y, block_dims.z, thread_dims.x,
+                                 thread_dims.y, thread_dims.z,
+                                 args.number_of_shared_bytes(), custream,
+                                 kernel_params, nullptr /* = extra */);
 }
 
 // This is a non-essential operation; if there's a failure, proceed without
@@ -475,8 +521,8 @@ void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
 // device description, some kernel characteristics and the number of threads per
 // block.  If unable to compute occupancy, zero is returned.
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
-                                    uint64 registers_per_thread,
-                                    uint64 shared_memory_per_block,
+                                    uint64_t registers_per_thread,
+                                    uint64_t shared_memory_per_block,
                                     const ThreadDim& thread_dims,
                                     CUfunction func) {
   int suggested_blocks = 0;
@@ -492,8 +538,8 @@ int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
 // If the provided thread dimensions match this number, zero is returned.
 int GpuExecutor::CompareOccupancy(int* initial_blocks,
                                   const DeviceDescription& device_description,
-                                  uint64 registers_per_thread,
-                                  uint64 shared_memory_per_block,
+                                  uint64_t registers_per_thread,
+                                  uint64_t shared_memory_per_block,
                                   const ThreadDim& thread_dims,
                                   CUfunction func) {
   int suggested_blocks = 0;
@@ -510,13 +556,13 @@ int GpuExecutor::CompareOccupancy(int* initial_blocks,
   }
 }
 
-DeviceMemoryBase GpuExecutor::Allocate(uint64 size, int64 memory_space) {
+DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
 }
 
-void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
-                                uint64 size_bytes) {
+void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64_t offset_bytes,
+                                uint64_t size_bytes) {
   // offset and size are in bytes, so char* works as the pointer type.
   return reinterpret_cast<char*>(mem->opaque()) + offset_bytes;
 }
@@ -525,7 +571,7 @@ void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
   GpuDriver::DeviceDeallocate(context_, mem->opaque());
 }
 
-bool GpuExecutor::HostMemoryRegister(void* location, uint64 size) {
+bool GpuExecutor::HostMemoryRegister(void* location, uint64_t size) {
   if (location == nullptr || size == 0) {
     LOG(WARNING) << "attempting to register null or zero-sized memory: "
                  << location << "; size " << size;
@@ -544,7 +590,7 @@ bool GpuExecutor::SynchronizeAllActivity() {
 }
 
 port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
-                                             uint64 size) {
+                                             uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -555,7 +601,7 @@ port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                            int value, uint64 size) {
+                                            int value, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // cudaMemset reinterprets "value" as a uint8.
@@ -570,26 +616,27 @@ port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                            const void* host_src, uint64 size) {
+                                            const void* host_src,
+                                            uint64_t size) {
   return GpuDriver::SynchronousMemcpyH2D(context_, AsCudaDevicePtr(gpu_dst),
                                          host_src, size);
 }
 
 port::Status GpuExecutor::SynchronousMemcpy(void* host_dst,
                                             const DeviceMemoryBase& gpu_src,
-                                            uint64 size) {
+                                            uint64_t size) {
   return GpuDriver::SynchronousMemcpyD2H(context_, host_dst,
                                          AsCudaDevicePtr(gpu_src), size);
 }
 
 port::Status GpuExecutor::SynchronousMemcpyDeviceToDevice(
-    DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64 size) {
+    DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   return GpuDriver::SynchronousMemcpyD2D(context_, AsCudaDevicePtr(gpu_dst),
                                          AsCudaDevicePtr(gpu_src), size);
 }
 
 port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                  uint64 size) {
+                                  uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return Memset32(stream, location, 0x0, size);
@@ -599,7 +646,7 @@ port::Status GpuExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                 uint8 pattern, uint64 size) {
+                                 uint8 pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset8 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -609,7 +656,7 @@ port::Status GpuExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
 }
 
 port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                   uint32 pattern, uint64 size) {
+                                   uint32 pattern, uint64_t size) {
   VLOG(2) << "enqueueing memset32 operation onto stream " << stream
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
@@ -621,14 +668,14 @@ port::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
 }
 
 bool GpuExecutor::Memcpy(Stream* stream, void* host_dst,
-                         const DeviceMemoryBase& gpu_src, uint64 size) {
+                         const DeviceMemoryBase& gpu_src, uint64_t size) {
   return GpuDriver::AsynchronousMemcpyD2H(context_, host_dst,
                                           AsCudaDevicePtr(gpu_src), size,
                                           AsGpuStreamValue(stream));
 }
 
 bool GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                         const void* host_src, uint64 size) {
+                         const void* host_src, uint64_t size) {
   return GpuDriver::AsynchronousMemcpyH2D(context_, AsCudaDevicePtr(gpu_dst),
                                           host_src, size,
                                           AsGpuStreamValue(stream));
@@ -637,7 +684,7 @@ bool GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
 bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
                                        DeviceMemoryBase* gpu_dst,
                                        const DeviceMemoryBase& gpu_src,
-                                       uint64 size) {
+                                       uint64_t size) {
   return GpuDriver::AsynchronousMemcpyD2D(context_, AsCudaDevicePtr(gpu_dst),
                                           AsCudaDevicePtr(gpu_src), size,
                                           AsGpuStreamValue(stream));
@@ -808,13 +855,15 @@ port::Status GpuExecutor::EnablePeerAccessTo(StreamExecutorInterface* other) {
   return GpuDriver::EnablePeerAccess(context_, cuda_other->context_);
 }
 
-bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
+bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return GpuDriver::GetDeviceMemoryInfo(context_, free, total);
 }
 
 bool GpuExecutor::GetSymbol(const std::string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
+  CHECK(static_cast<bool>(module_handle));
+
   auto lookup_in_module = [&](CUmodule module) {
     CHECK(module != nullptr);
     return GpuDriver::GetModuleSymbol(context_, module, symbol_name.c_str(),
@@ -824,20 +873,12 @@ bool GpuExecutor::GetSymbol(const std::string& symbol_name,
 
   {  // give limited scope to mutex_lock
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (static_cast<bool>(module_handle)) {
-      auto it = gpu_binary_to_module_.find(module_handle.id());
-      CHECK(it != gpu_binary_to_module_.end());
-      return lookup_in_module(it->second.first);
-    }
-
-    for (auto& it : gpu_binary_to_module_) {
-      if (lookup_in_module(it.second.first)) {
-        return true;
-      }
-    }
+    auto it = gpu_binary_to_module_.find(module_handle.id());
+    CHECK(it != gpu_binary_to_module_.end());
+    return lookup_in_module(it->second.first);
   }
 
-  LOG(INFO) << "Failed to find symbol in any modules: " << symbol_name;
+  LOG(INFO) << "Failed to find symbol: " << symbol_name;
   return false;
 }
 
@@ -855,6 +896,14 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   block_dim_limit->y = y;
   block_dim_limit->z = z;
   return true;
+}
+
+bool GpuExecutor::SupportsBlasPlans() const {
+#if CUDA_VERSION >= 11000
+  return true;
+#else
+  return false;
+#endif
 }
 
 bool GpuExecutor::SupportsBlas() const { return true; }
@@ -900,9 +949,6 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 #elif defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
   return 0;
-#elif defined(__aarch64__)
-  LOG(INFO) << "ARM64 does not support NUMA - returning NUMA node zero";
-  return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
@@ -931,7 +977,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
   buf[did_read] = '\0';
   content = buf;
 
-  int32 value;
+  int32_t value;
   if (port::safe_strto32(content, &value)) {
     if (value < 0) {  // See http://b/18228951 for details on this path.
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
@@ -1023,7 +1069,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    uint64 device_memory_size = -1;
+    uint64_t device_memory_size = -1;
     (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
     builder.set_device_memory_size(device_memory_size);
   }

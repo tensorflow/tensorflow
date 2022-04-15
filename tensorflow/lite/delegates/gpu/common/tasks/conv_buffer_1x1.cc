@@ -234,6 +234,10 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   }
   AddDstTensor("dst_tensor", dst_desc);
 
+  if (gpu_info.IsMali()) {
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+  }
+
   std::string c;
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -366,7 +370,8 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.dilations.w == 1 && attr.dilations.h == 1 &&
          attr.strides.w == 1 && attr.strides.h == 1 &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
-         attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
+         attr.padding.appended.w == 0 && attr.padding.appended.h == 0 &&
+         attr.groups == 1;
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,
@@ -378,7 +383,8 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.dilations.w == 1 && attr.dilations.h == 1 &&
          attr.strides.w == 1 && attr.strides.h == 1 &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
-         attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
+         attr.padding.appended.w == 0 && attr.padding.appended.h == 0 &&
+         attr.groups == 1;
 }
 
 ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,

@@ -56,6 +56,8 @@ class QuantizedBiasAddOp : public OpKernel {
             "Must provide as many biases as the last dimension "
             "of the input tensor: ",
             bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
+    OP_REQUIRES(context, bias.NumElements() > 0,
+                errors::InvalidArgument("Must provide at least 1 bias"));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

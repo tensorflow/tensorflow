@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` acting like a zero matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -40,6 +36,7 @@ __all__ = [
 
 
 @tf_export("linalg.LinearOperatorZeros")
+@linear_operator.make_composite_tensor
 class LinearOperatorZeros(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] zero matrix.
 
@@ -471,3 +468,12 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
 
   def _eigvals(self):
     return self._zeros_diag()
+
+  @property
+  def _composite_tensor_prefer_static_fields(self):
+    return ("num_rows", "num_columns", "batch_shape")
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("num_rows", "num_columns", "batch_shape", "dtype",
+            "assert_proper_shapes")

@@ -22,9 +22,6 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-# Install realpath
-sudo apt-get install realpath
-
 export TF_NEED_CUDA=1
 
 # Update the version string to nightly

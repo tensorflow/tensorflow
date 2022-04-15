@@ -16,6 +16,7 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -65,7 +66,7 @@ class SelectOp : public XlaOpKernel {
                                           cond_shape.num_elements()));
 
       // Broadcast into the dimensions on the right.
-      std::vector<int64> broadcast_dimensions(cond_shape.dims());
+      std::vector<int64_t> broadcast_dimensions(cond_shape.dims());
       absl::c_iota(broadcast_dimensions, 0);
       cond_handle = xla::BroadcastInDim(cond_handle, then_shape.dim_sizes(),
                                         broadcast_dimensions);
@@ -77,7 +78,7 @@ class SelectOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
 };
 
-REGISTER_XLA_OP(Name("Select"), SelectOp);
+REGISTER_XLA_OP(Name("Select"), MlirXlaOpKernel);
 
 class SelectOpV2 : public XlaOpKernel {
  public:

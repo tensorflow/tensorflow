@@ -47,7 +47,7 @@ TEST(RecognizeCommandsTest, FindCommands) {
     string found_command;
     float score;
     bool is_new_command;
-    int64 current_time_ms = 0 + (i * 100);
+    int64_t current_time_ms = 0 + (i * 100);
     TF_EXPECT_OK(recognize_commands.ProcessLatestResults(
         results, current_time_ms, &found_command, &score, &is_new_command));
     if (is_new_command) {
@@ -66,7 +66,7 @@ TEST(RecognizeCommandsTest, FindCommands) {
     string found_command;
     float score;
     bool is_new_command;
-    int64 current_time_ms = 1000 + (i * 100);
+    int64_t current_time_ms = 1000 + (i * 100);
     TF_EXPECT_OK(recognize_commands.ProcessLatestResults(
         results, current_time_ms, &found_command, &score, &is_new_command));
     if (is_new_command) {

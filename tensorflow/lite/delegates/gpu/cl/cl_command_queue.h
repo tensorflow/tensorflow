@@ -58,13 +58,15 @@ class CLCommandQueue {
 
   absl::Status EnqueueEvent(CLEvent* event);
 
-  absl::Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data);
-  absl::Status EnqueueReadImage(cl_mem memory, int3 region, void* data);
+  absl::Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data,
+                                 bool async = false);
+  absl::Status EnqueueReadImage(cl_mem memory, int3 region, void* data,
+                                bool async = false);
 
   absl::Status EnqueueWriteBuffer(cl_mem memory, size_t size_in_bytes,
-                                  const void* data);
+                                  const void* data, bool async = false);
   absl::Status EnqueueReadBuffer(cl_mem memory, size_t size_in_bytes,
-                                 void* data);
+                                 void* data, bool async = false);
 
   absl::Status WaitForCompletion();
 
@@ -88,6 +90,12 @@ class ProfilingCommandQueue : public CLCommandQueue {
 
   absl::Status Dispatch(const CLKernel& kernel, const int3& work_groups_count,
                         const int3& work_group_size) override;
+
+  // for better profiling
+  absl::Status DispatchNTimes(const CLKernel& kernel,
+                              const int3& work_groups_count,
+                              const int3& work_group_size, int n,
+                              int flush_period = 0);
 
   // will write index for fastest work_group among work_group_sizes
   absl::Status GetBestWorkGroupIndex(const CLKernel& kernel,
@@ -114,6 +122,7 @@ class ProfilingCommandQueue : public CLCommandQueue {
 
  private:
   std::vector<CLEvent> events_;
+  std::vector<int> number_of_dispatches_;
   std::string current_label_;
 };
 

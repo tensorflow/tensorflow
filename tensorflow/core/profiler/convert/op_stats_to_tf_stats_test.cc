@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
@@ -33,8 +33,8 @@ namespace profiler {
 namespace {
 
 XEventBuilder AddTensorFlowOpEvent(std::string&& tf_op_fullname,
-                                   int64 start_timestamp_ns, int64 duration_ns,
-                                   bool on_device,
+                                   int64_t start_timestamp_ns,
+                                   int64_t duration_ns, bool on_device,
                                    absl::string_view kernel_name,
                                    XPlaneBuilder* plane, XLineBuilder* line) {
   absl::string_view name = on_device ? kernel_name : tf_op_fullname;
@@ -43,14 +43,14 @@ XEventBuilder AddTensorFlowOpEvent(std::string&& tf_op_fullname,
   event.SetDurationNs(duration_ns);
   if (!on_device) return event;
   event.AddStatValue(
-      *plane->GetOrCreateStatMetadata("level 0"),
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
       *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
   return event;
 }
 
 void AddTensorFlowOpEventWithKernelDetails(std::string&& tf_op_fullname,
-                                           int64 start_timestamp_ns,
-                                           int64 duration_ns, bool on_device,
+                                           int64_t start_timestamp_ns,
+                                           int64_t duration_ns, bool on_device,
                                            absl::string_view kernel_name,
                                            absl::string_view kernel_details,
                                            XPlaneBuilder* plane,
@@ -75,16 +75,16 @@ TEST(OpStatsToTfStats, GpuTfStats) {
   // Kernel4 is a kernel using TensorCore
   static constexpr char kKernel4[] = "volta_fp16_s884gemm";
   static constexpr char kKernel5[] = "kernel5";
-  constexpr int64 kKernel1StartNs = 100000;
-  constexpr int64 kKernel1DurationNs = 8000;
-  constexpr int64 kKernel2StartNs = 110000;
-  constexpr int64 kKernel2DurationNs = 10000;
-  constexpr int64 kKernel3StartNs = 120000;
-  constexpr int64 kKernel3DurationNs = 10000;
-  constexpr int64 kKernel4StartNs = 130000;
-  constexpr int64 kKernel4DurationNs = 10000;
-  constexpr int64 kKernel5StartNs = 150000;
-  constexpr int64 kKernel5DurationNs = 10000;
+  constexpr int64_t kKernel1StartNs = 100000;
+  constexpr int64_t kKernel1DurationNs = 8000;
+  constexpr int64_t kKernel2StartNs = 110000;
+  constexpr int64_t kKernel2DurationNs = 10000;
+  constexpr int64_t kKernel3StartNs = 120000;
+  constexpr int64_t kKernel3DurationNs = 10000;
+  constexpr int64_t kKernel4StartNs = 130000;
+  constexpr int64_t kKernel4DurationNs = 10000;
+  constexpr int64_t kKernel5StartNs = 150000;
+  constexpr int64_t kKernel5DurationNs = 10000;
 
   // Mock kernel details for both kernel4 and kernel5.
   const std::string kKernelDetails = R"MULTI(regs:32
@@ -136,17 +136,16 @@ occ_pct:100)MULTI";
   EXPECT_EQ(kTfOp1, record_0.op_name());
   EXPECT_EQ(kTfOp1, record_0.op_type());
   EXPECT_EQ(2, record_0.occurrences());
-  EXPECT_EQ(NanosToMicros(kKernel1DurationNs) * 2 +
-                NanosToMicros(kKernel2DurationNs) * 2,
-            record_0.total_self_time_in_us());
+  EXPECT_EQ(
+      NanoToMicro(kKernel1DurationNs) * 2 + NanoToMicro(kKernel2DurationNs) * 2,
+      record_0.total_self_time_in_us());
 
   const TfStatsRecord& record_1 = tf_stats.with_idle().tf_stats_record(1);
   EXPECT_EQ(kTfOp3, record_1.op_name());
   EXPECT_EQ(kTfOp3, record_1.op_type());
   EXPECT_EQ(1, record_1.occurrences());
-  EXPECT_EQ(
-      NanosToMicros(kKernel4DurationNs) + NanosToMicros(kKernel5DurationNs),
-      record_1.total_self_time_in_us());
+  EXPECT_EQ(NanoToMicro(kKernel4DurationNs) + NanoToMicro(kKernel5DurationNs),
+            record_1.total_self_time_in_us());
   // GPU TensorCore utilization is 0.5 because kernel4 is using TensorCore and
   // kernel5 is not using TensorCore, and they have the same duration.
   EXPECT_DOUBLE_EQ(0.5, record_1.gpu_tensorcore_utilization());
@@ -155,8 +154,7 @@ occ_pct:100)MULTI";
   EXPECT_EQ(kTfOp2, record_2.op_name());
   EXPECT_EQ(kTfOp2, record_2.op_type());
   EXPECT_EQ(1, record_2.occurrences());
-  EXPECT_EQ(NanosToMicros(kKernel3DurationNs),
-            record_2.total_self_time_in_us());
+  EXPECT_EQ(NanoToMicro(kKernel3DurationNs), record_2.total_self_time_in_us());
 }
 
 }  // namespace

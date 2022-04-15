@@ -160,12 +160,12 @@ TEST(AttrValueUtil, SummarizeAttrValueDoesNotElideShortLists) {
 }
 
 TEST(AttrValueUtil, SummarizeAttrValueElidesLongLists) {
-  std::vector<int> alist(60);
+  std::vector<int> alist(110);
   std::iota(alist.begin(), alist.end(), 0);
 
   AttrValue attr_value;
   SetAttrValue(alist, &attr_value);
-  EXPECT_EQ("[0, 1, 2, 3, 4, ..., 55, 56, 57, 58, 59]",
+  EXPECT_EQ("[0, 1, 2, 3, 4, 2587181569776227444, 105, 106, 107, 108, 109]",
             SummarizeAttrValue(attr_value));
 }
 
@@ -224,6 +224,29 @@ TEST(AttrValueEquality, StringAndFuncTensors) {
   c2 = c1;
   c2.mutable_func()->mutable_attr()->erase("attr2");
   ExpectDifferent(c1, c2);
+}
+
+TEST(AttrValueEquality, GiantTensors) {
+  AttrValue tensor = FromText(R"(
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1024
+          }
+          dim {
+            size: 1024
+          }
+          dim {
+            size: 1024
+          }
+          dim {
+            size: 1024
+          }
+        }
+        int_val: 0
+      })");
+  EXPECT_TRUE(AreAttrValuesEqual(tensor, tensor));
 }
 
 }  // namespace tensorflow

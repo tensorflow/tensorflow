@@ -143,5 +143,66 @@ std::unique_ptr<NodeTransformation> NewRemoveIdentityReshape() {
   return absl::make_unique<RemoveIdentityReshape>();
 }
 
+class RemoveIdentityStridedSlice : public NodeTransformation {
+ public:
+  TransformResult ApplyToNode(Node* node, GraphFloat32* graph) final {
+    if (node->operation.type != ToString(OperationType::SLICE)) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    auto input = graph->FindInputs(node->id)[0];
+    auto output = graph->FindOutputs(node->id)[0];
+    const auto& slice_attr =
+        absl::any_cast<const SliceAttributes&>(node->operation.attributes);
+    if (input->tensor.shape != output->tensor.shape) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    if (slice_attr.starts != BHWC(0, 0, 0, 0)) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    if (slice_attr.strides != BHWC(1, 1, 1, 1)) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    if (slice_attr.ends != output->tensor.shape) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    const auto& graph_outputs = graph->outputs();
+    const auto& graph_inputs = graph->inputs();
+    const bool input_is_graph_input =
+        std::find(graph_inputs.begin(), graph_inputs.end(), input) !=
+        graph_inputs.end();
+    const bool output_is_graph_output =
+        std::find(graph_outputs.begin(), graph_outputs.end(), output) !=
+        graph_outputs.end();
+    if (input_is_graph_input && output_is_graph_output) {
+      return {TransformStatus::SKIPPED,
+              "Can not apply transformation when node input is graph input and "
+              "node output is graph output"};
+    }
+    if (output_is_graph_output) {
+      if (graph->FindConsumers(input->id).size() != 1) {
+        return {TransformStatus::SKIPPED,
+                "Can not apply transformation when node output is graph output "
+                "and input consumed by other nodes."};
+      }
+      absl::Status status = RemoveSimpleNodeKeepOutput(graph, node);
+      if (!status.ok()) {
+        return {TransformStatus::INVALID,
+                "Unable to remove a node: " + std::string(status.message())};
+      }
+      return {TransformStatus::APPLIED, "Removed identity strided slice."};
+    }
+    absl::Status status = RemoveSimpleNodeKeepInput(graph, node);
+    if (!status.ok()) {
+      return {TransformStatus::INVALID,
+              "Unable to remove a node: " + std::string(status.message())};
+    }
+    return {TransformStatus::APPLIED, "Removed identity strided slice."};
+  }
+};
+
+std::unique_ptr<NodeTransformation> NewRemoveIdentityStridedSlice() {
+  return absl::make_unique<RemoveIdentityStridedSlice>();
+}
+
 }  // namespace gpu
 }  // namespace tflite

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test DistributionStrategy, ReplicaContext, and supporting APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.autograph.core import converter_testing
@@ -28,6 +24,7 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -84,9 +81,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           [distribute_lib.InputContext()],
-                                           self._container_strategy())
+    return input_lib_v1.InputFunctionIterator(input_fn, self._input_workers,
+                                              [distribute_lib.InputContext()],
+                                              self._container_strategy())
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     return dataset_fn(distribute_lib.InputContext())
@@ -340,6 +337,26 @@ class TestStrategyTest(test.TestCase):
                                                ((x, "/CPU:0"), (y, "/CPU:0")))
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
       self.assertEqual(self.evaluate(y), self.evaluate(y_r))
+
+  @_run_in_and_out_of_scope
+  def testReduceMeanAxis(self, dist):
+    x = constant_op.constant([[1., 2.], [3., 4.]])
+    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x, axis=None)
+    self.assertAllEqual(self.evaluate(x), self.evaluate(x_r))
+    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x, axis=0)
+    self.assertAllEqual([2., 3.], self.evaluate(x_r))
+    x_r = dist.reduce(reduce_util.ReduceOp.MEAN, x, axis=(0, 1))
+    self.assertEqual(2.5, self.evaluate(x_r))
+
+  @_run_in_and_out_of_scope
+  def testReduceSumAxis(self, dist):
+    x = constant_op.constant([[1., 2.], [3., 4.]])
+    x_r = dist.reduce(reduce_util.ReduceOp.SUM, x, axis=None)
+    self.assertAllEqual(self.evaluate(x), self.evaluate(x_r))
+    x_r = dist.reduce(reduce_util.ReduceOp.SUM, x, axis=0)
+    self.assertAllEqual([4., 6.], self.evaluate(x_r))
+    x_r = dist.reduce(reduce_util.ReduceOp.SUM, x, axis=(0, 1))
+    self.assertEqual(10., self.evaluate(x_r))
 
   @_run_in_and_out_of_scope
   def testExperimentalRunStepsOnIterator(self, dist):

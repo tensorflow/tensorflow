@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -22,7 +22,7 @@ constexpr char kNodeName[] = "shard_dataset";
 class ShardDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  ShardDatasetParams(T input_dataset_params, int64 num_shards, int64 index,
+  ShardDatasetParams(T input_dataset_params, int64_t num_shards, int64_t index,
                      bool require_non_empty, DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name)
@@ -38,7 +38,7 @@ class ShardDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    return CreateTensors<int64>(TensorShape({}), {{num_shards_}, {index_}});
+    return CreateTensors<int64_t>(TensorShape({}), {{num_shards_}, {index_}});
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -51,18 +51,18 @@ class ShardDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(ShardDatasetOp::kRequireNonEmpty,
-                              require_non_empty_);
-    attr_vector->emplace_back(ShardDatasetOp::kOutputTypes, output_dtypes_);
-    attr_vector->emplace_back(ShardDatasetOp::kOutputShapes, output_shapes_);
+    attr_vector->emplace_back("require_non_empty", require_non_empty_);
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 
   string dataset_type() const override { return ShardDatasetOp::kDatasetType; }
 
  private:
-  int64 num_shards_;
-  int64 index_;
+  int64_t num_shards_;
+  int64_t index_;
   bool require_non_empty_;
 };
 
@@ -205,19 +205,19 @@ ShardDatasetParams InvalidShardDatasetParams4() {
 std::vector<GetNextTestCase<ShardDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/ShardDatasetParams1(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{2}, {7}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{2}, {7}})},
       {/*dataset_params=*/ShardDatasetParams2(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{0}, {5}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{0}, {5}})},
       {/*dataset_params=*/ShardDatasetParams3(),
        /*expected_outputs=*/{}},
       {/*dataset_params=*/ShardDatasetParams4(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{5}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{5}})},
       {/*dataset_params=*/ShardDatasetParams5(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{4}, {9}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{4}, {9}})},
       {/*dataset_params=*/ShardDatasetParams6(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{3}, {7}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{3}, {7}})},
       {/*dataset_params=*/ShardDatasetParams7(),
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{5}})}};
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{5}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ShardDatasetOpTest, ShardDatasetParams,
@@ -292,25 +292,25 @@ IteratorSaveAndRestoreTestCases() {
   return {
       {/*dataset_params=*/ShardDatasetParams1(),
        /*breakpoints=*/{0, 1, 5},
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{2}, {7}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{2}, {7}})},
       {/*dataset_params=*/ShardDatasetParams2(),
        /*breakpoints=*/{0, 1, 5},
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{0}, {5}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{0}, {5}})},
       {/*dataset_params=*/ShardDatasetParams3(),
        /*breakpoints=*/{0, 1},
        /*expected_outputs=*/{}},
       {/*dataset_params=*/ShardDatasetParams4(),
        /*breakpoints=*/{0, 5},
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{5}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{5}})},
       {/*dataset_params=*/ShardDatasetParams5(),
        /*breakpoints=*/{0, 1, 5},
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{4}, {9}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{4}, {9}})},
       {/*dataset_params=*/ShardDatasetParams6(),
        /*breakpoints=*/{0, 1, 5},
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{3}, {7}})},
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{3}, {7}})},
       {/*dataset_params=*/ShardDatasetParams7(),
        /*breakpoints=*/{0, 5},
-       /*expected_outputs=*/CreateTensors<int64>(TensorShape{}, {{5}})}};
+       /*expected_outputs=*/CreateTensors<int64_t>(TensorShape{}, {{5}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(ShardDatasetOpTest, ShardDatasetParams,

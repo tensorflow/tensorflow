@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -133,7 +134,9 @@ int BitWidth(PrimitiveType type) {
   }
 }
 
-xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+int ByteWidth(PrimitiveType type) { return CeilOfRatio(BitWidth(type), 8); }
+
+xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 8:
       return xla::U8;
@@ -148,7 +151,7 @@ xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
   }
 }
 
-xla::PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 8:
       return xla::S8;
@@ -198,15 +201,15 @@ class PrimitiveTypeNameGenerator {
       }
     }
   }
-  const string& LowercaseName(PrimitiveType t) {
+  const std::string& LowercaseName(PrimitiveType t) {
     return lowercase_name_[static_cast<int>(t)];
   }
 
  private:
-  string lowercase_name_[PrimitiveType_ARRAYSIZE];
+  std::string lowercase_name_[PrimitiveType_ARRAYSIZE];
 };
 
-const string& LowercasePrimitiveTypeName(PrimitiveType s) {
+const std::string& LowercasePrimitiveTypeName(PrimitiveType s) {
   static auto* gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
@@ -217,9 +220,10 @@ namespace {
 //
 // Due to Postel's Law considerations, both "opaque" and "opaque_type" map to
 // the xla::OPAQUE_TYPE enumerator.
-const std::unordered_map<string, PrimitiveType>& GetPrimitiveTypeStringMap() {
-  static std::unordered_map<string, PrimitiveType>* name_to_type = [] {
-    static auto* map = new std::unordered_map<string, PrimitiveType>;
+const absl::flat_hash_map<std::string, PrimitiveType>&
+GetPrimitiveTypeStringMap() {
+  static absl::flat_hash_map<std::string, PrimitiveType>* name_to_type = [] {
+    static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
     for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
       if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
         auto value = static_cast<PrimitiveType>(i);
@@ -236,7 +240,7 @@ const std::unordered_map<string, PrimitiveType>& GetPrimitiveTypeStringMap() {
 
 StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(string(name));
+  auto found = map.find(std::string(name));
   if (found == map.end()) {
     return InvalidArgument("Invalid element type string: \"%s\".", name);
   }
@@ -245,7 +249,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
 
 bool IsPrimitiveTypeName(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(string(name));
+  auto found = map.find(std::string(name));
   return found != map.end();
 }
 

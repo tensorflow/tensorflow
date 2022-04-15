@@ -14,10 +14,6 @@
 # ==============================================================================
 """Code for creating a dataset out of a NumPy array."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops

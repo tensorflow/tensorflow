@@ -16,7 +16,7 @@ contributor guide: https://www.tensorflow.org/community/contribute/docs
 ## URL(s) with the issue:
 
 Please provide a link to the documentation entry, for example:
-https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/MyMethod
+https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/
 
 ## Description of issue (what needs changing):
 

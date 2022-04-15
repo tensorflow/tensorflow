@@ -17,9 +17,9 @@
 import collections.abc
 
 
-# WARNING: this class is used internally by extension types (tf.Struct), and may
-# be deleted if/when extension types transition to a different encoding in the
-# future.
+# WARNING: this class is used internally by extension types (tf.ExtensionType),
+# and may be deleted if/when extension types transition to a different encoding
+# in the future.
 class ImmutableDict(collections.abc.Mapping):
   """Immutable `Mapping`."""
   # Note: keys, items, values, get, __eq__, and __ne__ are implemented by

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -65,11 +65,11 @@ class TransferManagerTest : public LocalClientTestBase {
   se::Stream* stream_;
 
  private:
-  std::function<int64(const Shape&)> shape_size_fn_;
+  std::function<int64_t(const Shape&)> shape_size_fn_;
 };
 
 XLA_TEST_F(TransferManagerTest, TransferR0U32) {
-  Literal literal = LiteralUtil::CreateR0<uint32>(42);
+  Literal literal = LiteralUtil::CreateR0<uint32_t>(42);
   const Shape& shape = literal.shape();
   auto device_buffer = AllocateDeviceBuffer(shape);
 
@@ -80,7 +80,7 @@ XLA_TEST_F(TransferManagerTest, TransferR0U32) {
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
-  LiteralTestUtil::ExpectR0Equal<uint32>(42, result);
+  LiteralTestUtil::ExpectR0Equal<uint32_t>(42, result);
 }
 
 XLA_TEST_F(TransferManagerTest, TransferR1F32) {
@@ -283,7 +283,7 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
   Literal literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR1<complex64>(
            {complex64(1.0f, 2.0f), complex64(42.0f, -123.4f)}),
-       LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6}),
+       LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5, 6}),
        LiteralUtil::CreateR0<complex64>(complex64(0.3f, -0.4f))});
   auto device_buffer = AllocateDeviceBuffer(literal.shape());
 
@@ -310,7 +310,7 @@ XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
 }
 
 XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
-  const int64 kIterationCount = 5000;
+  const int64_t kIterationCount = 5000;
   Literal literal1 = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<float>(123.0f),
        LiteralUtil::MakeTupleFromSlices(
@@ -352,6 +352,44 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal2, result2));
 }
 
+XLA_TEST_F(TransferManagerTest, TransferDynamicShape) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
+
+  Literal literal(s);
+  literal.SetDynamicSize(/*dim_index=*/0, /*shape_index=*/{1},
+                         /*size=*/1048574);
+  literal.SetDynamicSize(/*dim_index=*/0, /*shape_index=*/{2},
+                         /*size=*/1048575);
+  ASSERT_IS_OK(MutableBorrowingLiteral(&literal, /*view_root=*/{0})
+                   .Populate<int64_t>(
+                       [](absl::Span<const int64_t> indices) { return 42; }));
+  ASSERT_IS_OK(MutableBorrowingLiteral(&literal, /*view_root=*/{1})
+                   .Populate<int32_t>([](absl::Span<const int64_t> indices) {
+                     return indices[0] + indices[1];
+                   }));
+  ASSERT_IS_OK(MutableBorrowingLiteral(&literal, /*view_root=*/{2})
+                   .Populate<float>([](absl::Span<const int64_t> indices) {
+                     return indices[0] + indices[1];
+                   }));
+
+  // Round trip `literal` through device.
+  ScopedShapedBuffer device_buffer = AllocateDeviceBuffer(literal.shape());
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+
+  // LiteralTestUtil::Equal doesn't compare dynamic shapes, so we need to check
+  // them ourselves.
+  EXPECT_EQ(literal.GetDynamicSize(/*dim_index=*/0, /*shape_index=*/{1}),
+            result.GetDynamicSize(0, {1}));
+  EXPECT_EQ(literal.GetDynamicSize(/*dim_index=*/0, /*shape_index=*/{2}),
+            result.GetDynamicSize(0, {2}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
+}
+
 class TransferDeviceToHostBenchmark : public TransferManagerTest {
  public:
   using TransferManagerTest::TransferManagerTest;
@@ -388,7 +426,6 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
 
   void Run(::testing::benchmark::State& state, int num_tuple_elements,
            int array_size) {
-    tensorflow::testing::StopTiming();
     SetUp();
 
     std::vector<Literal> tuple_elements;
@@ -398,12 +435,11 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
     }
     Literal literal = LiteralUtil::MakeTupleOwned(std::move(tuple_elements));
     auto device_buffer = AllocateDeviceBuffer(literal.shape());
-    tensorflow::testing::StartTiming();
+
     for (auto s : state) {
       TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                              device_buffer));
     }
-    tensorflow::testing::StopTiming();
     TearDown();
   }
 

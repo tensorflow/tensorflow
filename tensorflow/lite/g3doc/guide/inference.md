@@ -361,7 +361,7 @@ TFLTensor *outputTensor = [interpreter outputTensorAtIndex:0 error:&error];
 if (error != nil) { /* Error handling... */ }
 
 // Copy output to `NSData` to process the inference results.
-NSData *outputData = [outputTensor dataWithError:&amp;error];
+NSData *outputData = [outputTensor dataWithError:&error];
 if (error != nil) { /* Error handling... */ }
 ```
 

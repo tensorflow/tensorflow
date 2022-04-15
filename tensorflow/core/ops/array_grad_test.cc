@@ -295,11 +295,11 @@ TEST(ArrayGradTest, SplitGrad) {
   // SplitVGrad
   {
     Tensor size_splits(DT_INT64, {2});
-    size_splits.flat<int64>().setConstant(2);
-    auto expected_d_size_splits = test::AsTensor<int64>({0, 0}, {2});
+    size_splits.flat<int64_t>().setConstant(2);
+    auto expected_d_size_splits = test::AsTensor<int64_t>({0, 0}, {2});
     auto dx = SplitVGrad(x, size_splits, 1, dy0, dy1);
     test::ExpectClose(dx[0], expected_dx);
-    test::ExpectTensorEqual<int64>(dx[1], expected_d_size_splits);
+    test::ExpectTensorEqual<int64_t>(dx[1], expected_d_size_splits);
     test::ExpectTensorEqual<int32>(dx[2], expected_d_dim);
   }
 }
@@ -564,10 +564,10 @@ TEST(ArrayGradTest, SliceGrad) {
 
 std::vector<Tensor> StridedSliceGrad(const Tensor& x, const Tensor& begin,
                                      const Tensor& end, const Tensor& strides,
-                                     const Tensor& dy, int32 begin_mask,
-                                     int32 end_mask, int32 ellipsis_mask,
-                                     int32 new_axis_mask,
-                                     int32 shrink_axis_mask) {
+                                     const Tensor& dy, int32_t begin_mask,
+                                     int32_t end_mask, int32_t ellipsis_mask,
+                                     int32_t new_axis_mask,
+                                     int32_t shrink_axis_mask) {
   auto T = DT_FLOAT;
   auto gdef = test::function::GDef(
       {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
@@ -607,8 +607,8 @@ std::vector<Tensor> StridedSliceGrad(const Tensor& x, const Tensor& begin,
 std::vector<Tensor> StridedSliceGradGrad(
     const Tensor& shape, const Tensor& begin, const Tensor& end,
     const Tensor& strides, const Tensor& dy, const Tensor& grad,
-    int32 begin_mask, int32 end_mask, int32 ellipsis_mask, int32 new_axis_mask,
-    int32 shrink_axis_mask) {
+    int32_t begin_mask, int32_t end_mask, int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask) {
   auto T = DT_FLOAT;
   auto gdef = test::function::GDef(
       {f::NDef("shape", "Placeholder", {}, {{"dtype", DT_INT32}}),

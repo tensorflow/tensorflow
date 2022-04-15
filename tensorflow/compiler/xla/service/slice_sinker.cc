@@ -92,7 +92,7 @@ bool IsSimilarOperationOnSlices(const HloInstruction* operation_on_slices,
   }
 
   const HloInstruction* operand_slice0 = candidate->operand(0);
-  for (int64 i = 0; i < candidate->operand_count(); ++i) {
+  for (int64_t i = 0; i < candidate->operand_count(); ++i) {
     const HloInstruction* operand_slice = candidate->operand(i);
     if (operand_slice->opcode() != HloOpcode::kSlice ||
         operand_slice->operand(0) !=
@@ -127,7 +127,7 @@ bool IsSimilarOperationOnSlices(const HloInstruction* operation_on_slices,
 //   aa = f32[8] slice(xx), slice=[0:8]
 //   bb = f32[7] slice(xx), slice=[2:9]
 bool ShouldTransform(const std::vector<HloInstruction*>& operations_on_slices) {
-  int64 sum = 0;
+  int64_t sum = 0;
   for (HloInstruction* user : operations_on_slices) {
     sum += ShapeUtil::ElementsIn(user->shape());
   }

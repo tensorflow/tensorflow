@@ -16,10 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_DISTRIBUTED_MANAGER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_DISTRIBUTED_MANAGER_H_
 
+#include <string>
+
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
+
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -40,8 +46,17 @@ class EagerContextDistributedManager
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 
+  CoordinationServiceAgent* GetCoordinationServiceAgent() override {
+    return coordination_service_agent_;
+  }
+  void SetCoordinationServiceAgent(CoordinationServiceAgent* agent) {
+    coordination_service_agent_ = agent;
+  }
+
  private:
   EagerContext* context_;
+  // Owned by context_->GetServer()->worker_env()->session_mgr.
+  CoordinationServiceAgent* coordination_service_agent_ = nullptr;
 };
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

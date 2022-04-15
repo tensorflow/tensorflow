@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 
+#include <string>
 #include <type_traits>
 
 #include "absl/strings/string_view.h"
@@ -64,43 +65,43 @@ inline PrimitiveType NativeToPrimitiveType<bool>() {
 
 // Unsigned integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint8>() {
+inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint16>() {
+inline PrimitiveType NativeToPrimitiveType<uint16_t>() {
   return U16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint32>() {
+inline PrimitiveType NativeToPrimitiveType<uint32_t>() {
   return U32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint64>() {
+inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
   return U64;
 }
 
 // Signed integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<int8>() {
+inline PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int16>() {
+inline PrimitiveType NativeToPrimitiveType<int16_t>() {
   return S16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int32>() {
+inline PrimitiveType NativeToPrimitiveType<int32_t>() {
   return S32;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int64>() {
+inline PrimitiveType NativeToPrimitiveType<int64_t>() {
   return S64;
 }
 
@@ -152,9 +153,12 @@ bool IsArrayType(PrimitiveType primitive_type);
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
 
-PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
+// Returns the number of bytes in the representation for a given type.
+int ByteWidth(PrimitiveType type);
 
-PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
+
+PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
@@ -167,17 +171,23 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
   // Returns a tuple where the elements are lexicographically ordered in terms
   // of importance.
   auto type_properties = [](PrimitiveType type) {
+    auto component_type =
+        IsComplexType(type) ? ComplexComponentType(type) : type;
     return std::make_tuple(
+        // Prefer complex types over non-complex types.
+        IsComplexType(type),
         // Prefer floating point types with more range over other
         // floating-point types or non-floating point types.
-        IsFloatingPointType(type) ? OverflowExponent(type) : -1,
+        IsFloatingPointType(component_type) ? OverflowExponent(component_type)
+                                            : -1,
         // Prefer floating point types with more precision over less precise
         // types.
-        IsFloatingPointType(type) ? SignificandWidth(type) : -1,
+        IsFloatingPointType(component_type) ? SignificandWidth(component_type)
+                                            : -1,
         // Prefer wider types over narrower types.
-        BitWidth(type),
+        BitWidth(component_type),
         // Prefer signed integer types over unsigned integer types.
-        IsSignedIntegralType(type));
+        IsSignedIntegralType(component_type));
   };
   auto a_properties = type_properties(a);
   auto b_properties = type_properties(b);
@@ -189,6 +199,78 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
   }
   CHECK_EQ(a, b);
   return a;
+}
+
+// Returns true if a convert from from_type to to_type loses no precision.
+inline bool CastPreservesValues(PrimitiveType from_type,
+                                PrimitiveType to_type) {
+  // * -> *
+  if (from_type == to_type) {
+    return true;
+  }
+  // PRED -> *
+  if (from_type == PRED) {
+    return true;
+  }
+  // ~PRED -> PRED is not safe because it drops almost all numbers.
+  if (to_type == PRED) {
+    return false;
+  }
+  // * -> C is safe if the components of * and C can be safely converted.
+  if (primitive_util::IsComplexType(to_type)) {
+    auto from_component_type =
+        primitive_util::IsComplexType(from_type)
+            ? primitive_util::ComplexComponentType(from_type)
+            : from_type;
+    auto to_component_type = primitive_util::ComplexComponentType(to_type);
+    return CastPreservesValues(from_component_type, to_component_type);
+  }
+  // ~C -> C is not safe because it drops imaginary components.
+  if (primitive_util::IsComplexType(from_type)) {
+    return false;
+  }
+  // F -> F is safe if the exponent and significand are preserved.
+  if (primitive_util::IsFloatingPointType(from_type) &&
+      primitive_util::IsFloatingPointType(to_type)) {
+    return primitive_util::SignificandWidth(from_type) <=
+               primitive_util::SignificandWidth(to_type) &&
+           primitive_util::ExponentWidth(from_type) <=
+               primitive_util::ExponentWidth(to_type) &&
+           primitive_util::OverflowExponent(from_type) <=
+               primitive_util::OverflowExponent(to_type);
+  }
+  // F -> I is not safe because it drops fractional numbers.
+  if (!primitive_util::IsIntegralType(from_type)) {
+    return false;
+  }
+  // An n-bit unsigned integer takes on values from [0, 2^n - 1].
+  // An n-bit signed integer takes on values from [-2^(n-1), 2^(n-1) - 1].
+  // from_bits/to_bits considers the number of non-sign bits.
+  const int from_bits = primitive_util::IsSignedIntegralType(from_type)
+                            ? primitive_util::BitWidth(from_type) - 1
+                            : primitive_util::BitWidth(from_type);
+  const int to_bits = primitive_util::IsSignedIntegralType(to_type)
+                          ? primitive_util::BitWidth(to_type) - 1
+                          : primitive_util::BitWidth(to_type);
+  // I -> F is safe if the integer can be represented exactly.
+  if (primitive_util::IsFloatingPointType(to_type)) {
+    // In both cases, we need to handle an exponent of n-1.
+    // However, the significand needed to represent signed two's complement
+    // numbers is smaller by one bit because it will only have a non-zero
+    // trailing significand field when the exponent is smaller than n-1.
+    return from_bits <= primitive_util::SignificandWidth(to_type) &&
+           primitive_util::BitWidth(from_type) - 1 <
+               primitive_util::OverflowExponent(to_type);
+  }
+  // S -> U is not safe because it drops negative numbers.
+  if (primitive_util::IsSignedIntegralType(from_type) &&
+      primitive_util::IsUnsignedIntegralType(to_type)) {
+    return false;
+  }
+  // I -> I is safe if the integer can be represented exactly; we've already
+  // ensured that signed to unsigned conversions won't happen here.
+  CHECK(primitive_util::IsIntegralType(to_type));
+  return from_bits <= to_bits;
 }
 
 // Returns the native type (eg, float) corresponding to the given template
@@ -206,43 +288,43 @@ struct PrimitiveTypeToNative<PRED> {
 // Unsigned integer
 template <>
 struct PrimitiveTypeToNative<U8> {
-  using type = uint8;
+  using type = uint8_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<U16> {
-  using type = uint16;
+  using type = uint16_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<U32> {
-  using type = uint32;
+  using type = uint32_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<U64> {
-  using type = uint64;
+  using type = uint64_t;
 };
 
 // Signed integer
 template <>
 struct PrimitiveTypeToNative<S8> {
-  using type = int8;
+  using type = int8_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<S16> {
-  using type = int16;
+  using type = int16_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<S32> {
-  using type = int32;
+  using type = int32_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<S64> {
-  using type = int64;
+  using type = int64_t;
 };
 
 // Floating point
@@ -276,7 +358,7 @@ struct PrimitiveTypeToNative<C128> {
 };
 
 // Returns the lower-case name of the given primitive type.
-const string& LowercasePrimitiveTypeName(PrimitiveType s);
+const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.
@@ -284,6 +366,45 @@ StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
 
 // Returns true if the given name is a primitive type string (lower-case).
 bool IsPrimitiveTypeName(absl::string_view name);
+
+// Returns whether `type` can be expressed as an instance of T.
+// For example,
+//  IsCanonicalRepresentation<float>(F32)          // true
+//  IsCanonicalRepresentation<xla::bfloat16>(BF16) // true
+//  IsCanonicalRepresentation<uint32_t>(S8)        // true, 8 <= 32
+//  IsCanonicalRepresentation<uint8_t>(S16)        // false, 16 > 8
+template <typename T>
+bool IsCanonicalRepresentation(PrimitiveType type) {
+  switch (type) {
+    case F16:
+    case F32:
+    case BF16:
+    case F64:
+    case C64:
+    case C128:
+      return NativeToPrimitiveType<T>() == type;
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+      return std::is_integral<T>::value && std::is_signed<T>::value &&
+             ByteWidth(type) <= sizeof(T);
+    case PRED:
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+      return std::is_integral<T>::value && std::is_unsigned<T>::value &&
+             ByteWidth(type) <= sizeof(T);
+    case TUPLE:
+    case OPAQUE_TYPE:
+    case TOKEN:
+    case PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
+    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
+      return false;
+  }
+}
 
 }  // namespace primitive_util
 }  // namespace xla

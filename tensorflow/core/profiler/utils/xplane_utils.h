@@ -53,7 +53,7 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
 // Returns the plane with the given id or nullptr if not found.
-const XLine* FindLineWithId(const XPlane& plane, int64 id);
+const XLine* FindLineWithId(const XPlane& plane, int64_t id);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
@@ -128,6 +128,11 @@ uint64 GetStartTimestampNs(const XPlane& plane);
 
 // Returns true if there are no XEvents.
 bool IsEmpty(const XSpace& space);
+
+// Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
+// GPU kernel events.
+void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
+                      XPlane* plane);
 
 }  // namespace profiler
 }  // namespace tensorflow

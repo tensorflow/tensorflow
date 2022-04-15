@@ -65,9 +65,9 @@ void CompareNumericalAndManualGradients(
 Status MatMulModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0], "MatMul",
+  return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0],
                      /*transpose_a=*/false,
-                     /*transpose_b=*/false);
+                     /*transpose_b=*/false, "MatMul");
 }
 
 Status MulModel(AbstractContext* ctx,

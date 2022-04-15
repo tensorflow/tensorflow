@@ -14,10 +14,6 @@
 # ==============================================================================
 """ModeKey Tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.model_utils import mode_keys
 
@@ -51,7 +47,7 @@ class ModeKeyMapTest(test.TestCase):
 
     # Map is immutable
     with self.assertRaises(TypeError):
-      mode_map[mode_keys.KerasModeKeys.TEST] = 1
+      mode_map[mode_keys.KerasModeKeys.TEST] = 1  # pylint: disable=unsupported-assignment-operation
 
   def test_invalid_init(self):
     with self.assertRaisesRegex(ValueError, 'Multiple keys/values found'):

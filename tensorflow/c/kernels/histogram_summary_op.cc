@@ -147,7 +147,7 @@ void RegisterHistogramSummaryOpKernel() {
 // register the Histogram Summary kernel.
 TF_ATTRIBUTE_UNUSED static bool IsHistogramSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("HistogramSummary")) {
-    RegisterHistogramSummaryOpKernel<tensorflow::int64>();
+    RegisterHistogramSummaryOpKernel<int64_t>();
     RegisterHistogramSummaryOpKernel<tensorflow::uint64>();
     RegisterHistogramSummaryOpKernel<tensorflow::int32>();
     RegisterHistogramSummaryOpKernel<tensorflow::uint32>();

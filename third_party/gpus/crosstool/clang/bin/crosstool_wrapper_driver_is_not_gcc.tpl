@@ -34,8 +34,6 @@ NOTES:
   //third_party/gpus/crosstool/v*/*/clang/bin/crosstool_wrapper_is_not_gcc
 """
 
-from __future__ import print_function
-
 __author__ = 'keveman@google.com (Manjunath Kudlur)'
 
 from argparse import ArgumentParser
@@ -187,7 +185,12 @@ def InvokeNvcc(argv, log=False):
   std_options = GetOptionValue(argv, '-std')
   # Supported -std flags as of CUDA 9.0. Only keep last to mimic gcc/clang.
   nvcc_allowed_std_options = ["c++03", "c++11", "c++14"]
-  std_options = ''.join([' -std=' + define
+  nvcc_std_map = {}
+  if int(NVCC_VERSION.split('.')[0]) >= 11:
+      nvcc_std_map["c++1z"] = "c++17"
+      nvcc_allowed_std_options += ["c++17", "c++1z"]
+  std_options = ''.join([' -std=' +
+      (nvcc_std_map[define] if define in nvcc_std_map else define)
       for define in std_options if define in nvcc_allowed_std_options][-1:])
   fatbin_options = ''.join([' --fatbin-options=' + option
       for option in GetOptionValue(argv, '-Xcuda-fatbinary')])

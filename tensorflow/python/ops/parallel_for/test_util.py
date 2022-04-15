@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test utility."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.ops import variables
@@ -44,7 +40,7 @@ class PForTestCase(test.TestCase):
     outputs = nest.flatten(outputs)  # flatten SparseTensorValues
     n = len(outputs) // 2
     for i in range(n):
-      if outputs[i + n].dtype != np.object:
+      if outputs[i + n].dtype != np.object_:
         self.assertAllClose(outputs[i + n], outputs[i], rtol=rtol, atol=atol)
       else:
         self.assertAllEqual(outputs[i + n], outputs[i])

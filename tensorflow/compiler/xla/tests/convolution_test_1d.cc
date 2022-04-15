@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -60,11 +59,11 @@ using TestTypes = ::testing::Types<float, Eigen::half>;
 #endif
 
 struct Convolve1DTestParam {
-  int64 input_feature;
-  int64 output_feature;
-  int64 batch;
-  int64 window_size;
-  int64 num_windows;
+  int64_t input_feature;
+  int64_t output_feature;
+  int64_t batch;
+  int64_t window_size;
+  int64_t num_windows;
 };
 
 class Convolve1D1WindowTestBase
@@ -74,15 +73,15 @@ class Convolve1D1WindowTestBase
   template <typename T>
   void TestImpl() {
     XlaBuilder builder(TestName());
-    int64 input_feature = GetParam().input_feature;
-    int64 output_feature = GetParam().output_feature;
-    int64 batch = GetParam().batch;
-    int64 num_windows = GetParam().num_windows;
-    int64 window_size = GetParam().window_size;
-    std::vector<int64> input_dims = {batch, window_size + num_windows - 1,
-                                     input_feature};
-    std::vector<int64> filter_dims = {window_size, input_feature,
-                                      output_feature};
+    int64_t input_feature = GetParam().input_feature;
+    int64_t output_feature = GetParam().output_feature;
+    int64_t batch = GetParam().batch;
+    int64_t num_windows = GetParam().num_windows;
+    int64_t window_size = GetParam().window_size;
+    std::vector<int64_t> input_dims = {batch, window_size + num_windows - 1,
+                                       input_feature};
+    std::vector<int64_t> filter_dims = {window_size, input_feature,
+                                        output_feature};
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
@@ -189,7 +188,7 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{128, 1, 1, 1, 1},
                       Convolve1DTestParam{139, 1, 1, 128, 1},
                       Convolve1DTestParam{640, 3, 3, 128, 1},
-                      Convolve1DTestParam{900, 1, 1, 10, 1},
+                      // Convolve1DTestParam{900, 1, 1, 10, 1}, b/195348220
                       Convolve1DTestParam{1, 10, 10, 1, 10},
                       Convolve1DTestParam{1, 10, 130, 1, 1},
                       Convolve1DTestParam{1, 10, 130, 1, 2},

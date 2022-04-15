@@ -26,11 +26,13 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -66,8 +68,8 @@ typedef std::tuple<int32, int32> OutputAndControlEdges;
 
 OutputAndControlEdges CountOutputEdges(const Node* n) {
   DCHECK_LE(n->out_edges().size(), kint32max);
-  int32 num_output_edges = 0;
-  int32 num_output_control_edges = 0;
+  int32_t num_output_edges = 0;
+  int32_t num_output_control_edges = 0;
   for (auto e : n->out_edges()) {
     if (IsSink(e->dst())) continue;
     if (e->IsControlEdge()) {
@@ -81,8 +83,8 @@ OutputAndControlEdges CountOutputEdges(const Node* n) {
 }  // namespace
 
 size_t GraphView::NodeItemBytes(const Node* n) {
-  int32 num_output_edges;
-  int32 num_output_control_edges;
+  int32_t num_output_edges;
+  int32_t num_output_control_edges;
   std::tie(num_output_edges, num_output_control_edges) = CountOutputEdges(n);
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
@@ -133,13 +135,13 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   // (versus 64 bits on most machines if we just stored an array of NodeItem*
   // pointers). Casting to int64 is needed on 32bit CPU to avoid comparing
   // values as "int" vs "size_t" in CHECK_LE.
-  CHECK_LE(static_cast<int64>(ptr - space_), kuint32max);
+  CHECK_LE(static_cast<int64_t>(ptr - space_), kuint32max);
   const uint32 offset = static_cast<uint32>(ptr - space_);
   node_offsets_[id] = offset;
   ptr += bytes;
 
-  int32 num_output_edges;
-  int32 num_output_control_edges;
+  int32_t num_output_edges;
+  int32_t num_output_control_edges;
   std::tie(num_output_edges, num_output_control_edges) = CountOutputEdges(n);
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
@@ -264,8 +266,23 @@ Status GraphView::Initialize(const Graph* g) {
 
   space_ = new char[total_bytes];  // NodeItem objects are allocated here
   char* ptr = space_;
-  for (const Node* n : g->nodes()) {
-    ptr = InitializeNode(ptr, n);
+  auto it = g->nodes();
+  if (OpOrderDeterminismRequired()) {
+    // For OpOrder determinism, we need node_id's to be stable across runs. We
+    // assign node_ids in the order in which `InitializeNode` is called on each
+    // node. However, `g` exposes a NodeIter of nodes, which does not guarantee
+    // a deterministic ordering across runs. Since NodeIter is immutable, we
+    // must sort a local copy. We sort by node_name, which is set in the
+    // GraphDef, so must be stable across runs.
+    std::vector<Node*> nodes(it.begin(), it.end());
+    std::sort(nodes.begin(), nodes.end(), NodeComparatorName());
+    for (const Node* n : nodes) {
+      ptr = InitializeNode(ptr, n);
+    }
+  } else {
+    for (const Node* n : it) {
+      ptr = InitializeNode(ptr, n);
+    }
   }
   CHECK_EQ(ptr, space_ + total_bytes);
   return Status::OK();

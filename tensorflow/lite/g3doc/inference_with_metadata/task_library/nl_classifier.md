@@ -22,7 +22,7 @@ API.
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -53,17 +53,29 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
+
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
 
 ### Step 2: Run inference using the API
 
 ```java
 // Initialization, use NLClassifierOptions to configure input and output tensors
-NLClassifierOptions options = NLClassifierOptions.builder().setInputTensorName(INPUT_TENSOR_NAME).setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME).build();
-NLClassifier classifier = NLClassifier.createFromFileAndOptions(context, modelFile, options);
+NLClassifierOptions options =
+    NLClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setInputTensorName(INPUT_TENSOR_NAME)
+        .setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME)
+        .build();
+NLClassifier classifier =
+    NLClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Category> results = classifier.classify(input);
@@ -82,7 +94,7 @@ Add the TensorFlowLiteTaskText pod in Podfile
 ```
 target 'MySwiftAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskText', '~> 0.0.1-nightly'
+  pod 'TensorFlowLiteTaskText', '~> 0.2.0'
 end
 ```
 
@@ -107,18 +119,11 @@ for more details.
 
 ## Run inference in C++
 
-Note: We are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
-
 ```c++
 // Initialization
-std::unique_ptr<NLClassifier> classifier = NLClassifier::CreateFromFileAndOptions(
-    model_path,
-    {
-      .input_tensor_name=kInputTensorName,
-      .output_score_tensor_name=kOutputScoreTensorName,
-    }).value();
+NLClassifierOptions options;
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+std::unique_ptr<NLClassifier> classifier = NLClassifier::CreateFromOptions(options).value();
 
 // Run inference
 std::vector<core::Category> categories = classifier->Classify(kInput);
@@ -149,7 +154,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata.md).
+or without [TFLite Model Metadata](../../convert/metadata.md). See examples of
+creating metadata for natural language classifiers using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
 The compatible models should meet the following requirements:
 
@@ -161,7 +168,8 @@ The compatible models should meet the following requirements:
     -   If input type is kTfLiteString, no [Metadata](../../convert/metadata.md)
         is required for the model.
     -   If input type is kTfLiteInt32, a `RegexTokenizer` needs to be set up in
-        the input tensor's [Metadata](../../convert/metadata.md).
+        the input tensor's
+        [Metadata](https://www.tensorflow.org/lite/convert/metadata_writer_tutorial#natural_language_classifiers).
 
 *   Output score tensor:
     (kTfLiteUInt8/kTfLiteInt8/kTfLiteInt16/kTfLiteFloat32/kTfLiteFloat64)
@@ -175,7 +183,8 @@ The compatible models should meet the following requirements:
         corresponding [Metadata](../../convert/metadata.md) for category labels,
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
-        outputs.
+        outputs. See the
+        [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
 
 *   Output label tensor: (kTfLiteString/kTfLiteInt32)
 

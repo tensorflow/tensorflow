@@ -16,17 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 extern "C" {
 
 // Calculates `batch_size` topk operations with `input_size` inputs each. The
 // outputs are written to `out_values` and `out_indices`.
-extern void __xla_cpu_runtime_TopKF32(tensorflow::int64 batch_size,
-                                      tensorflow::int64 input_size,
-                                      tensorflow::int64 k, const float* values,
-                                      float* out_values,
-                                      tensorflow::int32* out_indices);
+extern void __xla_cpu_runtime_TopKF32(int64_t batch_size, int64_t input_size,
+                                      int64_t k, const float* values,
+                                      float* out_values, int32_t* out_indices);
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H

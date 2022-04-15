@@ -37,7 +37,7 @@ class Exhaustive32BitOrMoreBinaryTest
   using ExhaustiveBinaryTest<T>::ConvertAndReplaceKnownIncorrectValueWith;
 
  private:
-  int64 GetInputSize() override {
+  int64_t GetInputSize() override {
     FpValues values_0;
     FpValues values_1;
     std::tie(values_0, values_1) = GetParam();
@@ -45,7 +45,7 @@ class Exhaustive32BitOrMoreBinaryTest
   }
 
   void FillInput(std::array<Literal, 2>* input_literals) override {
-    int64 input_size = GetInputSize();
+    int64_t input_size = GetInputSize();
     FpValues values_0;
     FpValues values_1;
     std::tie(values_0, values_1) = GetParam();
@@ -58,7 +58,7 @@ class Exhaustive32BitOrMoreBinaryTest
     absl::Span<NativeT> input_arr_0 = (*input_literals)[0].data<NativeT>();
     absl::Span<NativeT> input_arr_1 = (*input_literals)[1].data<NativeT>();
 
-    uint64 i = 0;
+    uint64_t i = 0;
     for (auto src0 : values_0) {
       for (auto src1 : values_1) {
         input_arr_0[i] = ConvertAndReplaceKnownIncorrectValueWith(src0, 1);
@@ -115,7 +115,7 @@ BINARY_TEST_FLOAT_32(Min, {
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
 BINARY_TEST_FLOAT_32(DISABLED_ON_CPU(AbsComplex), {
   // TODO(timshen): see b/162664705.
-  known_incorrect_fn_ = [this](int64 val) {
+  known_incorrect_fn_ = [this](int64_t val) {
     return std::isnan(this->ConvertValue(val));
   };
   auto host_abs_complex = [](float x, float y) {
@@ -203,7 +203,7 @@ BINARY_TEST_FLOAT_64(Min, {
 // TODO(bixia): Need to investigate the failure on CPU and file bugs.
 BINARY_TEST_FLOAT_64(DISABLED_ON_CPU(AbsComplex), {
   // TODO(timshen): see b/162664705.
-  known_incorrect_fn_ = [this](int64 val) {
+  known_incorrect_fn_ = [this](int64_t val) {
     return std::isnan(this->ConvertValue(val));
   };
   auto host_abs_complex = [](double x, double y) {

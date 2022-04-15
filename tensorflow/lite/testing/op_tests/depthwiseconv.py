@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for depthwiseconv."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -64,6 +60,19 @@ def make_depthwiseconv_tests(options):
           "channel_multiplier": [1, 2],
           "rate": [[1, 1]],
           "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False]
+      },
+      {
+          "input_shape": [[1, 3, 3, 3000]],
+          "filter_size": [[3, 3]],
+          "strides": [[1, 1, 1, 1]],
+          "dilations": [[1, 1, 1, 1]],
+          "channel_multiplier": [1],
+          "rate": [[1, 1]],
+          "padding": ["VALID"],
           "data_format": ["NHWC"],
           "constant_filter": [True],
           "fully_quantize": [True],

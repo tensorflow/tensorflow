@@ -52,6 +52,10 @@ void CopyLinearFLT4(const tflite::gpu::Tensor<Linear, S>& src,
 absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
                             bool read_only, void* data, cl_mem* result);
 
+absl::Status CreateCLSubBuffer(cl_context context, cl_mem parent,
+                               size_t origin_in_bytes, size_t size_in_bytes,
+                               bool read_only, cl_mem* result);
+
 absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
                                cl_channel_type channel_type, void* data,
                                cl_mem* result);

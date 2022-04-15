@@ -15,4 +15,5 @@
 # limitations under the License.
 # ============================================================================
 
+ldconfig
 python -c 'import tensorflow as tf; tf.test.is_gpu_available() or exit(1)'

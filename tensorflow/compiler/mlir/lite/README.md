@@ -1,10 +1,9 @@
-# The new [MLIR](https://github.com/llvm/llvm-project/tree/main/mlir) based
-
-TensorFlow to TensorFlow Lite converter
+# The new MLIR based TensorFlow to TensorFlow Lite converter
 
 This directory contains:
 
-1.  MLIR dialects, transformation passes and utilities for TensorFlow Lite.
+1.  [MLIR](https://github.com/llvm/llvm-project/tree/main/mlir) dialects,
+    transformation passes and utilities for TensorFlow Lite.
 
 ## API:
 
@@ -30,6 +29,7 @@ TensorFlow Lite models).
 - The Export pass writes out TensorFlow Lite FlatBuffer format. This pass
 operates on MLIR TensorFlow Lite dialect and is simple/direct translation.
 
-See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/tf_tfl_passes.cc
-for the full list of MLIR passes for conversion from TensorFlow to
-TensorFlow Lite.
+See
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/tf_tfl_passes.cc
+for the full list of MLIR passes for conversion from TensorFlow to TensorFlow
+Lite.

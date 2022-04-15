@@ -1,0 +1,219 @@
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/sparse_keys"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        string_val: "feature_key3"
+        string_val: "feature_key4"
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/dense_keys"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        string_val: "feature_key1"
+        string_val: "feature_key2"
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2/ragged_keys"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "ParseExample/ParseExampleV2"
+  op: "ParseExampleV2"
+  input: "input0"
+  input: "ParseExample/ParseExampleV2/names"
+  input: "ParseExample/ParseExampleV2/sparse_keys"
+  input: "ParseExample/ParseExampleV2/dense_keys"
+  input: "ParseExample/ParseExampleV2/ragged_keys"
+  input: "ParseExample/Const"
+  input: "ParseExample/Const_1"
+  attr {
+    key: "Tdense"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "dense_shapes"
+    value {
+      list {
+        shape {
+        }
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "num_sparse"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "ragged_split_types"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "ragged_value_types"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "sparse_types"
+    value {
+      list {
+        type: DT_STRING
+        type: DT_INT64
+      }
+    }
+  }
+}
+versions {
+  producer: 175
+}

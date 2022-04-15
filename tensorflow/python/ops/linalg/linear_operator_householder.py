@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` acting like a Householder transformation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -33,6 +29,7 @@ __all__ = ["LinearOperatorHouseholder",]
 
 
 @tf_export("linalg.LinearOperatorHouseholder")
+@linear_operator.make_composite_tensor
 class LinearOperatorHouseholder(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] of Householder transformations.
 
@@ -162,8 +159,6 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      # TODO(b/143910018) Remove graph_parents in V3.
-      self._set_graph_parents([self._reflection_axis])
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""
@@ -226,7 +221,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _determinant(self):
     # For householder transformations, the determinant is -1.
-    return -array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)
+    return -array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)  # pylint: disable=invalid-unary-operand-type
 
   def _log_abs_determinant(self):
     # Orthogonal matrix -> log|Q| = 0.
@@ -260,7 +255,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     neg_shape = array_ops.concat([result_shape[:-1], [1]], axis=-1)
     eigvals = array_ops.ones(shape=ones_shape, dtype=self.dtype)
     eigvals = array_ops.concat(
-        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
+        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)  # pylint: disable=invalid-unary-operand-type
     return eigvals
 
   def _cond(self):
@@ -270,3 +265,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   @property
   def reflection_axis(self):
     return self._reflection_axis
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("reflection_axis",)

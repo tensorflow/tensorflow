@@ -14,10 +14,6 @@
 # ==============================================================================
 """Base class for testing reader datasets."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.core.example import example_pb2

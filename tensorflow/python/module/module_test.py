@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.Module`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import itertools
@@ -291,7 +287,7 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
 
     m = module.Module()
     m.a = CompositeVariable([variables.Variable(1.), variables.Variable(2.)])
-    self.assertAllEqual(m.variables, m.a._variables)
+    self.assertEqual(list(m.variables), list(m.a._variables))
 
 
 class ModuleTrackingTest(test_util.TensorFlowTestCase):
@@ -537,14 +533,30 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
                       ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
                       ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
 
-  def test_raises_error_with_path(self):
-    if six.PY2:
-      class NonOrderable(object):
-        __lt__ = None
+  def test_cycles_with_path(self):
+    mod = module.Module()
+    mod.w = variables.Variable(1.)
+    mod.encoder = module.Module()
+    mod.encoder.w = [({"k": mod.w}, {"k": mod.w})]
+    mod.decoder = mod.encoder
 
-      non_orderable = NonOrderable
-    else:
-      non_orderable = object
+    # This introduces two cycles: on mod.encoder.mod and mod.decoder.mod.
+    mod.decoder.mod = mod
+
+    state_dict = dict(
+        mod._flatten(with_path=True, predicate=module._is_variable))
+
+    self.assertEqual(state_dict,
+                     {("w",): mod.w,
+                      ("encoder", "mod", "w"): mod.encoder.mod.w,
+                      ("decoder", "mod", "w"): mod.decoder.mod.w,
+                      ("encoder", "w", 0, 0, "k"): mod.encoder.w[0][0]["k"],
+                      ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
+                      ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
+                      ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
+
+  def test_raises_error_with_path(self):
+    non_orderable = object
 
     m = module.Module()
     m.layers = {non_orderable(): None, non_orderable(): None}

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <limits>
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -164,12 +165,12 @@ float HostDigamma(float x) {
 //
 // Test parameter is a tuple containing
 //   - primitive type under test,
-//   - (begin, end) range under test, as zero-extended int64s bitcast to the
+//   - (begin, end) range under test, as zero-extended int64_ts bitcast to the
 //     primitive type under test.
 template <PrimitiveType T>
 class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
-      public ::testing::WithParamInterface<std::pair<int64, int64>> {
+      public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
   // Sets error parameters appropriately for testing sin/cos.
   void SetParamsForSinCos();
@@ -181,8 +182,8 @@ class Exhaustive32BitOrLessUnaryTest
   using typename ExhaustiveUnaryTest<T>::NativeT;
 
  private:
-  int64 GetInputSize() override {
-    int64 begin, end;
+  int64_t GetInputSize() override {
+    int64_t begin, end;
     std::tie(begin, end) = GetParam();
     VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     return end - begin;
@@ -190,21 +191,21 @@ class Exhaustive32BitOrLessUnaryTest
 
   // Generates all the input values for the test. The range of the bit
   // representation of the input values is described by the test parameter as
-  // a pair of int64 representing the starting bit pattern and the ending
+  // a pair of int64_t representing the starting bit pattern and the ending
   // pattern. Each bit representation is first truncated to the integral type of
   // the same bit as the type being tested, if needed, and then bitcasted to the
   // type being tested.
   void FillInput(std::array<Literal, 1>* input_literal) override {
     using IntegralT =
         typename ExhaustiveOpTestBase<T, 1>::ComponentIntegralNativeT;
-    int64 input_size = (*input_literal)[0].element_count();
-    int64 begin, end;
+    int64_t input_size = (*input_literal)[0].element_count();
+    int64_t begin, end;
     std::tie(begin, end) = GetParam();
     VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     CHECK_EQ(input_size, end - begin);
 
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
-    for (int64 i = 0; i < input_size; i++) {
+    for (int64_t i = 0; i < input_size; i++) {
       IntegralT input_val = i + begin;
       input_arr[i] =
           this->ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
@@ -482,18 +483,18 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCos() {
   // exceed 2**p.
   const int kFirstWrongVal = 1 << 16;
   if (T == F32) {
-    this->known_incorrect_fn_ = [](int64 v) {
-      float f = BitCast<float>(static_cast<uint32>(v));
+    this->known_incorrect_fn_ = [](int64_t v) {
+      float f = BitCast<float>(static_cast<uint32_t>(v));
       return std::abs(f) > kFirstWrongVal;
     };
   } else if (T == BF16) {
-    this->known_incorrect_fn_ = [](int64 v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
+    this->known_incorrect_fn_ = [](int64_t v) {
+      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
       return std::abs(f) > kFirstWrongVal;
     };
   } else if (T == F16) {
-    this->known_incorrect_fn_ = [](int64 v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+    this->known_incorrect_fn_ = [](int64_t v) {
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
       return std::abs(f) > kFirstWrongVal;
     };
   }
@@ -509,18 +510,18 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForTan() {
   // and will not provide meaningful results for sin/cos/tan if magnitudes
   // exceed 2**p.
   if (T == F32) {
-    this->known_incorrect_fn_ = [](int64 v) {
-      float f = BitCast<float>(static_cast<uint32>(v));
+    this->known_incorrect_fn_ = [](int64_t v) {
+      float f = BitCast<float>(static_cast<uint32_t>(v));
       return std::abs(f) > (1 << 13);
     };
   } else if (T == BF16) {
-    this->known_incorrect_fn_ = [](int64 v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
+    this->known_incorrect_fn_ = [](int64_t v) {
+      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
       return std::abs(f) > (1 << 16);
     };
   } else if (T == F16) {
-    this->known_incorrect_fn_ = [](int64 v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+    this->known_incorrect_fn_ = [](int64_t v) {
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
       return std::abs(f) > (1 << 15);
     };
   }
@@ -613,8 +614,8 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Digamma, {
     // the results we get here are very close to MAX_FLOAT.  We just hardcode
     // these results, as this is better than ignoring these inputs altogether.
     auto host_digamma_with_gpu_ftz_errors = +[](float x) {
-      if (BitCast<uint32>(x) == 0x00200000 ||
-          BitCast<uint32>(x) == 0x80200000) {
+      if (BitCast<uint32_t>(x) == 0x00200000 ||
+          BitCast<uint32_t>(x) == 0x80200000) {
         return std::copysign(std::numeric_limits<float>::max(), -x);
       }
       return HostDigamma(x);
@@ -646,7 +647,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
     // Overflows to inf for input 4.08500343e+36 (0x7c44af8e).
     if (ty_ == F32) {
       host_lgamma = +[](float v) {
-        if (BitCast<uint32>(v) == 0x7c44af8e) {
+        if (BitCast<uint32_t>(v) == 0x7c44af8e) {
           return std::numeric_limits<float>::infinity();
         }
         return std::lgamma(v);

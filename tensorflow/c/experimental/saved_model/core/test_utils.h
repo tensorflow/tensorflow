@@ -46,7 +46,7 @@ std::vector<DataType> DataTypeSetToVector(DataTypeSet set);
 
 // Returns a vector of shapes intended to be "interesting" test cases.
 // Currently, this returns scalar, 1D vector, 2D matrix, and a 4D tensor shapes
-std::vector<std::vector<int64>> InterestingShapes();
+std::vector<std::vector<int64_t>> InterestingShapes();
 
 // Returns a TensorHandle of `dtype` and `shape`, filled with `value`.
 // `dtype` must be an integer dtype, float, or double.
@@ -54,19 +54,19 @@ std::vector<std::vector<int64>> InterestingShapes();
 // CHECK fail. This should only be used for testing purposes.
 ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
                                             DataType dtype,
-                                            absl::Span<const int64> shape,
-                                            int8 value);
+                                            absl::Span<const int64_t> shape,
+                                            int8_t value);
 
 // Fills a numeric tensor's buffer with `value`.
 // dtype must be any integer dtype, float or double.
 void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
-                             int8 value);
+                             int8_t value);
 
 // Checks the underlying data is equal for the buffers for two numeric tensors.
 // Note: The caller must ensure to check that the dtypes and sizes of the
 // underlying buffers are the same before calling this.
 // dtype must be any integer dtype, float, or double.
-void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
+void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
                             void* b);
 
 // Converts a TensorHandle to a Tensor, and dies if unsuccessful. This should

@@ -14,10 +14,11 @@
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import os
 
+from distutils import version
+
+from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
 from tensorflow.core.protobuf import rewriter_config_pb2
 
 
@@ -45,3 +46,43 @@ def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
   rewriter_config.remapping = off
   rewriter_config.scoped_allocator_optimization = off
   rewriter_config.shape_optimization = off
+
+
+def version_tuple_to_string(ver_tuple):
+  assert isinstance(ver_tuple, tuple)
+  assert len(ver_tuple) == 3
+
+  ver_tuple = [str(x) for x in ver_tuple]
+  return ".".join(ver_tuple)
+
+
+def _is_tensorrt_version_greater_equal(trt_ver, target_ver):
+  trt_ver = version.LooseVersion(version_tuple_to_string(trt_ver))
+  target_ver = version.LooseVersion(version_tuple_to_string(target_ver))
+
+  return trt_ver >= target_ver
+
+
+def is_linked_tensorrt_version_greater_equal(major, minor=0, patch=0):
+  ver = _pywrap_py_utils.get_linked_tensorrt_version()
+  return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
+
+
+def is_loaded_tensorrt_version_greater_equal(major, minor=0, patch=0):
+  ver = _pywrap_py_utils.get_loaded_tensorrt_version()
+  return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
+
+
+def is_experimental_feature_activated(feature_name):
+  """Determines if a TF-TRT experimental feature is enabled.
+
+  This helper function checks if an experimental feature was enabled using
+  the environment variable `TF_TRT_EXPERIMENTAL_FEATURES=feature_1,feature_2`.
+
+  Args:
+    feature_name: Name of the feature being tested for activation.
+  """
+
+  return (feature_name
+          in os.environ.get("TF_TRT_EXPERIMENTAL_FEATURES",
+                            default="").split(","))

@@ -392,9 +392,4 @@ Status FunctionalizeControlFlowForXlaPass::Run(
   return Status::OK();
 }
 
-Status FunctionalizeControlFlowPass::Run(
-    const GraphOptimizationPassOptions& options) {
-  return FunctionalizeControlFlow(options.graph->get(), options.flib_def);
-}
-
 }  // namespace tensorflow

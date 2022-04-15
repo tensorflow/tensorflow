@@ -13,10 +13,6 @@
 # limitations under the License.
 """MNIST model float training script with TensorFlow graph execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 from absl import flags
 
@@ -38,14 +34,14 @@ num_features = 784  # data features (img shape: 28*28).
 num_channels = 1
 
 # Training parameters.
-learning_rate = 0.01
+learning_rate = 0.001
 display_step = 10
-batch_size = 128
+batch_size = 32
 
 # Network parameters.
 n_hidden_1 = 32  # 1st conv layer number of neurons.
 n_hidden_2 = 64  # 2nd conv layer number of neurons.
-n_hidden_3 = 1024  # 1st fully connected layer of neurons.
+n_hidden_3 = 64  # 1st fully connected layer of neurons.
 flatten_size = num_features // 16 * n_hidden_2
 
 seed = 66478
@@ -137,7 +133,7 @@ def main(strategy):
   with strategy.scope():
     # Create an mnist float model with the specified float state.
     model = FloatModel()
-    optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
   def train_step(features):
     inputs = tf.image.convert_image_dtype(

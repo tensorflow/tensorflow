@@ -14,16 +14,15 @@
 # ==============================================================================
 """Tests for stateless random-number generation ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import functools
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
@@ -35,7 +34,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class StatelessRandomOpsTest(xla_test.XLATestCase):
+class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self, include_int=False):
@@ -79,6 +78,55 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     self.assertAllEqual(counter.shape, [2])
     alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
     self.assertAllEqual(alg.shape, [])
+
+  @parameterized.named_parameters(
+      ('_%s_%s' % (op_id, alg_id), op, alg_group)  # pylint: disable=g-complex-comprehension
+      for alg_id, alg_group in enumerate([
+          [
+              stateless.Algorithm.PHILOX, stateless.Algorithm.PHILOX.value,
+              'philox'
+          ],
+          [
+              stateless.Algorithm.THREEFRY, stateless.Algorithm.THREEFRY.value,
+              'threefry'
+          ],
+          [
+              stateless.Algorithm.AUTO_SELECT,
+              stateless.Algorithm.AUTO_SELECT.value, 'auto_select', None
+          ],
+      ])
+      for op_id, op in enumerate([
+          stateless.stateless_random_normal,
+          stateless.stateless_truncated_normal,
+          functools.partial(
+              stateless.stateless_random_uniform,
+              dtype=dtypes.uint32,
+              minval=None,
+              maxval=None),
+          functools.partial(
+              stateless.stateless_random_uniform,
+              dtype=dtypes.int32,
+              maxval=100),
+          functools.partial(
+              stateless.stateless_random_uniform, dtype=dtypes.float32),
+      ]))
+  @test_util.run_v2_only
+  def testAlg(self, op, alg_group):
+    """Tests all values of `alg`."""
+    if config.list_logical_devices('TPU') or config.list_logical_devices('GPU'):
+      self.skipTest('Only _cpu tests linked in support for jit_compile on CPU.')
+    seed = [1, 2]
+    shape = [2, 3]
+    outputs = []
+    for alg in alg_group:
+      with ops.device('CPU'):
+        output = def_function.function(jit_compile=True)(op)(
+            shape=shape, seed=seed, alg=alg)
+      self.assertEqual(output.shape, shape)
+      outputs.append(output)
+    x = outputs[0]
+    for y in outputs[1:]:
+      self.assertAllEqual(x, y)
 
   def testLargeNormal(self):
     """Tests an OOM bug of StatelessRandomNormalV2 on TPU."""
@@ -192,6 +240,77 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         random_test_util.test_truncated_normal(
             self.assertEqual, self.assertAllClose, n, y,
             variance_rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
+
+  def _testParameterizedTruncatedNormal(self,
+                                        means,
+                                        stddevs,
+                                        minvals,
+                                        maxvals,
+                                        variance_rtol=None):
+    for dtype in self._random_types():
+      with self.session() as sess, self.test_scope():
+        seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+        n = int(10e7)
+        x = stateless.stateless_parameterized_truncated_normal(
+            shape=[n],
+            seed=seed_t,
+            means=means,
+            stddevs=stddevs,
+            minvals=minvals,
+            maxvals=maxvals)
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
+        if variance_rtol is None:
+          variance_rtol = 6e-3 if dtype == dtypes.bfloat16 else 1e-3
+        random_test_util.test_truncated_normal(
+            self.assertEqual,
+            self.assertAllClose,
+            n,
+            y,
+            means=means,
+            stddevs=stddevs,
+            minvals=minvals,
+            maxvals=maxvals,
+            mean_atol=1e-3,
+            median_atol=1e-3,
+            variance_rtol=variance_rtol)
+
+  def testParameterizedTruncatedNormalDefault(self):
+    self._testParameterizedTruncatedNormal(0., 1., -2., 2.)
+
+  def testParameterizedTruncatedNormalShifted(self):
+    self._testParameterizedTruncatedNormal(-1., 1., -2., 2.)
+
+  def testParameterizedTruncatedNormalRightTail(self):
+    self._testParameterizedTruncatedNormal(0., 1., 4., 20., variance_rtol=2e-2)
+
+  def testParameterizedTruncatedNormalLeftTail(self):
+    self._testParameterizedTruncatedNormal(
+        0., 1., -20., -4., variance_rtol=5e-2)
+
+  def testParameterizedTruncatedNormalLeftTailTwoSidedBounds(self):
+    self._testParameterizedTruncatedNormal(
+        0., 1., -6., -3., variance_rtol=5e-2)
+
+  def testParameterizedTruncatedNormalSmallStddev(self):
+    self._testParameterizedTruncatedNormal(0., 0.1, 0.05, 0.10)
+
+  def testParameterizedTruncatedNormalBroadcast(self):
+    with self.session() as sess, self.test_scope():
+      seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+      means = array_ops.zeros([2], dtype=dtypes.float32)
+      stddevs = array_ops.ones([3, 1], dtype=dtypes.float32)
+      minvals = -array_ops.ones([5, 1, 1], dtype=dtypes.float32)
+      maxvals = array_ops.ones([7, 1, 1, 1], dtype=dtypes.float32)
+      shape = [11, 7, 5, 3, 2]
+      x = stateless.stateless_parameterized_truncated_normal(
+          shape=shape,
+          seed=seed_t,
+          means=means,
+          stddevs=stddevs,
+          minvals=minvals,
+          maxvals=maxvals)
+      y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
+      self.assertEqual((11, 7, 5, 3, 2), y.shape)
 
 
 class StatelessRandomOpsBenchmark(test.Benchmark):

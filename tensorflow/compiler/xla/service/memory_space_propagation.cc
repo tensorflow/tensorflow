@@ -37,7 +37,7 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
           for (const ShapeUtil::IndexedShape& indexed_shape :
                ShapeUtil::GetLeafShapes(
                    instruction->operand(operand_idx)->shape())) {
-            int64 memory_space = indexed_shape.shape.layout().memory_space();
+            int64_t memory_space = indexed_shape.shape.layout().memory_space();
             modified |= Propagate(indexed_shape.index,
                                   instruction->fused_parameter(operand_idx),
                                   memory_space);
@@ -47,7 +47,7 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
         // Propagate output subshapes.
         for (const ShapeUtil::IndexedShape& indexed_shape :
              ShapeUtil::GetLeafShapes(instruction->shape())) {
-          int64 memory_space = indexed_shape.shape.layout().memory_space();
+          int64_t memory_space = indexed_shape.shape.layout().memory_space();
           modified |=
               Propagate(indexed_shape.index,
                         instruction->fused_expression_root(), memory_space);
@@ -60,10 +60,10 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
 
 bool MemorySpacePropagation::Propagate(ShapeIndexView index,
                                        const HloInstruction* callee_instruction,
-                                       int64 memory_space) const {
+                                       int64_t memory_space) const {
   bool modified = false;
   const HloValue& value = dataflow_analysis_->GetUniqueValueAt(
-      callee_instruction, index.ToShapeIndex());
+      callee_instruction, ShapeIndex(index));
 
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;
@@ -100,7 +100,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     }
   }
 
-  for (const HloUse& use : value.uses()) {
+  for (const HloUse& use : value.GetUses()) {
     // For fusion uses, propagate the memory space to the fusion parameter.
     if (use.instruction->opcode() == HloOpcode::kFusion) {
       modified |= Propagate(

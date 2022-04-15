@@ -56,7 +56,7 @@ namespace tensorflow {
 namespace tensorrt {
 
 void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
-                                   uint32_t flags) {
+                                   uint32_t flags) noexcept {
   if (size == 0) return nullptr;
   // WAR for allocator alignment requirement. Certain cuda API calls require GPU
   // memory with alignment to cudaDeviceProp::textureAlignment.
@@ -80,6 +80,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
 
   void* alloc_mem = mem;
   QCHECK(Align(alignment, size, mem, total_size));
+  mutex_lock lock(mu_);
   if (mem != alloc_mem) {
     QCHECK(mem_map_.insert({mem, alloc_mem}).second);
   }
@@ -94,7 +95,8 @@ TRTDeviceAllocator::TRTDeviceAllocator(Allocator* allocator)
   VLOG(1) << "Using " << allocator->Name() << " allocator from TensorFlow";
 }
 
-void TRTDeviceAllocator::free(void* memory) {
+void TRTDeviceAllocator::free(void* memory) noexcept {
+  mutex_lock lock(mu_);
   VLOG(2) << "Deallocating @ " << memory;
   // allocated memory adjusted for alignment, restore the original pointer
   if (memory) {

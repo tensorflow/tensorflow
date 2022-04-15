@@ -1,4 +1,4 @@
 op {
-  graph_op_name: "QuantizeAndDequantizeV4Grad"
+  graph_op_name: "QuantizeAndDequantizeV4"
   visibility: HIDDEN
 }

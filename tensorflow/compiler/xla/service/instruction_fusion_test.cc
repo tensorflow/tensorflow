@@ -29,20 +29,19 @@ using InstructionFusionTest = HloTestBase;
 // FuseIntoMultiOutput for testing.
 class InstructionFusionForTesting : public InstructionFusion {
  public:
-  explicit InstructionFusionForTesting(HloModule* module)
-      : InstructionFusion(InstructionFusion::IsExpensive) {
-    module_ = module;
-    computation_ = module->entry_computation();
-  }
+  explicit InstructionFusionForTesting()
+      : InstructionFusion(InstructionFusion::IsExpensive) {}
 
-  HloInstruction* Fuse(HloInstruction* producer,
-                       HloInstruction* consumer) override {
-    return InstructionFusion::Fuse(producer, consumer);
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                       HloComputation* computation) override {
+    return InstructionFusion::Fuse(producer, consumer, computation);
   }
 
   HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
-                                      HloInstruction* consumer) override {
-    return InstructionFusion::FuseIntoMultiOutput(producer, consumer);
+                                      HloInstruction* consumer,
+                                      HloComputation* computation) override {
+    return InstructionFusion::FuseIntoMultiOutput(producer, consumer,
+                                                  computation);
   }
 };
 
@@ -58,7 +57,7 @@ TEST_F(InstructionFusionTest, FuseInstructions) {
   HloInstruction* sub = module->entry_computation()->root_instruction();
   HloInstruction* add = sub->mutable_operand(0);
   HloInstruction* fusion =
-      InstructionFusionForTesting(module.get()).Fuse(add, sub);
+      InstructionFusionForTesting().Fuse(add, sub, module->entry_computation());
 
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(),
@@ -81,8 +80,8 @@ TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
                     .ValueOrDie();
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* abs = root->mutable_operand(0);
-  HloInstruction* fusion =
-      InstructionFusionForTesting(module.get()).Fuse(abs, root);
+  HloInstruction* fusion = InstructionFusionForTesting().Fuse(
+      abs, root, module->entry_computation());
 
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(), op::Add(op::Abs(), op::Abs()))
@@ -102,8 +101,8 @@ TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* abs = root->mutable_operand(0);
   HloInstruction* tanh = root->mutable_operand(1);
-  HloInstruction* fusion =
-      InstructionFusionForTesting(module.get()).FuseIntoMultiOutput(abs, tanh);
+  HloInstruction* fusion = InstructionFusionForTesting().FuseIntoMultiOutput(
+      abs, tanh, module->entry_computation());
 
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
@@ -184,7 +183,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     abs1 = f32[] abs(add)
     rng = f32[] rng(p1, abs1), distribution=rng_uniform
     abs2 = f32[] abs(rng)
-    abs3 = f32[] abs(rng)    
+    abs3 = f32[] abs(rng)
     ROOT root = f32[] subtract(abs2, add)
   })")
                     .ValueOrDie();
@@ -470,6 +469,123 @@ TEST_F(InstructionFusionTest,
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion(op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldNotFuseWithNonElementwiseSharedOperand) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    slice.19 = f32[7] slice(parameter.1), slice={[0:7]}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(slice.19, broadcast.8)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  // Verify that we don't fuse dynamic-update-slice and slice together since
+  // dynamic-update-slice modifies the input buffer in-place, which is also used
+  // as slice's input.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Slice()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSliceSameIndex) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    slice.19 = f32[7] slice(parameter.1), slice={[1:8]}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(slice.19, broadcast.8)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  // Verify that we fuse dynamic-update-slice and slice together because they
+  // have the same index.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldNotFuseWithUnknownDynamicSlice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.0 = f32[8] parameter(0)
+    parameter.1 = s32[] parameter(1)
+    dynamic-slice = f32[7] dynamic-slice(parameter.0, parameter.1), dynamic_slice_sizes={7}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(dynamic-slice, broadcast.8)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.0, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::DynamicSlice()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSameDynamicSlice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.0 = f32[8] parameter(0)
+    parameter.1 = s32[] parameter(1)
+    dynamic-slice = f32[7] dynamic-slice(parameter.0, parameter.1), dynamic_slice_sizes={7}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(dynamic-slice, broadcast.8)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.0, add.9, parameter.1)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    mul = f32[4,3]{1,0} multiply(p0, p0)
+    ROOT add = f32[4,3]{1,0} add(mul, p0)
+    sub = f32[4,3]{1,0} subtract(p0, add)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter()));
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
 }
 
 }  // namespace xla

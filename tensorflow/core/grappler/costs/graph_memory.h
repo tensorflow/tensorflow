@@ -36,7 +36,7 @@ class GraphMemory {
     Costs::Duration deallocation_time;
   };
   struct MemoryUsage {
-    int64 used_memory;
+    int64_t used_memory;
     std::vector<LiveTensor> live_tensors;
   };
 
@@ -49,7 +49,7 @@ class GraphMemory {
 
   // Worst case memory usage in bytes, or -1 if the usage is unknown. If there
   // are multiple devices, returns the highest per device memory usage.
-  int64 GetWorstCaseMemoryUsage() const;
+  int64_t GetWorstCaseMemoryUsage() const;
 
   // Returns the peak memory usage for the specified device.
   const MemoryUsage& GetPeakMemoryUsage(const string& device) const {
@@ -62,15 +62,15 @@ class GraphMemory {
 
  private:
   void InferMemUsageForNodes(const std::vector<const NodeDef*>& nodes,
-                             GraphProperties* properties, int64* worst_case,
-                             int64* best_case) const;
-  int64 InferMemUsageForNeighbors(
+                             GraphProperties* properties, int64_t* worst_case,
+                             int64_t* best_case) const;
+  int64_t InferMemUsageForNeighbors(
       const std::vector<OpInfo::TensorProperties>& props) const;
 
   void InferFromTrace(const StepStats& timeline);
 
   const GrapplerItem& item_;
-  std::unordered_map<string, int64> worst_case_memory_usage_;
+  std::unordered_map<string, int64_t> worst_case_memory_usage_;
   std::unordered_map<string, MemoryUsage> peak_usage_;
   const MemoryUsage unknown_usage_;
 };

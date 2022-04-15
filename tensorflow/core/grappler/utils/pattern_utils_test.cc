@@ -175,7 +175,7 @@ TEST_F(PatternMatcherTest, Tree) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
@@ -254,10 +254,12 @@ TEST_F(PatternMatcherTest, DAG) {
   auto root_node_view = graph_view.GetNode("e");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
+  std::unordered_set<string> nodes_to_preserve = {"foo"};
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
-  bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+  bool found_match =
+      graph_matcher.GetMatchedNodes(pattern, nodes_to_preserve, root_node_view,
+                                    &matched_nodes_map, &remove_node_indices);
 
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
@@ -275,6 +277,18 @@ TEST_F(PatternMatcherTest, DAG) {
     }
   }
   EXPECT_TRUE(all_indices_matched);
+
+  // Pattern should not be matched when a node to be removed is one of nodes to
+  // be preserved.
+  nodes_to_preserve.insert({"c", "d"});
+  matched_nodes_map.clear();
+  remove_node_indices.clear();
+  found_match =
+      graph_matcher.GetMatchedNodes(pattern, nodes_to_preserve, root_node_view,
+                                    &matched_nodes_map, &remove_node_indices);
+  EXPECT_FALSE(found_match);
+  EXPECT_TRUE(matched_nodes_map.empty());
+  EXPECT_TRUE(remove_node_indices.empty());
 }
 
 // Pattern should not be matched if any of candidate remove nodes has external
@@ -343,7 +357,7 @@ TEST_F(PatternMatcherTest, DAGExternalDependent) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_FALSE(found_match);
   EXPECT_TRUE(matched_nodes_map.empty());
@@ -364,7 +378,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGelu) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
@@ -400,7 +414,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluExternalDependent) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
 
   EXPECT_FALSE(found_match);
   EXPECT_TRUE(matched_nodes_map.empty());
@@ -421,7 +435,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluMutation) {
   std::map<string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
-      pattern, root_node_view, &matched_nodes_map, &remove_node_indices);
+      pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
   EXPECT_TRUE(found_match);
   EXPECT_FALSE(matched_nodes_map.empty());
   EXPECT_FALSE(remove_node_indices.empty());
@@ -466,6 +480,98 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluMutation) {
 
   bool replace_node_exist = graph_view.HasNode("gelu") ? true : false;
   EXPECT_TRUE(replace_node_exist);
+}
+
+TEST_F(PatternMatcherTest, CommutativeInputs) {
+  // A Data flow graph. Data flows from top to bottom. Here A, B, C, D, and E
+  // are ops.
+  //
+  //     Input graph              Subgraph for pattern matcher
+  //
+  //         A
+  //         |                        B                B
+  //         B                       / \              / \
+  //        / \                     C   D     or     D   C
+  //       C   D                     \ /              \ /
+  //        \ /                       E                E
+  //         E
+  //
+  // Here E is any of {Mul, Add, AddV2} and the root of subgraph to be matched.
+  // Pattern matcher would match the following pattern syntax.
+  //   {"E", "my_e", NodeStatus::kReplace,
+  //     {
+  //       {"C", "my_c", NodeStatus::kRemove,
+  //         {
+  //           {"B", "my_b", NodeStatus::kRemove}
+  //         }
+  //       },
+  //       {"D", "my_d", NodeStatus::kRemove,
+  //         {
+  //           {"B", "my_b", NodeStatus::kRemove}
+  //         }
+  //       }
+  //     }
+  //   }
+
+  ::tensorflow::Status status;
+  std::vector<string> commutative_ops = {"Mul", "Add", "AddV2"};
+  for (string op : commutative_ops) {
+    for (bool should_swap : {false, true}) {
+      std::vector<string> commutative_operands =
+          (should_swap ? std::vector<string>{"d", "c"}
+                       : std::vector<string>{"c", "d"});
+      GraphDef graph = CreateGraph({{"e", op, commutative_operands},
+                                    {"c", "C", {"b"}},
+                                    {"d", "D", {"b"}},
+                                    {"b", "B", {"a"}},
+                                    {"a", "A", {}}});
+      // clang-format off
+      OpTypePattern pattern{op, "my_e", NodeStatus::kReplace,
+        {
+          {"C", "my_c", NodeStatus::kRemove,
+            {
+              {"B", "my_b", NodeStatus::kRemove}
+            }
+          },
+          {"D", "my_d", NodeStatus::kRemove,
+            {
+              {"B", "my_b", NodeStatus::kRemove}
+            }
+          }
+        }
+      };  // clang-format on
+
+      MutableGraphView graph_view(&graph, &status);
+      TF_ASSERT_OK(status);
+      TF_EXPECT_OK(graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
+      auto root_node_view = graph_view.GetNode("e");
+
+      SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+          &graph_view);
+      std::map<string, int> matched_nodes_map;  // label to node index map
+      std::set<int> remove_node_indices;
+      bool found_match = graph_matcher.GetMatchedNodes(
+          pattern, {}, root_node_view, &matched_nodes_map,
+          &remove_node_indices);
+
+      EXPECT_TRUE(found_match);
+      EXPECT_FALSE(matched_nodes_map.empty());
+      EXPECT_FALSE(remove_node_indices.empty());
+
+      bool all_indices_matched = true;
+      for (auto it = matched_nodes_map.begin(); it != matched_nodes_map.begin();
+           it++) {
+        auto label = str_util::StripPrefix(it->first, "my_");
+        int matched_node_idx = it->second;
+        int expected_node_idx = graph_view.GetNode(label)->node_index();
+        if (matched_node_idx != expected_node_idx) {
+          all_indices_matched = false;
+          break;
+        }
+      }
+      EXPECT_TRUE(all_indices_matched);
+    }
+  }
 }
 
 }  // namespace

@@ -28,7 +28,7 @@ class ProfilerServer {
  public:
   ~ProfilerServer();
   // Starts a profiler server with a given port.
-  void StartProfilerServer(int32 port);
+  void StartProfilerServer(int32_t port);
 
  private:
   std::unique_ptr<grpc::ProfilerService::Service> service_;

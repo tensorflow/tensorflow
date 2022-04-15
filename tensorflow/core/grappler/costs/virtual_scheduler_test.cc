@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <string>
+
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -2260,7 +2267,7 @@ versions {
   // Returns cost based on op.
   Costs SimplePredictCosts(const OpContext& op_context) const {
     Costs c;
-    int64 exec_cost = 0;
+    int64_t exec_cost = 0;
     if (op_context.op_info.op() == "MatMul") {
       exec_cost = 2000000000;
     } else if (op_context.op_info.op() == "RandomUniform") {
@@ -2368,11 +2375,11 @@ versions {
 
   // Helper method for checking nodes dependency.
   void ValidateDependencyChain(
-      const std::unordered_map<string, int64>& start_times,
+      const std::unordered_map<string, int64_t>& start_times,
       const std::vector<string>& nodes_in_dependency_order) {
-    int64 prev_node_time = -1;
+    int64_t prev_node_time = -1;
     for (const auto& node : nodes_in_dependency_order) {
-      int64 curr_node_time = start_times.at(node);
+      int64_t curr_node_time = start_times.at(node);
       EXPECT_GE(curr_node_time, prev_node_time);
       prev_node_time = curr_node_time;
     }
@@ -2436,12 +2443,13 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   EXPECT_EQ(1, stepstats.dev_stats().size());
 
   // Create a map of op name -> start and end times (micros).
-  std::map<string, std::pair<int64, int64>> start_end_times;
+  std::map<string, std::pair<int64_t, int64_t>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
-      int64 start = stats.all_start_micros();
-      int64 end = start + stats.all_end_rel_micros();
-      start_end_times[stats.node_name()] = std::pair<int64, int64>(start, end);
+      int64_t start = stats.all_start_micros();
+      int64_t end = start + stats.all_end_rel_micros();
+      start_end_times[stats.node_name()] =
+          std::pair<int64_t, int64_t>(start, end);
 
       // Make sure that the output properties are correct for
       // MatMul and RandomUniform operations.
@@ -2462,16 +2470,16 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   }
 
   // The base start_time is the time to compute RandomUniforms
-  int64 cur_time = static_cast<int64>(5000005);
+  int64_t cur_time = static_cast<int64_t>(5000005);
   // The increment is the execution time of one matmul. See
   // CreateGrapplerItemWithMatmulChain for details.
-  int64 increment = static_cast<int64>(2000000);
+  int64_t increment = static_cast<int64_t>(2000000);
   auto op_names = {"ab", "abc", "abcd", "abcde"};
   for (const auto& op_name : op_names) {
-    int64 actual_start = start_end_times[op_name].first;
-    int64 actual_end = start_end_times[op_name].second;
-    int64 expected_start = cur_time;
-    int64 expected_end = cur_time + increment;
+    int64_t actual_start = start_end_times[op_name].first;
+    int64_t actual_end = start_end_times[op_name].second;
+    int64_t expected_start = cur_time;
+    int64_t expected_end = cur_time + increment;
     EXPECT_EQ(expected_start, actual_start);
     EXPECT_EQ(expected_end, actual_end);
     cur_time += increment;
@@ -2522,7 +2530,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
 
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
-  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
   const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
@@ -2574,7 +2582,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
   const auto& cpu_state_0 = device_states->at(kCPU0);
   const auto& cpu_state_1 = device_states->at(kCPU1);
   // All tensors are of the same size, 10 x 10 x 10 x 10.
-  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
   const std::vector<string> cpu_0_expected_tensors = {"x", "y"};
   const std::vector<string> cpu_1_expected_tensors = {"x", "y", "add"};
   EXPECT_EQ(cpu_0_expected_tensors.size() * one_input_node_size,
@@ -2585,6 +2593,38 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
   // should be zero.
   EXPECT_EQ(cpu_state_0.memory_usage, 0);
   EXPECT_EQ(cpu_state_1.memory_usage, 0);
+}
+
+TEST_F(VirtualSchedulerTest, MemoryUsageWithExecutionCount) {
+  // Init.
+  CreateGrapplerItemWithAddN();
+  auto& graph = grappler_item_->graph;
+  // Repeat execution for each node.
+  for (auto& node : *graph.mutable_node()) {
+    (*node.mutable_attr())[kExecutionCount].set_i(10000);
+  }
+
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  const auto* device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+  // All tensors are of the same size, 10 x 10 x 10 x 10.
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
+  // Max memory usage does not rely on the number of executions.
+  EXPECT_EQ(expected_names.size() * one_input_node_size,
+            cpu_state_0.max_memory_usage);
+  // After the graph is executed, at the end, memory usage for the device
+  // should be zero.
+  EXPECT_EQ(cpu_state_0.memory_usage, 0);
+
+  Costs c = scheduler_->Summary();
+  EXPECT_EQ(64, c.persistent_memory);
+  EXPECT_EQ(200000, c.temporary_memory);
+  EXPECT_EQ(200064, c.max_memory);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
@@ -2610,7 +2650,7 @@ TEST_F(VirtualSchedulerTest, ControlDependency) {
 
   // The graph has a NoOp that takes control dependency from 7 NoOps. The peak
   // memory usage is when executing the final NoOp.
-  int64 one_input_node_size = 4;  // control dependency
+  int64_t one_input_node_size = 4;  // control dependency
   const std::vector<string> expected_names = {"x", "y", "z", "w",
                                               "u", "v", "t"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
@@ -2644,7 +2684,7 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
   //  z4 = control dependency from bn.
   //  Note that bn.mean doesn't have any consumer.
   const int x_size = batch_size_ * width_ * height_ * depth_in_;
-  int64 expected_size =
+  int64_t expected_size =
       4 * (2 * x_size /* x and bn.y */ + depth_in_ /* bn.var */ +
            1 /* control dependency */);
   EXPECT_EQ(expected_size, cpu_state.memory_usage);
@@ -2743,12 +2783,12 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int num_next_iteration_1 = 0;
   int num_exit = 0;
   int num_exit_1 = 0;
-  int64 next_iter_start_micro;
-  int64 next_iter_1_start_micro;
-  int64 exit_start_micro;
-  int64 exit_1_start_micro;
+  int64_t next_iter_start_micro;
+  int64_t next_iter_1_start_micro;
+  int64_t exit_start_micro;
+  int64_t exit_1_start_micro;
 
-  std::unordered_map<string, int64> start_times;
+  std::unordered_map<string, int64_t> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       start_times[stats.node_name()] = stats.all_start_micros();
@@ -2966,13 +3006,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn_0") != string::npos) {
+    if (absl::StrContains(name, "bn_0")) {
       return 0;
-    } else if (name.find("bn_1") != string::npos) {
+    } else if (absl::StrContains(name, "bn_1")) {
       return 1;
-    } else if (name.find("bn_2") != string::npos) {
+    } else if (absl::StrContains(name, "bn_2")) {
       return 2;
-    } else if (name.find("bn_minus1") != string::npos) {
+    } else if (absl::StrContains(name, "bn_minus1")) {
       return -1;
     }
     return -999;
@@ -3128,6 +3168,99 @@ TEST_F(VirtualSchedulerTest, AddFromOneTensor) {
   auto ops_executed = RunScheduler("");
   EXPECT_GT(ops_executed.count("y"), 0);
   EXPECT_GT(ops_executed.count("x"), 0);
+}
+
+TEST_F(VirtualSchedulerTest, TestNodeCostOutputTensorSize) {
+  // Create a schedule with more than 2 ops to be executed.
+  CreateGrapplerItemWithMatmulChain();
+  InitScheduler();
+  RunScheduler("ab");
+
+  int32_t persistent_memory_before =
+      scheduler_->GetPersistentMemoryUsage().at(kCPU0);
+
+  auto* device_states = scheduler_->GetDeviceStates();
+  int32_t memory_usage = device_states->at(kCPU0).memory_usage;
+
+  // Set temporary/persistent memory to some values for the first node cost.
+  Costs node_costs = Costs::ZeroCosts(false);
+
+  const int32_t node_one_cost = 12345;
+  const int32_t node_two_cost = 98765;
+
+  const int32_t input_size = 4 * 3200 * 3200;
+
+  node_costs.persistent_memory = node_one_cost;
+  node_costs.temporary_memory = 0;
+  node_costs.output_tensor_size_bytes = {{0, node_one_cost}};
+  node_costs.persistent_output_ports = {0};
+
+  // Mark first node executed and check device state.
+  scheduler_->MarkCurrNodeExecuted(node_costs);
+  device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+
+  // The expected memory usage is previous memory usage minus the size
+  // of the two inputs for the multiply operation.
+  memory_usage -= 2 * input_size;
+  EXPECT_EQ(cpu_state_0.memory_usage, memory_usage);
+
+  int64_t persistent_memory = node_one_cost + persistent_memory_before;
+  EXPECT_EQ(scheduler_->GetPersistentMemoryUsage().at(kCPU0),
+            persistent_memory);
+
+  // Set second node costs to temporary memory.
+  node_costs = Costs::ZeroCosts(false);
+  node_costs.persistent_memory = 0;
+  node_costs.temporary_memory = node_two_cost;
+  node_costs.output_tensor_size_bytes = {{0, node_two_cost}};
+
+  scheduler_->MarkCurrNodeExecuted(node_costs);
+  device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_1 = device_states->at(kCPU0);
+
+  // Again we remove the inputs from memory usage.  The output of the previous
+  // operation is not subtracted because it is set as persistent memory.
+  memory_usage += node_two_cost - input_size;
+  EXPECT_EQ(cpu_state_1.memory_usage, memory_usage);
+  EXPECT_EQ(scheduler_->GetPersistentMemoryUsage().at(kCPU0),
+            persistent_memory);
+
+  // Finish off the schedule to test if the Summary counts persistent memory
+  // correctly.
+  bool more_nodes = true;
+  do {
+    OpContext op_context = scheduler_->GetCurrNode();
+    node_costs = SimplePredictCosts(op_context);
+    more_nodes = scheduler_->MarkCurrNodeExecuted(node_costs);
+  } while (more_nodes);
+
+  RunMetadata metadata;
+  Costs final_cost = scheduler_->Summary(&metadata);
+
+  EXPECT_EQ(final_cost.persistent_memory, persistent_memory);
+
+  // Since we adjusted the node costs, we expect the requested and allocated
+  // memory are not equal for nodes "abc" and "abcd" .
+  StepStats stepstats = metadata.step_stats();
+  for (const auto& device_step_stats : stepstats.dev_stats()) {
+    for (const auto& stats : device_step_stats.node_stats()) {
+      const auto& allocation_description =
+          stats.output().at(0).tensor_description().allocation_description();
+      if (stats.node_name() == "abc") {
+        EXPECT_NE(allocation_description.allocated_bytes(),
+                  allocation_description.requested_bytes());
+        const auto& mem_stats = stats.memory_stats();
+        EXPECT_EQ(mem_stats.persistent_memory_size(), node_one_cost);
+      } else if (stats.node_name() == "abcd") {
+        EXPECT_NE(allocation_description.allocated_bytes(),
+                  allocation_description.requested_bytes());
+      } else {
+        EXPECT_EQ(allocation_description.allocated_bytes(),
+                  allocation_description.requested_bytes());
+      }
+    }
+  }
 }
 
 }  // namespace

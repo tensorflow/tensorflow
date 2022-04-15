@@ -66,7 +66,9 @@ bool HasOperandType(HloInstruction* hlo, PrimitiveType type) {
 Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
                              PrimitiveType to_type) {
   std::vector<Shape> new_tuple_subshapes;
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+  const int64_t n = ShapeUtil::TupleElementCount(shape);
+  new_tuple_subshapes.reserve(n);
+  for (int64_t i = 0; i < n; ++i) {
     Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
     CHECK(!subshape.IsTuple());
     if (subshape.element_type() == from_type) {
@@ -87,7 +89,7 @@ HloInstruction* ConvertTupleElements(HloInstruction* hlo,
   const Shape& shape = hlo->shape();
   HloComputation* computation = hlo->parent();
   std::vector<HloInstruction*> tuple_elements;
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+  for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& ele_shape = ShapeUtil::GetTupleElementShape(shape, i);
     HloInstruction* element = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(ele_shape, hlo, i));
@@ -142,9 +144,12 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops with embedded computations where it suffices to convert
       // the embedded computations instead of converting the ops themselves.
       if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
-          opcode == HloOpcode::kAllReduce || opcode == HloOpcode::kFusion ||
-          opcode == HloOpcode::kMap || opcode == HloOpcode::kReduce ||
-          opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kScatter ||
+          opcode == HloOpcode::kAllReduce ||
+          opcode == HloOpcode::kReduceScatter ||
+          opcode == HloOpcode::kAllReduceStart ||
+          opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
+          opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
           opcode == HloOpcode::kSort || opcode == HloOpcode::kConditional) {
         continue;
@@ -170,7 +175,9 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // First, convert the operands with eliminate_type_ to operands with
       // replace_with_type_.
       std::vector<HloInstruction*> new_operands;
-      for (HloInstruction* operand : hlo->operands()) {
+      const auto& operands = hlo->operands();
+      new_operands.reserve(operands.size());
+      for (HloInstruction* operand : operands) {
         if (operand->shape().element_type() == eliminate_type_) {
           operand = ToElementType(operand, replace_with_type_);
         }

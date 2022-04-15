@@ -14,19 +14,17 @@
 # ==============================================================================
 """Tests for tensorflow.ops.random_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -69,7 +67,7 @@ class RandomNormalTest(RandomOpTestCommon):
         rng = random_ops.random_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -157,6 +155,7 @@ class RandomNormalTest(RandomOpTestCommon):
             graph_seed=965)
 
 
+@test_util.with_eager_op_as_function
 class TruncatedNormalTest(test.TestCase):
 
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
@@ -166,7 +165,7 @@ class TruncatedNormalTest(test.TestCase):
         rng = random_ops.truncated_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -226,7 +225,19 @@ class TruncatedNormalTest(test.TestCase):
       sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=True)
       x = sampler()
       print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
-      self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+      self.assertLess(abs(np.std(x) / stddev - 0.85), 0.04)
+
+  def testSuccessAfterError(self):
+    # Force an error on the TruncatedNormal kernel.
+    config.enable_op_determinism()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "When determinism is enabled, random ops must have a seed specified"):
+      self.evaluate(gen_random_ops.truncated_normal((1,), dtypes.float32))
+    config.disable_op_determinism()
+
+    # Ensure the StdDev of the TruncatedNormal works as intended.
+    self.testStdDev()
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
@@ -257,6 +268,7 @@ class TruncatedNormalTest(test.TestCase):
       self.assertAllEqual(rnd1, rnd2)
 
 
+@test_util.with_eager_op_as_function
 @test_util.for_all_test_methods(test_util.disable_xla,
                                 "This never passed on XLA")
 class RandomUniformTest(RandomOpTestCommon):
@@ -268,7 +280,7 @@ class RandomUniformTest(RandomOpTestCommon):
         rng = random_ops.random_uniform(
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -454,6 +466,45 @@ class RandomShapeTest(test.TestCase):
     # Unknown shape.
     rnd3 = random_ops.random_uniform(array_ops.placeholder(dtypes.int32))
     self.assertIs(None, rnd3.get_shape().ndims)
+
+
+class DeterministicOpsTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    random_seed.set_random_seed(None)
+    config.enable_op_determinism()
+
+  def tearDown(self):
+    super().tearDown()
+    config.disable_op_determinism()
+
+  def testDeterministicOpsErrors(self):
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "Random ops require a seed to be set when determinism is enabled."):
+      random_ops.random_normal((1,))
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "Random ops require a seed to be set when determinism is enabled."):
+      random_ops.truncated_normal((1,))
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "Random ops require a seed to be set when determinism is enabled."):
+      random_ops.random_uniform((1,))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "When determinism is enabled, random ops must have a seed specified"):
+      self.evaluate(gen_random_ops.random_standard_normal((1,), dtypes.float32))
+
+  def testErrorNotThrownWithSeed(self):
+    random_ops.random_normal((1,), seed=0)
+    random_seed.set_random_seed(0)
+    random_ops.random_normal((1,))
+    self.evaluate(gen_random_ops.random_standard_normal((1,), dtypes.float32,
+                                                        seed=1))
+    self.evaluate(gen_random_ops.random_standard_normal((1,), dtypes.float32,
+                                                        seed2=1))
 
 
 if __name__ == "__main__":

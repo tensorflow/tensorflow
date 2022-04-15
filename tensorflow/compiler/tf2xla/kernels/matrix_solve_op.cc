@@ -30,7 +30,7 @@ class MatrixSolveOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape matrix_shape = ctx->InputShape(0);
-    int64 matrix_ndims = matrix_shape.dims();
+    int64_t matrix_ndims = matrix_shape.dims();
     OP_REQUIRES(ctx, matrix_ndims >= 2,
                 errors::InvalidArgument(
                     "Input matrix must have rank >= 2, got ", matrix_ndims));

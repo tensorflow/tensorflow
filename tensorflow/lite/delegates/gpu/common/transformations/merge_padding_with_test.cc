@@ -58,7 +58,7 @@ TEST(MergePaddingWith, Smoke) {
   ASSERT_EQ(2, graph.nodes().size());
 
   auto transformation = NewMergePaddingWithConvolution2D();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_padding", transformation.get());
 
   ASSERT_EQ(1, graph.nodes().size());
@@ -103,7 +103,7 @@ TEST(MergePaddingWith, MergeTwo) {
   ASSERT_EQ(3, graph.nodes().size());
 
   auto transformation = NewMergePaddingWithConvolution2D();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_padding", transformation.get());
 
   ASSERT_EQ(1, graph.nodes().size());
@@ -145,7 +145,7 @@ TEST(MergePaddingWithAdd, MergeAlignedPadding) {
   ASSERT_EQ(4, graph.values().size());
 
   auto transformation = NewMergePaddingWithAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_padding", transformation.get());
 
   ASSERT_EQ(1, graph.nodes().size());
@@ -184,7 +184,7 @@ TEST(MergePaddingWithAdd, DoNotTrigger_AddWithAttributes) {
   ASSERT_EQ(4, graph.values().size());
 
   auto transformation = NewMergePaddingWithAdd();
-  ModelTransformer transformer(&graph, nullptr);
+  ModelTransformer transformer(&graph);
   transformer.Apply("merge_padding", transformation.get());
 
   ASSERT_EQ(2, graph.nodes().size());

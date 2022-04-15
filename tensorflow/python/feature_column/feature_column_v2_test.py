@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for feature_column."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 
@@ -1769,9 +1765,9 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price1_var = get_linear_model_column_var(price1)
       price2_var = get_linear_model_column_var(price2)
-      self.assertAllEqual(cols_to_vars['bias'], [bias])
-      self.assertAllEqual(cols_to_vars[price1], [price1_var])
-      self.assertAllEqual(cols_to_vars[price2], [price2_var])
+      self.assertEqual(cols_to_vars['bias'], [bias])
+      self.assertEqual(cols_to_vars[price1], [price1_var])
+      self.assertEqual(cols_to_vars[price2], [price2_var])
 
   def test_fills_cols_to_vars_partitioned_variables(self):
     price1 = fc.numeric_column('price1', shape=2)
@@ -2680,7 +2676,7 @@ class FunctionalInputLayerTest(test.TestCase):
       net = fc_old.input_layer(features, [price1, price2])
       with _initialized_session() as sess:
         with self.assertRaisesRegex(errors.OpError,
-                                    'Dimensions of inputs should match'):
+                                    'Dimension 0 in both shapes must be equal'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
   def test_runtime_batch_size_matches(self):
@@ -2995,6 +2991,9 @@ def _assert_sparse_tensor_value(test_case, expected, actual):
 
 class VocabularyFileCategoricalColumnTest(test.TestCase):
 
+  _FILE_FORMAT = None
+  _VOCABULARY_SIZE_ERROR = (errors.OpError, 'Invalid vocab_size')
+
   def setUp(self):
     super(VocabularyFileCategoricalColumnTest, self).setUp()
 
@@ -3028,7 +3027,10 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         key='aaa', vocabulary_file=self._unicode_vocabulary_file_name)
     self.assertEqual('aaa', column.name)
     self.assertEqual('aaa', column.key)
-    self.assertEqual(165, column.num_buckets)
+    if isinstance(column.num_buckets, (int, np.integer)):
+      self.assertEqual(165, column.num_buckets)
+    else:
+      self.assertEqual(165, self.evaluate(column.num_buckets))
     self.assertEqual({'aaa': parsing_ops.VarLenFeature(dtypes.string)},
                      column.parse_example_spec)
     self.assertTrue(column._is_v2_column)
@@ -3109,7 +3111,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegex(errors.OpError, 'Invalid vocab_size'):
+    with self.assertRaisesRegex(*self._VOCABULARY_SIZE_ERROR):
       column.get_sparse_tensors(
           fc.FeatureTransformationCache({
               'aaa': inputs
@@ -3492,17 +3494,44 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     self.assertEqual(['wire'], wire_column.parents)
 
     config = wire_column.get_config()
-    self.assertEqual({
-        'default_value': -1,
-        'dtype': 'string',
-        'key': 'wire',
-        'num_oov_buckets': 1,
-        'vocabulary_file': self._wire_vocabulary_file_name,
-        'vocabulary_size': 3
-    }, config)
+    self.assertEqual(
+        {
+            'default_value': -1,
+            'dtype': 'string',
+            'key': 'wire',
+            'num_oov_buckets': 1,
+            'vocabulary_file': self._wire_vocabulary_file_name,
+            'vocabulary_size': 3,
+            'file_format': self._FILE_FORMAT,
+        }, config)
 
     self.assertEqual(wire_column,
                      fc.VocabularyFileCategoricalColumn.from_config(config))
+
+
+class VocabularyTfrecordGzipFileCategoricalColumnTest(
+    VocabularyFileCategoricalColumnTest):
+
+  _FILE_FORMAT = 'tfrecord_gzip'
+  _VOCABULARY_SIZE_ERROR = (errors.FailedPreconditionError,
+                            'Input dataset was expected to contain 4 elements')
+
+  def setUp(self):
+    super(VocabularyTfrecordGzipFileCategoricalColumnTest, self).setUp()
+
+    # Contains ints, Golden State Warriors jersey numbers: 30, 35, 11, 23, 22
+    self._warriors_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/warriors_vocabulary.tfrecord.gz')
+    self._warriors_vocabulary_size = 5
+
+    # Contains strings, character names from 'The Wire': omar, stringer, marlo
+    self._wire_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/wire_vocabulary.tfrecord.gz')
+    self._wire_vocabulary_size = 3
+
+    # Contains unicode characters.
+    self._unicode_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/unicode_vocabulary.tfrecord.gz')
 
 
 class VocabularyListCategoricalColumnTest(test.TestCase):
@@ -4131,7 +4160,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     embedding_column.create_state(state_manager)
 
     with self.assertRaisesRegex(errors.OpError,
-                                r'indices\[0\] = 2 is not in \[0, 2\)'):
+                                r'indices\[0\].*\[0, 2\)'):
       # Provide sparse input and get dense result.
       embedding_lookup = embedding_column.get_dense_tensor(
           fc.FeatureTransformationCache({'aaa': sparse_input}), state_manager)

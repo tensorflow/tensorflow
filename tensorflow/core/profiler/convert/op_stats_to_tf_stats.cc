@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -59,11 +58,8 @@ TfStatsTable GenerateTfStatsTable(
   const TfStatsRecord* prev_record = &sentinel;
 
   // Sets device-side TF stats.
-  uint64 total_device_time_ps = device_tf_metrics_db.total_time_ps();
-  if (exclude_idle) {
-    total_device_time_ps -= IdleTimePs(device_tf_metrics_db);
-  }
-  double total_device_time_us = PicosToMicros(total_device_time_ps);
+  uint64 total_device_time_ps = TotalTimePs(device_tf_metrics_db, exclude_idle);
+  double total_device_time_us = PicoToMicro(total_device_time_ps);
   for (const OpMetrics* metrics :
        SortedOpMetricsDb(device_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;
@@ -84,11 +80,8 @@ TfStatsTable GenerateTfStatsTable(
   }
 
   // Sets host-side TF stats.
-  uint64 total_host_time_ps = host_tf_metrics_db.total_time_ps();
-  if (exclude_idle) {
-    total_host_time_ps -= IdleTimePs(host_tf_metrics_db);
-  }
-  double total_host_time_us = PicosToMicros(total_host_time_ps);
+  uint64 total_host_time_ps = TotalTimePs(host_tf_metrics_db, exclude_idle);
+  double total_host_time_us = PicoToMicro(total_host_time_ps);
   for (const OpMetrics* metrics : tensorflow::profiler::SortedOpMetricsDb(
            host_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;

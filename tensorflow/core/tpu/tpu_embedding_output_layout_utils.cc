@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/protobuf/tpu/tpu_embedding_output_layout.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -31,6 +30,23 @@ Status ComputeOutputTensorShapes(const TPUEmbeddingConfiguration& config,
     dim0->set_size(table.num_features() * batch_size);
     auto* dim1 = shape.add_dim();
     dim1->set_size(table.dimension());
+    shapes->push_back(shape);
+  }
+  return Status::OK();
+}
+
+Status ComputeOutputTensorShapesFromFeature(
+    const TPUEmbeddingConfiguration& config,
+    std::vector<TensorShapeProto>* shapes) {
+  for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
+       config.feature_descriptor()) {
+    TensorShapeProto shape;
+    for (int32 input_shape : feature.input_shape()) {
+      auto* dim = shape.add_dim();
+      dim->set_size(input_shape);
+    }
+    shape.add_dim()->set_size(
+        config.table_descriptor(feature.table_id()).dimension());
     shapes->push_back(shape);
   }
   return Status::OK();

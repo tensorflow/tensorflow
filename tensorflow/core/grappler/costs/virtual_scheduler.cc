@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -95,9 +100,9 @@ void UpdateDeviceAnnotationState(const NodeDef* node,
                                  DeviceState* device) {
   if (node->attr().count(kOutputShapes) == 0) return;
 
-  int64 execution_count = node->attr().count(kExecutionCount) == 0
-                              ? 1
-                              : node->attr().at(kExecutionCount).i();
+  int64_t execution_count = node->attr().count(kExecutionCount) == 0
+                                ? 1
+                                : node->attr().at(kExecutionCount).i();
 
   auto& shape_annotation_stats = device->shape_annotation_stats;
   shape_annotation_stats.num_ops_annotated += 1;
@@ -499,7 +504,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
       const auto input_node_port_num = NodePosition(input_node_name);
 
       // Control dependencies should be treated as high priority. Current
-      // Channel device doesn't model a separate virual channel for control v/s
+      // Channel device doesn't model a separate virtual channel for control v/s
       // data transfers. So in the interim, it may be okay to let control
       // dependencies magically flow across devices bypassing the channel
       // device.
@@ -865,7 +870,9 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 }
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
-    const NodeDef* node, const Costs& node_costs, const OpContext& op_context) {
+    const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    bool extract_execution_count_attr,
+    const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
   // Merge -- it can create a loop which may include loop-carried dependency,
@@ -873,11 +880,18 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   bool previously_executed_merge =
       IsMerge(*node) && (node_state.time_finished != Costs::Duration::max());
 
-  // If there is annotation in the graph about execution times, we use that
-  // number, otherwise, we assume the node is executed once.
-  node_state.execution_count = node->attr().count(kExecutionCount) == 0
-                                   ? 1
-                                   : node->attr().at(kExecutionCount).i();
+  // Our approach to modeling loops is to extract the annotated _execution_count
+  // attribute and to multiply node_costs by the value of the attribute. If
+  // the attribute is not found then we assume a default execution count of 1.
+  // Note that in some simulation flows we will perform this multiplication
+  // elsewhere, as such we only perform this multiplication here if
+  // extract_execution_count_attr is true. Otherwise node_costs are unmodified
+  // and we assume the multiplication has been correctly carried out elsewhere.
+  node_state.execution_count = 1;
+
+  if (extract_execution_count_attr && node->attr().count(kExecutionCount) > 0) {
+    node_state.execution_count = node->attr().at(kExecutionCount).i();
+  }
 
   node_state.node_costs = node_costs;
   // TotalNodeCosts() Should be called after node_costs and execution_count.
@@ -898,8 +912,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
                        !node_costs.inaccurate);
   }
 
+  std::string device_name = node_state.device_name;
+  if (!override_device_name.empty()) {
+    // N.B. There's a chance that device_name doesn't exist in the device map
+    // (device_), but it's ok because we'll effectively create a new device the
+    // first time a new device is seen.
+    device_name = override_device_name;
+  }
+
   // Update node and device states.
-  auto& device = device_[node_state.device_name];
+  auto& device = device_[device_name];
   device.nodes_executed.push_back(node);
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr
@@ -925,21 +947,31 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   if (!IsPersistent(*node)) {
     for (const auto& port_num_output_pair : node_state.outputs) {
       int port_num = port_num_output_pair.first;
-
       // There's a chance that a specific output is not used at all.
       if (node_state.outputs[port_num].empty()) {
         node_state.time_no_references[port_num] = curr_time;
       } else {
+        // Allow for the possibility that some ports may be persistent even if
+        // the entire node is not labeled persistent.
+        if (node_state.node_costs.persistent_output_ports.contains(port_num)) {
+          continue;
+        }
+
         // Streaming outputs do not allocate memory, they are directly consumed
         // by the target node.
         if (!IsStreamingPort(*node, port_num)) {
-          device.memory_usage +=
-              CalculateOutputSize(node_state.output_properties, port_num) *
-              node_state.execution_count;
+          // If possible use the node output size calculations done by the
+          // more specific CostEstimator over the general CalculateOutputSize.
+          device.memory_usage += GetOrCalculateOutputSize(node_state, port_num);
         }
         device.nodes_in_memory.insert(std::make_pair(node, port_num));
       }
     }
+  }
+
+  // Update device state persistent node map.
+  for (const auto& port : node_costs.persistent_output_ports) {
+    device.persistent_nodes.insert({node, port});
   }
 
   // Update device's per-op cost.
@@ -952,6 +984,8 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
           << ", ready: " << node_state.time_ready.count()
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
+  VLOG(5) << "  Current device memory usage (before deallocation): "
+          << device.memory_usage;
   std::vector<const NodeDef*> new_nodes;
   if (previously_executed_merge) {
     // Skip AddOutputNodesToReadyQueue; this is due to Switch-Merge.
@@ -990,6 +1024,11 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     auto& input_state = node_map_[input];
     input_state.num_outputs_executed[port]++;
     int input_state_outputs_size_ = input_state.outputs[port].size();
+
+    // Allow for the possibility that some outputs may be persistent even if the
+    // entire node is not labeled persistent.
+    if (input_state.node_costs.persistent_output_ports.contains(port)) continue;
+
     if (input_state.num_outputs_executed[port] == input_state_outputs_size_ &&
         !IsPersistent(*input)) {
       // All the outputs are executed; no reference to this output port of
@@ -1001,8 +1040,7 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
       // de-allocate memory.
       if (!IsStreamingPort(*input, port)) {
         input_device.memory_usage -=
-            CalculateOutputSize(input_state.output_properties, port) *
-            node_state.execution_count;
+            GetOrCalculateOutputSize(input_state, port);
       }
 
       input_device.nodes_in_memory.erase(std::make_pair(input, port));
@@ -1060,25 +1098,25 @@ Costs SchedulerState::Summary() const {
   for (const auto& name : device_names) {
     const auto& state = device_.at(name);
 
-    std::map<string, int64> op_to_memory;
+    std::map<string, int64_t> op_to_memory;
     // First profile only persistent memory usage.
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     std::set<string> persistent_ops;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
-      auto output_size = 0;
+      int64_t output_size = 0;
       // Check if the node is in the node_map. It may be that the node executed
       // on this device was executed by a different Scheduler.
-      if (node_map_.find(node) != node_map_.end()) {
-        output_size =
-            CalculateOutputSize(node_map_.at(node).output_properties, port);
+      auto it = node_map_.find(node);
+      if (it != node_map_.end()) {
+        output_size = GetOrCalculateOutputSize(it->second, port);
       }
       persistent_memory_usage += output_size;
       op_to_memory[node->op()] += output_size;
       persistent_ops.insert(node->op());
     }
-    int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
+    int64_t max_memory_usage = persistent_memory_usage + state.max_memory_usage;
     critical_path_costs.estimated_max_memory_per_device[name] =
         max_memory_usage;
 
@@ -1122,9 +1160,9 @@ Costs SchedulerState::Summary() const {
       const auto port = node_port.second;
       // Check if the node is in the node_map. It may be that the node executed
       // on this device was executed by a different Scheduler.
-      if (node_map_.find(node) != node_map_.end()) {
-        op_to_memory[node->op()] +=
-            CalculateOutputSize(node_map_.at(node).output_properties, port);
+      auto it = node_map_.find(node);
+      if (it != node_map_.end()) {
+        op_to_memory[node->op()] += GetOrCalculateOutputSize(it->second, port);
       }
     }
     Costs::NanoSeconds total_compute_time_ns;
@@ -1142,7 +1180,7 @@ Costs SchedulerState::Summary() const {
         is_total_cost_accurate = false;
       }
 
-      int64 op_mem_usage = 0;
+      int64_t op_mem_usage = 0;
       auto it = op_to_memory.find(op);
       if (it != op_to_memory.end()) {
         op_mem_usage = it->second;
@@ -1174,6 +1212,9 @@ Costs SchedulerState::Summary() const {
 
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
+      critical_path_costs.persistent_memory = persistent_memory_usage;
+      critical_path_costs.temporary_memory = state.max_memory_usage;
+      critical_path_costs.max_memory = max_memory_usage;
     }
   }
 
@@ -1217,6 +1258,7 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       const NodeState& nodestate = node_map_.at(node_def);
       NodeExecStats* node_stats = device_stepstats->add_node_stats();
       uint64 total_output_size = 0;
+      uint64_t persistent_output_size = 0;
       for (int slot = 0, slot_end = nodestate.output_properties.size();
            slot < slot_end; slot++) {
         const auto& properties = nodestate.output_properties[slot];
@@ -1226,13 +1268,18 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
         tensor_descr->set_dtype(properties.dtype());
         *tensor_descr->mutable_shape() = properties.shape();
         // Optional allocation description.
-        const auto tensor_size =
+        const int64_t tensor_size_requested =
             CalculateOutputSize(nodestate.output_properties, slot);
-        total_output_size += tensor_size;
+        const int64_t tensor_size_allocated =
+            GetOrCalculateOutputSize(nodestate, slot);
+        total_output_size += tensor_size_allocated;
+        if (nodestate.node_costs.persistent_output_ports.contains(slot)) {
+          persistent_output_size += tensor_size_allocated;
+        }
         tensor_descr->mutable_allocation_description()->set_requested_bytes(
-            tensor_size);
+            tensor_size_requested);
         tensor_descr->mutable_allocation_description()->set_allocated_bytes(
-            tensor_size);
+            tensor_size_allocated);
       }
       if (node_def->op() != "HloGenericOp") {
         node_stats->set_timeline_label(node_def->op());
@@ -1271,9 +1318,11 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       auto* mem_stats = node_stats->mutable_memory_stats();
       // SchedulerState does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);
-      int64 persistent_memory_size = 0;
+      int64_t persistent_memory_size = 0;
       if (IsPersistent(*node_def)) {
         persistent_memory_size = total_output_size;
+      } else {
+        persistent_memory_size = persistent_output_size;
       }
       mem_stats->set_persistent_memory_size(persistent_memory_size);
       *device_partition_graph->add_node() = *node_def;
@@ -1281,9 +1330,9 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
   }
 }
 
-const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
+const std::unordered_map<string, int64_t> SchedulerState::GetPeakMemoryUsage()
     const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
@@ -1292,19 +1341,18 @@ const std::unordered_map<string, int64> SchedulerState::GetPeakMemoryUsage()
   return result;
 }
 
-const std::unordered_map<string, int64>
+const std::unordered_map<string, int64_t>
 SchedulerState::GetPersistentMemoryUsage() const {
-  std::unordered_map<string, int64> result;
+  std::unordered_map<string, int64_t> result;
   for (const auto& device : device_) {
     const string& name = device.first;
     const DeviceState& state = device.second;
-    int64 persistent_memory_usage = 0;
+    int64_t persistent_memory_usage = 0;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
-      const auto output_size =
-          CalculateOutputSize(node_map_.at(node).output_properties, port);
-      persistent_memory_usage += output_size;
+      const auto& node_state = node_map_.at(node);
+      persistent_memory_usage += GetOrCalculateOutputSize(node_state, port);
     }
     result[name] = persistent_memory_usage;
   }
@@ -1315,6 +1363,16 @@ void SchedulerState::SetNodeStateTimeScheduled(const NodeDef* node) {
   auto& node_state = node_map_.at(node);
   auto& device = device_[node_state.device_name];
   node_state.time_scheduled = device.GetCurrTime();
+}
+
+int64_t SchedulerState::GetOrCalculateOutputSize(const NodeState& node_state,
+                                                 int port_num) const {
+  auto& node_costs = node_state.node_costs;
+  auto it = node_costs.output_tensor_size_bytes.find(port_num);
+  if (it != node_costs.output_tensor_size_bytes.end()) {
+    return it->second;
+  }
+  return CalculateOutputSize(node_state.output_properties, port_num);
 }
 
 VirtualScheduler::~VirtualScheduler() {}

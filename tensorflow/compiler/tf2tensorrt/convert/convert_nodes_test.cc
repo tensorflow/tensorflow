@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -27,9 +29,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -39,9 +43,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_testutils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
@@ -56,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
@@ -67,8 +75,7 @@ namespace tensorrt {
 // TensorRT modes for testing. We define the following three modes:
 // 1. Implicit batch mode: The tensors have static (known) input shape and the
 //    the batch dimension (first dim) is removed from the TRT tensor shape. In
-//    a loose notation: trt_shape = tf_shape[1:]. This is the standard mode of
-//    a TensorRT network definition  before TensorRT 6.
+//    a loose notation: trt_shape = tf_shape[1:].
 // 2. Explicit batch mode: static (known) input shape, but the batch dimension
 //    is part of the trt tensor shape. (trt_shape = tf_shape)
 // 3. Dynamic shape mode allows unknown input shapes, and requires explicit
@@ -108,295 +115,55 @@ namespace convert {
 using absl::StrCat;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::Matcher;
+using ::testing::PrintToString;
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+using ::tensorflow::testing::IsOk;
+using ::tensorflow::testing::StatusIs;
+
 constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
     TrtTestMode::kImplicitBatch, TrtTestMode::kExplicitBatch,
     TrtTestMode::kDynamicShape};
-#else
-constexpr std::array<TrtTestMode, 1> ValidTrtModes = {
-    TrtTestMode::kImplicitBatch};
-#endif
-
-// TODO(laigd): put this into some test utils file.
-void ExpectStatus(Status status, error::Code code = error::OK,
-                  const char* substr = nullptr) {
-  EXPECT_EQ(code, status.code())
-      << status << " vs expected error code \"" << error::Code_Name(code)
-      << "\" and message \"" << substr << "\"";
-  if (substr) {
-    EXPECT_THAT(status.error_message(), ::testing::HasSubstr(substr)) << status;
-  }
-}
-
-nvinfer1::Dims GetTestDims(const std::vector<int>& d) {
-  nvinfer1::Dims dims;
-  dims.nbDims = d.size();
-  for (int i = 0; i < d.size(); ++i) {
-    dims.d[i] = d[i];
-  }
-  return dims;
-}
-
-// Prints the vector to the output stream.
-template <typename T>
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
-  if (!v.empty()) {
-    os << '[';
-    std::copy(v.begin(), v.end(), std::ostream_iterator<T>(os, ", "));
-    os << "\b\b]";
-  }
-  return os;
-}
-
-NodeDef MakeNodeDef(const string& name, const string& op,
-                    const std::vector<string>& inputs,
-                    const std::map<string, AttrValue> attrs = {}) {
-  NodeDef node_def;
-  node_def.set_name(name);
-  node_def.set_op(op);
-  for (const string& input : inputs) {
-    node_def.add_input(input);
-  }
-  for (const auto& attr : attrs) {
-    (*node_def.mutable_attr())[attr.first] = attr.second;
-  }
-  return node_def;
-}
-
-template <typename T>
-NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals,
-                         const TensorShape& shape) {
-  Scope s = Scope::NewRootScope();
-  Tensor t = test::AsTensor<T>(vals, shape);
-  auto const_op = ops::Const(s.WithOpName(name), t);
-  return const_op.node()->def();
-}
-
-template <typename T>
-NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals) {
-  TensorShape shape;
-  const std::vector<int32> shape_dims = {static_cast<int32>(vals.size())};
-  TF_EXPECT_OK(TensorShapeUtils::MakeShape(shape_dims, &shape));
-  return MakeConstNodeDef(name, vals, shape);
-}
-
-bool TrtDimsEquals(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {
-  if (lhs.nbDims != rhs.nbDims) return false;
-  for (int i = 0; i < lhs.nbDims; ++i) {
-    if (lhs.d[i] != rhs.d[i]) return false;
-    // We don't check the types in the tests.
-  }
-  return true;
-}
-
-bool TrtDimsEqualsArray(const std::vector<int>& lhs,
-                        const nvinfer1::Dims& rhs) {
-  return TrtDimsEquals(GetTestDims(lhs), rhs);
-}
-
-// TODO(laigd): define a parameterized matcher that can compare against the
-// vector.
-void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
-                              const nvinfer1::Dims& rhs) {
-  EXPECT_TRUE(TrtDimsEqualsArray(lhs, rhs))
-      << "expected: " << DebugString(GetTestDims(lhs)) << "\n"
-      << "  actual: " << DebugString(rhs);
-}
-
-void ExpectTrtLayerNames(absl::Span<const std::string> names,
-                         nvinfer1::INetworkDefinition* network) {
-  EXPECT_EQ(network->getNbLayers(), names.size());
-
-  for (int i = 0; i < network->getNbLayers(); i++) {
-    auto layer = network->getLayer(i);
-    EXPECT_EQ(layer->getName(), names[i]);
-  }
-}
-
-void VerifyTrtLayerNameNotEmpty(nvinfer1::INetworkDefinition* network) {
-  for (int i = 0; i < network->getNbLayers(); i++) {
-    auto layer = network->getLayer(i);
-    EXPECT_NE(layer->getName(), nullptr);
-  }
-}
-
-Matcher<std::vector<float>> ArrayFloatNear(const std::vector<float>& values,
-                                           float max_abs_error = 1e-5,
-                                           bool nan_sensitive = false) {
-  std::vector<Matcher<float>> matchers;
-  matchers.reserve(values.size());
-  for (const float& v : values) {
-    if (nan_sensitive) {
-      matchers.emplace_back(::testing::NanSensitiveFloatNear(v, max_abs_error));
-    } else if (max_abs_error == 0) {
-      matchers.emplace_back(::testing::FloatEq(v));
-    } else {
-      EXPECT_GE(max_abs_error, 0);
-      matchers.emplace_back(::testing::FloatNear(v, max_abs_error));
-    }
-  }
-  return ElementsAreArray(matchers);
-}
-
-template <typename T>
-void ExpectArrayNear(const std::vector<T>& lhs, absl::Span<const T> rhs) {
-  ASSERT_EQ(lhs.size(), rhs.size());
-  for (int i = 0; i < lhs.size(); i++) {
-    EXPECT_FLOAT_EQ(lhs[i], rhs[i]);
-  }
-}
-
-// Eigen::half cannot implicitly convert to float which is required for
-// EXPECT_FLOAT_EQ.
-template <>
-void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
-                     absl::Span<const Eigen::half> rhs) {
-  ASSERT_EQ(lhs.size(), rhs.size());
-  for (int i = 0; i < lhs.size(); i++) {
-    EXPECT_FLOAT_EQ(Eigen::half_impl::half_to_float(lhs[i]),
-                    Eigen::half_impl::half_to_float(rhs[i]));
-  }
-}
-
-template <typename T>
-void ExpectArrayAlmostEqual(const std::vector<T>& lhs, absl::Span<const T> rhs,
-                            T tolerance) {
-  ASSERT_EQ(lhs.size(), rhs.size());
-  for (int i = 0; i < lhs.size(); i++) {
-    EXPECT_NEAR(lhs[i], rhs[i], tolerance);
-  }
-}
-
-// Eigen::half cannot implicitly convert to float which is required for
-// EXPECT_NEAR.
-template <>
-void ExpectArrayAlmostEqual(const std::vector<Eigen::half>& lhs,
-                            absl::Span<const Eigen::half> rhs,
-                            Eigen::half tolerance) {
-  ASSERT_EQ(lhs.size(), rhs.size());
-  for (int i = 0; i < lhs.size(); i++) {
-    EXPECT_NEAR(Eigen::half_impl::half_to_float(lhs[i]),
-                Eigen::half_impl::half_to_float(rhs[i]),
-                Eigen::half_impl::half_to_float(tolerance));
-  }
-}
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
-  return TrtDimsEquals(lhs.shape_, rhs.shape_) &&
-         lhs.TrtDType() == rhs.TrtDType() && lhs.GetValues() == rhs.GetValues();
+  return lhs.Shape() == rhs.Shape() && lhs.TrtDType() == rhs.TrtDType() &&
+         lhs.GetPointer<int8>() == rhs.GetPointer<int8>();
 }
 
 template <typename T>
 void ValidateWeights(const TRT_ShapedWeights& weights,
                      const std::vector<int>& expected_dims,
                      const std::vector<T>& expected_value) {
-  ExpectTrtDimsEqualsArray(expected_dims, weights.shape_);
+  EXPECT_EQ(weights.Shape(), DimsAdapter(expected_dims));
   ASSERT_EQ(expected_value.size(), weights.count()) << weights.DebugString();
-  const T* actual_values = static_cast<const T*>(weights.GetValues());
+  const T* actual_values = weights.GetPointer<T>();
   for (int i = 0; i < expected_value.size(); ++i) {
     EXPECT_EQ(expected_value[i], actual_values[i]);
   }
 }
 
-template <typename CType>
-std::vector<CType> InitTestVector(int size, CType start_value = CType(0)) {
-  std::vector<CType> res;
-  res.reserve(size);
-  for (int i = 0; i < size; ++i) {
-    res.push_back(start_value + CType(i));
-  }
-  return res;
+// TRT >= 8.2 optimizes memory management in the builder. When all builders
+// are destroyed, it unloads many resources. This test fixture will create and
+// destroy hundreds of builders when run sequentially for parameterized
+// tests. We can hold open an IBuilder in order to prevent TRT from unloading
+// shared resources between engine builds when using TRT shared library. This
+// greatly speeds up unit tests and is safe to do.
+void PreventUnloadBuilderResources() {
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  static thread_local absl::once_flag once;
+  static TrtUniquePtrType<nvinfer1::IBuilder> hold_builder = nullptr;
+  absl::call_once(
+      once,
+      [](TrtUniquePtrType<nvinfer1::IBuilder>& builder) {
+        if (!builder) {
+          builder.reset(nvinfer1::createInferBuilder(*Logger::GetLogger()));
+        }
+      },
+      hold_builder);
+#endif
 }
-
-template <typename InCType, typename OutCType>
-struct StaticCaster {
-  OutCType operator()(InCType in) const { return static_cast<OutCType>(in); }
-};
-
-template <typename InCType, typename OutCType>
-std::vector<OutCType> CastTestVector(
-    const gtl::ArraySlice<InCType>& vals) {  // non-absl ok
-  std::vector<OutCType> res(vals.size());
-  std::transform(vals.begin(), vals.end(), res.begin(),
-                 StaticCaster<InCType, OutCType>());
-  return res;
-}
-
-// Fake ITensor implementation for testing purposes.
-class FakeITensor : public nvinfer1::ITensor {
- public:
-  FakeITensor() : dynamic_range_(0.0f) {}
-
-  FakeITensor(const nvinfer1::Dims& dims) : dims_(dims), dynamic_range_(0.0f) {}
-
-  FakeITensor(const std::vector<int>& dims)
-      : dims_(GetTestDims(dims)), dynamic_range_(0.0f) {}
-
-  void setName(const char* name) override { name_ = name; }
-
-  const char* getName() const override { return name_.c_str(); }
-
-  void setDimensions(nvinfer1::Dims dimensions) override { dims_ = dimensions; }
-
-  nvinfer1::Dims getDimensions() const override { return dims_; }
-
-  void setType(nvinfer1::DataType type) override { type_ = type; }
-
-  nvinfer1::DataType getType() const override { return type_; }
-
-  bool isNetworkInput() const override { return false; }
-
-  bool isNetworkOutput() const override { return false; }
-
-  void setBroadcastAcrossBatch(bool broadcastAcrossBatch) override {}
-
-  bool getBroadcastAcrossBatch() const override { return false; }
-
-  nvinfer1::TensorLocation getLocation() const override { return location_; }
-
-  void setLocation(nvinfer1::TensorLocation location) override {
-    location_ = location;
-  }
-
-#if IS_TRT_VERSION_GE(5, 0, 0, 0)
-  bool setDynamicRange(float min, float max) override {
-    dynamic_range_ = std::max(std::abs(min), std::abs(max));
-    return true;
-  }
-
-  float getDynamicRange() const override { return dynamic_range_; }
-#endif
-
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-  bool dynamicRangeIsSet() const override { return true; }
-
-  void resetDynamicRange() override {}
-
-  float getDynamicRangeMin() const override { return 0.f; }
-
-  float getDynamicRangeMax() const override { return 0.f; }
-#endif
-
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  void setAllowedFormats(nvinfer1::TensorFormats formats) override {}
-
-  nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
-
-  bool isShapeTensor() const override { return false; }
-  bool isExecutionTensor() const override { return true; }
-
-#endif
-
- private:
-  string name_;
-  nvinfer1::Dims dims_;
-  nvinfer1::DataType type_;
-  nvinfer1::TensorLocation location_;
-  float dynamic_range_;
-};
 
 TEST(TRT_ShapedWeights_Test, Basic) {
   // Test constructor with no arguments.
@@ -409,7 +176,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
       EXPECT_EQ(nullptr, trt_weights.values);
       EXPECT_EQ(0, trt_weights.count);
 
-      EXPECT_EQ(nullptr, ptr->GetValues());
+      EXPECT_EQ(nullptr, ptr->GetPointer<int8>());
       EXPECT_EQ(0, ptr->count());
       EXPECT_EQ(0, ptr->size_bytes());
     }
@@ -424,7 +191,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
       EXPECT_EQ(nullptr, trt_weights.values);
       EXPECT_EQ(0, trt_weights.count);
 
-      EXPECT_EQ(nullptr, ptr->GetValues());
+      EXPECT_EQ(nullptr, ptr->GetPointer<int8>());
       EXPECT_EQ(0, ptr->count());
       EXPECT_EQ(0, ptr->size_bytes());
     }
@@ -433,7 +200,8 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   {
     TrtWeightStore store;
     TRT_ShapedWeights weights =
-        store.GetTempWeights(nvinfer1::DataType::kFLOAT, GetTestDims({2, 5}));
+        store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}))
+            .ValueOrDie();
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -441,12 +209,12 @@ TEST(TRT_ShapedWeights_Test, Basic) {
       EXPECT_NE(nullptr, trt_weights.values);
       EXPECT_EQ(10, trt_weights.count);
 
-      EXPECT_EQ(trt_weights.values, ptr->GetValues());
+      EXPECT_EQ(trt_weights.values, ptr->GetPointer<int8>());
       EXPECT_EQ(10, ptr->count());
       EXPECT_EQ(40, ptr->size_bytes());
     }
     // Test that it doesn't copy the underlying buffer.
-    EXPECT_EQ(weights.GetValues(), copy.GetValues());
+    EXPECT_EQ(weights.GetPointer<int8>(), copy.GetPointer<int8>());
   }
 }
 
@@ -469,9 +237,9 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
     nvinfer1::Dims dims;
     dims.nbDims = 1;
     dims.d[0] = 1;
-    FakeITensor itensor(dims);
-    TRT_TensorOrWeights tw(&itensor);
-    TRT_TensorOrWeights tw1(&itensor, /*batch_size=*/1);
+    ITensorProxyPtr itensor(dims);
+    TRT_TensorOrWeights tw(itensor);
+    TRT_TensorOrWeights tw1(itensor, /*batch_size=*/1);
 
     for (auto original_ptr : {&tw, &tw1}) {
       TRT_TensorOrWeights copy(*original_ptr);
@@ -486,8 +254,8 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
         } else {
           EXPECT_EQ(1, ptr->batch_size());
         }
-        EXPECT_EQ(&itensor, ptr->tensor());
-        ExpectTrtDimsEqualsArray({1}, ptr->GetTrtDims());
+        EXPECT_EQ(itensor->simple_tensor(), ptr->tensor()->simple_tensor());
+        EXPECT_THAT(ptr->GetTrtDims(), DimsAreArray({1}));
       }
     }
   }
@@ -505,8 +273,8 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       ASSERT_TRUE(ptr->is_tensor());
       EXPECT_EQ(false, ptr->is_weights());
       EXPECT_EQ(1, ptr->batch_size());
-      EXPECT_NE(nullptr, ptr->tensor());
-      ExpectTrtDimsEqualsArray({1}, ptr->GetTrtDims());
+      EXPECT_NE(nullptr, ptr->tensor()->simple_tensor());
+      EXPECT_THAT(ptr->GetTrtDims(), DimsAreArray({1}));
     }
   }
   // Test constructor with TRT_ShapedWeights argument.
@@ -520,18 +288,15 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
       EXPECT_EQ(false, ptr->is_tensor());
       EXPECT_EQ(true, ptr->is_weights());
       EXPECT_TRUE(TrtShapedWeightsEquals(weights, ptr->weights()));
-      ExpectTrtDimsEqualsArray({}, ptr->GetTrtDims());
+      std::vector<int> empty_dims;
+      EXPECT_THAT(ptr->GetTrtDims(), DimsAreArray(empty_dims));
     }
   }
 }
 
 class ValidatorTest : public ::testing::Test {
  public:
-  std::unordered_map<string, OpConverter>& op_validators(
-      TrtNodeValidator* validator) {
-    return validator->op_validators_;
-  }
-
+  ValidatorTest() { PreventUnloadBuilderResources(); }
   Status ConvertToTensorOrWeights(const Scope& scope, const Node* node,
                                   int output_port,
                                   TRT_TensorOrWeights* tensor_or_weights) {
@@ -542,26 +307,12 @@ class ValidatorTest : public ::testing::Test {
 
     TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                                /*use_calibration=*/false,
-                               /*use_implicit_batch=*/true);
+                               /*use_implicit_batch=*/true,
+                               /*use_explicit_precision=*/false);
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
-
-  const std::set<string>* GetQuantizeOps(TrtNodeValidator* validator) {
-    return validator->quantize_ops;
-  }
 };
-
-TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
-  grappler::GrapplerItem item;
-  grappler::GraphProperties graph_properties(item);
-  TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
-                             /*use_calibration=*/false,
-                             /*use_implicit_batch=*/true);
-  for (const string& quantize_op : *GetQuantizeOps(&validator)) {
-    QCHECK(op_validators(&validator).count(quantize_op));
-  }
-}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -570,13 +321,14 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
     auto node =
         ops::Const(s.WithOpName("my_const"), {1.0f, 2.0f}, TensorShape({2}));
     TRT_TensorOrWeights output;
-    ExpectStatus(ConvertToTensorOrWeights(s, node.op().node(),
-                                          /*output_port=*/0, &output));
+    EXPECT_THAT(ConvertToTensorOrWeights(s, node.op().node(),
+                                         /*output_port=*/0, &output),
+                IsOk());
     ValidateWeights<float>(output.weights(), {2}, {1.0, 2.0});
   }
 
   // Helper method to run ConvertToTensorOrWeights() with predefined parameters.
-  auto convert_to_tensor_or_weights = [this](const std::vector<int64>& dims,
+  auto convert_to_tensor_or_weights = [this](const std::vector<int64_t>& dims,
                                              TRT_TensorOrWeights* output) {
     Scope s = Scope::NewRootScope();
     const auto attrs = ops::Placeholder::Shape(PartialTensorShape{dims});
@@ -588,30 +340,33 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert non-Const with #dims > nvinfer1::Dims::MAX_DIMS+1.
   {
     TRT_TensorOrWeights output;
-    ExpectStatus(
+    EXPECT_THAT(
         convert_to_tensor_or_weights(
-            std::vector<int64>(nvinfer1::Dims::MAX_DIMS + 2, 1), &output),
-        error::OUT_OF_RANGE, "Input tensor rank is greater than 9");
+            std::vector<int64_t>(nvinfer1::Dims::MAX_DIMS + 2, 1), &output),
+        StatusIs(error::OUT_OF_RANGE,
+                 HasSubstr("Input tensor rank is greater than 9")));
   }
   // Convert non-Const with #dims < 1.
   {
     TRT_TensorOrWeights output;
-    ExpectStatus(
-        convert_to_tensor_or_weights({}, &output), error::INVALID_ARGUMENT,
-        "Scalar input tensor is not supported since the first dimension "
-        "is treated as batch dimension by TRT");
+    EXPECT_THAT(convert_to_tensor_or_weights({}, &output),
+                StatusIs(error::INVALID_ARGUMENT,
+                         HasSubstr("Scalar input tensor is not supported since "
+                                   "the first dimension "
+                                   "is treated as batch dimension by TRT")));
   }
   // Convert non-Const. We test the case where the non-batch dimension is
   // unknown as well, to make sure the validator allows that.
   for (const int32 non_batch_dim : {-1, 2}) {
     const int32 batch_size = 12;
     TRT_TensorOrWeights output;
-    ExpectStatus(
-        convert_to_tensor_or_weights({batch_size, non_batch_dim}, &output));
+    EXPECT_THAT(
+        convert_to_tensor_or_weights({batch_size, non_batch_dim}, &output),
+        IsOk());
     ASSERT_TRUE(output.is_tensor());
     EXPECT_EQ(batch_size, output.batch_size());
-    EXPECT_NE(nullptr, output.tensor());
-    ExpectTrtDimsEqualsArray({non_batch_dim}, output.GetTrtDims());
+    EXPECT_NE(nullptr, output.tensor()->simple_tensor());
+    EXPECT_THAT(output.GetTrtDims(), DimsAreArray({non_batch_dim}));
   }
 }
 
@@ -628,8 +383,10 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   TF_EXPECT_OK(graph_properties.InferStatically(true));
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                              /*use_calibration=*/false,
-                             /*use_implicit_batch=*/true);
+                             /*use_implicit_batch=*/true,
+                             /*use_explicit_precision=*/false);
 
+  // Override the Add converter.
   bool start_conversion = false;
   bool should_fail = false;
   auto op_converter = [&start_conversion,
@@ -640,19 +397,24 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   };
 
   // Validator not registered.
-  ASSERT_EQ(1, op_validators(&validator).erase("Add"));
-  ExpectStatus(validator.IsTensorRTCandidate(add_node), error::UNIMPLEMENTED,
-               "Op type Add is not supported.");
-
-  // Register validator.
-  op_validators(&validator)["Add"] = op_converter;
+  auto original_op_converter = GetOpConverterRegistry()->LookUp("Add");
+  ASSERT_TRUE(original_op_converter.ok());
+  GetOpConverterRegistry()->Clear("Add");
+  EXPECT_THAT(validator.IsTensorRTCandidate(add_node),
+              StatusIs(error::UNIMPLEMENTED,
+                       HasSubstr("Op type Add is not supported.")));
+  GetOpConverterRegistry()->Register("Add", kDefaultConverterPriority + 1,
+                                     op_converter);
   TF_EXPECT_OK(validator.IsTensorRTCandidate(add_node));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator.IsTensorRTCandidate(add_node),
-               error::INVALID_ARGUMENT);
+  EXPECT_THAT(validator.IsTensorRTCandidate(add_node),
+              StatusIs(error::INVALID_ARGUMENT));
+  GetOpConverterRegistry()->Clear("Add");
+  GetOpConverterRegistry()->Register("Add", kDefaultConverterPriority,
+                                     *original_op_converter);
 }
 
 TEST(TrtNodeValidator, IsTensorRTCandidate) {
@@ -708,49 +470,58 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
        {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtNodeValidator validator(graph_properties, precision_mode,
                                /*use_calibration=*/false,
-                               /*use_implicit_batch=*/true);
+                               /*use_implicit_batch=*/true,
+                               /*use_explicit_precision=*/false);
     TF_EXPECT_OK(validator.IsTensorRTCandidate(matmul.operation.node()));
-    ExpectStatus(
+    EXPECT_THAT(
         validator.IsTensorRTCandidate(incompatible_matmul.operation.node()),
-        error::INVALID_ARGUMENT,
-        "MatMul with 2D tensors requires explicit batch mode, or that tensor A "
-        "is not transposed and B is a constant tensor.");
-    ExpectStatus(validator.IsTensorRTCandidate(unsupported_op.operation.node()),
-                 error::UNIMPLEMENTED, "Op type Erfc is not supported");
-    ExpectStatus(validator.IsTensorRTCandidate(
-                     matmul_with_incompatible_input.operation.node()),
-                 error::INTERNAL,
-                 "Failed to convert input feed_1 to a TRT_TensorOrWeights");
+        StatusIs(error::INVALID_ARGUMENT,
+                 HasSubstr("MatMul with 2D tensors requires explicit batch "
+                           "mode, or that tensor A "
+                           "is not transposed and B is a constant tensor.")));
+    EXPECT_THAT(validator.IsTensorRTCandidate(unsupported_op.operation.node()),
+                StatusIs(error::UNIMPLEMENTED,
+                         HasSubstr("Op type Erfc is not supported")));
+    EXPECT_THAT(validator.IsTensorRTCandidate(
+                    matmul_with_incompatible_input.operation.node()),
+                StatusIs(error::INTERNAL,
+                         HasSubstr("Failed to convert at least one input to a "
+                                   "TRT_TensorOrWeights:")));
     if (precision_mode == TrtPrecisionMode::INT8) {
       TF_EXPECT_OK(validator.IsTensorRTCandidate(quantize.operation.node()));
     } else {
-      ExpectStatus(validator.IsTensorRTCandidate(quantize.operation.node()),
-                   error::UNIMPLEMENTED,
-                   "Op type FakeQuantWithMinMaxArgs is not supported");
+      EXPECT_THAT(
+          validator.IsTensorRTCandidate(quantize.operation.node()),
+          StatusIs(
+              error::UNIMPLEMENTED,
+              HasSubstr("Op type FakeQuantWithMinMaxArgs is not supported")));
     }
   }
 }
 
 class ConverterTest : public ::testing::Test {
  public:
-  ConverterTest() { Reset(); }
+  ConverterTest() {
+    PreventUnloadBuilderResources();
+    Reset();
+  }
 
   void Reset() {
+    GetOpConverterRegistry()->Clear("MyOp");
+    GetOpConverterRegistry()->Clear("DummyOp");
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/true,
-                                    /*engine_name=*/"TRTEngineOp_0_0")
+                                    /*engine_name=*/"TRTEngineOp_000_000",
+                                    /*use_explicit_precision=*/false)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
 
-  void AddOpConverter(const string& op_name, OpConverter op_converter) {
-    converter_->op_registry_[op_name] = op_converter;
-  }
-
+  // TODO(cbate): These should be removed or changed to public per black-box
+  // testing principle.
   // Below we expose private methods of Converter for testing.
-
   Status MaybeUpdateBatchSize(int batch_size) {
     return converter_->MaybeUpdateBatchSize(batch_size);
   }
@@ -773,18 +544,18 @@ class ConverterTest : public ::testing::Test {
     return converter_->GetWeightRange(weights, out_min, out_max);
   }
 
-  void PropagateQuantizationRanges() {
-    converter_->PropagateQuantizationRanges();
-  }
-
   int batch_size() const { return converter_->batch_size_; }
+
+  std::unordered_map<ITensorProxyPtr*, float>& quantization_ranges_proxy() {
+    return converter_->quantization_ranges_proxy_;
+  }
 
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
     return converter_->quantization_ranges_;
   }
 
  private:
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
 
  protected:
   std::unique_ptr<Converter> converter_;
@@ -792,39 +563,44 @@ class ConverterTest : public ::testing::Test {
 };
 
 TEST_F(ConverterTest, ConvertNode) {
-  FakeITensor output_tensors[2];
+  ITensorProxyPtr output_tensors[2];
   auto op_converter = [&output_tensors](OpConverterParams* params) -> Status {
     nvinfer1::Dims dims = params->inputs[0].tensor()->getDimensions();
     for (int i = 0; i < 2; ++i) {
       dims.d[0] += 1;
-      output_tensors[i].setDimensions(dims);
-      params->outputs->push_back(TRT_TensorOrWeights(&output_tensors[i]));
+      output_tensors[i]->setDimensions(dims);
+      params->outputs->push_back(TRT_TensorOrWeights(output_tensors[i]));
     }
     return Status::OK();
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
-  TF_EXPECT_OK(converter_->AddInputTensor(
-      "my_input", nvinfer1::DataType::kFLOAT, GetTestDims({123}), 1));
+
+  TF_ASSERT_OK(converter_->AddInputTensor(
+      "my_input", nvinfer1::DataType::kFLOAT, CreateDims({123}), 1));
 
   // Converter not registered.
-  ExpectStatus(converter_->ConvertNode(node_def), error::UNIMPLEMENTED,
-               "No converter registered for op: MyOp");
+  EXPECT_THAT(
+      converter_->ConvertNode(node_def),
+      StatusIs(error::NOT_FOUND, HasSubstr("No converter for op MyOp")));
 
   // Register the converter and retry.
-  AddOpConverter("MyOp", op_converter);
-  TF_EXPECT_OK(converter_->ConvertNode(node_def));
+  GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
+                                     op_converter);
+  TF_ASSERT_OK(converter_->ConvertNode(node_def));
 
   TRT_TensorOrWeights actual_output_1;
   TF_EXPECT_OK(GetTensorOrWeights("my_op", &actual_output_1));
-  EXPECT_EQ(&output_tensors[0], actual_output_1.tensor());
+  EXPECT_EQ(output_tensors[0]->simple_tensor(),
+            actual_output_1.tensor()->simple_tensor());
   EXPECT_EQ(124, actual_output_1.tensor()->getDimensions().d[0]);
 
   TRT_TensorOrWeights actual_output_2;
   TF_EXPECT_OK(GetTensorOrWeights("my_op:1", &actual_output_2));
-  EXPECT_EQ(&output_tensors[1], actual_output_2.tensor());
+  EXPECT_EQ(output_tensors[1]->simple_tensor(),
+            actual_output_2.tensor()->simple_tensor());
   EXPECT_EQ(125, actual_output_2.tensor()->getDimensions().d[0]);
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, AddAndGetInputs) {
@@ -836,26 +612,26 @@ TEST_F(ConverterTest, AddAndGetInputs) {
   node_def.add_input("weird_input:2:3:4:0");
 
   TF_EXPECT_OK(converter_->AddInputTensor("input", nvinfer1::DataType::kFLOAT,
-                                          GetTestDims({1}), 1));
+                                          CreateDims({1}), 1));
   TF_EXPECT_OK(converter_->AddInputTensor("input:1", nvinfer1::DataType::kINT32,
-                                          GetTestDims({2, 3}), 1));
+                                          CreateDims({2, 3}), 1));
   TF_EXPECT_OK(converter_->AddInputTensor(
-      "weird_input:2:3:4", nvinfer1::DataType::kHALF, GetTestDims({5, 3}), 1));
+      "weird_input:2:3:4", nvinfer1::DataType::kHALF, CreateDims({5, 3}), 1));
 
   std::vector<TRT_TensorOrWeights> inputs;
   TF_EXPECT_OK(GetInputs(node_def, &inputs));
 
   EXPECT_EQ(4, inputs.size());
-  EXPECT_EQ(inputs[0].tensor(), inputs[1].tensor());
+  EXPECT_EQ(inputs[0].tensor()->trt_tensor(), inputs[1].tensor()->trt_tensor());
 
   EXPECT_EQ(nvinfer1::DataType::kFLOAT, inputs[0].tensor()->getType());
   EXPECT_EQ(nvinfer1::DataType::kINT32, inputs[2].tensor()->getType());
   EXPECT_EQ(nvinfer1::DataType::kHALF, inputs[3].tensor()->getType());
-  ExpectTrtDimsEqualsArray({1}, inputs[0].tensor()->getDimensions());
-  ExpectTrtDimsEqualsArray({2, 3}, inputs[2].tensor()->getDimensions());
-  ExpectTrtDimsEqualsArray({5, 3}, inputs[3].tensor()->getDimensions());
+  EXPECT_THAT(inputs[0].tensor()->getDimensions(), DimsAreArray({1}));
+  EXPECT_THAT(inputs[2].tensor()->getDimensions(), DimsAreArray({2, 3}));
+  EXPECT_THAT(inputs[3].tensor()->getDimensions(), DimsAreArray({5, 3}));
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
@@ -864,17 +640,17 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
 
   // Register a custom converter which shuffles the input. We use it to build a
   // TRT network whose output will be later marked.
-  std::vector<nvinfer1::ITensor*> output_tensors;
+  std::vector<ITensorProxyPtr> output_tensors;
   auto op_converter = [&output_tensors](OpConverterParams* params) -> Status {
     nvinfer1::Permutation perm;
     perm.order[0] = 1;
     perm.order[1] = 0;
     for (int i = 0; i < 2; ++i) {
-      nvinfer1::ITensor* input_tensor = params->inputs[0].tensor();
+      ITensorProxyPtr input_tensor = params->inputs[0].tensor();
       nvinfer1::IShuffleLayer* layer =
-          params->converter->network()->addShuffle(*input_tensor);
+          params->converter->network()->addShuffle(*input_tensor->trt_tensor());
       layer->setFirstTranspose(perm);
-      nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+      ITensorProxyPtr output_tensor = layer->getOutput(0);
       params->outputs->emplace_back(output_tensor);
       output_tensors.push_back(output_tensor);
     }
@@ -882,56 +658,60 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
     params->outputs->emplace_back(output_weights);
     return Status::OK();
   };
-  AddOpConverter("MyOp", op_converter);
+  GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
+                                     op_converter);
 
   // Run the conversion.
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
   TF_EXPECT_OK(converter_->AddInputTensor(
-      "my_input", nvinfer1::DataType::kFLOAT, GetTestDims({1, 2}), 1));
+      "my_input", nvinfer1::DataType::kFLOAT, CreateDims({1, 2}), 1));
   TF_EXPECT_OK(converter_->ConvertNode(node_def));
 
   // Mark a weight as output, should fail.
-  ExpectStatus(
+  EXPECT_THAT(
       converter_->RenameAndMarkOutputTensors({{"my_op:2", "my_output"}}),
-      error::INVALID_ARGUMENT, "Output my_op:2 is weights not tensor");
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr("Output my_op:2 is weights not tensor")));
 
   // Mark tensors as output, should pass.
   TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(
       {{"my_op", "my_output"}, {"my_op:1", "my_output_1"}}));
   EXPECT_EQ(2, output_tensors.size());
   for (auto output_tensor : output_tensors) {
-    ExpectTrtDimsEqualsArray({2, 1}, output_tensor->getDimensions());
+    EXPECT_THAT(output_tensor->getDimensions(), DimsAreArray({2, 1}));
   }
   EXPECT_EQ("my_output", string(output_tensors[0]->getName()));
   EXPECT_EQ("my_output_1", string(output_tensors[1]->getName()));
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, TransposeTensor) {
-  nvinfer1::ITensor* input_tensor = converter_->network()->addInput(
-      "", nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
-  nvinfer1::ITensor* output_tensor = nullptr;
+  ITensorProxyPtr input_tensor = converter_->network()->addInput(
+      "", nvinfer1::DataType::kFLOAT, CreateDims({2, 3, 5}));
+  ITensorProxyPtr output_tensor = nullptr;
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   // Rank doesn't match.
-  ExpectStatus(
-      converter_->TransposeTensor(input_tensor, {0, 1}, &output_tensor,
-                                  dummy_node_def, "sub1"),
-      error::INVALID_ARGUMENT,
-      "Rank of perm for transpose does not match with that of the input");
+  EXPECT_THAT(converter_->TransposeTensor(input_tensor, {0, 1}, &output_tensor,
+                                          dummy_node_def, "sub1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Rank of perm for transpose does not match "
+                                 "with that of the input")));
 
   // Transpose at batch dimension.
-  ExpectStatus(
+  EXPECT_THAT(
       converter_->TransposeTensor(input_tensor, {1, 0, 2, 3}, &output_tensor,
                                   dummy_node_def, "sub2"),
-      error::UNIMPLEMENTED, "Transpose at batch dimension is not supported.");
+      StatusIs(error::UNIMPLEMENTED,
+               HasSubstr("Transpose at batch dimension is not supported.")));
 
   // OK.
   TF_EXPECT_OK(converter_->TransposeTensor(
       input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
-  ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
-  ExpectTrtLayerNames({"TRTEngineOp_0_0/dummy_op-sub3:SHUFFLE"},
-                      converter_->network());
+  EXPECT_THAT(output_tensor->getDimensions(), DimsAreArray({5, 2, 3}));
+  EXPECT_THAT(
+      converter_->network(),
+      LayerNamesAreArray({"TRTEngineOp_000_000/dummy_op-sub3:SHUFFLE"}));
 }
 
 void TestPrepareTensorForShape(
@@ -943,28 +723,31 @@ void TestPrepareTensorForShape(
   TRT_TensorOrWeights input;
   if (input_is_tensor) {
     input = TRT_TensorOrWeights(converter->network()->addInput(
-        "", nvinfer1::DataType::kFLOAT, GetTestDims(input_dims)));
+        "", nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
   } else {
-    input = TRT_TensorOrWeights(weight_store->GetTempWeights(
-        nvinfer1::DataType::kFLOAT, GetTestDims(input_dims)));
+    input = TRT_TensorOrWeights(
+        weight_store
+            ->GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims(input_dims))
+            .ValueOrDie());
   }
-  nvinfer1::ITensor* output_tensor = nullptr;
+  ITensorProxyPtr output_tensor = nullptr;
 
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
     const Status status =
-        PrepareTensorForShape(converter, input, GetTestDims(reshape_dims),
+        PrepareTensorForShape(converter, input, DimsAdapter(reshape_dims),
                               validation_only, &output_tensor, dummy_node_def);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
-        EXPECT_EQ(nullptr, output_tensor);
+        EXPECT_EQ(nullptr, *output_tensor);
       } else {
-        ExpectTrtDimsEqualsArray(expected_tensor_dims,
-                                 output_tensor->getDimensions());
+        EXPECT_THAT(output_tensor->getDimensions(),
+                    DimsAreArray(expected_tensor_dims));
       }
     } else {
-      ExpectStatus(status, expected_code, expected_error_msg_substr);
+      EXPECT_THAT(status, StatusIs(expected_code,
+                                   HasSubstr(expected_error_msg_substr)));
     }
   }
 }
@@ -1009,7 +792,7 @@ TEST_F(ConverterTest, PrepareTensorForShape) {
                             weight_store_, error::INVALID_ARGUMENT,
                             "Shape is not fully defined");
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
@@ -1027,14 +810,17 @@ TEST_F(ConverterTest, MaybeUpdateBatchSize) {
   TF_EXPECT_OK(MaybeUpdateBatchSize(-1));
   EXPECT_EQ(123, batch_size());
 
-  ExpectStatus(MaybeUpdateBatchSize(124), error::INVALID_ARGUMENT,
-               "Provided batch size does not match converter batch size");
+  EXPECT_THAT(
+      MaybeUpdateBatchSize(124),
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr(
+                   "Provided batch size does not match converter batch size")));
 }
 
 TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
   // Add a tensor.
-  FakeITensor fake_tensor;
-  TRT_TensorOrWeights tensor(&fake_tensor);
+  ITensorProxyPtr simple_tensor;
+  TRT_TensorOrWeights tensor(simple_tensor);
   EXPECT_EQ(-1, tensor.batch_size());
   TF_EXPECT_OK(MaybeUpdateBatchSize(123));
   TF_EXPECT_OK(AddTensorOrWeights("my_tensor", tensor));
@@ -1045,8 +831,9 @@ TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
   EXPECT_EQ(123, added_tensor.batch_size());
 
   // Add the same tensor again.
-  ExpectStatus(AddTensorOrWeights("my_tensor", tensor), error::ALREADY_EXISTS,
-               "tensor/weights my_tensor already exist");
+  EXPECT_THAT(AddTensorOrWeights("my_tensor", tensor),
+              StatusIs(error::ALREADY_EXISTS,
+                       HasSubstr("tensor/weights my_tensor already exist")));
 }
 
 template <typename T>
@@ -1054,10 +841,9 @@ void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
   TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(trt_type, GetTestDims({2, 3}));
+      weight_store->GetTempWeights(trt_type, CreateDims({2, 3})).ValueOrDie();
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
-  memcpy(weights.GetValues(), values.data(), weights.size_bytes());
-
+  absl::c_copy(values, weights.GetPointer<T>());
   float out_min = 0.0f;
   float out_max = 0.0f;
   TF_EXPECT_OK(test->GetWeightRange(weights, &out_min, &out_max));
@@ -1072,28 +858,27 @@ TEST_F(ConverterTest, GetWeightRange) {
 }
 
 TEST_F(ConverterTest, ProvideQuantizationRange) {
-  FakeITensor fake_tensor;
+  ITensorProxyPtr simple_tensor;
   // Asymmetric range
-  converter_->ProvideQuantizationRange(&fake_tensor, 0.0f, 6.0f);
-  EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, 1.0f, 6.0f);
-  EXPECT_EQ(6.0f, quantization_ranges()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, -8.0f, 6.0f);
-  EXPECT_EQ(8.0f, quantization_ranges()[&fake_tensor]);
-  converter_->ProvideQuantizationRange(&fake_tensor, -8.123f, -6.123f);
-  EXPECT_EQ(8.123f, quantization_ranges()[&fake_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, 0.0f, 6.0f);
+  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, 1.0f, 6.0f);
+  EXPECT_EQ(6.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -8.0f, 6.0f);
+  EXPECT_EQ(8.0f, quantization_ranges_proxy()[&simple_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -8.123f, -6.123f);
+  EXPECT_EQ(8.123f, quantization_ranges_proxy()[&simple_tensor]);
   // Symmetric range
-  converter_->ProvideQuantizationRange(&fake_tensor, -6.123f, 6.123f);
-  EXPECT_EQ(6.123f, quantization_ranges()[&fake_tensor]);
+  converter_->ProvideQuantizationRange(&simple_tensor, -6.123f, 6.123f);
+  EXPECT_EQ(6.123f, quantization_ranges_proxy()[&simple_tensor]);
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
-  // input -> infer1 -> infer2 -> infer3
-  FakeITensor input, infer_1, infer_2, infer_3;
-  FakeITensor not_infer;
-  Logger logger;
+  ITensorProxyPtr input;
+  ITensorProxyPtr not_infer;
+  Logger& logger = *Logger::GetLogger();
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
                                           /*use_calibration=*/true, &logger,
                                           /*use_implicit_batch=*/true,
@@ -1101,45 +886,12 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
-  int8_converter->MarkQuantizationRangesAsInferrable(&input, &infer_1);
-  int8_converter->MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
-  int8_converter->MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
 
-  // Input range should be inferred along the chain and applied to tensors.
   int8_converter->MaybeApplyQuantizationRanges();
-#if IS_TRT_VERSION_GE(5, 0, 0, 0)
-  EXPECT_EQ(input.getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_1.getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_2.getDynamicRange(), 5.0f);
-  EXPECT_EQ(infer_3.getDynamicRange(), 5.0f);
-  EXPECT_EQ(not_infer.getDynamicRange(), 100.0f);
-#endif
+  EXPECT_EQ(input->getDynamicRangeMax(), 5.0f);
+  EXPECT_EQ(not_infer->getDynamicRangeMax(), 100.0f);
 
-  VerifyTrtLayerNameNotEmpty(int8_converter->network());
-}
-
-TEST_F(ConverterTest, PropagateQuantizationRanges) {
-  // infer0 <-> infer1 <-> infer2 <-> infer3
-  //              |
-  //            infer4 <-> infer5
-  FakeITensor infer[6];
-  FakeITensor not_infer;
-  converter_->ProvideQuantizationRange(&infer[4], -5.0f, 5.0f);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[0], &infer[1]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[1], &infer[2]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[3], &infer[2]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[4], &infer[1]);
-  converter_->MarkQuantizationRangesAsInferrable(&infer[4], &infer[5]);
-
-  // Input range should be inferred along the chain.
-  PropagateQuantizationRanges();
-  auto ranges = quantization_ranges();
-  for (int i = 0; i < 6; ++i) {
-    EXPECT_EQ(5.0f, ranges[&infer[i]]);
-  }
-  EXPECT_EQ(ranges.count(&not_infer), 0);
-
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(int8_converter->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, GetTrtBroadcastShape) {
@@ -1152,17 +904,17 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                                const std::vector<int>& expected_operand_1_shape,
                                const std::vector<int>& expected_operand_2_shape,
                                error::Code expected_code = error::OK,
-                               const char* expected_error_msg_substr = nullptr,
+                               const char* expected_error_msg_substr = "",
                                const int operand_1_batch_size = -1,
                                const int operand_2_batch_size = -1) {
     auto create_tensor_or_weights = [](const std::vector<int>& shape,
                                        bool is_tensor, int batch_size = -1) {
       if (is_tensor) {
-        return TRT_TensorOrWeights{nvinfer1::DataType::kFLOAT,
-                                   GetTestDims(shape), batch_size};
+        return TRT_TensorOrWeights(nvinfer1::DataType::kFLOAT,
+                                   CreateDims(shape), batch_size);
       }
       TRT_ShapedWeights weights;
-      weights.shape_ = GetTestDims(shape);
+      weights.Shape() = CreateDims(shape);
       return TRT_TensorOrWeights(weights);
     };
 
@@ -1173,24 +925,24 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(
+    EXPECT_THAT(
         GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
                              /*use_implicit_batch=*/true, &operand_1_new_dims,
                              &operand_2_new_dims),
-        expected_code, expected_error_msg_substr);
+        StatusIs(expected_code, HasSubstr(expected_error_msg_substr)));
     if (expected_code == error::OK) {
-      ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
-      ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
+      EXPECT_THAT(operand_1_new_dims, DimsAreArray(expected_operand_1_shape));
+      EXPECT_THAT(operand_2_new_dims, DimsAreArray(expected_operand_2_shape));
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(
+    EXPECT_THAT(
         GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
                              /*use_implicit_batch=*/true, &operand_2_new_dims,
                              &operand_1_new_dims),
-        expected_code, expected_error_msg_substr);
+        StatusIs(expected_code, HasSubstr(expected_error_msg_substr)));
     if (expected_code == error::OK) {
-      ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
-      ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
+      EXPECT_THAT(operand_1_new_dims, DimsAreArray(expected_operand_1_shape));
+      EXPECT_THAT(operand_2_new_dims, DimsAreArray(expected_operand_2_shape));
     }
   };
 
@@ -1244,23 +996,24 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
   symmetric_test({2, 3}, {7, 5}, kIsTensor, kIsTensor, {}, {},
                  error::INVALID_ARGUMENT, "Infeasible broadcast scheme");
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {
   for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
-        weight_store_->GetTempWeights(dtype, GetTestDims({2, 3, 5}));
-    nvinfer1::ITensor* tensor =
-        converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
-    ASSERT_NE(nullptr, tensor);
+        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}))
+            .ValueOrDie();
+    ITensorProxyPtr tensor =
+        converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
+    ASSERT_NE(nullptr, tensor->trt_tensor());
     EXPECT_EQ(dtype, tensor->getType())
         << "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
-    ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
+    EXPECT_THAT(tensor->getDimensions(), DimsAreArray({3, 10}));
   }
 
-  VerifyTrtLayerNameNotEmpty(converter_->network());
+  EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
 }
 
 class ConvertGraphDefToEngineTest : public ::testing::Test {
@@ -1292,14 +1045,14 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
         /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
-        "TRTEngineOp_0_0");
+        "TRTEngineOp_000_000", /*use_explicit_precision=*/false);
   }
 
  protected:
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
 
  private:
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
 };
 
 TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
@@ -1336,20 +1089,26 @@ inline absl::Span<const T> GetSpanForData(const InputOutputData& data) {
 }
 
 std::vector<float> GetDataAsFloat(InputOutputData& data) {
-  if (data.tensor.dtype() == DT_FLOAT) {
+  const auto dType = data.tensor.dtype();
+  if (dType == DT_FLOAT) {
     auto span = GetSpanForData<float>(data);
     return std::vector<float>(span.begin(), span.end());
   }
-  if (data.tensor.dtype() == DT_HALF) {
-    return CastTestVector<Eigen::half, float>(
-        GetSpanForData<Eigen::half>(data));
+  if (dType == DT_HALF) {
+    return CastVector<Eigen::half, float>(GetSpanForData<Eigen::half>(data));
   }
-  if (data.tensor.dtype() == DT_INT32) {
-    return CastTestVector<int32, float>(GetSpanForData<int32>(data));
+  if (dType == DT_INT32) {
+    return CastVector<int32, float>(GetSpanForData<int32>(data));
   }
-  LOG(FATAL) << "DataType not supported for testing "
-             << DataTypeString(data.tensor.dtype());
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  if (dType == DT_BOOL) {
+    return CastVector<bool, float>(GetSpanForData<bool>(data));
+  }
+#endif
+  LOG(FATAL) << "DataType not supported for testing " << DataTypeString(dType);
+  return {};
 }
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
@@ -1357,11 +1116,14 @@ class OpConverterTest : public ::testing::Test {
   OpConverterTest()
       : tensor_buffer_allocator_(new GpuManagedAllocator()),
         scope_(Scope::NewRootScope()) {
+    PreventUnloadBuilderResources();
     QCHECK_EQ(0, cudaStreamCreate(&stream_));
     Reset();
   }
 
-  ~OpConverterTest() override { QCHECK_EQ(0, cudaStreamDestroy(stream_)); }
+  ~OpConverterTest() noexcept override {
+    QCHECK_EQ(0, cudaStreamDestroy(stream_));
+  }
 
   Status GetTensorOrWeights(const string& name, TRT_TensorOrWeights* output) {
     return converter_->GetTensorOrWeights(name, output);
@@ -1390,7 +1152,7 @@ class OpConverterTest : public ::testing::Test {
   template <typename T>
   Tensor AsTensor(gtl::ArraySlice<T> vals) {  // non-absl ok
     Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
-               {static_cast<int64>(vals.size())});
+               {static_cast<int64_t>(vals.size())});
     std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
     return ret;
   }
@@ -1400,29 +1162,42 @@ class OpConverterTest : public ::testing::Test {
   Tensor AsTensor(gtl::ArraySlice<T> vals,  // non-absl ok
                   const TensorShape& shape) {
     Tensor ret(tensor_buffer_allocator_.get(), DataTypeToEnum<T>::value,
-               {static_cast<int64>(vals.size())});
+               {static_cast<int64_t>(vals.size())});
     CHECK(ret.CopyFrom(AsTensor(vals), shape));
     return ret;
+  }
+
+  template <typename T, typename S>
+  void transformTensor(const std::vector<T>& vals, Tensor& ret) {
+    std::transform(vals.begin(), vals.end(), ret.flat<S>().data(),
+                   [](const T in_val) -> S { return static_cast<S>(in_val); });
+  }
+
+  template <typename T, typename S>
+  void transformWeights(const std::vector<T>& vals,
+                        TRT_ShapedWeights& weights) {
+    std::transform(vals.begin(), vals.end(), weights.GetPointer<S>(),
+                   [](const T in_val) -> S { return static_cast<S>(in_val); });
   }
 
   // Constructs a tensor with given values (vals). The tensor type is defined by
   // the tf_type argument, its shape is given by input_dims. The tensor is
   // constructed using the allocator of OpConverterTest in Unified Memory.
   template <typename T>
-  Tensor AsTensor(std::vector<T> vals, const std::vector<int> input_dims,
-                  DataType tf_type) {
+  Tensor AsTensor(const std::vector<T>& vals,
+                  const std::vector<int>& input_dims, DataType tf_type) {
     Tensor ret(tensor_buffer_allocator_.get(), tf_type,
-               {static_cast<int64>(vals.size())});
+               {static_cast<int64_t>(vals.size())});
     if (tf_type == DT_FLOAT) {
-      auto conv_vals = CastTestVector<T, float>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
+      transformTensor<T, float>(vals, ret);
     } else if (tf_type == DT_HALF) {
-      auto conv_vals = CastTestVector<T, Eigen::half>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(),
-                  ret.flat<Eigen::half>().data());
+      transformTensor<T, Eigen::half>(vals, ret);
     } else if (tf_type == DT_INT32) {
-      auto conv_vals = CastTestVector<T, int32>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<int32>().data());
+      transformTensor<T, int32>(vals, ret);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    } else if (tf_type == DT_BOOL) {
+      transformTensor<T, bool>(vals, ret);
+#endif
     } else {
       LOG(FATAL) << "Cannot create tensor with type "
                  << DataTypeString(tf_type);
@@ -1431,6 +1206,13 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(TensorShapeUtils::MakeShape(input_dims, &shape));
     CHECK(ret.CopyFrom(ret, shape));
     return ret;
+  }
+
+  template <typename T>
+  Tensor AsTensor(const std::vector<int>& vals,
+                  const std::vector<int>& input_dims, DataType tf_type) {
+    const auto& conv_vals = CastVector<int, T>(vals);
+    return AsTensor(conv_vals, input_dims, tf_type);
   }
 
   // Constructs a flat tensor in Unified Memory.
@@ -1553,19 +1335,19 @@ class OpConverterTest : public ::testing::Test {
     node_inputs_[name] = input.output;
 
     // Add a real ITensor for conversion conditionally.
-    nvinfer1::Dims trt_dims;
-    Status status = TensorShapeToTrtDims(
-        attrs.shape_, converter_->use_implicit_batch(), &trt_dims);
-    if (converter_->use_implicit_batch() && !status.ok()) {
-      ASSERT_EQ(add_input_status, status);
+
+    auto dims_adap =
+        DimsAdapter::Create(attrs.shape_, converter_->use_implicit_batch());
+    if (converter_->use_implicit_batch() && !dims_adap.ok()) {
+      ASSERT_EQ(add_input_status, dims_adap.status());
       return;
     } else {
-      TF_EXPECT_OK(status);
+      TF_EXPECT_OK(dims_adap.status());
     }
-    if (!converter_->use_implicit_batch() || HasStaticShape(trt_dims)) {
+    if (!converter_->use_implicit_batch() || dims_adap->IsStatic()) {
       int batch_size = dims.size() > 0 ? dims[0] : 0;
-      Status status =
-          converter_->AddInputTensor(name, trt_type, trt_dims, batch_size);
+      Status status = converter_->AddInputTensor(
+          name, trt_type, dims_adap->AsTrtDims(), batch_size);
       ASSERT_EQ(add_input_status, status);
     }
   }
@@ -1579,11 +1361,11 @@ class OpConverterTest : public ::testing::Test {
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
-    std::vector<int32> dims_with_batch(dims.size() + 1);
-    dims_with_batch[0] = batch_size;
-    std::copy(dims.begin(), dims.end(), dims_with_batch.begin() + 1);
-    AddTestTensorWithTFDims(name, dims_with_batch, trt_dtype);
-    if (HasStaticShape(dims)) {
+    DimsAdapter adap(dims);
+    std::vector<int32_t> dims_vec;
+    TF_CHECK_OK(adap.Prepend(batch_size).Vector(&dims_vec));
+    AddTestTensorWithTFDims(name, dims_vec, trt_dtype);
+    if (adap.IsStatic()) {
       ASSERT_EQ(batch_size, converter_->batch_size_);
     }
   }
@@ -1593,38 +1375,69 @@ class OpConverterTest : public ::testing::Test {
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values) {
     // Add weights for validation.
-    TensorShape shape;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
-    Tensor t = AsTensor<T>(values, shape);
+    const auto tf_type = DataTypeToEnum<T>::v();
+    const Tensor t = AsTensor<T>(values, dims, tf_type);
     node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
 
     // Add weights for conversion.
     nvinfer1::DataType dtype;
-    TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
-    const nvinfer1::Dims trt_dims = GetTestDims(dims);
-    const int64_t num_elements = TRT_ShapedWeights::count(trt_dims);
+    TF_ASSERT_OK(TfTypeToTrtType(tf_type, &dtype));
+    const DimsAdapter dims_adap(dims);
+    const int64_t num_elements = dims_adap.Volume();
     QCHECK_EQ(num_elements, values.size())
         << num_elements << " vs " << values.size();
     TRT_ShapedWeights weights(dtype);
     if (num_elements) {
-      weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
-      QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
-          << weights.size_bytes() << " vs " << sizeof(T) * values.size();
-      memcpy(weights.GetValues(), values.data(), weights.size_bytes());
+      weights =
+          converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
+              .ConsumeValueOrDie();
+
+      if (tf_type == DT_FLOAT) {
+        transformWeights<T, float>(values, weights);
+      } else if (tf_type == DT_HALF) {
+        transformWeights<T, Eigen::half>(values, weights);
+      } else if (tf_type == DT_INT32) {
+        transformWeights<T, int32>(values, weights);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+      } else if (tf_type == DT_BOOL) {
+        transformWeights<T, bool>(values, weights);
+#endif
+      } else {
+        LOG(FATAL) << "Cannot create tensor with type "
+                   << DataTypeString(tf_type);
+      }
     }
     TF_EXPECT_OK(
         converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
   }
 
+  // Adds test weight without specifying tf_type arg. In this case the initial
+  // value type (T) will determine the type of the weights.
   template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values, DataType tf_type) {
+                      const std::vector<T>& values_inp, DataType tf_type,
+                      bool fix_values = true) {
+    const auto num_elements = std::accumulate(std::begin(dims), std::end(dims),
+                                              1, std::multiplies<int>());
+
+    std::vector<T> values(values_inp);
+    if (num_elements != values.size()) {
+      if (fix_values) {
+        AdjustVectorByDims<T>(values, num_elements, name, "AddTestWeights");
+      } else {
+        FAIL() << "Unable to create test weights: "
+               << (num_elements > values.size() ? "not enough" : "to many")
+               << " values specified: " << values.size() << " vs. "
+               << num_elements << " defined by dims";
+      }
+    }
+
     if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastTestVector<T, float>(values));
+      AddTestWeights(name, dims, CastVector<T, float>(values));
     } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastTestVector<T, Eigen::half>(values));
+      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
     } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastTestVector<T, int32>(values));
+      AddTestWeights(name, dims, CastVector<T, int32>(values));
     } else {
       FAIL() << "Cannot create test weights with type "
              << DataTypeString(tf_type);
@@ -1638,18 +1451,20 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    TrtNodeValidator validator(graph_properties, converter_->precision_mode(),
-                               /*use_calibration=*/false,
-                               converter_->use_implicit_batch());
+    TrtNodeValidator validator(
+        graph_properties, converter_->precision_mode(),
+        /*use_calibration=*/false,
+        /*use_implicit_batch=*/converter_->use_implicit_batch(),
+        /*use_explicit_precision=*/false);
     return validator.IsTensorRTCandidate(node);
   }
 
   void RunConversion(const Node* node, error::Code expected_code = error::OK,
-                     const char* expected_msg_substr = nullptr) {
-    ExpectStatus(converter_->ConvertNode(node->def()), expected_code,
-                 expected_msg_substr);
+                     const std::string& expected_msg_substr = "") {
+    EXPECT_THAT(converter_->ConvertNode(node->def()),
+                StatusIs(expected_code, HasSubstr(expected_msg_substr)));
     if (expected_code == error::OK) {
-      VerifyTrtLayerNameNotEmpty(converter_->network());
+      EXPECT_THAT(converter_->network(), LayerNamesNonEmpty());
     }
   }
 
@@ -1657,7 +1472,7 @@ class OpConverterTest : public ::testing::Test {
   // output are same.
   void RunValidationAndConversion(const NodeDef& node_def,
                                   error::Code expected_code = error::OK,
-                                  const char* expected_msg_substr = nullptr,
+                                  const std::string& expected_msg_substr = "",
                                   bool should_run_conversion = true) {
     // Add the node to the graph.
     // TODO(laigd): we should accept a function that adds the node using
@@ -1679,17 +1494,19 @@ class OpConverterTest : public ::testing::Test {
     if (should_run_conversion && status.ok()) {
       RunConversion(node, expected_code, expected_msg_substr);
     } else {
-      ExpectStatus(status, expected_code, expected_msg_substr);
+      EXPECT_THAT(status,
+                  StatusIs(expected_code, HasSubstr(expected_msg_substr)));
     }
   }
 
   // Helper method to run both validation and conversion, and check the output
   // shapes.
   void RunValidationAndConversion(
-      const NodeDef& node_def, const Status& status, const char* output_name,
+      const NodeDef& node_def, const Status& status,
+      const std::string& output_name,
       const std::vector<std::vector<int>>& exp_out_dims) {
-    RunValidationAndConversion(node_def, status.code(),
-                               status.error_message().c_str(), true);
+    RunValidationAndConversion(node_def, status.code(), status.error_message(),
+                               true);
 
     if (status.ok()) {
       // TODO(tfeher): Enable this check in explicit_batch_mode.
@@ -1708,8 +1525,8 @@ class OpConverterTest : public ::testing::Test {
             auto out_dims = std::vector<int>(exp_out_dims[i].begin() + 1,
                                              exp_out_dims[i].end());
             VLOG(2) << "Testing output shape for tensor " << name;
-            ExpectTrtDimsEqualsArray(out_dims,
-                                     output.tensor()->getDimensions());
+            EXPECT_THAT(output.tensor()->getDimensions(),
+                        DimsAreArray(out_dims));
           }
         }
       }
@@ -1717,17 +1534,41 @@ class OpConverterTest : public ::testing::Test {
   }
 
   // Expose quantization_ranges_ for tests
+  std::unordered_map<ITensorProxyPtr*, float>& quantization_ranges_proxy() {
+    return converter_->quantization_ranges_proxy_;
+  }
+
+  // Expose quantization_ranges_ for tests
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
     return converter_->quantization_ranges_;
   }
 
-  void PropagateQuantizationRanges() {
-    converter_->PropagateQuantizationRanges();
+ protected:
+  template <typename T>
+  void AdjustVectorByDims(std::vector<T>& values, size_t num_elements,
+                          const string& name, const char* callingFunc) {
+    const auto old_size = values.size();
+    if (num_elements > old_size) {
+      // Expending vector with 0's.
+      const std::vector<T> zeros(num_elements - old_size, 0);
+      values.reserve(num_elements);
+      values.insert(values.end(), zeros.begin(), zeros.end());
+      VLOG(2) << "In function " << callingFunc << " the vector '" << name
+              << "' was extended by " << num_elements - old_size << " zeros";
+    } else {
+      // Removing unnecessary elements.
+      values.resize(num_elements);
+      VLOG(2) << "Only first " << num_elements << " out of " << old_size
+              << " elements of the vector '" << name
+              << "' will be used in function" << callingFunc;
+    }
   }
+
+ public:
   std::unique_ptr<Converter> converter_;
 
  private:
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;
@@ -1765,18 +1606,32 @@ struct TestParamBase {
 };
 
 std::ostream& operator<<(std::ostream& os, const TestParamBase& p) {
-  os << "input_dims" << p.input_dims;
+  os << "input_dims" << PrintToString(p.input_dims);
   if (!p.partial_input_dims.empty()) {
-    os << ", partial_input_dims" << p.partial_input_dims;
+    os << ", partial_input_dims" << PrintToString(p.partial_input_dims);
   }
   if (!p.expected_output_dims.empty()) {
-    os << ", exp_out_dims" << p.expected_output_dims;
+    os << ", exp_out_dims" << PrintToString(p.expected_output_dims);
   }
   if (!p.param.empty()) {
-    os << ", param" << p.param;
+    os << ", param" << PrintToString(p.param);
   }
   os << ", " << p.status;
   return os;
+}
+
+// Printing vector with the numbers of type T which defines tensor or shape.
+template <typename T>
+const std::string get_debug_string_for_vector(const std::vector<T>& vector,
+                                              absl::string_view pComment,
+                                              absl::string_view name,
+                                              absl::string_view type = "") {
+  const std::string t1 = absl::StrCat(pComment, name, " Dims(nbDims=");
+  const std::string t2 = absl::StrJoin(vector, ",");
+  const std::string t3 = type != "" ? absl::StrCat(") of type ", type) : ")";
+  std::stringstream stream;
+  stream << t1 << vector.size() << ", d=" << t2 << t3;
+  return stream.str();
 }
 
 // Parameterized version of OpConverterTest. We have the following parameters:
@@ -1841,17 +1696,26 @@ class ParameterizedOpConverterTestBase
   //
   template <typename T = int>
   void AddTestTensor(const string& name, const std::vector<int32>& dims,
-                     DataType tf_type, const std::vector<T>& values,
+                     DataType tf_type, const std::vector<T>& values_inp,
                      const std::vector<int32>& partial_input_shape_dims = {},
-                     Status add_input_status = Status::OK()) {
+                     Status add_input_status = Status::OK(),
+                     bool fix_values = true) {
+    std::vector<T> values(values_inp);
+    VLOG(2) << "**** AddTestTensor for " << name
+            << " ***** dims empty() = " << dims.empty()
+            << "  tf_type = " << DebugString(tf_type);
     if (!dims.empty()) {
       const auto num_elements = std::accumulate(
           std::begin(dims), std::end(dims), 1, std::multiplies<double>());
       if (!values.empty() && num_elements != values.size()) {
-        // Note: for conversion only tests, it is valid to have empty values,
-        // otherwise the number of elements should match.
-        LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
-                     << ", Received Input Tensor: " << DebugString(values);
+        if (fix_values) {
+          AdjustVectorByDims(values, num_elements, name, "AddTestTensor");
+        } else {
+          // Note: for conversion only tests, it is valid to have empty values,
+          // otherwise the number of elements should match.
+          LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
+                       << ", Received Input Tensor: " << DebugString(values);
+        }
       }
     }
 
@@ -1866,13 +1730,19 @@ class ParameterizedOpConverterTestBase
         // Use static (known) input shapes.
         partial_shape = dims;
       }
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << get_debug_string_for_vector(
+            partial_shape, "Using partial_shape: for ", name);
+      }
     }
     nvinfer1::DataType trt_type;
     TF_ASSERT_OK(TfTypeToTrtType(tf_type, &trt_type));
     AddTestTensorWithTFDims(name, partial_shape, trt_type, add_input_status);
     if (!values.empty()) {
-      VLOG(2) << "Adding test tensor: " << name << " "
-              << DataTypeString(tf_type);
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << get_debug_string_for_vector(
+            values, "Adding test tensor: for ", name, DataTypeString(tf_type));
+      }
       InputOutputData data{name, AsTensor(values, dims, tf_type)};
       VLOG(2) << "Added tensor: " << data.name << " with dtype "
               << DataTypeString(data.tensor.dtype());
@@ -1944,8 +1814,8 @@ class ParameterizedOpConverterTestBase
       const Status& expected_runtime_status,
       const std::vector<Matcher<std::vector<float>>>& matcher,
       const std::vector<DataType>& out_tf_type = {}) {
-    RunValidationAndConversion(node_def, expected_conversion_status,
-                               name.c_str(), expected_output_dims);
+    RunValidationAndConversion(node_def, expected_conversion_status, name,
+                               expected_output_dims);
     if (expected_conversion_status.ok()) {
       BuildAndRun(name, expected_output_dims, expected_runtime_status, matcher,
                   out_tf_type);
@@ -1960,12 +1830,12 @@ class ParameterizedOpConverterTestBase
                        const Status& expected_runtime_status,
                        const Matcher<std::vector<float>>& matcher,
                        const std::vector<DataType>& out_tf_types = {}) {
-    RunValidationAndConversion(
-        node_def, expected_conversion_status, name.c_str(),
-        std::vector<std::vector<int>>({expected_output_dims}));
+    const auto& exp_dims =
+        std::vector<std::vector<int>>({expected_output_dims});
+    RunValidationAndConversion(node_def, expected_conversion_status, name,
+                               exp_dims);
     if (expected_conversion_status.ok()) {
-      BuildAndRun(name, std::vector<std::vector<int>>({expected_output_dims}),
-                  expected_runtime_status,
+      BuildAndRun(name, exp_dims, expected_runtime_status,
                   std::vector<Matcher<std::vector<float>>>({matcher}),
                   out_tf_types);
     }
@@ -1976,6 +1846,76 @@ class ParameterizedOpConverterTestBase
   const DataType tf_type_;
   const TrtPrecisionMode converter_precision_;
   DataVec input_data_;
+};
+
+template <typename T>
+class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
+ public:
+  template <typename S>
+  void RunTests(
+      const operationMap<S>& map,
+      std::map<std::string,
+               std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
+          op_test_info,
+      DataType tf_type) {
+    // Test combinations of tensor vs weight inputs (except when both inputs are
+    // weights).
+    bool expectedToFailTested = false;
+    for (const bool operand_1_is_tensor : {true, false}) {
+      for (const bool operand_2_is_tensor : {true, false}) {
+        const auto bothOperandsAreWeights =
+            !operand_1_is_tensor && !operand_2_is_tensor;
+        for (auto& iter : map) {
+          const string& op_name = iter.first;
+          SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
+                              operand_2_is_tensor ? "T" : "W"));
+
+          if (!op_test_info.count(op_name)) {
+            FAIL() << "Binary op test map does not contain op " << op_name;
+          }
+
+          if (!expectedToFailTested && bothOperandsAreWeights) {
+            runExpectedToFailTest(op_name);
+            expectedToFailTested = true;
+            break;
+          }
+
+          Reset();
+          if (operand_1_is_tensor) {
+            AddTestTensor("input1", {2, 1, 2}, {3, 6, 3, 6});
+          } else {
+            AddTestWeights("input1", {1, 2}, std::vector<T>{3, 6}, tf_type);
+          }
+          if (operand_2_is_tensor) {
+            AddTestTensor("input2", {2, 2, 1}, {2, 3, 2, 3});
+          } else {
+            AddTestWeights("input2", {2, 1}, std::vector<T>{2, 3}, tf_type);
+          }
+
+          const NodeDef& node_def = op_test_info[op_name].first(tf_type);
+          TestOpConverter("my_binary", node_def, {2, 2, 2}, Status::OK(),
+                          Status::OK(),
+                          ElementsAreArray(op_test_info[op_name].second));
+        }
+      }
+    }
+  }
+
+  void runExpectedToFailTest(const std::string& op_name) {
+    Reset();
+    AttrValue dtype;
+    dtype.set_type(tf_type_);
+
+    const auto& node_def = MakeNodeDef(
+        "my_oper", op_name, {"weights1", "weights2"}, {{"T", dtype}});
+    AddTestWeights("weights1", {1}, {1}, tf_type_);
+    AddTestWeights("weights2", {1}, {1}, tf_type_);
+    const string error =
+        "Constant folding is falled back to TensorFlow, "
+        "binary op '" +
+        op_name + "' received both input as constant";
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED, error);
+  }
 };
 
 // Op converter test in FP32 mode. While for debugging purposes it might make
@@ -1990,12 +1930,15 @@ class ParameterizedOpConverterTestBase
 //   how TRT handles the precision inside the TRT network, but should not matter
 //   for the TF -> TRT conversion. Therefore it should be sufficient to test
 //   for FP32.
-class OpConverter_FP32_Test : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_FP32_Test;
 // Base class for tests that need to be tested for both FP32 and FP16.
-class OpConverter_FP32_FP16_Test : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_Test;
+// Base class for Binary tests that need to be tested
+typedef OpConverter_BinaryTest<float> OpConverter_FP32_FP16_BinaryTest;
 // Base class for tests that need to be tested for FP32, FP16, and INT32
-class OpConverter_FP32_FP16_INT32_Test
-    : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_INT32_Test;
+// Base class for tests that need to be tested for INT32
+typedef ParameterizedOpConverterTestBase OpConverter_INT32_Test;
 
 // Instantiate parameter combinations to OpConverter_<DT_X...>_Test
 INSTANTIATE_TEST_CASE_P(
@@ -2014,6 +1957,18 @@ INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, OpConverter_FP32_FP16_INT32_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF, DT_INT32),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_INT32_Test,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_INT32),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_FP32_FP16_BinaryTest,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_FLOAT, DT_HALF),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
 template <typename T>
@@ -2073,7 +2028,8 @@ void TestConvertConst(OpConverterTest* test) {
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_const", &output));
-    ValidateWeights(output.weights(), expected_dims, expected_value);
+    EXPECT_THAT(output.weights(), ShapedWeightsHasDimsAndValues<OutputCType>(
+                                      expected_dims, expected_value));
   };
 
   auto& attr = *node_def.mutable_attr();
@@ -2087,10 +2043,8 @@ void TestConvertConst(OpConverterTest* test) {
   {
     Tensor t = test::AsScalar<InputCType>(12);
     std::vector<int> expected_dims{1};
-    if (IS_TRT_VERSION_GE(6, 0, 0, 0)) {
-      // Scalars are represented as rank 0 tensors in TRT6 or later
-      expected_dims.clear();
-    }
+    // Scalars are represented as rank 0 tensors.
+    expected_dims.clear();
     reset_and_test(t, false, expected_dims, {12});
     reset_and_test(t, true, expected_dims, {12});
   }
@@ -2132,9 +2086,10 @@ TEST_F(OpConverterTest, ConvertConst) {
   }
   {
     Reset();
-    Tensor tensor = AsTensor<int64>({1, std::numeric_limits<int64>::max(), 1, 1,
-                                     1, std::numeric_limits<int64>::lowest()},
-                                    TensorShape({2, 3}));
+    Tensor tensor =
+        AsTensor<int64_t>({1, std::numeric_limits<int64_t>::max(), 1, 1, 1,
+                           std::numeric_limits<int64_t>::lowest()},
+                          TensorShape({2, 3}));
     NodeDef node_def;
     node_def.set_name("my_const");
     node_def.set_op("Const");
@@ -2202,54 +2157,69 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
     std::vector<int> dims;
     std::vector<float> val;
   };
-  std::vector<NodeInput> node_input{
+  std::vector<NodeInput> node_input_nchw{
       {"x", {2, 3, 2, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
       {"scale", {3}, {7, 8, 9}},
       {"offset", {3}, {10, 20, 30}},
       {"mean", {3}, {1, 2, 3}},
       {"variance", {3}, {4, 5, 6}}};
 
-  std::vector<float> expected_output{10.0,      13.495633, 23.574135, 27.148273,
-                                     37.342354, 41.013527, 30.9738,   34.469433,
-                                     45.018955, 48.59309,  59.369415, 63.04059};
+  std::vector<NodeInput> node_input_nhwc{
+      {"x", {2, 2, 1, 3}, {1, 3, 5, 2, 4, 6, 7, 9, 11, 8, 10, 12}},
+      {"scale", {3}, {7, 8, 9}},
+      {"offset", {3}, {10, 20, 30}},
+      {"mean", {3}, {1, 2, 3}},
+      {"variance", {3}, {4, 5, 6}}};
+
+  std::vector<float> expected_output_nchw{
+      10.0,    13.495633, 23.574135, 27.148273, 37.342354, 41.013527,
+      30.9738, 34.469433, 45.018955, 48.59309,  59.369415, 63.04059};
+
+  std::vector<float> expected_output_nhwc{
+      10.0,    23.574135, 37.342354, 13.495633, 27.148273, 41.013527,
+      30.9738, 45.018955, 59.369415, 34.469433, 48.59309,  63.04059};
+
   for (auto get_node_def : get_node_def_vec) {
     NodeDef tmp_node_def = get_node_def(tf_type_, "NCHW", true, 0);
     std::string op_name = tmp_node_def.op();
     std::vector<TestParam> test_param{
-        {"NHWC", 0, false, 0,
-         errors::Unimplemented(StrCat(
-             op_name, " only supports data_format=NCHW, at my_batchnorm"))},
         {"NCHW", 0, true, 0,
-         errors::Unimplemented(StrCat(
-             op_name, " only supports is_training=false, at my_batchnorm"))},
+         errors::Unimplemented(
+             StrCat(op_name, " only supports is_training=false"))},
         {"NCHW", 1, false, 0,
          errors::Unimplemented(StrCat("The input \"scale\" for ", op_name,
-                                      " must be a constant, at my_batchnorm"))},
+                                      " must be a constant"))},
         {"NCHW", 2, false, 0,
          errors::Unimplemented(StrCat("The input \"offset\" for ", op_name,
-                                      " must be a constant, at my_batchnorm"))},
+                                      " must be a constant"))},
         {"NCHW", 3, false, 0,
          errors::Unimplemented(StrCat("The input \"mean\" for ", op_name,
-                                      " must be a constant, at my_batchnorm"))},
+                                      " must be a constant"))},
         {"NCHW", 4, false, 0,
          errors::Unimplemented(StrCat("The input \"variance\" for ", op_name,
-                                      " must be a constant, at my_batchnorm"))},
-        {"NCHW", 0, false, 0.01}};  // The last one is the only test that runs.
+                                      " must be a constant"))},
+        {"NCHW", 0, false, 0.01},
+        {"NHWC", 0, false, 0.01}};
     if (trt_mode_ == TrtTestMode::kDynamicShape) {
       test_param.push_back(
           {"NCHW", 0, false, 0.01,
-           errors::InvalidArgument(
-               "Channel dimension must be static, at my_batchnorm"),
-           true});
+           errors::InvalidArgument("Channel dimension must be static"), true});
+      test_param.push_back(
+          {"NHWC", 0, false, 0.01,
+           errors::InvalidArgument("Channel dimension must be static"), true});
     }
     for (auto p : test_param) {
       Reset();
       NodeDef node_def =
           get_node_def(tf_type_, p.data_format, p.is_training, p.epsilon);
+      std::vector<NodeInput> node_input =
+          p.data_format == "NCHW" ? node_input_nchw : node_input_nhwc;
+      std::vector<float> expected_output =
+          p.data_format == "NCHW" ? expected_output_nchw : expected_output_nhwc;
       for (int i = 0; i < node_input.size(); i++) {
         if (i == 0 || i == p.tensor_input_idx) {
-          // The first input (x) is always added as a tensor, and it hase shape
-          // NCHW. The other inputs are per channel values (1D, size C).
+          // The first input (x) is always added as a tensor, and it has shape
+          // NCHW/NHWC. The other inputs are per channel values (1D, size C).
           //
           // In implicit batch mode, it is not possible to add any of the 1D
           // inputs as a tensor: the first dim is always treated as batch dim in
@@ -2276,7 +2246,8 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
               !p.keep_channel_unknown) {
             // keep channel dim static (known)
             partial_input_shape.resize(4, -1);
-            partial_input_shape[1] = node_input[i].dims[1];
+            int channel_dim = (p.data_format == "NCHW" ? 1 : 3);
+            partial_input_shape[channel_dim] = node_input[i].dims[channel_dim];
           }
           AddTestTensor(node_input[i].name, node_input[i].dims, tf_type_,
                         node_input[i].val, partial_input_shape,
@@ -2311,7 +2282,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
                     {},
                     Status(error::UNIMPLEMENTED,
                            "The input \"perm\" for Transpose must be a "
-                           "constant, at my_transpose")},
+                           "constant")},
       TestParamBase{{1, 1, 2, 3},
                     {},
                     {},
@@ -2353,6 +2324,151 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
   }
 }
 
+TEST_P(OpConverter_FP32_Test, ConvertTile) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto tile = ops::Tile(s.WithOpName("my_tile"), input, weights);
+  const NodeDef& node_def = tile.operation.node()->def();
+
+  struct TileParam {
+    std::vector<int> input_dims;
+    std::vector<int> multiplier;
+    std::vector<float> tensor;
+    // Concrete (static) output dimensions, including batch size as first dim.
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_results;
+    int test_ID;
+    // Expected status of conversion (with concrete error message).
+    Status status;
+    // Expected status of BuildAndRun.
+    Status runtime_status;
+  };
+
+  std::vector<TileParam> test_params = {
+      TileParam{{1, 2, 3},   // input_dims
+                {1, -2, 1},  // multiplier
+                {},          // tensor
+                {},          // expected_output_dims
+                {},          // expected_results
+                1,           // test_ID
+                Status(error::INVALID_ARGUMENT,
+                       "All replications of the Tile operation in "
+                       "my_tile should be positive, got (1, -2, 1).")},
+      TileParam{
+          {1, 2, 3},           // input_dims
+          {1, 2, 1, 3},        // multiplier
+          {0, 1, 2, 3, 4, 5},  // tensor
+          {},                  // expected_output_dims
+          {},                  // expected_results
+          2,                   // test_ID
+          Status(
+              error::INVALID_ARGUMENT,
+              "The length of the replication vector (4) of the Tile operation "
+              "in 'my_tile' "
+              "is expected to be equal to the rank of the input vector (3).")},
+      TileParam{{1, 2},                                 // input_dims
+                {1, 3},                                 // multiplier
+                {2, 3},                                 // tensor
+                {1, 6},                                 // expected_output_dims
+                {2, 3, 2, 3, 2, 3}},                    // out values
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 2, 1},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 4, 3},                              // output dims
+                {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}},  // expected_results
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 1, 2},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 2, 6},                              // expected_output_dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}},  // expected_results
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 2, 2},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 4, 6},                              // expected_output_dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5,
+                 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}}  // expected_results
+  };
+
+  for (bool multiplier_is_tensor : {true, false}) {
+    for (bool input_is_tensor : {true, false}) {
+      for (auto p : test_params) {
+        std::vector<int> num_mults = {static_cast<int>(p.multiplier.size())};
+        std::vector<std::vector<int>> partial_input_dims_options = {{}};
+        if (multiplier_is_tensor) {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+            p.status =
+                Status(error::INVALID_ARGUMENT,
+                       "Conversion for Tile is not implemented for multipliers "
+                       "passed as a tensor in implicit batch mode");
+            num_mults = {1, static_cast<int>(p.multiplier.size())};
+          } else {
+            if (p.test_ID == 1) {
+              // Replacement of statuses, since when multiplier is a tensor AND
+              // trt_mode_ != TrtTestMode::kImplicitBatch we cannot define these
+              // statuses in ConvertTile::Validate() for first two tests from
+              // test_params.
+              p.status = Status::OK();
+              p.runtime_status =
+                  Status(error::INTERNAL,
+                         "Incorrect number of profile config parameters");
+            }
+
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              if (p.test_ID == 1)
+                partial_input_dims_options = {num_mults};
+              else
+                partial_input_dims_options = {{}, num_mults};
+            }
+          }
+        }
+
+        for (auto partial_input_dims : partial_input_dims_options) {
+          if (multiplier_is_tensor &&
+              trt_mode_ != TrtTestMode::kImplicitBatch) {
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              if (p.test_ID != 1) {
+                p.runtime_status =
+                    partial_input_dims.empty()
+                        ? Status(error::INTERNAL,
+                                 "Failed to build TensorRT engine")
+                        : Status::OK();
+                p.status = Status::OK();
+              }
+            }
+
+            if (p.test_ID == 2 && (trt_mode_ == TrtTestMode::kExplicitBatch ||
+                                   !partial_input_dims.empty())) {
+              p.status = Status(error::INVALID_ARGUMENT,
+                                "When replications are defined as a tensor, "
+                                "the number of its elements (4) must be equal "
+                                "to the rank of the input tensor (3).");
+            }
+          }
+
+          Reset();
+          if (input_is_tensor) {
+            AddTestTensor("input", p.input_dims, p.tensor);
+          } else {
+            AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
+          }
+
+          if (multiplier_is_tensor) {
+            AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
+                               partial_input_dims);
+          } else {
+            AddTestWeights<int32>("weights", num_mults, p.multiplier);
+          }
+
+          TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+                          p.runtime_status,
+                          ElementsAreArray(p.expected_results));
+        }
+      }
+    }
+  }
+}
+
 TEST_P(OpConverter_FP32_Test, ConvertReshape) {
   // Get the NodeDef for Reshape.
   Scope s = Scope::NewRootScope();
@@ -2369,7 +2485,7 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
         "The input \"shape\" for Reshape must be a constant in implicit batch "
-        "mode, at my_reshape");
+        "mode");
   } else if (!IS_TRT_VERSION_GE(7, 1, 3, 0)) {
     // Shape is a tensor, should fail before TRT 7.1.3 even in explicit batch /
     // dynamic shape mode.
@@ -2385,24 +2501,22 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
   Status reshape_from_scalar_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
           ? errors::Internal(
-                "Failed to convert input input to a TRT_TensorOrWeights: "
-                "Scalar input tensor is not supported since the first "
+                "Failed to convert at least one input to a TRT_TensorOrWeights:"
+                " Scalar input tensor is not supported since the first "
                 "dimension is treated as batch dimension by TRT")
           : Status::OK();
   Status add_scalar_tensor_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
-          ? errors::Internal(
-                "Scalars cannot be represented in implicit batch mode")
+          ? errors::InvalidArgument(
+                "removing first dim requires explicit batch dimension")
           : Status::OK();
   Status reshape_to_scalar_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
-          ? errors::Unimplemented(
-                "Reshape to shape=[] is not supported, at my_reshape")
+          ? errors::Unimplemented("Reshape to shape=[] is not supported")
           : Status::OK();
   Status reshape_batch_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
-          ? errors::Unimplemented(
-                "Reshape on batch dimension is not supported, at my_reshape")
+          ? errors::Unimplemented("Reshape on batch dimension is not supported")
           : Status::OK();
 
   struct TestParams {
@@ -2467,12 +2581,11 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
   for (auto p : params) {
     for (auto shape_as_weight : shape_input_options) {
       std::ostringstream oss;
-      oss << "shape " << p.shape;
+      oss << "shape " << PrintToString(p.shape);
       SCOPED_TRACE(StrCat(oss.str(), shape_as_weight ? " weight" : " tensor"));
       if (!shape_as_weight && p.shape.empty()) {
         p.conversion_status = errors::Unimplemented(
-            "Reshape with dynamic input requires 1D input tensor, at "
-            "my_reshape");
+            "Reshape with dynamic input requires 1D input tensor");
       }
       Reset();
       const int n_elements =
@@ -2583,8 +2696,7 @@ void TestMatMulHelper(
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         StrCat("Data type int32 is not supported for ", node_def.op(),
-               ", must be one of [float, half], at my_matmul")
-            .c_str());
+               ", must be one of [float, half]"));
   }
 
   // FC conversion depends on whether the last dim of A is known or not. In
@@ -2853,6 +2965,22 @@ TEST_P(OpConverter_FP32_Test, ConvertBatchMatMul) {
                    return p;
                  });
 
+  // 4D tensor where the second "batch dim" is not 1
+  params.push_back(MatMulTestParams{
+      {1, 2, 4, 5},
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13,
+       14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+       28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39},
+      false,  // A
+      {1, 2, 3, 5},
+      {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30},
+      true,  // B
+      {1, 2, 4, 3},
+      {40,   90,   140,  115,  290,  465,  190,  490,
+       790,  265,  690,  1115, 1990, 2540, 3090, 2440,
+       3115, 3790, 2890, 3690, 4490, 3340, 4265, 5190}});  // result
+
   TestMatMulHelper(this, get_batch_matmul_nodedef, params);
 }
 
@@ -2897,8 +3025,8 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     Status conv_status;
   };
 
-  Status unimplemented_eq =
-      errors::Unimplemented("No conversion for einsum equation.");
+  Status unimplemented_eq = errors::Unimplemented("");
+  Status internal_eq = errors::Internal("");
 
   std::vector<TestParams> params{
       // Dot product.
@@ -2920,7 +3048,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {3, 2},
                  {0, 3, 1, 4, 2, 5},
-                 unimplemented_eq},
+                 internal_eq},
       // Diag.
       TestParams{"ii->i",
                  {3, 3},
@@ -2929,7 +3057,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {3},
                  {0, 4, 8},
-                 unimplemented_eq},
+                 internal_eq},
       // Trace.
       TestParams{"ii",
                  {3, 3},
@@ -2938,7 +3066,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {},
                  {12},
-                 unimplemented_eq},
+                 internal_eq},
       // MatMul with reduction.
       TestParams{"abbc,dc->ad",
                  {1, 2, 2, 3},
@@ -2957,7 +3085,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {2, 3, 1, 1},
                  {20, 60, 100, 44, 148, 252},
                  unimplemented_eq},
-      // MatMul and Batched MatMul.
+      // MatMul
       TestParams{"ab,bc->ac",
                  {2, 3},
                  {0, 1, 2, 3, 4, 5},
@@ -2965,13 +3093,14 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {1, 2, 3, 4, 5, 6},
                  {2, 2},
                  {13, 16, 40, 52}},
+      // Batched MatMul
       TestParams{"abc,cde->abde",
-                 {1, 2, 3},
-                 {0, 1, 2, 3, 4, 5},
-                 {3, 2, 2},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                 {1, 2, 2, 2},
-                 {23, 26, 29, 32, 68, 80, 92, 104}},
+                 /*shape_a=*/{1, 2, 3},
+                 /*values_a=*/{0, 1, 2, 3, 4, 5},
+                 /*shape_b=*/{3, 2, 2},
+                 /*values_v=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 /*expected_shape=*/{1, 2, 2, 2},
+                 /*expected_output=*/{23, 26, 29, 32, 68, 80, 92, 104}},
       TestParams{"abcd,cde->abe",
                  {1, 2, 2, 3},
                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
@@ -3093,7 +3222,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
         dims_array[1] = 2;
         dims_array[trt_input_rank] = 3;
       }
-      const int num_input = TrtTensorDimsNumElements(GetTestDims(dims_array));
+      const int64_t num_input = DimsAdapter(dims_array).Volume();
       ASSERT_EQ(trt_input_rank > 1 ? 6 : (data_format == "NHWC" ? 3 : 2),
                 num_input);
       std::vector<float> input_data(num_input, 0);
@@ -3138,22 +3267,7 @@ NodeDef GetBinaryOpNodeDef(DataType dtype) {
   return op.operation.node()->def();
 }
 
-TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
-  {
-    AttrValue dtype;
-    dtype.set_type(tf_type_);
-    // Both inputs are weights.
-    Reset();
-    NodeDef node_def =
-        MakeNodeDef("my_add", "Add", {"weights1", "weights2"}, {{"T", dtype}});
-    AddTestWeights<float>("weights1", {1}, {1});
-    AddTestWeights<float>("weights2", {1}, {1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Constant folding is falled back to TensorFlow, binary op received "
-        "both input as constant at: my_add");
-  }
-
+TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   using OpFunc = std::function<NodeDef(DataType)>;
   std::map<std::string, std::pair<OpFunc, std::vector<float>>> op_test_info;
 #define ADD_OP(name, op, v1, v2, v3, v4, v5, v6, v7, v8) \
@@ -3171,41 +3285,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  // Add all ops supported by ConvertBinary.
-  auto* supported_ops = BinaryOperationMap();
-  // Test combinations of tensor vs weight inputs (except when both inputs are
-  // weights).
-  for (const bool operand_1_is_tensor : {true, false}) {
-    for (const bool operand_2_is_tensor : {true, false}) {
-      if (!operand_1_is_tensor && !operand_2_is_tensor) continue;
-      for (auto& iter : *supported_ops) {
-        string op_name = iter.first;
-        SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
-                            operand_2_is_tensor ? "T" : "W"));
-        Reset();
-        if (!op_test_info.count(op_name)) {
-          FAIL() << "Binary op test map does not contain op " << op_name;
-        }
-        NodeDef node_def = op_test_info[op_name].first(tf_type_);
-        std::vector<std::string> input_names;
-        std::vector<std::vector<int>> input_dims;
-        std::vector<std::vector<float>> input_values;
-        if (operand_1_is_tensor) {
-          AddTestTensor("input1", {2, 1, 2}, {3, 6, 3, 6});
-        } else {
-          AddTestWeights("input1", {1, 2}, std::vector<float>{3, 6}, tf_type_);
-        }
-        if (operand_2_is_tensor) {
-          AddTestTensor("input2", {2, 2, 1}, {2, 3, 2, 3});
-        } else {
-          AddTestWeights("input2", {2, 1}, std::vector<float>{2, 3}, tf_type_);
-        }
-        TestOpConverter("my_binary", node_def, {2, 2, 2}, Status::OK(),
-                        Status::OK(),
-                        ElementsAreArray(op_test_info[op_name].second));
-      }
-    }
-  }
+  RunTests(*BinaryOperationMap(), op_test_info, get_tf_type());
 }
 
 NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
@@ -3270,7 +3350,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
         "Weights input to AddN is required to have batch dimension 1.");
   }
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
 
   std::vector<AddNTestParams> params = {
       {/*input_values=*/common_input,
@@ -3335,17 +3415,15 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
   }
 }
 
-TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
+TEST_P(OpConverter_FP32_Test, ConvertQDQDynamicRangeMode) {
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
     Reset(TrtPrecisionMode::INT8);
     NodeDef node_def =
         MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs", {"input"});
     AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Min or max attribute not found for FakeQuantWithMinMaxArgs "
-        "at my_quantize");
+    RunValidationAndConversion(node_def, error::NOT_FOUND,
+                               "No attr named 'min'");
   }
   {
     // FakeQuantWithMinMaxArgs ranges set via attributes, ok.
@@ -3362,8 +3440,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
   {
     // FakeQuantWithMinMaxVars ranges set via inputs, ok.
@@ -3383,8 +3461,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
   {
     // QuantizeAndDequantizeV2 ranges set via inputs, ok.
@@ -3404,8 +3482,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
   {
     // QuantizeAndDequantizeV2 Range inputs are tensors, should fail.
@@ -3420,10 +3498,9 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     AddTestTensor("input", {1, 2, 3});
     AddTestTensor("weights_min", {1});
     AddTestTensor("weights_max", {1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"input_min\" for QuantizeAndDequantizeV2 must be a constant"
-        ", at my_quantize");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"input_min\" for "
+                               "QuantizeAndDequantizeV2 must be a constant");
   }
   {
     // QuantizeAndDequantizeV3 ranges set via inputs, ok.
@@ -3445,8 +3522,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
     ASSERT_TRUE(output.is_tensor());
     auto ranges = quantization_ranges();
-    EXPECT_EQ(1, ranges.count(output.tensor()));
-    EXPECT_EQ(6.0f, ranges[output.tensor()]);
+    EXPECT_EQ(1, ranges.count(output.tensor()->trt_tensor()));
+    EXPECT_EQ(6.0f, ranges[output.tensor()->trt_tensor()]);
   }
 }
 
@@ -3459,9 +3536,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
     auto square = ops::Square(s.WithOpName("my_square"), input);
     NodeDef node_def = square.operation.node()->def();
     AddTestWeights("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6}, tf_type_);
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"x\" for Square must be a tensor, at my_square");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"x\" for Square must be a tensor");
   }
 
   Reset();
@@ -3486,7 +3562,265 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
+  Scope s = Scope::NewRootScope();
+  auto dims = ops::Placeholder(s.WithOpName("dims"), DT_INT32);
+  auto value = ops::Placeholder(s.WithOpName("value"), tf_type_);
+  auto fill = ops::Fill(s.WithOpName("my_fill"), dims, value);
+  const NodeDef& node_def = fill.operation.node()->def();
+
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    Reset();
+    // random data
+    AddTestWeights("dims", {2}, {2, 2}, DT_INT32);
+    AddTestWeights("value", {1}, {42.0}, tf_type_);
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Conversion for Fill is not implemented in"
+                               "implicit batch mode");
+    return;
+  }
+
+  std::vector<std::vector<int>> output_dims_params = {
+      {8}, {8, 2, 4}, {32, 32, 3200}};
+  std::vector<std::vector<int>> value_dims_params = {{}, {1}};
+
+  float val = 42.0;
+  Status status = Status::OK();
+  for (bool dims_is_tensor : {true, false}) {
+    for (bool value_is_tensor : {true, false}) {
+      for (auto output_dims : output_dims_params) {
+        for (auto value_dims : value_dims_params) {
+          Reset();
+          std::vector<int32> dims_dims = {output_dims.size()};
+          if (dims_is_tensor) {
+            AddTestTensor("dims", dims_dims, DT_INT32, output_dims, dims_dims);
+          } else {
+            AddTestWeights("dims", dims_dims, output_dims, DT_INT32);
+          }
+          if (value_is_tensor) {
+            AddTestTensor("value", value_dims, tf_type_, {val});
+          } else {
+            AddTestWeights("value", value_dims, {val}, tf_type_);
+          }
+          size_t nb_el = 1;
+          for (auto d : output_dims) {
+            nb_el *= d;
+          }
+          std::vector<float> expected_output(nb_el, val);
+          TestOpConverter("my_fill", node_def, output_dims, status, status,
+                          ElementsAreArray(expected_output));
+        }
+      }
+    }
+  }
+}
+
+#endif  // IS_TRT_VERSION_GE(8, 2, 0, 0)
+
+#if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
+
+TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
+  // Get the NodeDef for CombinedNMS.
+  auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
+                            bool pad_per_class = false) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), tf_type);
+    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), tf_type);
+    auto max_output_size_per_class =
+        ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
+    auto max_total_size =
+        ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
+    auto iou_threshold =
+        ops::Placeholder(s.WithOpName("iou_threshold"), tf_type);
+    auto score_threshold =
+        ops::Placeholder(s.WithOpName("score_threshold"), tf_type);
+    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs()
+                         .PadPerClass(pad_per_class)
+                         .ClipBoxes(clip_boxes);
+
+    auto nms_op = ops::CombinedNonMaxSuppression(
+        s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
+        max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, nms_attrs);
+    return nms_op.operation.node()->def();
+  };
+
+  struct TestParams {
+    const std::string description;
+    const std::vector<int32> boxes_tensor_dims;
+    const std::vector<int32> scores_tensor_dims;
+    const std::vector<float> boxes_values;
+    const std::vector<float> scores_values;
+    const int32 max_output_size_per_class;
+    const int32 max_total_size;
+    const float iou_threshold;
+    const float score_threshold;
+    bool pad_per_class;
+    bool clip_boxes;
+    const std::vector<std::vector<int32>> expected_output_dims;
+    const std::vector<float> exp_boxes;
+    const std::vector<float> exp_scores;
+    const std::vector<float> exp_classes;
+    const std::vector<float> exp_num_detections;
+    Status conversion_status;
+    Status runtime_status;
+  };
+
+  Status conv_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Unimplemented(
+                "Implict batch mode not supported with CombinedNMS")
+          : Status::OK();
+
+  std::vector<TestParams> params = {
+      TestParams{"Test 1: clip boxes",
+                 {1, 1, 3, 4},  // boxes dims
+                 {1, 1, 3},     // scores dims
+                                // boxes values:
+                 {0, 0, 0.3, 1.4, 0, 0, 0.3, 1.4, 0, 0, 0.3, 1.4},
+                 {0.4, 0.7, 0.3},  // scores values
+                 3,                // max_output_size_per_class
+                 2,                // max_total_size
+                 0.1,              // IOU threshold
+                 0,                // score_threshold
+                 false,            // pad_per_class
+                 true,             // clip_boxes
+                 {{1, 2, 4},       // expected_nmsed_boxes_dims
+                  {1, 2},          // expected_nmsed_scores_dims
+                  {1, 2},          // expected_nmsed_classes_dims
+                  {1}},            // expected_valid_detections_dims
+                                   // exp_boxes_values:
+                 {0, 0, 0.3, 1.0, 0, 0, 0.3, 1.0},
+                 {0.7, 0.4},  // exp_scores
+                 {1, 0},      // exp_classes
+                 {2},         // exp_num_detections
+                 conv_status},
+      TestParams{
+          "Test 2: iou threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.7,              // IOU threshold
+          0,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 3, 2, 1},  // exp_scores
+          {0, 0, 0, 0},  // exp_classes
+          {4},           // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 3: score threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.1,              // IOU threshold
+          2,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 0, 0, 0, 0, 0, 0, 0, 0},
+          {5, 3, 0, 0},  // exp_scores
+          {0, 0, 0, 0},  // exp_classes
+          {2},           // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 4: per class size and pad",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 2},     // scores dims
+                         // boxes values:
+          {0, 0, 5, 10, 0, 1, 5, 11, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          // scores values:
+          {5, 0, 0, 4, 3, 0, 2, 0, 1, 0},
+          1,           // max_output_size_per_class
+          4,           // max_total_size
+          0.1,         // IOU threshold
+          0,           // score threshold
+          true,        // pad_per_class
+          false,       // clip_boxes
+          {{1, 2, 4},  // expected nmsed_boxes_dims
+           {1, 2},     // expected nmsed_scores_dims
+           {1, 2},     // expected_nmsed_classes_dims
+           {1}},       // expected_valid_detections_dims
+                       // exp_boxes_values:
+          {0, 0, 5, 10, 0, 1, 5, 11},
+          {5, 4},  // exp_scores
+          {0, 1},  // exp_classes
+          {2},     // exp_num_detections
+          conv_status},
+      TestParams{
+          "Test 5: different box coordinate order",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 2},     // scores dims
+                         // boxes values:
+          {5, 10, 0, 0, 5, 11, 0, 1, 12, 4, 8, 0, 10, 6, 6, 2, 11, 12, 8, 9},
+          // scores values:
+          {5, 0, 0, 4, 3, 0, 2, 0, 1, 0},
+          1,           // max_output_size_per_class
+          4,           // max_total_size
+          0.1,         // IOU threshold
+          0,           // score threshold
+          true,        // pad_per_class
+          false,       // clip_boxes
+          {{1, 2, 4},  // expected nmsed_boxes_dims
+           {1, 2},     // expected nmsed_scores_dims
+           {1, 2},     // expected_nmsed_classes_dims
+           {1}},       // expected_valid_detections_dims
+                       // exp_boxes_values:
+          {5, 10, 0, 0, 5, 11, 0, 1},
+          {5, 4},  // exp_scores
+          {0, 1},  // exp_classes
+          {2},     // exp_num_detections
+          conv_status},
+  };
+
+  for (auto p : params) {
+    Reset();
+    SCOPED_TRACE(p.description);
+    AddTestTensor("boxes", p.boxes_tensor_dims, p.boxes_values);
+    AddTestTensor("scores", p.scores_tensor_dims, p.scores_values);
+    AddTestWeights<int32>("max_output_size_per_class", {1},
+                          {p.max_output_size_per_class});
+    AddTestWeights<int32>("max_total_size", {1}, {p.max_total_size});
+    AddTestWeights<float>("iou_threshold", {1}, {p.iou_threshold}, tf_type_);
+    AddTestWeights<float>("score_threshold", {1}, {p.score_threshold},
+                          tf_type_);
+
+    auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
+
+    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+                            p.conversion_status, p.runtime_status,
+                            {
+                                ElementsAreArray(p.exp_boxes),
+                                ElementsAreArray(p.exp_scores),
+                                ElementsAreArray(p.exp_classes),
+                                ElementsAreArray(p.exp_num_detections),
+                            },
+                            {tf_type_, tf_type_, tf_type_, DT_INT32});
+  }
+}
+
+#elif IS_TRT_VERSION_GE(7, 1, 3, 0)
+
 TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
   // Get the NodeDef for CombinedNMS.
   auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
@@ -3689,6 +4023,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
                             {tf_type_, tf_type_, tf_type_, DT_INT32});
   }
 }
+
 #endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 template <typename T>
@@ -3716,9 +4051,8 @@ TEST_P(OpConverter_FP32_Test, ConvertActivation) {
     Reset();
     const NodeDef& node_def = CreateUnaryOp<ops::Relu>(tf_type_);
     AddTestWeights<int32>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Relu must be a tensor, at my_unary");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"input\" for Relu must be a tensor");
   }
 
   constexpr float kSeluAlpha = 1.7580993408473768599402175208123f;
@@ -3772,27 +4106,27 @@ TEST_P(OpConverter_FP32_Test, ConvertActivation) {
     }
     Reset();
     NodeDef node_def = op_map[op_name].first(tf_type_);
+    // std::exp in Softplus will overflow for input > 88.
     const std::vector<float> input = {-100, -2, -1, 0, 1, 88};
     AddTestTensor("input", p.input_dims, input);
 
-    // std::exp in Softplus will overflow for input > 88
     std::vector<float> output_values;
     std::transform(input.begin(), input.end(),
                    std::back_inserter(output_values), op_map[op_name].second);
+
     TestOpConverter("my_unary", node_def, p.expected_output_dims, Status::OK(),
-                    Status::OK(), ArrayFloatNear(output_values, 0, false));
+                    Status::OK(),
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+                    // NVBug # 3322482 - Known bug with TRT 8.0 on specific GPU
+                    // architectures
+                    ArrayFloatNear(output_values, 1e-4, false)
+#else
+                    ArrayFloatNear(output_values, 0, false)
+#endif
+    );
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
-
-    // Certain activations should set quantization range automatically.
-    auto ranges = quantization_ranges();
-    if (op_name == "Relu6") {
-      EXPECT_EQ(ranges[output.tensor()], 6.0f);
-    } else if (op_name == "Sigmoid" || op_name == "Tanh" ||
-               op_name == "Softsign") {
-      EXPECT_EQ(ranges[output.tensor()], 1.0f);
-    }
   }
 }
 
@@ -3811,7 +4145,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
     AddTestWeights<int32>("weights", {1}, {1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"input\" for ExpandDims must be a "
-                               "tensor, at my_expanddims");
+                               "tensor");
   }
   {
     // Axis is a tensor, should fail.
@@ -3820,7 +4154,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
     AddTestTensor("weights", {3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"axis\" for ExpandDims must be a "
-                               "constant, at my_expanddims");
+                               "constant");
   }
   std::vector<TestParamBase> test_params = {
       TestParamBase{{1, 1, 2, 3},
@@ -3830,7 +4164,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                     trt_mode_ == TrtTestMode::kImplicitBatch
                         ? Status(error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension, at my_expanddims")
+                                 "batch dimension")
                         : Status::OK()},
       TestParamBase{{1, 1, 2, 3},
                     {},
@@ -3839,7 +4173,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                     trt_mode_ == TrtTestMode::kImplicitBatch
                         ? Status(error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension, at my_expanddims")
+                                 "batch dimension")
                         : Status::OK()},
       TestParamBase{{1, 1, 2, 3},
                     {},
@@ -3847,14 +4181,14 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                     {5},
                     Status(error::INVALID_ARGUMENT,
                            "Axis value of 5 is out of bounds, must be in range"
-                           " [-5, 5), at my_expanddims")},
+                           " [-5, 5)")},
       TestParamBase{{1, 1, 2, 3},
                     {},
                     {},
                     {-6},
                     Status(error::INVALID_ARGUMENT,
                            "Axis value of -6 is out of bounds, must be in range"
-                           " [-5, 5), at my_expanddims")},
+                           " [-5, 5)")},
       TestParamBase{{1, 2, 3}, {}, {1, 1, 2, 3}, {1}},
       TestParamBase{{1, 2, 3}, {}, {1, 1, 2, 3}, {-3}},
       TestParamBase{{1, 2, 3}, {}, {1, 2, 3, 1}, {3}},
@@ -3929,8 +4263,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
           trt_mode_ == TrtTestMode::kExplicitBatch
               ? Status::OK()
               : Status{error::UNIMPLEMENTED,
-                       "Squeeze is not implemented for empty squeeze_dims, at "
-                       "my_squeeze"}},
+                       "Squeeze is not implemented for empty squeeze_dims"}},
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},
@@ -3938,7 +4271,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
                     use_implicit_batch
                         ? Status{error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension, at my_squeeze"}
+                                 "batch dimension"}
                         : Status::OK()},
       TestParamBase{{1, 2, 1, 3},
                     {},
@@ -3947,7 +4280,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
                     use_implicit_batch
                         ? Status{error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension, at my_squeeze"}
+                                 "batch dimension"}
                         : Status::OK()},
       TestParamBase{
           {1, 1, 2, 3},
@@ -3955,16 +4288,15 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
           {},
           {4},
           Status{error::INVALID_ARGUMENT,
-                 "Axis value of 4 is out of bounds, must be in range [-4, 4), "
-                 "at my_squeeze"}},
+                 "Axis value of 4 is out of bounds, must be in range [-4, 4)"}},
       TestParamBase{
           {1, 1, 2, 3},
           {},
           {},
           {-5},
-          Status{error::INVALID_ARGUMENT,
-                 "Axis value of -5 is out of bounds, must be in range [-4, 4), "
-                 "at my_squeeze"}},
+          Status{
+              error::INVALID_ARGUMENT,
+              "Axis value of -5 is out of bounds, must be in range [-4, 4)"}},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {1}},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {-3}},
       TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {3}},
@@ -3983,7 +4315,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
       {2},
       Status{error::INVALID_ARGUMENT,
              "Dimension 2 with size 2 cannot be squeezed because it must be "
-             "size 1, at my_squeeze"}};
+             "size 1"}};
 
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     // In this test we try to squeeze axis=2 which has size > 1. In dynamic
@@ -4040,7 +4372,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"input\" for StridedSlice must "
-                               "be a tensor, at my_strided_slice");
+                               "be a tensor");
   }
   {
     // Begin, end, strides are tensors, should fail.
@@ -4052,8 +4384,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
     AddTestTensor("strides", {4});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"begin\" for StridedSlice must be a constant, at "
-        "my_strided_slice");
+        "The input \"begin\" for StridedSlice must be a constant");
   }
 
   struct TestParams {
@@ -4084,28 +4415,28 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
   // Same input is used for all tests.
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
-  Status batch_conv_status =
+  Status modified_batch_dim_status =
       (trt_mode_ == TrtTestMode::kImplicitBatch)
           ? errors::Unimplemented(
                 "TensorRT does not allow modifications to "
-                "the batch dimension, at my_strided_slice")
+                "the batch dimension")
           : Status::OK();
   std::vector<TestParams> params = {
       // Modify batch dim, should fail in implicit batch mode.
-      TestParams{
-          /*input_dims=*/{2, 1, 1, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{1, 1, 1, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 1, 2},
-          /*expected_output=*/{1, 2},
-          batch_conv_status,
-      },
+      TestParams{/*input_dims=*/{2, 1, 1, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{1, 1, 1, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 1, 2},
+                 /*expected_output=*/{1, 2},
+                 /*conversion_status=*/modified_batch_dim_status,
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{}},
       // Unknown batch size without end_mask.
       TestParams{
           /*input_dims=*/{2, 1, 1, 3},
@@ -4119,11 +4450,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
-          batch_conv_status,
+          modified_batch_dim_status,
           Status::OK(),
-          {-1, 1, 1, 3},
+          /*partial_input_dims=*/{-1, 1, 1, 3},
       },
-      // Unknown batch size but using end_mask, ok.
+      // Test Case 2: Unknown batch size with end_mask.
       TestParams{
           /*input_dims=*/{2, 1, 1, 3},
           /*begin=*/{0, 0, 0, 0},
@@ -4138,24 +4469,25 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output=*/{1, 2, 4, 5},
           Status::OK(),
           Status::OK(),
-          {-1, 1, 1, 3},
+          /*partial_input_dims=*/{-1, 1, 1, 3},
       },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 2, 0},
-          /*end=*/{1, 1, 0, 3},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/0,
-          /*end_mask=*/0,
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{},
-          /*expected_output=*/{},
-          errors::InvalidArgument("\"size\" cannot be negative for "
-                                  "StridedSlice"),
-      },
-      // 2D Crop.
+      // Invalid parameters: end[2] < begin[2]
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 2, 0},
+                 /*end=*/{1, 1, 0, 3},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/0,
+                 /*end_mask=*/0,
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{},
+                 /*expected_output=*/{},
+                 errors::InvalidArgument("\"size\" cannot be negative for "
+                                         "StridedSlice"),
+                 Status::OK(),
+                 /*partial_input_dims=*/{}},
+      // Slice on the last two dimensions. All dimensions are static.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 0, 0},
@@ -4169,6 +4501,27 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
       },
+      // Slice on the last two dimensions. The slice is fully
+      // specified for the dynamic dimensions.
+      TestParams{
+          /*input_dims=*/{1, 1, 2, 3},
+          /*begin=*/{0, 0, 0, 0},
+          /*end=*/{0, 0, 1, 2},
+          /*strides=*/{1, 1, 1, 1},
+          /*begin_mask=*/get_mask({0, 0, 0, 0}),
+          /*end_mask=*/get_mask({1, 1, 0, 0}),
+          /*ellipsis_mask=*/0,
+          /*new_axis_mask=*/0,
+          /*shrink_axis_mask=*/0,
+          /*expected_output_dims=*/{1, 1, 1, 2},
+          /*expected_output=*/{1, 2},
+          Status::OK(),
+          Status::OK(),
+          /*partial_input_dims=*/{1, 1, -1, -1},
+      },
+      // End mask is provided on all dimensions. This should override the fact
+      // that the end value is 0. For dynamic shape, it tests
+      // that we can infer tensor size when "end mask" is provided.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1, 1},
@@ -4181,7 +4534,12 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
+          Status::OK(),
+          Status::OK(),
+          /*partial_input_dims=*/{1, 1, -1, -1},
       },
+      // End mask is provided for the batch dimension to overwrite the end value
+      // 0 for that dimension.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1, 1},
@@ -4195,60 +4553,73 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
       },
-      // 2D crop with negative stride
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 1, 2},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, 1, -1, -1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 1, 2},
-          /*expected_output=*/{6, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 1, 1},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, 1, -1, -1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 2},
-          /*expected_output=*/{5, 4, 2, 1},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, 1, -1, -1},
-          /*begin_mask=*/get_mask({0, 0, 1, 1}),
-          /*end_mask=*/get_mask({1, 1, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 1, 2},
-          /*expected_output=*/{6, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, -1, -1, -1},
-          /*begin_mask=*/get_mask({1, 1, 1, 1}),
-          /*end_mask=*/get_mask({1, 1, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 3},
-          /*expected_output=*/{6, 5, 4, 3, 2, 1},
-      },
-      // 2D Crop, with transpose.
+      // Test slice on two dimensions with negative stride, without end_mask set
+      // on crop dimensions.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 1, 2},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, 1, -1, -1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 1, 2},
+                 /*expected_output=*/{6, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, -1, -1}},
+      // Test slice on two dimensions with negative stride, with end_mask set on
+      // crop dimensions. In dynamic shape mode, this tests the runtime size
+      // computation.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 1, 1},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, 1, -1, -1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{5, 4, 2, 1},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, -1, -1}},
+      // Test slice on two dimensions with negative stride, with begin_mask set
+      // on the crop dimensions. In dynamic shape mode, this tests the runtime
+      // size computation.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, 1, -1, -1},
+                 /*begin_mask=*/get_mask({0, 0, 1, 1}),
+                 /*end_mask=*/get_mask({1, 1, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 1, 2},
+                 /*expected_output=*/{6, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, -1, -1}},
+      // Test the reversal of all non-batch dimensions by providing the begin
+      // masks, end masks, and -1 as strides.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, -1, -1, -1},
+                 /*begin_mask=*/get_mask({1, 1, 1, 1}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 3},
+                 /*expected_output=*/{6, 5, 4, 3, 2, 1},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, -1, -1, -1}},
+      // Slice on dimensions 1 and 2.
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
           /*begin=*/{0, 0, 0, 0},
@@ -4262,6 +4633,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 1},
           /*expected_output=*/{1, 2},
       },
+      // Slice on dimensions 1 and 2.
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
           /*begin=*/{0, 1, 1, 0},
@@ -4275,6 +4647,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 1},
           /*expected_output=*/{5, 6},
       },
+      // Slice on dimensions 1 and 3.
       TestParams{
           /*input_dims=*/{1, 2, 1, 3},
           /*begin=*/{0, 0, 0, 0},
@@ -4288,6 +4661,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
       },
+      // Slice on dimensions 1 and 3 with non-zero slice start.
       TestParams{
           /*input_dims=*/{1, 2, 1, 3},
           /*begin=*/{0, 1, 0, 1},
@@ -4301,7 +4675,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
       },
-      // 2D Crop, with reshape.
+      // Slice on 3D tensor.
       TestParams{
           /*input_dims=*/{1, 2, 3},
           /*begin=*/{0, 0, 0},
@@ -4315,33 +4689,38 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2},
           /*expected_output=*/{1, 2},
       },
-      TestParams{
-          /*input_dims=*/{1, 2, 3},
-          /*begin=*/{0, 1, 1},
-          /*end=*/{0, 0, 0},
-          /*strides=*/{1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2},
-          /*expected_output=*/{5, 6},
-      },
-      // 1D Crop.
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 0, 0, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 2},
-          /*expected_output=*/{1, 2, 4, 5},
-      },
+      // Slice on 3D tensor using end_mask. For dynamic shape, all
+      // dimensions are dynamic.
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*begin=*/{0, 1, 1},
+                 /*end=*/{0, 0, 0},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2},
+                 /*expected_output=*/{5, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1}},
+      // Slice on 3D tensor using end_mask. For dynamic shape, all
+      // dimensions are dynamic.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 0, 0, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 2, 4, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1, 0},
@@ -4355,20 +4734,21 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 3},
           /*expected_output=*/{4, 5, 6},
       },
-      // 1D Crop, with transpose.
-      TestParams{
-          /*input_dims=*/{1, 2, 3, 1},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 1, 0, 0},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 0, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 3, 1},
-          /*expected_output=*/{1, 2, 3},
-      },
+      // 1D simple slice.
+      TestParams{/*input_dims=*/{1, 2, 3, 1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 1, 0, 0},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 3, 1},
+                 /*expected_output=*/{1, 2, 3},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
           /*begin=*/{0, 1, 0, 0},
@@ -4382,20 +4762,21 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 3, 1},
           /*expected_output=*/{4, 5, 6},
       },
-      // 1D Crop, with reshape.
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 3},
-          /*strides=*/{1, 1},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{1, 2, 3},
-      },
+      // Simple 1D slice on 2D input.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0},
+                 /*end=*/{0, 3},
+                 /*strides=*/{1, 1},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{1, 2, 3},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
       TestParams{
           /*input_dims=*/{1, 1, 6},
           /*begin=*/{0, 0, 2},
@@ -4463,113 +4844,125 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
       },
-      // Strides
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 5},
-          /*strides=*/{1, 2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{1, 3, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 6},
-          /*strides=*/{1, 2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{1, 3, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 1},
-          /*end=*/{0, 6},
-          /*strides=*/{1, 2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{2, 4, 6},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 2},
-          /*end=*/{0, 6},
-          /*strides=*/{1, 3},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 2},
-          /*expected_output=*/{3, 6},
-      },
-      // Negative non -1 strides
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 5},
-          /*end=*/{0, 0},
-          /*strides=*/{1, -2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{6, 4, 2},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 5},
-          /*end=*/{0, 0},
-          /*strides=*/{1, -2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{6, 4, 2},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 5},
-          /*end=*/{0, 1},
-          /*strides=*/{1, -3},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 2},
-          /*expected_output=*/{6, 3},
-      },
-      // ellipsis_mask
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 1},
-          /*end=*/{0, 2},
-          /*strides=*/{1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
+      // Stride values >= 2.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0},
+                 /*end=*/{0, 5},
+                 /*strides=*/{1, 2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{1, 3, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0},
+                 /*end=*/{0, 6},
+                 /*strides=*/{1, 2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{1, 3, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 1},
+                 /*end=*/{0, 6},
+                 /*strides=*/{1, 2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{2, 4, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 2},
+                 /*end=*/{0, 6},
+                 /*strides=*/{1, 3},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 2},
+                 /*expected_output=*/{3, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      // Stride values <= -2.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 5},
+                 /*end=*/{0, 0},
+                 /*strides=*/{1, -2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{6, 4, 2},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 5},
+                 /*end=*/{0, 0},
+                 /*strides=*/{1, -2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{6, 4, 2},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 5},
+                 /*end=*/{0, 1},
+                 /*strides=*/{1, -3},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 2},
+                 /*expected_output=*/{6, 3},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      // Ellipsis_mask causes leading dimensions to be ignored. Begin, end,
+      // stride, and mask values of size 2 should be interpreted as applying to
+      // the last 2 dimensions, while the ellipsis applies to the first 2 (for a
+      // 4D input tensor).
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 1},
+                 /*end=*/{0, 2},
+                 /*strides=*/{1, 1},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({0, 0}),
+                 /*ellipsis_mask=*/get_mask({1, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Ellipsis_mask on single inner dimension.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1},
@@ -4583,106 +4976,155 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 1},
           /*expected_output=*/{2, 5},
       },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{0, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{1, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0, 1},
-          /*end=*/{0, 1, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
-      // shrink_axis_mask
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{0, 0, 0, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({1, 1, 1, 0}),
-          /*end_mask=*/get_mask({1, 1, 1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
-          /*expected_output_dims=*/{1, 1, 2},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{0, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({1, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 0, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
-          /*expected_output_dims=*/{1, 2},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 1},
-          /*strides=*/{1, 1},
-          /*begin_mask=*/get_mask({1, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/get_mask({0, 1}),
-          /*expected_output_dims=*/{1},
-          /*expected_output=*/{1},
-      },
+      // Ellipsis_mask on single leading dimension.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 1},
+                 /*end=*/{0, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Ellipsis_mask on single inner dimension overrides that dimensions'
+      // begin/end values.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 1, 0, 1},
+                 /*end=*/{1, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Ellipsis mask on single leading dimension should throw out extra
+      // leading values of begin/end vectors so that only the last N-1 values of
+      // each remain.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0, 1},
+                 /*end=*/{0, 1, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Shrink-axis mask set for the final dimension of final size 1 should
+      // remove that dimension from the final shape.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 1},
+                 /*end=*/{0, 0, 0, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({1, 1, 1, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
+                 /*expected_output_dims=*/{1, 1, 2},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, 2, -1}},
+      // Shrink-axis mask set for multiple dimensions that have a final size of
+      // 1 should remove those dimensions from the final shape.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 1},
+                 /*end=*/{0, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({1, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
+                 /*expected_output_dims=*/{1, 2},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, 2, -1}},
+      // Shrink-axis mask set for multiple sequential dimensions of final size 1
+      // should
+      // remove those dimensions from the final shape.
+      TestParams{/*input_dims=*/{6, 1, 1},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 0},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({1, 1, 1}),
+                 /*end_mask=*/get_mask({1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/get_mask({0, 1, 1}),
+                 /*expected_output_dims=*/{6},
+                 /*expected_output=*/{1, 2, 3, 4, 5, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1}},
+      // The new_axis_mask parameter is not supported.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 0},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/
+                 get_mask({0, 1, 1}),
+                 /*end_mask=*/get_mask({0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/get_mask({1, 0, 0}),
+                 /*shrink_axis_mask=*/get_mask({0, 0, 0}),
+                 /*expected_output_dims=*/{1, 1, 6},
+                 /*expected_output=*/{1, 1, 6},
+                 /*conversion_status=*/
+                 errors::Unimplemented(
+                     "new_axis_mask is not supported for StridedSlice"),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 6}},
   };
 
+  int i = 0;
   for (auto p : params) {
-    if (trt_mode_ == TrtTestMode::kDynamicShape ||
-        (trt_mode_ == TrtTestMode::kExplicitBatch &&
-         !HasStaticShape(p.partial_input_dims))) {
-      p.conversion_status = errors::Unimplemented(
-          "Strided slice op not implemented for dynamic shape input");
-    }
     Reset();
     NodeDef node_def = get_strided_slice_nodedef(
         tf_type_, p.begin_mask, p.end_mask, p.ellipsis_mask, p.new_axis_mask,
         p.shrink_axis_mask);
 
-    VLOG(2) << "Preparing test case with dims " << DebugString(p.input_dims);
-    if (p.partial_input_dims.empty()) {
-      AddTestTensor("input", p.input_dims, ok_input);
-    } else {
-      AddTestTensor("input", p.input_dims, tf_type_, ok_input,
-                    p.partial_input_dims);
+    VLOG(2) << "Preparing test case " << i++ << " with dims "
+            << DebugString(p.input_dims);
+
+    switch (trt_mode_) {
+      case TrtTestMode::kImplicitBatch: {
+        AddTestTensor("input", p.input_dims, ok_input);
+        break;
+      }
+      case TrtTestMode::kExplicitBatch: {
+        AddTestTensor("input", p.input_dims, ok_input);
+        break;
+      }
+      case TrtTestMode::kDynamicShape: {
+        if (p.partial_input_dims.size() > 0) {
+          AddTestTensor("input", p.input_dims, tf_type_, ok_input,
+                        p.partial_input_dims);
+
+        } else {
+          AddTestTensor("input", p.input_dims, tf_type_, ok_input,
+                        p.input_dims);
+        }
+        break;
+      }
     }
+
     VLOG(2) << "Adding weights begin: " << DebugString(p.begin)
             << ", end: " << DebugString(p.end)
             << ", strides: " << DebugString(p.strides);
@@ -4710,6 +5152,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
 
   struct TestParams {
     std::vector<int> input_dims;
+    std::vector<int>
+        partial_input_dims;  // Symbolic shape in dynamic shape mode.
     std::vector<int> begin;
     std::vector<int> size;
     std::vector<int> expected_output_dims;
@@ -4718,104 +5162,139 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
     Status runtime_status;
   };
 
-  Status conv_dynamic =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "Strided slice op not implemented for dynamic shape input")
-          : Status::OK();
-  Status conv_dynamic2 =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "Input dims must be defined for size = -1, at my_slice")
-          : Status::OK();
   std::vector<TestParams> params = {
-      // Begin is below bounds, should fail.
-      TestParams{
-          {1, 1, 2, 3},
-          {0, 0, -1, 0},
-          {1, 1, 2, 3},
-          {},
-          {},
-          trt_mode_ == TrtTestMode::kDynamicShape
-              ? conv_dynamic
-              : errors::InvalidArgument("\"begin\" for dimension 2 in Slice "
-                                        "is out of range, at my_slice")},
-      // Batch dimension is modified, should fail in implicit batch mode.
-      TestParams{
-          {2, 1, 1, 3},
-          {0, 0, 0, 0},
-          {1, 1, 1, 3},
-          {1, 1, 1, 3},
-          {1, 2, 3},
-          trt_mode_ == TrtTestMode::kImplicitBatch
-              ? errors::Unimplemented("TensorRT does not allow modifications"
-                                      " to the batch dimension, at my_slice")
-              : Status::OK()},
+      // Slice start points must always be >= 0.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, -1, 0},
+                 /*size=*/{1, 1, 2, 3},
+                 /*expected_output_dims=*/{},
+                 /*expected_output=*/{},
+                 /*conversion_status=*/
+                 errors::InvalidArgument("\"begin\" in Slice "
+                                         "is out of range")},
+      // In implicit batch mode, slicing the batch dimension is not allowed.
+      TestParams{/*input_dims=*/{2, 1, 1, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*size=*/{1, 1, 1, 3},
+                 /*expected_output_dims=*/{1, 1, 1, 3},
+                 /*expected_output=*/{1, 2, 3},
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? errors::Unimplemented(
+                           "TensorRT does not allow modifications to the batch "
+                           "dimension in implicit batch mode")
+                     : Status::OK()},
       // Dynamic batch size but using size[0] of -1, ok.
       TestParams{{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {-1, 1, 2, 2},
                  {1, 1, 2, 2},
                  {1, 2, 4, 5},
-                 conv_dynamic2},
-      // OK test: but converter fails in dynamic shape mode
+                 Status::OK()},
       TestParams{{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {-1, -1, -1, -1},
                  {1, 1, 2, 3},
                  {1, 2, 3, 4, 5, 6},
-                 conv_dynamic2},
+                 Status::OK()},
       TestParams{{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {1, 1, 2, 3},
                  {1, 1, 2, 3},
                  {1, 2, 3, 4, 5, 6}},
       TestParams{{1, 1, 2, 3},
-                 {0, 0, 0, 0},
-                 {1, -1, 2, 2},
-                 {1, 1, 2, 2},
-                 {1, 2, 4, 5},
-                 conv_dynamic2},
-      TestParams{{1, 6}, {0, 1}, {1, 5}, {1, 5}, {2, 3, 4, 5, 6}},
-      TestParams{{1, 6}, {0, 1}, {-1, 3}, {1, 3}, {2, 3, 4}, conv_dynamic2},
-      //
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*size=*/{1, -1, 2, 2},
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 2, 4, 5},
+                 Status::OK()},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*partial_input_dims=*/{-1, -1},
+                 /*being=*/{0, 1},
+                 /*size=*/{1, 5},
+                 /*expected_output_dims=*/{1, 5},
+                 /*expected_output=*/{2, 3, 4, 5, 6}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*partial_input_dims=*/{-1, -1},
+                 /*begin=*/{0, 1},
+                 /*size=*/{-1, 3},
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{2, 3, 4}, Status::OK()},
       // In dynamic shape mode we do not know the input shape during
       // conversion, therfore we cannot check out of bound access.
       TestParams{
           {1, 1, 2, 3},
-          {0, 0, 3, 0},
-          {1, 1, 2, 3},
-          {},
-          {},
-          trt_mode_ == TrtTestMode::kDynamicShape
-              ? Status::OK()
-              : errors::InvalidArgument("\"begin\" for dimension 2 in Slice "
-                                        "is out of range, at my_slice"),
-          errors::Internal("Internal: Failed to build TensorRT engine")},
-      TestParams{{1, 1, 2, 3},
-                 {0, 0, 0, 0},
-                 {1, 1, 2, -2},
-                 {},
-                 {},
-                 errors::InvalidArgument("Invalid size value at my_slice")},
-      TestParams{
-          {1, 1, 2, 3},
-          {0, 0, 0, 0},
-          {1, 1, 3, 2},
+          /*partial_input_dims=*/{-1, -1, -1, -1},
+          /*begin=*/{0, 0, 3, 0},
+          /*end=*/{1, 1, 2, 3},
           {},
           {},
           trt_mode_ == TrtTestMode::kDynamicShape
               ? Status::OK()
               : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
-                                        "2 in Slice is out of range, at "
-                                        "my_slice"),
+                                        "2 in Slice is out of range"),
+          errors::Internal("Internal: Failed to build TensorRT engine")},
+      // The slice operation should expect that the "size[i]" values are not
+      // less than -1.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*size=*/{1, 1, 2, -2},
+                 {},
+                 {},
+                 errors::InvalidArgument("\"size\" in Slice is out of range")},
+      TestParams{
+          /*input_dims=*/{1, 1, 2, 3},
+          /*partial_input_dims=*/{-1, -1, -1, -1},
+          /*begin=*/{0, 0, 0, 0},
+          /*size=*/{1, 1, 3, 2},
+          /*expected_output_dims=*/{},
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kDynamicShape
+              ? Status::OK()
+              : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
+                                        "2 in Slice is out of range"),
           errors::Internal("Internal: Failed to build TensorRT engine")},
   };
 
+  int i = 0;
   for (auto p : params) {
     Reset();
     NodeDef node_def = get_slice_nodedef(tf_type_);
-    AddTestTensor("input", p.input_dims, {1, 2, 3, 4, 5, 6});
+
+    VLOG(2) << "Preparing test case " << i++ << " with dims "
+            << DebugString(p.input_dims);
+
+    // The input tensor always has size 6.
+    std::vector<int> input_vals = {1, 2, 3, 4, 5, 6};
+
+    switch (trt_mode_) {
+      case TrtTestMode::kImplicitBatch: {
+        AddTestTensor("input", p.input_dims, input_vals);
+        break;
+      }
+      case TrtTestMode::kExplicitBatch: {
+        AddTestTensor("input", p.input_dims, input_vals);
+        break;
+      }
+      case TrtTestMode::kDynamicShape: {
+        if (p.partial_input_dims.size() > 0) {
+          AddTestTensor("input", p.input_dims, tf_type_, input_vals,
+                        p.partial_input_dims);
+
+        } else {
+          AddTestTensor("input", p.input_dims, tf_type_, input_vals,
+                        p.input_dims);
+        }
+        break;
+      }
+    }
+
     AddTestWeights<int32>("begin", {static_cast<int>(p.begin.size())}, p.begin);
     AddTestWeights<int32>("size", {static_cast<int>(p.size.size())}, p.size);
 
@@ -4850,7 +5329,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Conv2D must be a tensor, at my_conv2d");
+        "The input \"input\" for Conv2D must be a tensor");
   }
   {
     // Filter is tensor, should fail.
@@ -4860,7 +5339,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestTensor("weights", {3, 3, 1, 1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"filter\" for Conv2D must be a constant, at my_conv2d");
+        "The input \"filter\" for Conv2D must be a constant");
   }
   {
     // Filter is not 4D, should fail.
@@ -4868,9 +5347,8 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     NodeDef node_def = get_conv2d_nodedef();
     AddTestTensor("input", {1, 1, 2, 3});
     AddTestWeights<float>("weights", {3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Conv2D expects kernel of dimension 4, at my_conv2d");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Conv2D expects kernel of dimension 4");
   }
   {
     // Dilations is not 4D, should fail.
@@ -4881,7 +5359,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution dilations field must specify 4 dimensions, at my_conv2d");
+        "Convolution dilations field must specify 4 dimensions");
   }
   {
     // Dilation value is not 1 for channel, should fail.
@@ -4892,7 +5370,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions, at my_conv2d");
+                               "dimensions");
   }
   {
     // Dilation value is not 1 for channel (NHWC), should fail.
@@ -4903,7 +5381,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions, at my_conv2d");
+                               "dimensions");
   }
   {
     // Strides is not 4D, should fail.
@@ -4914,7 +5392,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution strides field must specify 4 dimensions, at my_conv2d");
+        "Convolution strides field must specify 4 dimensions");
   }
   {
     // Stride value is not 1 for channel, should fail.
@@ -4925,7 +5403,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Stride must be 1 for batch and channel dimensions, at my_conv2d");
+        "Stride must be 1 for batch and channel dimensions");
   }
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     Reset();
@@ -4935,9 +5413,8 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     TF_ASSERT_OK(TfTypeToTrtType(tf_type_, &trt_type));
     AddTestTensorWithTFDims("input", {-1, -1, -1, -1}, trt_type);
     AddTestWeights<float>("weights", {1, 2, 1, 1}, {-1, 1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Channel dimension must be static, at my_conv2d");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Channel dimension must be static");
   }
 
   struct TestParams {
@@ -5078,7 +5555,9 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
     std::vector<int> expected_output_dims;
     std::vector<float> expected_output;
     Status conversion_status;
-    bool unknown_channel;
+    // For dynamic shape mode, we must use the partial_input_dims for
+    // creating the test tensor if any of the input_dims are -1.
+    std::vector<int> partial_input_dims;
   };
 
   // Ok.
@@ -5141,10 +5620,46 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
                  {1, 1, 2, 2},
                  {},
                  errors::Unimplemented("Dilation with Conv2DBackpropInput "
-                                       "(conv2d_transpose) is not supported, "
-                                       "at my_conv2d_backprop_input")},
+                                       "(conv2d_transpose) is not supported")},
   };
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
+    params.push_back(
+        TestParams{/*input_dims=*/{1, 1, 2, 2},
+                   /*input=*/{0, 1, 2, 3},
+                   /*filter_dims=*/{1, 2, 1, 1},
+                   /*filter=*/{-1, 1},
+                   /*strides=*/{1, 1, 1, 2},
+                   /*padding=*/"SAME",
+                   /*data_format=*/"NCHW",
+                   /*dilations=*/{1, 1, 1, 1},
+                   /*expected_output_dims=*/{1, 1, 2, 4},
+                   /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
+                   errors::InvalidArgument("Channel dimension must be static"),
+                   /*partial input dims=*/{1, -1, 2, 2}});
+    // Test dynamic  batch dimension.
+    params.push_back(
+        TestParams{/*input_dims=*/{2, 1, 2, 2},
+                   /*input=*/
+                   // clang-format off
+                      {0, 1, 2, 3,
+                       3, 2, 1, 0},
+                   // clang-format on
+                   /*filter_dims=*/{1, 2, 1, 1},
+                   /*filter=*/{-1, 1},
+                   /*strides=*/{1, 1, 1, 2},
+                   /*padding=*/"SAME",
+                   /*data_format=*/"NCHW",
+                   /*dilations=*/{1, 1, 1, 1},
+                   /*expected_output_dims=*/{2, 1, 2, 4},
+                   /*expected_output=*/
+                   // clang-format off
+                   { 0, 0, -1, 1, -2, 2, -3, 3,
+                    -3, 3, -2, 2, -1, 1, 0, 0},
+                   // clang-format on
+                   /*conversion_status=*/Status::OK(),
+                   /*partial input dims=*/{-1, 1, 2, 2}});
+
+    // Test dynamic height and width.
     params.push_back(TestParams{
         /*input_dims=*/{1, 1, 2, 2},
         /*input=*/{0, 1, 2, 3},
@@ -5155,10 +5670,13 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
         /*data_format=*/"NCHW",
         /*dilations=*/{1, 1, 1, 1},
         /*expected_output_dims=*/{1, 1, 2, 4},
-        /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
-        errors::InvalidArgument(
-            "Channel dimension must be static, at my_conv2d_backprop_input"),
-        1});
+        /*expected_output=*/
+        {0, 0, -1, 1, -2, 2, -3, 3},
+        /*conversion_status=*/
+        errors::Unimplemented(
+            "Conv2dBackpropInput does not support input with unknown spatial "
+            "shape"),
+        /*partial input dims=*/{1, 1, -1, -1}});
   }
   for (auto p : params) {
     for (int input_sizes_length : {2, 4}) {
@@ -5166,21 +5684,26 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
       NodeDef node_def = get_conv2d_backprop_input_nodedef(
           tf_type_, p.strides, p.padding, p.data_format, p.dilations);
 
-      std::vector<int> partial_input_shape;
-      if (trt_mode_ == TrtTestMode::kDynamicShape && !p.unknown_channel) {
-        // In dynamic shape mode, AddTestTensor will replace the input tensor
-        // dims with -1, unless we give a non-empty partial_input_shape_tensor.
-        // Having -1 channel dimension is invalid for TRT. We have a single
-        // test to check the converter in that case (p.unknown_channel==true).
-        // For all the other tests, we define here an input with known channel
-        // dimension.
-        partial_input_shape.resize(p.input_dims.size(), -1);
-        int channel_id = (p.data_format == "NCHW") ? 1 : 3;
-        partial_input_shape[channel_id] = p.input_dims[channel_id];
+      switch (trt_mode_) {
+        case TrtTestMode::kImplicitBatch: {
+          AddTestTensor("input", p.input_dims, p.input);
+          break;
+        }
+        case TrtTestMode::kExplicitBatch: {
+          AddTestTensor("input", p.input_dims, p.input);
+          break;
+        }
+        case TrtTestMode::kDynamicShape: {
+          AddTestTensor("input", p.input_dims, tf_type_, p.input,
+                        p.partial_input_dims.size() > 0 ? p.partial_input_dims
+                                                        : p.input_dims);
+          break;
+        }
+        default: {
+          ASSERT_TRUE(false) << "unknown test mode";
+        }
       }
 
-      AddTestTensor("input", p.input_dims, tf_type_, p.input,
-                    partial_input_shape);
       AddTestWeights<float>("weights", p.filter_dims, p.filter, tf_type_);
 
       if (input_sizes_length == 4) {
@@ -5198,21 +5721,14 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
         QCHECK_EQ(2, tf_input_sizes.size());
         AddTestWeights<int>("input_sizes", {2}, tf_input_sizes);
       }
-      Status conv_status =
-          trt_mode_ == TrtTestMode::kDynamicShape
-              ? errors::Unimplemented(
-                    "Conv2dBackpropInput does not support input with unknown "
-                    "shape, at my_conv2d_backprop_input")
-              : p.conversion_status;
 
       TestOpConverter("my_conv2d_backprop_input", node_def,
-                      p.expected_output_dims, conv_status, Status::OK(),
+                      p.expected_output_dims, p.conversion_status, Status::OK(),
                       ElementsAreArray(p.expected_output));
     }
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 // Get the NodeDef for Pack.
 NodeDef GetConv3DNodeDef(std::vector<int> strides = {1, 1, 1, 1, 1},
                          string padding = "SAME", string data_format = "NCDHW",
@@ -5298,114 +5814,112 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     AddTestWeights<float>("weights", {1, 3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Conv3D must be a tensor, at my_conv3d");
+        "The input \"input\" for Conv3D must be a tensor");
   }
   {
     // Filter is tensor, should fail.
     Reset();
     NodeDef node_def = GetConv3DNodeDef();
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
-    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_, InitTestVector<float>(9));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
+    AddTestTensor("weights", {1, 3, 3, 1}, tf_type_,
+                  CreateVectorIota<float>(9));
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
+        "The input \"filter\" for Conv3D must be a constant");
   }
   {
     // Filter is not 5D, should fail.
     Reset();
     NodeDef node_def = GetConv3DNodeDef();
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Conv3D expects kernel of dimension 5, at my_conv3d");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Conv3D expects kernel of dimension 5");
   }
   {
     // Dilations is not 5D, should fail.
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1});
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>(
         "weights", {3, 3, 1, 1, 1},
         {1, 2, 3, 4, 5, 6, 7, 8, 9});  // Dimensions, then values
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution dilations field must specify 5 dimensions, at my_conv3d");
+        "Convolution dilations field must specify 5 dimensions");
   }
   {
     // Dilation value is not 1 for channel, should fail.
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 2, 1, 1, 1});
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions, at my_conv3d");
+                               "dimensions");
   }
   {
     // Dilation value is not 1 for channel (NDHWC), should fail.
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC", {1, 1, 1, 1, 2});
-    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions, at my_conv3d");
+                               "dimensions");
   }
   {
     // Dilation + Conv3DBackpropInputV2, should fail.
     Reset();
     NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
                                         {1, 1, 2, 1, 1}, true);
-    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 2, 3, 1}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     AddTestWeights<int>("input_sizes", {4}, {1, 2, 3, 1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation with Conv3DBackpropInputV2 "
-                               "(conv3d_transpose) is not supported, "
-                               "at my_conv3d");
+                               "(conv3d_transpose) is not supported");
   }
   {
     // Asymmetric+ Conv3DBackpropInputV2, should fail.
     Reset();
     NodeDef node_def = GetConv3DNodeDef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
                                         {1, 1, 1, 1, 1}, true);
-    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, InitTestVector<float>(8));
+    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, CreateVectorIota<float>(8));
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     AddTestWeights<int>("input_sizes", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Asymmetric padding with Conv3DBackpropInputV2 "
-                               "(conv3d_transpose) is not supported, at "
-                               "my_conv3d");
+                               "(conv3d_transpose) is not supported");
   }
   {
     // Strides is not 5D, should fail.
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
-    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, InitTestVector<float>(8));
+    AddTestTensor("input", {1, 2, 2, 2}, tf_type_, CreateVectorIota<float>(8));
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution strides field must specify 5 dimensions, at my_conv3d");
+        "Convolution strides field must specify 5 dimensions");
   }
   {
     // Stride value is not 1 for channel, should fail.
     Reset();
     NodeDef node_def =
         GetConv3DNodeDef({1, 2, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
-    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, InitTestVector<float>(6));
+    AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Stride must be 1 for batch and channel dimensions, at my_conv3d");
+        "Stride must be 1 for batch and channel dimensions");
   }
 
   // Start here
@@ -5542,7 +6056,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
 
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     ok_params.reserve(ok_params.size() + 2);
-    const std::vector<float> common_input = InitTestVector<float>(3 * 3 * 3);
+    const std::vector<float> common_input = CreateVectorIota<float>(3 * 3 * 3);
     // NCDHW - Dynamic Channel - Should fail in kDynamicShape
     ok_params.push_back(Conv3DTestParams{
         /*input_dims=*/{1, 1, 3, 3, 3},
@@ -5558,8 +6072,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
         /*expected_output=*/{},       // ignore, will fail anyway
         /*allow_dynamic_channel_dim=*/true,
         /*validation_status=*/
-        Status{error::INVALID_ARGUMENT,
-               "Channel dimension must be static, at my_conv3d"}});
+        Status{error::INVALID_ARGUMENT, "Channel dimension must be static"}});
     // NDHWC - Dynamic Channel - Should fail in kDynamicShape
     ok_params.push_back(Conv3DTestParams{
         /*input_dims=*/{1, 3, 3, 3, 1},
@@ -5575,15 +6088,13 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
         /*expected_output=*/{},       // ignore, will fail anyway
         /*allow_dynamic_channel_dim=*/true,
         /*validation_status=*/
-        Status{error::INVALID_ARGUMENT,
-               "Channel dimension must be static, at my_conv3d"}});
+        Status{error::INVALID_ARGUMENT, "Channel dimension must be static"}});
   }
 
   for (auto p : ok_params) {
     TestConv3D(this, p);
   }
 }
-#endif
 
 template <typename T>
 NodeDef CreatePoolOp(DataType tf_type, std::vector<int> ksize,
@@ -5633,11 +6144,7 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     }
   };
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   std::vector<int> test_nDims{2, 3};
-#else
-  std::vector<int> test_nDims{2};
-#endif
 
   for (int nDim : test_nDims) {
     // Input is weights, should fail.
@@ -5645,10 +6152,9 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     NodeDef node_def = get_pool_nodedef(tf_type_, nDim);
 
     AddTestWeights<float>("input", {1, 1, 1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               StrCat("The input \"input\" for ", node_def.op(),
-                                      " must be a tensor, at my_pool")
-                                   .c_str());
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        StrCat("The input \"input\" for ", node_def.op(), " must be a tensor"));
   }
 
   struct TestParams {
@@ -5775,9 +6281,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
     Reset();
     AddTestTensor("input", {1, 1, 2, 3});
     AddTestTensor("weights", {1}, DT_INT32, {});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"k\" for TopKV2 must be a constant, at my_topk");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"k\" for TopKV2 must be a constant");
   }
   {
     // Ok.
@@ -5790,6 +6295,180 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
                             Status::OK(), Status::OK(),
                             {ElementsAre(6, 5, 7, 1), ElementsAre(4, 2, 1, 2)},
                             {tf_type_, DT_INT32});
+  }
+}
+
+struct DataFormatVecPermuteTestParams {
+  string dst_format;
+  string src_format;
+  std::vector<int> x_shape;
+  std::vector<int> x;
+  bool x_is_tensor;
+  std::vector<int> expected_output;
+  Status conversion_status;
+};
+
+NodeDef GetDataFormatVecPermuteNodeDef(string dst_format, string src_format,
+                                       std::vector<int>& x_shape) {
+  Scope s = Scope::NewRootScope();
+  PartialTensorShape tensor_shape;
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_INT32);
+  const auto attrs = ops::DataFormatVecPermute::Attrs()
+                         .DstFormat(dst_format)
+                         .SrcFormat(src_format);
+  auto dfvp = ops::DataFormatVecPermute(s.WithOpName("my_dfvp"), x, attrs);
+  return dfvp.operation.node()->def();
+}
+
+TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
+  Status implicit_error = Status{
+      error::UNIMPLEMENTED, "Implicit batch mode not supported, at my_dfvp"};
+
+  std::vector<DataFormatVecPermuteTestParams> test_params = {
+      // 1D case with tensor.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 4, 2, 3},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 1D case with weights.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/false,
+          /*expected_output=*/{1, 4, 2, 3},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 2D case with tensor.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // 2D case with weights.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/false,
+          /*expected_output=*/{1, 2, 7, 8, 3, 4, 5, 6},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Format of size 5.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCDHW",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{5, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{1, 2, 9, 10, 3, 4, 5, 6, 7, 8},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Input of size 2: treat the elements as spatial dimensions.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCWH",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{2, 2},
+          /*x=*/{1, 2, 3, 4},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{3, 4, 1, 2},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Input of size 3: treat the elements as spatial dimensions.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHWD",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{3},
+          /*x=*/{1, 2, 3},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{2, 3, 1},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status::OK()},
+      // Invalid rank, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{2, 2, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "Input must be a vector or matrix, but got rank 3, at "
+                       "my_dfvp"}},
+      // Invalid size for 1D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{3},
+          /*x=*/{1, 2, 3},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "1D input must be of size 2 or 4, but got size 3, at "
+                       "my_dfvp"}},
+      // Invalid first dim for 2D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCDHW",
+          /*src_format=*/"NDHWC",
+          /*x_shape=*/{4, 2},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "First dimension of 2D input must be of size 3 or 5, "
+                       "but got shape (4, 2), at my_dfvp"}},
+      // Invalid second dim for 2D input, should fail.
+      DataFormatVecPermuteTestParams{
+          /*dst_format=*/"NCHW",
+          /*src_format=*/"NHWC",
+          /*x_shape=*/{4, 3},
+          /*x=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+          /*x_is_tensor=*/true,
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? implicit_error
+              : Status{error::INVALID_ARGUMENT,
+                       "Second dimension of 2D input must be of size 2, but "
+                       "got shape (4, 3), at my_dfvp"}},
+  };
+
+  for (auto p : test_params) {
+    Reset();
+    const NodeDef node_def =
+        GetDataFormatVecPermuteNodeDef(p.dst_format, p.src_format, p.x_shape);
+
+    if (p.x_is_tensor) {
+      AddTestTensor("x", p.x_shape, DT_INT32, p.x, p.x_shape);
+    } else {
+      AddTestWeights("x", p.x_shape, p.x, DT_INT32);
+    }
+
+    TestOpConverter("my_dfvp", node_def, p.x_shape, p.conversion_status,
+                    Status::OK(), ElementsAreArray(p.expected_output));
   }
 }
 
@@ -5809,7 +6488,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     AddTestTensor("axis", {1}, DT_INT32, {});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for GatherV2 must be a constant, at my_gather");
+        "The input \"axis\" for GatherV2 must be a constant");
   }
   {
     // Axis is out of bounds, should fail.
@@ -5819,7 +6498,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     AddTestWeights<int32>("axis", {1}, {4});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4), at my_gather");
+                               "range [-4, 4)");
   }
 
   struct TestParams {
@@ -5833,13 +6512,15 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     std::vector<int> expected_output_shape;
     std::vector<int> expected_output;
     bool params_is_tensor;
-    Status status;
+    bool indices_is_tensor;
+    Status conversion_status;
     Status runtime_status;
     Status add_index_status;
   };
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
   const std::vector<int> params_input = {1, 2, 3, 4, 5, 6};
+
   std::vector<TestParams> test_params = {
       // Axis is batch dimension, should fail in implicit batch mode.
       TestParams{/*params_shape=*/{2, 1, 1, 3},
@@ -5849,12 +6530,13 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*expected_output_shape=*/{2, 1, 1, 3},
                  /*expected_output=*/{4, 5, 6, 1, 2, 3},
                  /*params_is_tensor=*/true,
-                 trt_mode_ == TrtTestMode::kImplicitBatch
+                 /*indices_is_tensor=*/true,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
                      ? Status{error::UNIMPLEMENTED,
-                              "TensorRT does not allow manipulation of the"
-                              " batch dimension, at my_gather"}
+                              "TensorRT does not allow "
+                              "manipulation of the batch dimension"}
                      : Status::OK()},
-      // Batch size of indices is not 1 when params is a tensor.
+      // Batch size of indices is not 1 when params and indices are tensors.
       TestParams{/*params_shape=*/{2, 1, 3},
                  /*indices_shape=*/{2, 1},
                  /*indices=*/{2, 0},
@@ -5862,11 +6544,25 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*expected_output_shape=*/{2, 1, 2, 1},
                  /*expected_output=*/{3, 1, 6, 4},
                  /*params_is_tensor=*/true,
-                 trt_mode_ == TrtTestMode::kImplicitBatch
+                 /*indices_is_tensor=*/true,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
                      ? Status{error::UNIMPLEMENTED,
-                              "Indices must have a batch size of 1 when params"
-                              " is a tensor."}
+                              "Params and indices must have a"
+                              " batch size of 1 when params and indices are "
+                              "both tensors or both"
+                              " constants."}
                      : Status::OK()},
+      // Batch size of indices is not 1 when params is tensor and indices are
+      // constant.
+      TestParams{/*params_shape=*/{2, 1, 3},
+                 /*indices_shape=*/{2, 1},
+                 /*indices=*/{2, 0},
+                 /*axis=*/2,
+                 /*expected_output_shape=*/{2, 1, 2, 1},
+                 /*expected_output=*/{3, 1, 6, 4},
+                 /*params_is_tensor=*/true,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/Status::OK()},
       // Axis is not zero when params is a weight, should fail in implicit batch
       // mode.
       TestParams{/*params_shape=*/{2, 1, 3},
@@ -5876,31 +6572,34 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*expected_output_shape=*/{2, 1, 2},
                  /*expected_output=*/{2, 3, 5, 6},
                  /*params_is_tensor=*/false,
-                 trt_mode_ == TrtTestMode::kImplicitBatch
+                 /*indices_is_tensor=*/true,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
                      ? Status{error::UNIMPLEMENTED,
-                              "The input axis must be zero when params is a"
-                              " weight."}
+                              "The input axis must be zero when "
+                              "params is a weight."}
                      : Status::OK()},
       // Params with only batch dimension.
-      TestParams{/*params_shape=*/{6},
-                 /*indices_shape=*/{2},
-                 /*indices=*/{1, 3},
-                 /*axis=*/0,
-                 /*expected_output_shape=*/{2},
-                 /*expected_output=*/{2, 4},
-                 /*params_is_tensor=*/true,
-                 trt_mode_ == TrtTestMode::kImplicitBatch  // conversion_status
-                     ? Status{error::UNIMPLEMENTED,
-                              "TensorRT does not allow manipulation of the "
-                              "batch dimension, at my_gather"}
-                     : Status::OK(),
-                 Status::OK(),                             // runtime_status
-                 trt_mode_ == TrtTestMode::kImplicitBatch  // add_index_status
-                     ? Status{error::INVALID_ARGUMENT,
-                              "Batch size doesn't match for tensor indices: "
-                              "Provided batch size does not match converter "
-                              "batch size: 2 vs 6"}
-                     : Status::OK()},
+      TestParams{
+          /*params_shape=*/{6},
+          /*indices_shape=*/{2},
+          /*indices=*/{1, 3},
+          /*axis=*/0,
+          /*expected_output_shape=*/{2},
+          /*expected_output=*/{2, 4},
+          /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? Status{error::UNIMPLEMENTED,
+                       "TensorRT does not allow "
+                       "manipulation of the batch dimension"}
+              : Status::OK(),
+          /*runtime_status=*/Status::OK(),
+          /*add_index_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? Status{error::INVALID_ARGUMENT,
+                       "Batch size doesn't match for "
+                       "tensor indices: Provided batch size does not match "
+                       "converter batch size: 2 vs 6"}
+              : Status::OK()},
       // Vector indices, and output rank is rank(params).
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5910,6 +6609,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5919,6 +6619,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 1, 3},
           /*expected_output=*/{4, 5, 6},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       // Indices with rank>1, and output rank is rank(params) + rank(indices) -
       // 1
@@ -5930,6 +6631,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5939,6 +6641,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{2, 5},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5948,6 +6651,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{3, 6},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5957,6 +6661,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 3},
           /*expected_output=*/{3, 1, 2, 6, 4, 5},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 3, 2},
@@ -5966,6 +6671,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 3, 1, 2, 2},
           /*expected_output=*/{1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 2, 3},
@@ -5975,6 +6681,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{3, 2},
@@ -5984,6 +6691,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 2, 2},
           /*expected_output=*/{1, 2, 3, 4},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{2, 3},
@@ -5993,6 +6701,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{3, 2},
@@ -6002,21 +6711,73 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{2, 2, 2},
           /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
+      // Test cases in which indices constant
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1, 1},
+          /*indices=*/{0},
+          /*axis=*/3,
+          /*expected_output_shape=*/{1, 1, 2, 1, 1},
+          /*expected_output=*/{1, 4},
+          /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/false,
+      },
+      // Test cases in which both input and indices constant
+      TestParams{/*params_shape=*/{1, 2, 3},
+                 /*indices_shape=*/{1},
+                 /*indices=*/{0},
+                 /*axis=*/0,
+                 /*expected_output_shape=*/{1, 2, 3},
+                 /*expected_output=*/{1, 2, 3, 4, 5, 6},
+                 /*params_is_tensor=*/false,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? Status{error::UNIMPLEMENTED,
+                              "Params and indices must have a"
+                              " batch size of 1 when params and indices are "
+                              "both tensors or both"
+                              " constants."}
+                     : Status::OK()},
+      TestParams{/*params_shape=*/{3, 2},
+                 /*indices_shape=*/{2, 2},
+                 /*indices=*/{0, 2, 1, 0},
+                 /*axis=*/0,
+                 /*expected_output_shape=*/{2, 2, 2},
+                 /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
+                 /*params_is_tensor=*/false,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? Status{error::UNIMPLEMENTED,
+                              "Params and indices must have a"
+                              " batch size of 1 when params and indices are "
+                              "both tensors or both"
+                              " constants."}
+                     : Status::OK()},
   };
 
   for (auto p : test_params) {
     Reset();
+
     if (p.params_is_tensor) {
       AddTestTensor("params", p.params_shape, params_input);
     } else {
       AddTestWeights("params", p.params_shape, params_input, tf_type_);
     }
-    AddTestTensor("indices", p.indices_shape, DT_INT32, p.indices, {},
-                  p.add_index_status);
+
+    if (p.indices_is_tensor) {
+      AddTestTensor("indices", p.indices_shape, DT_INT32, p.indices, {},
+                    p.add_index_status);
+    } else {
+      std::vector<int> indices_shape(p.indices_shape);
+      AddTestWeights("indices", indices_shape, p.indices, DT_INT32);
+    }
+
     AddTestWeights<int32>("axis", {1}, {p.axis});
-    TestOpConverter("my_gather", node_def, p.expected_output_shape, p.status,
-                    p.runtime_status, ElementsAreArray(p.expected_output));
+    TestOpConverter("my_gather", node_def, p.expected_output_shape,
+                    p.conversion_status, p.runtime_status,
+                    ElementsAreArray(p.expected_output));
   }
 }
 
@@ -6046,16 +6807,15 @@ std::vector<float> CalcReduce(string op_name, std::vector<float> input, int m,
   }
   return output;
 }
-TEST_P(OpConverter_FP32_Test, ConvertReduce) {
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
   {
     // Input is weights, should fail.
     Reset();
     const NodeDef node_def = CreateReduceOp<ops::Sum>(tf_type_, false);
     AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
     AddTestWeights<int32>("axis", {1}, {1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Sum must be a tensor, at my_reduce");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"input\" for Sum must be a tensor");
   }
   {
     // Axis is weights, should fail.
@@ -6063,9 +6823,8 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
     const NodeDef node_def = CreateReduceOp<ops::Sum>(tf_type_, false);
     AddTestTensor("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
     AddTestTensor("axis", {1}, DT_INT32, {1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for Sum must be a constant, at my_reduce");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"axis\" for Sum must be a constant");
   }
   using OpFunc = std::function<NodeDef(DataType, bool)>;
   using ValFunc = float (*)(float, float);
@@ -6117,8 +6876,9 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
 
   for (bool keep_dims : {false, true}) {
     for (auto& op : op_test_info) {
+      VLOG(2) << "Processing " << op.name << " with keep_dims=" << keep_dims;
       for (auto p : params) {
-        SCOPED_TRACE(StrCat(op.name, keep_dims ? "keep_dims" : ""));
+        SCOPED_TRACE(StrCat(op.name, keep_dims ? " & keep_dims" : ""));
         Reset();
         NodeDef node_def = op.get_node(tf_type_, keep_dims);
 
@@ -6135,7 +6895,7 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
                 errors::InvalidArgument("Axis value of ", ax,
                                         " is out of bounds, must be in "
                                         "range [",
-                                        -rank, ", ", rank, "), at my_reduce");
+                                        -rank, ", ", rank, ")");
           } else {
             int ax_positive = ax >= 0 ? ax : ax + rank;
             // Zero marks elements that we will remove later.
@@ -6144,7 +6904,7 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
                 (ax == 0 || ax == -rank)) {
               p.conversion_status = errors::Unimplemented(
                   "TensorRT does not allow manipulation of the batch "
-                  "dimension, at my_reduce");
+                  "dimension");
             }
           }
         }
@@ -6156,6 +6916,13 @@ TEST_P(OpConverter_FP32_Test, ConvertReduce) {
                                 "]");
         std::vector<float> expected_values = CalcReduce(
             op.name, p.helper_array, p.stride, op.val_func, op.init_val);
+
+        if (tf_type_ == DT_INT32) {
+          // We need to floor the float values in the `expected_values` vector.
+          std::for_each(expected_values.begin(), expected_values.end(),
+                        [](float& _n) { _n = std::floor(_n); });
+        }
+
         TestOpConverter("my_reduce", node_def, expected_output_dims,
                         p.conversion_status, Status::OK(),
                         ArrayFloatNear(expected_values));
@@ -6178,9 +6945,8 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
     Reset();
     const NodeDef node_def = CreateUnaryOp<ops::Neg>(tf_type_);
     AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"x\" for Neg must be a tensor, at my_unary");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"x\" for Neg must be a tensor");
   }
   using OpFunc = std::function<NodeDef(DataType)>;
   using ValFunc = float (*)(float);
@@ -6205,6 +6971,11 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
   ADD_OP("Log", ops::Log, std::log);
   ADD_OP("Neg", ops::Neg, [](float x) { return -x; });
   ADD_OP("Reciprocal", ops::Reciprocal, [](float x) { return 1.0f / x; });
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  ADD_OP("Round", ops::Round, [](float x) { return (float)std::round(x); });
+  ADD_OP("Sign", ops::Sign,
+         [](float x) { return x > 0 ? 1.0f : (x < 0 ? -1.0f : 0.0f); });
+#endif
   ADD_OP("Rsqrt", ops::Rsqrt, [](float x) { return 1.0f / std::sqrt(x); });
   ADD_OP("Sin", ops::Sin, std::sin);
   ADD_OP("Sinh", ops::Sinh, std::sinh);
@@ -6228,6 +6999,16 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
       {1, 1, 2, 3},  // expected output dims
   };
   for (const string& op_name : ops_to_test) {
+    // kSIGN  and kROUND are not yet supported in implicit batch mode.
+    // TODO(drivanov): Remove this check when TRT enables these ops in implicit
+    //                 batch mode (nvbugs/3517570).
+    Status conv_status = Status::OK();
+    if (trt_mode_ == TrtTestMode::kImplicitBatch &&
+        (op_name == "Sign" || op_name == "Round")) {
+      conv_status = errors::Unimplemented(
+          "Unary op: '", op_name, "' is not supported in implicit batch mode");
+    }
+
     SCOPED_TRACE(op_name);
     Reset();
     if (!op_map.count(op_name)) {
@@ -6248,7 +7029,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
     std::vector<float> output;
     std::transform(input_values.begin(), input_values.end(),
                    std::back_inserter(output), op_map[op_name].second);
-    TestOpConverter("my_unary", node_def, p.expected_output_dims, Status::OK(),
+    TestOpConverter("my_unary", node_def, p.expected_output_dims, conv_status,
                     p.runtime_status, ArrayFloatNear(output, 0.0001, true));
   }
 }
@@ -6258,6 +7039,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
 auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
@@ -6268,11 +7050,7 @@ auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   return concat.operation.node()->def();
 };
 
-#if IS_TRT_VERSION_GE(7, 0, 0, 0)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
-#endif
   {
     // Axis is a tensor, should fail.
     Reset();
@@ -6282,7 +7060,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
     AddTestTensor("axis", {1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for ConcatV2 must be a constant, at my_concat");
+        "The input \"axis\" for ConcatV2 must be a constant");
   }
   {
     // Axis is out of bounds, should fail.
@@ -6293,7 +7071,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
     AddTestWeights<int32>("axis", {1}, {4});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4), at my_concat");
+                               "range [-4, 4)");
   }
   {
     // Inputs have inconsistent ranks, should fail.
@@ -6302,43 +7080,45 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
     AddTestTensor("values_0", {1, 1, 2, 3});
     AddTestTensor("values_1", {1, 1, 6});
     AddTestWeights<int32>("axis", {1}, {1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Received inputs with inconsistent rank, at my_concat");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Received inputs with inconsistent rank");
   }
 
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> input_values;
+    std::vector<bool> inputs_are_tensors;
     int axis;
     std::vector<int> expected_output_dims;
     std::vector<int> expected_output;
     Status conversion_status;
     Status run_status;
-    bool input_as_weight;
   };
 
-  const std::vector<std::vector<int>> common_input{InitTestVector<int>(6),
-                                                   InitTestVector<int>(6, 6)};
+  const std::vector<std::vector<int>> common_input{CreateVectorIota<int>(6),
+                                                   CreateVectorIota<int>(6, 6)};
 
   std::vector<TestParams> params = {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
       },
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/2,
           /*expected_output_dims=*/{1, 1, 4, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
       },
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/3,
           /*expected_output_dims=*/{1, 1, 2, 6},
           /*expected_output=*/
@@ -6348,47 +7128,65 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
           /*input_shapes=*/{{1, 1}, {1, 2}, {1, 3}, {1, 1}, {1, 1}, {1, 2}},
           /*input_values=*/
           {{1}, {2, 3}, {4, 5, 6}, {7}, {8}, {9, 10}},
+          /*inputs_are_tensors=*/{true, true, true, true, true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 10},
           /*expected_output=*/
-          InitTestVector<int>(10, /*start_value=*/1),
+          CreateVectorIota<int>(10, /*start_value=*/1),
       },
       {
           // An input is a weight
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, false},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
-          /*conversion_status=*/
-          errors::Unimplemented("The input \"values_1\" for ConcatV2 "
-                                "must be a tensor, at my_concat"),
+          /*expected_output=*/CreateVectorIota<int>(12),
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::Unimplemented(
+                    "The input \"values_1\" for ConcatV2 must be a tensor")
+              : Status::OK(),
           /*run_status=*/Status::OK(),
-          /*input_as_weight=*/true,
+      },
+      {
+          // An input is a weight
+          /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
+          /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{false, false},
+          /*axis=*/1,
+          /*expected_output_dims=*/{1, 2, 2, 3},
+          /*expected_output=*/CreateVectorIota<int>(12),
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::Unimplemented(
+                    "The input \"values_0\" for ConcatV2 must be a tensor")
+              : Status::OK(),
+          /*run_status=*/Status::OK(),
       },
       {
           // Axis is batch dimension, should fail in implicit batch mode.
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/0,
           /*expected_output_dims=*/{2, 1, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
                     "TensorRT does not allow manipulation of the "
-                    "batch dimension, at my_concat")
+                    "batch dimension")
               : Status::OK(),
       },
       {
           // Inconsistent input shape, runtime error in dynamic shape mode.
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 3, 2}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{2, 1, 2, 3},
-          /*expected_output=*/InitTestVector<int>(12),
+          /*expected_output=*/CreateVectorIota<int>(12),
           trt_mode_ != TrtTestMode::kDynamicShape
               ? errors::InvalidArgument(
-                    "Received inputs with inconsistent shape, at my_concat")
+                    "Received inputs with inconsistent shape")
               : Status::OK(),
           errors::InvalidArgument(""),
       }};
@@ -6397,11 +7195,14 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
     Reset();
     const int num_inputs = p.input_shapes.size();
     EXPECT_EQ(num_inputs, p.input_values.size());
+
     NodeDef node_def = get_concat_nodedef(tf_type_, num_inputs);
+
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
       string name = StrCat("values_", j);
-      if (j == 1 && p.input_as_weight) {
+
+      if (!p.inputs_are_tensors[j]) {
         AddTestWeights(name, p.input_shapes[j], p.input_values[j], tf_type_);
       } else {
         AddTestTensor(name, p.input_shapes[j], p.input_values[j]);
@@ -6437,12 +7238,12 @@ void TestConvertSplit(OpConverterTest* test) {
     std::vector<std::vector<CType>> expected_outputs;
   };
 
-  const std::vector<CType> common_input = InitTestVector<CType>(6);
+  const std::vector<CType> common_input = CreateVectorIota<CType>(6);
   std::vector<TestParams> ok_params = {
       // Identity (num_split = 1)
       {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
        /*num_split=*/1, /*expected_output_dims=*/{1, 2, 3},
-       /*expected_outputs=*/{InitTestVector<CType>(6)}},
+       /*expected_outputs=*/{CreateVectorIota<CType>(6)}},
       {/*input_shape=*/{1, 2, 3},
        /*value=*/common_input,
        /*axis=*/3,
@@ -6468,7 +7269,7 @@ void TestConvertSplit(OpConverterTest* test) {
        /*num_split=*/2,
        /*expected_output_dims=*/{1, 3},
        /*expected_outputs=*/
-       {InitTestVector<CType>(3), InitTestVector<CType>(3, CType(3))}},
+       {CreateVectorIota<CType>(3), CreateVectorIota<CType>(3, CType(3))}},
   };
 
   for (int i = 0; i < ok_params.size(); ++i) {
@@ -6490,8 +7291,8 @@ void TestConvertSplit(OpConverterTest* test) {
       const string name = j == 0 ? StrCat("my_split") : StrCat("my_split:", j);
       TF_EXPECT_OK(test->GetTensorOrWeights(name, &outputs[j]));
       EXPECT_TRUE(outputs[j].is_tensor());
-      ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
-                               outputs[j].tensor()->getDimensions());
+      EXPECT_THAT(outputs[j].tensor()->getDimensions(),
+                  DimsAreArray(ok_params[i].expected_output_dims));
       // Create buffer to store output.
       output_data.push_back(
           {name, test->ConstructTensor<CType>(
@@ -6518,7 +7319,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for Split must be a constant, at my_split");
+        "The input \"axis\" for Split must be a constant");
   }
   {
     // Axis is out of bounds, should fail.
@@ -6528,7 +7329,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4), at my_split");
+                               "range [-4, 4)");
   }
   {
     // Axis is out of bounds (negative), should fail.
@@ -6538,7 +7339,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of -5 is out of bounds, must be in "
-                               "range [-4, 4), at my_split");
+                               "range [-4, 4)");
   }
   {
     // Axis is batch dimension, should fail.
@@ -6548,7 +7349,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "TensorRT does not allow manipulation of the "
-                               "batch dimension, at my_split");
+                               "batch dimension");
   }
   {
     // Value is a weight, should fail.
@@ -6558,7 +7359,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestWeights<float>("value", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"value\" for Split must be a tensor, at my_split");
+        "The input \"value\" for Split must be a tensor");
   }
   {
     // Dim is not evenly divisibly by num_split, should fail.
@@ -6568,7 +7369,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisible by 2, at my_split");
+        "Dimension 3 of size 3 is not evenly divisible by 2");
   }
   {
     // num_split > dim size, should fail.
@@ -6578,14 +7379,12 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisible by 4, at my_split");
+        "Dimension 3 of size 3 is not evenly divisible by 4");
   }
 
   TestConvertSplit<DT_FLOAT>(this);
   TestConvertSplit<DT_HALF>(this);
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
   TestConvertSplit<DT_INT32>(this);
-#endif
 }
 
 // Get the NodeDef for Unpack (Unstack in TF API).
@@ -6636,11 +7435,7 @@ void TestConvertUnpack(ParameterizedOpConverterTestBase* test,
 }
 
 // TODO: Reactivate when INT32 Segfault fixed
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
-#endif
   // We need to skip error testing for Dynamic Shape mode, as it is impossible
   // to convert Unpack in Dynamic Shape Mode.
   if (trt_mode_ != TrtTestMode::kDynamicShape) {
@@ -6651,7 +7446,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
       AddTestWeights<float>("value", {1, 1, 2, 3}, {1, 2, 3, 4, 5, 6});
       RunValidationAndConversion(
           node_def, error::UNIMPLEMENTED,
-          "The input \"value\" for Unpack must be a tensor, at my_unpack");
+          "The input \"value\" for Unpack must be a tensor");
     }
     {
       // Axis is out of bounds, should fail.
@@ -6660,7 +7455,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
       AddTestTensor("value", {1, 1, 2, 3});
       RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                  "Axis value of 4 is out of bounds, must be in "
-                                 "range [-4, 4), at my_unpack");
+                                 "range [-4, 4)");
     }
     {
       // Axis is out of bounds (negative), should fail.
@@ -6669,7 +7464,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
       AddTestTensor("value", {1, 1, 2, 3});
       RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                  "Axis value of -5 is out of bounds, must be "
-                                 "in range [-4, 4), at my_unpack");
+                                 "in range [-4, 4)");
     }
     {
       if (trt_mode_ != TrtTestMode::kExplicitBatch) {
@@ -6679,7 +7474,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
         AddTestTensor("value", {1, 2, 3});
         RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                    "TensorRT does not allow manipulation of "
-                                   "the batch dimension, at my_unpack");
+                                   "the batch dimension");
       }
     }
     {
@@ -6689,41 +7484,40 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
       AddTestTensor("value", {1, 1, 6});
       RunValidationAndConversion(
           node_def, error::INVALID_ARGUMENT,
-          "Dimension 2 has size 6 which is not equal to num of 5, at "
-          "my_unpack");
+          "Dimension 2 has size 6 which is not equal to num of 5");
     }
     {
       // Output would be TF scalar, should fail.
       Reset();
       NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/1, /*axis=*/0);
-      AddTestTensor("value", {}, tf_type_, {}, {},
-                    trt_mode_ == TrtTestMode::kImplicitBatch
-                        ? errors::Internal("Scalars cannot be represented in "
-                                           "implicit batch mode")
-                        : Status::OK());
-
+      AddTestTensor(
+          "value", {}, tf_type_, {}, {},
+          trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::InvalidArgument(
+                    "removing first dim requires explicit batch dimension")
+              : Status::OK());
       if (trt_mode_ == TrtTestMode::kImplicitBatch) {
         RunValidationAndConversion(
             node_def, error::INTERNAL,
-            "Failed to convert input value to a TRT_TensorOrWeights: Scalar "
-            "input tensor is not supported since the first dimension is "
-            "treated "
-            "as batch dimension by TRT");
+            "Failed to convert at least one input to a TRT_TensorOrWeights: "
+            "Scalar input tensor is not supported since the first dimension is "
+            "treated as batch dimension by TRT");
       } else {
         RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                    "Input \"value\" for Unpack must be rank 2 "
-                                   "or greater, at my_unpack");
+                                   "or greater");
       }
     }
   }
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
 
-  Status run_status = trt_mode_ == TrtTestMode::kDynamicShape
-                          ? errors::Unimplemented(
-                                "Strided slice op not implemented for dynamic "
-                                "shape input")
-                          : Status::OK();
+  Status run_status =
+      trt_mode_ == TrtTestMode::kDynamicShape
+          ? errors::InvalidArgument(
+                "The argument `strided_slice_spec` is "
+                "`absl::nullopt` with `dynamic_input_size_indices` non empty.")
+          : Status::OK();
 
   std::vector<UnpackTestParams> params = {
       {/*input_shape=*/{1, 1, 2, 1, 3, 1},
@@ -6745,7 +7539,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
        /*axis=*/1,
        /*num=*/1,
        /*expected_output_dims=*/{1, 2, 3},
-       /*expected_outputs=*/{InitTestVector<float>(6)},
+       /*expected_outputs=*/{CreateVectorIota<float>(6)},
        /*run_status=*/run_status},
       {/*input_shape=*/{1, 6, 1},
        /*input_value=*/common_input,
@@ -6771,6 +7565,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
 NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
@@ -6782,11 +7577,7 @@ NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   return pack.operation.node()->def();
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
-#endif
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> partial_input_shapes;
@@ -6800,7 +7591,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
   };
 
   const std::vector<std::vector<float>> common_input{
-      InitTestVector<float>(6), InitTestVector<float>(6, /*start_value=*/6)};
+      CreateVectorIota<float>(6),
+      CreateVectorIota<float>(6, /*start_value=*/6)};
   std::vector<TestParams> params = {
       // Second input is weight, should fail in implicit batch mode
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6808,11 +7600,10 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
        /*input_values=*/common_input,
        /*axis=*/1,
        /*expected_output_dims=*/{1, 2, 2, 3},
-       /*expected_output=*/InitTestVector<float>(12),
+       /*expected_output=*/CreateVectorIota<float>(12),
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
-                    "The input \"values_1\" for Pack must be a tensor, at "
-                    "my_pack"}
+                    "The input \"values_1\" for Pack must be a tensor"}
            : Status::OK(),
        /*runtime_status*/ Status::OK(),
        /*weight_input*/ true},
@@ -6826,7 +7617,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
           /*expected_output=*/{},
           Status{error::INVALID_ARGUMENT,
                  "Axis value of -5 is out of bounds, must be in"
-                 " range [-4, 4), at my_pack"},
+                 " range [-4, 4)"},
       },
       // Axis is batch dimension, should fail in implicit batch mode.
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6834,11 +7625,11 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
        /*input_values=*/common_input,
        /*axis=*/-4,
        /*expected_output_dims=*/{2, 1, 2, 3},
-       /*expected_output=*/InitTestVector<float>(12),
+       /*expected_output=*/CreateVectorIota<float>(12),
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
                     "TensorRT does not allow manipulation of the batch "
-                    "dimension, at my_pack"}
+                    "dimension"}
            : Status::OK()},
       // Inconsistent rank, should fail.
       {
@@ -6849,7 +7640,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
           /*expected_output_dims=*/{},
           /*expected_output=*/{},
           Status{error::INVALID_ARGUMENT,
-                 "Received inputs with inconsistent rank, at my_pack"},
+                 "Received inputs with inconsistent rank"},
       },
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6857,7 +7648,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
           /*input_values=*/common_input,
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
-          /*expected_output=*/InitTestVector<float>(12),
+          /*expected_output=*/CreateVectorIota<float>(12),
       },
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6880,31 +7671,31 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
       {
           /*input_shapes=*/{{1, 2, 3}},
           /*partial_input_shapes=*/{{}},
-          /*input_values=*/{InitTestVector<float>(6)},
+          /*input_values=*/{CreateVectorIota<float>(6)},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 1, 2, 3},
-          /*expected_output=*/InitTestVector<float>(6),
+          /*expected_output=*/CreateVectorIota<float>(6),
       },
       {
           /*input_shapes=*/{{1, 2, 3}},
           /*partial_input_shapes=*/{{}},
-          /*input_values=*/{InitTestVector<float>(6)},
+          /*input_values=*/{CreateVectorIota<float>(6)},
           /*axis=*/2,
           /*expected_output_dims=*/{1, 2, 1, 3},
-          /*expected_output=*/InitTestVector<float>(6),
+          /*expected_output=*/CreateVectorIota<float>(6),
       },
   };
   // Inputs have inconsistent shapes, should fail.
   if (trt_mode_ != TrtTestMode::kDynamicShape) {
-    params.push_back(TestParams{
-        /*input_shapes=*/{{1, 2, 3}, {1, 3, 2}},
-        /*partial_input_shapes=*/{{}, {}},
-        /*input_values=*/common_input,
-        /*axis=*/1,
-        /*expected_output_dims=*/{},
-        /*expected_output=*/InitTestVector<float>(12),
-        Status{error::INVALID_ARGUMENT,
-               "Received inputs with inconsistent shape, at my_pack"}});
+    params.push_back(
+        TestParams{/*input_shapes=*/{{1, 2, 3}, {1, 3, 2}},
+                   /*partial_input_shapes=*/{{}, {}},
+                   /*input_values=*/common_input,
+                   /*axis=*/1,
+                   /*expected_output_dims=*/{},
+                   /*expected_output=*/CreateVectorIota<float>(12),
+                   Status{error::INVALID_ARGUMENT,
+                          "Received inputs with inconsistent shape"}});
   } else {
     // In dynamic shape mode we cannot catch inconsistent shapes at conversion
     // time, only during runtime. But TensorRT does not raise a proper runtime
@@ -7006,7 +7797,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
     AddTestTensor("dimension", {1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"dimension\" for ArgMax must be a constant, at my_arg");
+        "The input \"dimension\" for ArgMax must be a constant");
   }
   {
     // Output type is INT64, should fail.
@@ -7017,10 +7808,10 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights("dimension", {1}, {3}, DT_INT32);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Output type int64 is not supported, at my_arg");
+                               "Output type int64 is not supported");
   }
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
   std::vector<ArgMinMaxTestParams> params = {
       {/*input_shape=*/{2, 3},
        /*input_value=*/common_input,
@@ -7030,7 +7821,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
        /*expected_argmin_output=*/{0, 0, 0},
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? errors::Unimplemented("TensorRT does not allow manipulation of "
-                                   "the batch dimension, at my_arg")
+                                   "the batch dimension")
            : Status::OK()},
       {
           /*input_shape=*/{1, 6},
@@ -7141,12 +7932,6 @@ void TestConvertDepthSpaceShuffle(
     const std::vector<DepthSpaceShuffleTestParams>& params) {
   Status status = Status::OK();
 
-#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (test->get_trt_mode() == TrtTestMode::kDynamicShape) {
-    status = errors::InvalidArgument("Dynamic input requires TRT6");
-  }
-#endif
-
   {
     // Input is a weight, should fail.
     test->Reset();
@@ -7155,9 +7940,7 @@ void TestConvertDepthSpaceShuffle(
     test->AddTestWeights<float>("input", {1, 4, 1, 1}, {1, 2, 3, 4});
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        StrCat("The input \"input\" for ", node_def.op(),
-               " must be a tensor, at my_shuffle")
-            .c_str());
+        StrCat("The input \"input\" for ", node_def.op(), " must be a tensor"));
   }
   {
     // Input rank != 4
@@ -7165,11 +7948,9 @@ void TestConvertDepthSpaceShuffle(
     NodeDef node_def = GetDepthSpaceShuffleNodeDef<ops::DepthToSpace>(
         test->get_tf_type(), 2, "NCHW");
     test->AddTestTensor("input", {1, 16, 32});
-    test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                                     StrCat("The input to ", node_def.op(),
-                                            " must be rank 4, at "
-                                            "my_shuffle")
-                                         .c_str());
+    test->RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        StrCat("The input to ", node_def.op(), " must be rank 4"));
   }
   {
     // Unsupported format, should fail.
@@ -7179,7 +7960,7 @@ void TestConvertDepthSpaceShuffle(
     test->AddTestTensor("input", {1, 16, 32, 32});
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Data format NCHW_VECT_C is not supported, at my_shuffle");
+        "Data format NCHW_VECT_C is not supported");
   }
   if (test->get_trt_mode() != TrtTestMode::kDynamicShape) {
     // In dynamic shape mode, we cannot check input dimension values at
@@ -7194,7 +7975,7 @@ void TestConvertDepthSpaceShuffle(
       test->AddTestTensor("input", {1, 16, 32, 32});
       test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                        "Number of channels must be divisible by"
-                                       " block_size*block_size, at my_shuffle");
+                                       " block_size*block_size");
     } else {
       {  // Width not divisible by block_size, should fail.
         test->Reset();
@@ -7203,7 +7984,7 @@ void TestConvertDepthSpaceShuffle(
         test->AddTestTensor("input", {1, 16, 9, 32});
         test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                          "Width and height must be divisible by"
-                                         " block_size, at my_shuffle");
+                                         " block_size");
       }
       {
         // Height not divisible by block_size, should fail.
@@ -7213,7 +7994,7 @@ void TestConvertDepthSpaceShuffle(
         test->AddTestTensor("input", {1, 16, 32, 9});
         test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                          "Width and height must be divisible by"
-                                         " block_size, at my_shuffle");
+                                         " block_size");
       }
     }
   }
@@ -7230,7 +8011,7 @@ void TestConvertDepthSpaceShuffle(
 }
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertDepthToSpace) {
-  const std::vector<int> common_input = InitTestVector<int>(16);
+  const std::vector<int> common_input = CreateVectorIota<int>(16);
   std::vector<DepthSpaceShuffleTestParams> params = {
       {
           /*input_shape=*/{1, 4, 2, 2},
@@ -7256,11 +8037,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertDepthToSpace) {
           /*block_size=*/4,
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{1, 1, 4, 4},
-          /*expected_output=*/InitTestVector<int>(16),
+          /*expected_output=*/CreateVectorIota<int>(16),
       },
       {
           /*input_shape=*/{1, 2, 2, 8},
-          /*input_value=*/InitTestVector<int>(32),
+          /*input_value=*/CreateVectorIota<int>(32),
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{1, 4, 4, 2},
@@ -7273,7 +8054,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertDepthToSpace) {
 }
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
-  const std::vector<int> common_input = InitTestVector<int>(16);
+  const std::vector<int> common_input = CreateVectorIota<int>(16);
   std::vector<DepthSpaceShuffleTestParams> params = {
       {
           /*input_shape=*/{1, 1, 4, 4},
@@ -7299,11 +8080,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
           /*block_size=*/4,
           /*data_format=*/"NCHW",
           /*expected_output_dims=*/{1, 16, 1, 1},
-          /*expected_output=*/InitTestVector<int>(16),
+          /*expected_output=*/CreateVectorIota<int>(16),
       },
       {
           /*input_shape=*/{1, 4, 4, 2},
-          /*input_value=*/InitTestVector<int>(32),
+          /*input_value=*/CreateVectorIota<int>(32),
           /*block_size=*/2,
           /*data_format=*/"NHWC",
           /*expected_output_dims=*/{1, 2, 2, 8},
@@ -7315,7 +8096,6 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
   TestConvertDepthSpaceShuffle<ops::SpaceToDepth>(this, params);
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 2, 0)
 TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
   Scope s = Scope::NewRootScope();
   auto t = ops::Placeholder(s.WithOpName("t"), tf_type_);
@@ -7338,7 +8118,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestWeights("clip_value_max", {1}, {5}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"t\" for ClipByValue must be a "
-                               "tensor, at my_clip");
+                               "tensor");
   }
   {
     // Clip min is a tensor, should fail.
@@ -7348,7 +8128,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestWeights("clip_value_max", {1}, {1}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"clip_value_min\" for ClipByValue "
-                               "must be a constant, at my_clip");
+                               "must be a constant");
   }
   {
     // Clip max is a tensor, should fail.
@@ -7358,7 +8138,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestTensor("clip_value_max", {1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"clip_value_max\" for ClipByValue "
-                               "must be a constant, at my_clip");
+                               "must be a constant");
   }
 
   struct TestParams {
@@ -7368,7 +8148,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     std::vector<float> expected_output;
   };
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
 
   std::vector<TestParams> params = {{
                                         /*dims=*/{6},
@@ -7426,7 +8206,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
                     /*matcher=*/ElementsAreArray(p.expected_output));
   }
 }
-#endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
 // Get the NodeDef for SquaredDifference.
 NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
@@ -7447,7 +8226,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
     AddTestTensor("y", {1, 1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"x\" for SquaredDifference must be "
-                               "a tensor, at my_squared_diff");
+                               "a tensor");
   }
 
   struct TestParams {
@@ -7461,7 +8240,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
     Status runtime_status;
   };
 
-  const std::vector<float> common_input = InitTestVector<float>(6);
+  const std::vector<float> common_input = CreateVectorIota<float>(6);
   std::vector<TestParams> params = {
       {/*dims_x=*/{1, 2, 3},
        /*dims_y=*/{1, 7, 5},
@@ -7504,7 +8283,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 template <typename OpType>
 NodeDef MakeResizeNodeDef(DataType dtype, bool align_corners) {
   Scope s = Scope::NewRootScope();
@@ -7519,6 +8297,7 @@ struct ResizeTestParams {
   std::vector<int> input_dims;
   std::vector<int> output_resize_dims;
   std::vector<float> input_value;
+  bool size_as_tensor;
   bool align_corners;
   std::vector<int> expected_output_dims;
   std::vector<float> expected_nearest_output_values;
@@ -7537,7 +8316,13 @@ void TestConvertResize(ParameterizedOpConverterTestBase* test,
   test->AddTestTensor("input", p.input_dims, test->get_tf_type(),
                       p.input_value);
   // Create output size.
-  test->AddTestWeights("size", {2}, p.output_resize_dims, DT_INT32);
+  if (p.size_as_tensor) {
+    std::vector<int32> size_dims{2};
+    std::vector<int32> size_values{p.output_resize_dims};
+    test->AddTestTensor("size", size_dims, DT_INT32, size_values, size_dims);
+  } else {
+    test->AddTestWeights("size", {2}, p.output_resize_dims, DT_INT32);
+  }
 
   std::vector<float> expected_out;
 
@@ -7568,50 +8353,47 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"input\" for ResizeBilinear must be a "
-        "tensor, at my_resize");
+        "tensor");
   }
-  {
-    // Output dimension is a tensor, should fail.
-    Reset();
-    NodeDef node_def = MakeResizeNodeDef<ops::ResizeBilinear>(tf_type_,
-                                                              /*align_corners=*/
-                                                              true);
-    AddTestTensor("input", {1, 2});
-    AddTestTensor("size", {1, 2});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"size\" for ResizeBilinear must be a "
-        "constant, at my_resize");
-  }
-
-  const auto job_status =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "TensorRT IResizeLayer requires input with static "
-                "shape")
-          : Status::OK();
 
   std::vector<ResizeTestParams> params{
       {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
        /*output_resize_dims=*/{2, 3},  // H_out, W_out
        /*input_values=*/{2.0f, -1.0f},
+       /*size_as_tensor=*/false,
        /*align_corners=*/false,
        /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
        /*expected_nearest_output_values=*/
        {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
        /*expected_bilinear_output_values=*/
        {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f},
-       /*status=*/job_status},
+       /*status=*/Status::OK()},
       {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
        /*output_resize_dims=*/{2, 3},  // H_out, W_out
        /*input_values=*/{2.0f, -1.0f},
+       /*size_as_tensor=*/false,
        /*align_corners=*/true,
        /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
        /*expected_nearest_output_values=*/
        {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
        /*expected_bilinear_output_values=*/
        {2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f},
-       /*status=*/job_status}};
+       /*status=*/Status::OK()}};
+
+  if (trt_mode_ != TrtTestMode::kImplicitBatch) {
+    // Size as a tensor is not supported in implicit batch mode.
+    params.push_back({/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
+                      /*output_resize_dims=*/{2, 3},  // H_out, W_out
+                      /*input_values=*/{2.0f, -1.0f},
+                      /*size_as_tensor=*/true,
+                      /*align_corners=*/true,
+                      /*expected_output_dims=*/{1, 2, 3, 1},  // N, H, W, C
+                      /*expected_nearest_output_values=*/
+                      {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
+                      /*expected_bilinear_output_values=*/
+                      {2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f},
+                      /*status=*/Status::OK()});
+  }
 
   for (auto p : params) {
     TestConvertResize<ops::ResizeNearestNeighbor>(this, p);
@@ -7627,7 +8409,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
     TestConvertResize<ops::ResizeBilinear>(this, p);
   }
 }
-#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 NodeDef MakePadNodeDef(std::string name, DataType dtype) {
   Scope s = Scope::NewRootScope();
@@ -7679,12 +8460,10 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
     RunValidationAndConversion(node_def);
     TF_EXPECT_OK(GetTensorOrWeights("input", &input));
     TF_EXPECT_OK(GetTensorOrWeights("my_pad", &output));
-    converter_->ProvideQuantizationRange(input.tensor(), -5.0f, 5.0f);
-    // Input range should be inferred across pad.
-    PropagateQuantizationRanges();
+    ITensorProxyPtr input_tensor = input.tensor();
+    converter_->ProvideQuantizationRange(&input_tensor, -5.0f, 5.0f);
     auto ranges = quantization_ranges();
-    EXPECT_EQ(5.0f, ranges[input.tensor()]);
-    EXPECT_EQ(5.0f, ranges[output.tensor()]);
+    EXPECT_EQ(5.0f, ranges[input.tensor()->trt_tensor()]);
   }
 
   std::vector<PadTestParams> params{
@@ -7782,8 +8561,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
           /*expected_output_dims=*/{1, 3, 3},  // N, H, W, C
           /*expected_output_values=*/
           {0., 0., 0., 2., -1., 0., 3., 4., 0.},
-          errors::InvalidArgument("Convertpad requires at least 4D input, at "
-                                  "my_pad")}};
+          errors::InvalidArgument("Convertpad requires at least 4D input")}};
 
   for (auto p : params) {
     Reset();

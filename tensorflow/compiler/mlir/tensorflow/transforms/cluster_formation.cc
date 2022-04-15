@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -38,12 +39,8 @@ namespace TFDevice {
 namespace {
 
 struct ClusterFormationPass
-    : public PassWrapper<ClusterFormationPass, FunctionPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<tf_device::TensorFlowDeviceDialect>();
-  }
-
-  void runOnFunction() override;
+    : public TF::ClusterFormationPassBase<ClusterFormationPass> {
+  void runOnOperation() override;
 };
 
 // Cluster structure captures all the operations that are assigned to same
@@ -146,7 +143,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   Block* block = &region.front();
   for (Operation* op : c.ops) {
     op->moveBefore(block, block->end());
-    op->removeAttr(builder->getIdentifier("device"));
+    op->removeAttr(builder->getStringAttr("device"));
   }
 
   // Get all escaped live-out values of region, they are used later to determine
@@ -188,7 +185,7 @@ void BuildClusters(Block* block, OpBuilder builder) {
   llvm::MapVector<StringRef, Cluster> nearest_clusters;
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     auto device = GetDevice(&op);
-    if (device == "") continue;
+    if (device.empty()) continue;
 
     // If no cluster of same device has been formed yet, create a new cluster
     // with op alone.
@@ -221,13 +218,15 @@ void BuildClusters(Block* block, OpBuilder builder) {
     BuildLaunchForCluster(device_cluster.second, &builder);
 }
 
-void ClusterFormationPass::runOnFunction() {
-  OpBuilder builder(getFunction().getContext());
+void ClusterFormationPass::runOnOperation() {
+  auto func = getOperation();
+  if (func.isExternal()) return;
+  OpBuilder builder(func.getContext());
 
   // Operates on individual blocks independently of if they are directly in the
   // function body or if they are nested in individual `tf_executor.island`.
-  for (Block& block : getFunction().getBody()) BuildClusters(&block, builder);
-  getFunction().walk([&](tf_executor::IslandOp island) {
+  for (Block& block : func.getBody()) BuildClusters(&block, builder);
+  func.walk([&](tf_executor::IslandOp island) {
     BuildClusters(&island.GetBody(), builder);
   });
 }
@@ -237,10 +236,6 @@ void ClusterFormationPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
-
-static PassRegistration<ClusterFormationPass> pass(
-    "tf-device-cluster-formation",
-    "Form clusters from instructions assigned to same device");
 
 }  // namespace TFDevice
 }  // namespace mlir

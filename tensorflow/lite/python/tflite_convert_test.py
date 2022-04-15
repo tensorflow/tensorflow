@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tflite_convert.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -431,15 +427,7 @@ class TfLiteConvertV1Test(TestModels):
 
     # Ensure --allow_custom_ops.
     flags_str_final = ('{} --allow_custom_ops').format(flags_str)
-    self._run(flags_str_final, should_succeed=False)
 
-    # Ensure --experimental_new_converter.
-    flags_str_final = ('{} --experimental_new_converter').format(flags_str)
-    self._run(flags_str_final, should_succeed=False)
-
-    # Valid conversion.
-    flags_str_final = ('{} --allow_custom_ops '
-                       '--experimental_new_converter').format(flags_str)
     self._run(
         flags_str_final,
         should_succeed=True,
@@ -540,7 +528,7 @@ class ArgParserTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     parser = tflite_convert._get_parser(use_v2_converter=use_v2_converter)
     parsed_args = parser.parse_args(args)
-    self.assertIsNone(parsed_args.experimental_new_converter)
+    self.assertTrue(parsed_args.experimental_new_converter)
     self.assertIsNone(parsed_args.experimental_new_quantizer)
 
   @parameterized.named_parameters(('v1', False), ('v2', True))

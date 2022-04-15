@@ -59,11 +59,11 @@ int Rank(const TensorShapeProto& shape) {
   return shape.dim_size();
 }
 
-int64 NumCoefficients(const TensorShapeProto& shape) {
+int64_t NumCoefficients(const TensorShapeProto& shape) {
   if (shape.unknown_rank()) {
     return -1;
   }
-  int64 num_coefficients = 1;
+  int64_t num_coefficients = 1;
   for (const auto& dim : shape.dim()) {
     if (dim.size() < 0) {
       return -1;
@@ -136,17 +136,17 @@ bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
   }
 
   // Tensor size, computed as a product of defined dimensions
-  int64 left_defined_size = 1;
-  int64 right_defined_size = 1;
+  int64_t left_defined_size = 1;
+  int64_t right_defined_size = 1;
 
   // Keep how many times each unknown dimension appeared on the left and right
-  std::unordered_map<int64, int64> left_unknown_dims;
-  std::unordered_map<int64, int64> right_unknown_dims;
+  std::unordered_map<int64_t, int64_t> left_unknown_dims;
+  std::unordered_map<int64_t, int64_t> right_unknown_dims;
 
   // Assign unique id to every unknown dimension (-1). We are going to
   // assign positive ids, because negative values are already used by
   // symbolic dimensions.
-  int64 unknown_dim_id = 1;
+  int64_t unknown_dim_id = 1;
 
   // For each shape dimension update "defined tensor size", if shape is defined,
   // or increment a counter for unknown dim.
@@ -155,7 +155,7 @@ bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
                         std::unordered_map<int64, int64>* unknown_dims) {
         for (int i = 0; i < shape.dim_size(); ++i) {
           const auto& dim = shape.dim(i);
-          int64 dim_size = dim.size();
+          int64_t dim_size = dim.size();
           if (dim_size > 0) {
             *defined_size *= dim_size;
           } else if (IsUnknown(dim)) {
@@ -170,21 +170,21 @@ bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
   process_dimensions(right, &right_defined_size, &right_unknown_dims);
 
   // Compute a union of unknown dimension ids appeared in both shapes
-  std::set<int64> unknown_dims;
+  std::set<int64_t> unknown_dims;
   for (const auto& el : left_unknown_dims) unknown_dims.insert(el.first);
   for (const auto& el : right_unknown_dims) unknown_dims.insert(el.first);
 
   // Cancel unknown dimensions that appeared in both shapes
-  for (int64 unknown_dim : unknown_dims) {
-    int64 co_occurrence = std::min(left_unknown_dims[unknown_dim],
-                                   right_unknown_dims[unknown_dim]);
+  for (int64_t unknown_dim : unknown_dims) {
+    int64_t co_occurrence = std::min(left_unknown_dims[unknown_dim],
+                                     right_unknown_dims[unknown_dim]);
     left_unknown_dims[unknown_dim] -= co_occurrence;
     right_unknown_dims[unknown_dim] -= co_occurrence;
   }
 
   // Count unbalanced unknown dimensions
-  int64 left_unbalanced_unknown_dims = 0;
-  int64 right_unbalanced_unknown_dims = 0;
+  int64_t left_unbalanced_unknown_dims = 0;
+  int64_t right_unbalanced_unknown_dims = 0;
   for (const auto& el : left_unknown_dims)
     left_unbalanced_unknown_dims += el.second;
   for (const auto& el : right_unknown_dims)
@@ -216,13 +216,13 @@ bool CompareSymbolicallyShapedTensorSizes(
   return CompareSymbolicallyShapedTensorSizes(left.shape(), right.shape());
 }
 
-int64 ComputeSizeRatio(const TensorShapeProto& numerator,
-                       const TensorShapeProto& denominator) {
+int64_t ComputeSizeRatio(const TensorShapeProto& numerator,
+                         const TensorShapeProto& denominator) {
   if (numerator.unknown_rank() || denominator.unknown_rank()) {
     return -1;
   }
   std::multiset<int> symbolic_dims;
-  int64 num = 1;
+  int64_t num = 1;
   for (const auto& dim : numerator.dim()) {
     if (dim.size() == -1) {
       return -1;
@@ -232,7 +232,7 @@ int64 ComputeSizeRatio(const TensorShapeProto& numerator,
       num *= dim.size();
     }
   }
-  int64 denom = 1;
+  int64_t denom = 1;
   for (const auto& dim : denominator.dim()) {
     if (dim.size() == -1) {
       return -1;

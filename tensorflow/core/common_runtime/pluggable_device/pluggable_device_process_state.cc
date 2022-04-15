@@ -86,7 +86,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
                                      tf_device_id);
 
   if (tf_device_id.value() >=
-      static_cast<int64>(pluggable_device_allocators_.size())) {
+      static_cast<int64_t>(pluggable_device_allocators_.size())) {
     pluggable_device_allocators_.resize(tf_device_id.value() + 1);
   }
 
@@ -125,7 +125,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     if (cplatform->UseBfcAllocator()) {
       device_allocator = new PluggableDeviceBFCAllocator(
           sub_allocator, total_bytes, options,
-          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"));
+          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"),
+          cplatform->ForceMemoryGrowth());
     } else {
       device_allocator = new PluggableDeviceSimpleAllocator(sub_allocator);
     }
@@ -185,7 +186,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     SubAllocator* sub_allocator = new DeviceHostAllocator(
         se, numa_node, pluggable_device_host_alloc_visitors_[numa_node],
         pluggable_device_host_free_visitors_[numa_node]);
-    int64 pluggable_device_host_mem_limit_in_mb = -1;
+    int64_t pluggable_device_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                         1LL << 16 /*64GB max by default*/,
                                         &pluggable_device_host_mem_limit_in_mb);
@@ -193,12 +194,14 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
       LOG(ERROR) << "GetPluggableDeviceHostAllocator: "
                  << status.error_message();
     }
-    int64 pluggable_device_host_mem_limit =
+    int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;
 
+    BFCAllocator::Options allocator_opts;
+    allocator_opts.allow_growth = true;
     Allocator* allocator = new BFCAllocator(
-        sub_allocator, pluggable_device_host_mem_limit, true /*allow_growth*/,
-        "pluggable_device_host_bfc" /*name*/);
+        absl::WrapUnique(sub_allocator), pluggable_device_host_mem_limit,
+        /*name=*/"pluggable_device_host_bfc", allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

@@ -13,6 +13,8 @@
 // limitations under the License.
 // ============================================================================
 
+#include <algorithm>
+
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -30,15 +32,28 @@ namespace tensorflow {
 namespace {
 
 Status ReadVariableShapeFn(InferenceContext* c) {
-  std::vector<ShapeAndType> shape_and_type;
-  TF_RETURN_IF_ERROR(
-      shape_inference::ValidateVariableResourceHandle(c, &shape_and_type));
-  c->set_output(0, shape_and_type[0].shape);
-  if (shape_and_type[0].dtype == DT_VARIANT && shape_and_type.size() > 1) {
-    std::vector<ShapeAndType> variant_shape_and_type;
-    std::copy(shape_and_type.begin() + 1, shape_and_type.end(),
-              std::back_inserter(variant_shape_and_type));
-    c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
+  // The user can add a "_shape" atribute to ReadVariableOp nodes. It is
+  // useful for inferring shapes in a function, when no shape information
+  // is passed about input resources. The user can annotate the graph using
+  // the variable capture list of the function.
+  // If the "_shape" attribute is found, it is used to set the output shape.
+  PartialTensorShape p;
+  Status annotation_found_status = c->GetAttr("_shape", &p);
+  if (annotation_found_status.ok()) {
+    ShapeHandle s;
+    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
+    c->set_output(0, s);
+  } else {
+    std::vector<ShapeAndType> shape_and_type;
+    TF_RETURN_IF_ERROR(
+        shape_inference::ValidateVariableResourceHandle(c, &shape_and_type));
+    c->set_output(0, shape_and_type[0].shape);
+    if (shape_and_type[0].dtype == DT_VARIANT && shape_and_type.size() > 1) {
+      std::vector<ShapeAndType> variant_shape_and_type;
+      std::copy(shape_and_type.begin() + 1, shape_and_type.end(),
+                std::back_inserter(variant_shape_and_type));
+      c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
+    }
   }
   return Status::OK();
 }
@@ -196,6 +211,7 @@ REGISTER_OP("AssignVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
     .Attr("dtype: type")
+    .Attr("validate_shape: bool = false")
     .SetShapeFn(CreateAssignShapeFn);
 
 REGISTER_OP("AssignAddVariableOp")
@@ -222,8 +238,8 @@ Status VariableShapeShapeFn(InferenceContext* c) {
     return Status::OK();
   }
   ShapeHandle var_shape = (*handle_data)[0].shape;
-  int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
-                                       : InferenceContext::kUnknownDim;
+  int64_t rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
+                                         : InferenceContext::kUnknownDim;
   c->set_output(0, c->Vector(rank));
   return Status::OK();
 }
@@ -250,7 +266,7 @@ REGISTER_OP("ResourceGather")
       ShapeHandle indices_shape = c->input(1);
 
       ShapeHandle unused;
-      int32 batch_dims;
+      int32_t batch_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
       if (batch_dims < 0)
         return errors::InvalidArgument("batch_dims is negative (", batch_dims,
@@ -407,6 +423,7 @@ REGISTER_OP("MutexLock")
     .Input("mutex: resource")
     .Output("mutex_lock: variant")
     .SetIsStateful()
+    .SetTypeConstructor(full_type::Nullary(TFT_MUTEX_LOCK))
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
       return Status::OK();
@@ -416,5 +433,9 @@ REGISTER_OP("ConsumeMutexLock")
     .Input("mutex_lock: variant")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
+REGISTER_OP("DisableCopyOnRead")
+    .Input("resource: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

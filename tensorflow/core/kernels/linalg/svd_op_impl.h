@@ -55,9 +55,9 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0);
-    int64 n = input_matrix_shapes[0].dim_size(1);
-    int64 min_size = std::min(m, n);
+    int64_t m = input_matrix_shapes[0].dim_size(0);
+    int64_t n = input_matrix_shapes[0].dim_size(1);
+    int64_t min_size = std::min(m, n);
     if (compute_uv_) {
       return TensorShapes({TensorShape({min_size}),
                            TensorShape({m, full_matrices_ ? m : min_size}),
@@ -68,12 +68,12 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
   }
 
   // TODO(rmlarsen): This should depend on compute_uv. See b/30409375.
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double cost = 12 * std::max(m, n) * std::min(m, n) * std::min(m, n);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   using Matrix = typename Base::Matrix;
@@ -83,8 +83,8 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
-    int64 n = inputs[0].cols();
-    int64 m = inputs[0].rows();
+    int64_t n = inputs[0].cols();
+    int64_t m = inputs[0].rows();
     const bool empty = (m == 0 || n == 0);
     int options = 0;  // Don't compute singular vectors;
     if (compute_uv_) {

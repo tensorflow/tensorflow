@@ -17,15 +17,9 @@
 See the [autograph](https://www.tensorflow.org/guide/autograph) guide.
 """
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import functools
-
-import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
@@ -34,6 +28,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -184,111 +179,119 @@ def Assert(condition, data, summarize=None, name=None):
       return guarded_assert.op
 
 
-def _Identity(data, name=None):
+def _Identity(tensor, name=None):
   """Return a tensor with the same shape and contents as the input tensor.
 
   Args:
-    data: A Tensor.
+    tensor: A Tensor.
     name: A name for this operation (optional).
 
   Returns:
     A Tensor with the same type and value as the input Tensor.
   """
-  data = ops.internal_convert_to_tensor_or_composite(data, as_ref=True)
-  if isinstance(data, ops.Tensor):
-    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return gen_array_ops.ref_identity(data, name=name)
+  tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
+  if isinstance(tensor, ops.Tensor):
+    if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
+      return gen_array_ops.ref_identity(tensor, name=name)
     else:
-      return array_ops.identity(data, name=name)
-  elif isinstance(data, composite_tensor.CompositeTensor):
-    return nest.map_structure(_Identity, data, expand_composites=True)
+      return array_ops.identity(tensor, name=name)
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
+    return nest.map_structure(_Identity, tensor, expand_composites=True)
   else:
-    raise TypeError("Type %s not supported" % type(data))
+    raise TypeError("'tensor' must be a Tensor or CompositeTensor. "
+                    f"Received: {type(tensor)}.")
 
 
-def _NextIteration(data, name=None):
-  data = ops.internal_convert_to_tensor_or_composite(data, as_ref=True)
-  if isinstance(data, ops.Tensor):
-    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return ref_next_iteration(data, name=name)
+def _NextIteration(tensor, name=None):
+  tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
+  if isinstance(tensor, ops.Tensor):
+    if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
+      return ref_next_iteration(tensor, name=name)
     else:
-      return next_iteration(data, name=name)
-  elif isinstance(data, composite_tensor.CompositeTensor):
-    return nest.map_structure(_NextIteration, data, expand_composites=True)
+      return next_iteration(tensor, name=name)
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
+    return nest.map_structure(_NextIteration, tensor, expand_composites=True)
   else:
-    raise TypeError("Type %s not supported" % type(data))
+    raise TypeError("'tensor' must be a Tensor or CompositeTensor. "
+                    f"Received: {type(tensor)}.")
 
 
-def _Enter(data,
+def _Enter(tensor,
            frame_name,
            is_constant=False,
            parallel_iterations=10,
            use_ref=True,
            use_input_shape=True,
            name=None):
-  """Creates or finds a child frame, and makes `data` available to it.
+  """Creates or finds a child frame, and makes `tensor` available to it.
 
   The unique `frame_name` is used by the `Executor` to identify frames. If
-  `is_constant` is true, `data` is a constant in the child frame; otherwise
+  `is_constant` is true, `tensor` is a constant in the child frame; otherwise
   it may be changed in the child frame. At most `parallel_iterations`
   iterations are run in parallel in the child frame.
 
   Args:
-    data: The tensor to be made available to the child frame.
+    tensor: The tensor to be made available to the child frame.
     frame_name: The name of the child frame.
     is_constant: If true, the output is constant within the child frame.
     parallel_iterations: The number of iterations allowed to run in parallel.
-    use_ref: If true, use ref_enter if data is of ref type.
-    use_input_shape: If true, set the result's shape based on data's shape.
+    use_ref: If true, use ref_enter if tensor is of ref type.
+    use_input_shape: If true, set the result's shape based on tensor's shape.
     name: A name for this operation (optional).
 
   Returns:
-    The same tensor as `data`.
+    The same tensor as `tensor`.
+
+  Raises:
+    ValueError: If any tensor in `tensor` has a less specific shape
+      than its corresponding shape in `shape_invariant`.
   """
-  data = ops.internal_convert_to_tensor_or_composite(data, as_ref=True)
-  if isinstance(data, ops.Tensor):
-    if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
+  tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
+  if isinstance(tensor, ops.Tensor):
+    if tensor.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
       result = gen_control_flow_ops.ref_enter(
-          data, frame_name, is_constant, parallel_iterations, name=name)
+          tensor, frame_name, is_constant, parallel_iterations, name=name)
     else:
       result = gen_control_flow_ops.enter(
-          data, frame_name, is_constant, parallel_iterations, name=name)
+          tensor, frame_name, is_constant, parallel_iterations, name=name)
     if use_input_shape:
-      result.set_shape(data.get_shape())
+      result.set_shape(tensor.get_shape())
     return result
-  elif isinstance(data, composite_tensor.CompositeTensor):
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
 
     def enter_component(t):
       return _Enter(t, frame_name, is_constant, parallel_iterations, use_ref,
                     use_input_shape)
 
-    return nest.map_structure(enter_component, data, expand_composites=True)
+    return nest.map_structure(enter_component, tensor, expand_composites=True)
   else:
-    raise TypeError("Type %s not supported" % type(data))
+    raise TypeError("'tensor' must be a Tensor or CompositeTensor. "
+                    f"Received: {type(tensor)}.")
 
 
-def exit(data, name=None):  # pylint: disable=redefined-builtin
+def exit(tensor, name=None):  # pylint: disable=redefined-builtin
   """Exits the current frame to its parent frame.
 
-  Exit makes its input `data` available to the parent frame.
+  Exit makes its input `tensor` available to the parent frame.
 
   Args:
-    data: The tensor to be made available to the parent frame.
+    tensor: The tensor to be made available to the parent frame.
     name: A name for this operation (optional).
 
   Returns:
-    The same tensor as `data`.
+    The same tensor as `tensor`.
   """
-  data = ops.internal_convert_to_tensor_or_composite(data, as_ref=True)
-  if isinstance(data, ops.Tensor):
-    if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return gen_control_flow_ops.ref_exit(data, name)
+  tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
+  if isinstance(tensor, ops.Tensor):
+    if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
+      return gen_control_flow_ops.ref_exit(tensor, name)
     else:
-      return gen_control_flow_ops._exit(data, name)
-  elif isinstance(data, composite_tensor.CompositeTensor):
-    return nest.map_structure(exit, data, expand_composites=True)
+      return gen_control_flow_ops._exit(tensor, name)
+  elif isinstance(tensor, composite_tensor.CompositeTensor):
+    return nest.map_structure(exit, tensor, expand_composites=True)
   else:
-    raise TypeError("Type %s not supported" % type(data))
+    raise TypeError("'tensor' must be a Tensor or CompositeTensor. "
+                    f"Received: {type(tensor)}.")
 
 
 def switch(data, pred, dtype=None, name=None):
@@ -318,7 +321,9 @@ def switch(data, pred, dtype=None, name=None):
       return gen_control_flow_ops.switch(data, pred, name=name)
     else:
       if not isinstance(data, composite_tensor.CompositeTensor):
-        raise TypeError("Type %s not supported" % type(data))
+        raise TypeError(
+            "'data' must be a Tensor or CompositeTensor. "
+            f"Received: {type(data)}.")
       tensors = nest.flatten(data, expand_composites=True)
       mapped = [gen_control_flow_ops.switch(tensor, pred) for tensor in tensors]
       mapped_f, mapped_t = zip(*mapped)
@@ -410,7 +415,9 @@ def merge(inputs, name=None):
     else:
       # If there is a mix of tensors and indexed slices, then convert the
       # tensors to indexed slices.
-      if all(isinstance(v, (ops.IndexedSlices, ops.Tensor)) for v in inputs):
+      if all(
+          isinstance(v, (indexed_slices.IndexedSlices, ops.Tensor))
+          for v in inputs):
         inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
 
       for v in inputs:
@@ -432,9 +439,6 @@ def merge(inputs, name=None):
       return (merged_inputs, chosen_index)
 
 
-# pylint: enable=protected-access
-
-
 def _convert_tensorarray_to_flow(tensor_or_tensor_array):
   if isinstance(tensor_or_tensor_array, tensor_array_ops.TensorArray):
     return tensor_or_tensor_array.flow
@@ -442,18 +446,21 @@ def _convert_tensorarray_to_flow(tensor_or_tensor_array):
     return tensor_or_tensor_array
 
 
-def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
-  if len(tensors_or_tensorarrays) != len(tensors_or_flows):
-    raise ValueError(
-        "Lengths of original Tensor list and new list do not match: %d vs. %d" %
-        (len(tensors_or_tensorarrays), len(tensors_or_flows)))
-  return [
-      tensor_array_ops.build_ta_with_new_flow(ta, t_or_flow) if isinstance(
-          ta, tensor_array_ops.TensorArray) else t_or_flow
-      for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)
-  ]
+def _convert_flow_to_tensorarray(tensor_or_tensor_array, tensor_or_flow):
+  if isinstance(tensor_or_tensor_array, tensor_array_ops.TensorArray):
+    return tensor_array_ops.build_ta_with_new_flow(tensor_or_tensor_array,
+                                                   tensor_or_flow)
+  else:
+    return tensor_or_flow
 
 
+def _convert_to_tensor_or_composite_or_tensorarray(var):
+  if isinstance(var, tensor_array_ops.TensorArray):
+    return var
+  return ops.convert_to_tensor_or_composite(var)
+
+
+# TODO(xjun): replace this with is_subtype_of after it is landed.
 def _ShapeLessThanOrEqual(shape1, shape2):
   if shape2.dims is None:
     return True
@@ -465,52 +472,27 @@ def _ShapeLessThanOrEqual(shape1, shape2):
   return True
 
 
-def _get_shape_invariant(var, shape=None):
-  """Returns shape invariant(s) for the given variable.
-
-  Args:
-    var: The tensor whose shape is described.
-    shape: The shape invariant for the tensor.  If not specified, then a default
-      shape invariant for `var` is returned.
-
-  Returns:
-    `TensorShape` or `list` of `TensorShape`: The shape invariant for `var` (if
-    it is a `Tensor`), or the shape invariants for the components that comprise
-    `var` (if it is a `CompositeTensor`).
-  """
-  if isinstance(var, composite_tensor.CompositeTensor):
-    # Get a TypeSpec for `var`.
-    if shape is None:
-      spec = var._type_spec  # pylint: disable=protected-access
-    else:
-      spec = _shape_invariant_to_type_spec(var, shape)
-
-    tensor_specs = nest.flatten(spec, expand_composites=True)
-    return [tspec.shape for tspec in tensor_specs]
-
-  elif shape is None:
-    return var.shape
-  elif isinstance(shape, tensor_spec.TensorSpec):
-    if var.dtype != shape.dtype:
-      raise TypeError("TensorSpec %r is not compatible with %r" % (shape, var))
-    return shape.shape
-  elif isinstance(shape, type_spec.TypeSpec):
-    raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
-  else:
-    return shape
-
-
-def _shape_invariant_to_type_spec(var, shape):
+def _shape_invariant_to_type_spec(var, shape=None):
   """Converts a shape invariant to a TypeSpec.
 
+  If `var` is a TensorArray, it will first be converted to its flow.
+
   Args:
-    var: The tensor whose shape is described by the shape invariant.
+    var: The tensor, tensor array or composite tensor whose shape is described
+      by the shape invariant.
     shape: A `TypeSpec` or `TensorShape`.  If `shape` is already a `TypeSpec`,
       then it is simply returned as-is.
 
   Returns:
     A `TypeSpec` for `var`, consistent with the given shape.
+
+  Raises:
+    TypeError: If `shape` is a TypeSpec and not compatible with `var`.
+    TypeError: If `shape` is not None, a TypeSpec, or a TensorShape.
+    TypeError: If `shape` is a TensorShape, `var` is a CompositeTensor, and
+      `var` doesn't implement the `_shape_invariant_to_type_spec` method.
   """
+  var = _convert_tensorarray_to_flow(var)
   if shape is None:
     return type_spec.type_spec_from_value(var)
   elif isinstance(shape, type_spec.TypeSpec):
@@ -519,64 +501,27 @@ def _shape_invariant_to_type_spec(var, shape):
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
     raise TypeError(
-        "Expected shape to be a TypeSpec, TensorShape or None, got %r for"
-        " value %r" % (shape, var))
+        "'shape' must be one of TypeSpec, TensorShape or None. "
+        f"Received: {type(shape)}")
 
   if isinstance(var, ops.Tensor):
     return tensor_spec.TensorSpec(shape, var.dtype)
-
-  elif isinstance(var, composite_tensor.CompositeTensor):
+  else:
     try:
       return var._shape_invariant_to_type_spec(shape)  # pylint: disable=protected-access
-    except NotImplementedError:
+    except NotImplementedError as e:
       raise TypeError(
-          "To describe or constrain a %s, use a %s instead of a TensorShape." %
-          (type(var).__name__, type(var._type_spec).__name__))  # pylint: disable=protected-access
-
-  else:
-    raise TypeError("Expected var to be a Tensor or CompositeTensor, got %s"
-                    % var)
-
-
-def _SetShapeInvariants(input_vars, enter_vars, shapes):
-  """Set the shapes of the tensors in `enter_vars` to `shapes`.
-
-  Args:
-    input_vars: A list of tensors that are inputs to `enter_vars`.
-    enter_vars: A list of tensors whose shapes will be set.
-    shapes: A (possibly nested) list of shapes.
-
-  Raises:
-    ValueError: If any tensor in `enter_vars` has a less specific shape
-      than its corresponding shape in `shapes`.
-  """
-  if shapes is None:
-    return
-  flat_shapes = nest.flatten(shapes)
-  if not all(isinstance(s, tensor_shape.TensorShape) for s in flat_shapes):
-    raise ValueError("`shapes` must be a (possibly nested) list of shapes.")
-  # Check that the shapes of the inputs are less than the shape invariants,
-  # and set the shapes of `enter_vars` to the shape invariants.
-  for inp, var, shape in zip(input_vars, enter_vars, flat_shapes):
-    if isinstance(var, ops.Tensor):
-      if not _ShapeLessThanOrEqual(inp.get_shape(), shape):
-        raise ValueError(
-            "The shape invariant specified for %s is not compatible with "
-            "the initial shape of the loop variable. It enters the loop "
-            "with shape %s, but the specified shape invariant is %s." %
-            (inp.name, inp.get_shape(), shape))
-      var.set_shape(shape)
-    else:
-      raise TypeError("Type %s not supported" % type(var))
+          f"To describe or constrain a {type(var).__name__}, use a "
+          f"{type(var._type_spec).__name__} instead of a TensorShape.") from e  # pylint: disable=protected-access
 
 
 def _EnforceShapeInvariant(merge_var, next_var):
   """Check if the shapes of the loops variables are invariants.
 
   Args:
-    merge_var: The list of tensors representing the initial values of the loop
+    merge_var: The tensor representing the initial values of the loop
       variables.
-    next_var: The list of tensors representing the values of the loop variables
+    next_var: The tensor representing the values of the loop variables
       after one loop iteration.
 
   Raises:
@@ -596,7 +541,8 @@ def _EnforceShapeInvariant(merge_var, next_var):
           "use the `shape_invariants` argument of tf.while_loop to specify a "
           "less-specific shape." % (input_t.name, input_t.shape, n_shape))
   else:
-    raise TypeError("Type %s not supported" % type(merge_var))
+    raise TypeError("'merge_var' must be a Tensor. "
+                    f"Received: {type(merge_var)}.")
 
 
 def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
@@ -616,18 +562,18 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
     def update_component(m_component, v_component):
       m_component.op._update_input(1, v_component)
 
-    if isinstance(m, ops.IndexedSlices):
+    if isinstance(m, indexed_slices.IndexedSlices):
       v = math_ops._as_indexed_slices(v, optimize=False)
     # pylint: enable=protected-access
     v = _NextIteration(v)
     return nest.map_structure(update_component, m, v, expand_composites=True)
   else:
-    raise TypeError("Type %s not supported" % type(m))
+    raise TypeError("'m' must be a Tensor or CompositeTensor. "
+                    f"Received: {type(m)}.")
   return v
 
 
-@six.add_metaclass(abc.ABCMeta)
-class ControlFlowContext(object):
+class ControlFlowContext(metaclass=abc.ABCMeta):
   """The base class for control flow context.
 
   The usage pattern is a sequence of (Enter, Exit) followed by a final
@@ -777,17 +723,17 @@ class ControlFlowContext(object):
     # A control input of `op` is internal if it is in the same while
     # loop context as the enclosing while loop context of self.
     if while_ctxt is None:
-      internal_control_inputs = op.control_inputs
+      internal_control_inputs, external_control_inputs = op.control_inputs, []
     else:
-      internal_control_inputs = []
+      internal_control_inputs, external_control_inputs = [], []
       for x in op.control_inputs:
         ctxt = util.GetOutputContext(x)
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
-    external_control_inputs = []
+        else:
+          external_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
-      external_control_inputs = list(
-          set(op.control_inputs) - set(internal_control_inputs))
+      # TODO(mdan): perhaps there should be a replace_control_inputs()
       op._remove_all_control_inputs()
       op._add_control_inputs(internal_control_inputs)
     return internal_control_inputs, external_control_inputs
@@ -1111,8 +1057,8 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
     # build cond ops without wrapping in a function first.
     if (not isinstance(true_fn, def_function.Function)
         or not isinstance(false_fn, def_function.Function)):
-      raise TypeError("When running tf.cond on a parallel device, `true_fn` "
-                      "and `false_fn` must be decorated with `tf.function`.")
+      raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
+                      "and 'false_fn' must be decorated with `tf.function`.")
     @def_function.function
     def _parallel_device_cond_wrapper():
       return cond_v2.cond_v2(pred, true_fn, false_fn, name)
@@ -1230,21 +1176,23 @@ def cond(pred,
   # `fn1` and `fn2` are deleted.
   if fn1 is not None:
     if true_fn is not None:
-      raise TypeError("cond(): true_fn and fn1 may not be set simultaneously.")
+      raise TypeError(
+          "cond(): 'true_fn' and 'fn1' may not be set simultaneously.")
     true_fn = fn1
   elif true_fn is None:
-    raise TypeError("cond(): true_fn argument required")
+    raise TypeError("cond(): 'true_fn' argument required")
   if fn2 is not None:
     if false_fn is not None:
-      raise TypeError("cond(): false_fn and fn2 may not be set simultaneously.")
+      raise TypeError(
+          "cond(): 'false_fn' and 'fn2' may not be set simultaneously.")
     false_fn = fn2
   elif false_fn is None:
-    raise TypeError("cond(): false_fn argument required")
+    raise TypeError("cond(): 'false_fn' argument required")
 
   if not callable(true_fn):
-    raise TypeError("true_fn must be callable.")
+    raise TypeError("'true_fn' must be callable.")
   if not callable(false_fn):
-    raise TypeError("false_fn must be callable.")
+    raise TypeError("'false_fn' must be callable.")
 
   if context.executing_eagerly():
     return _eager_cond_implementation(pred, true_fn, false_fn, strict, name)
@@ -1256,7 +1204,7 @@ def cond(pred,
   with ops.name_scope(name, "cond", [pred]):
     # Add the Switch to the graph.
     if isinstance(pred, bool):
-      raise TypeError("pred must not be a Python bool")
+      raise TypeError("'pred' must not be a Python bool.")
     p_2, p_1 = switch(pred, pred)
     pivot_1 = array_ops.identity(p_1, name="switch_t")
     pivot_2 = array_ops.identity(p_2, name="switch_f")
@@ -1271,7 +1219,7 @@ def cond(pred,
       context_t.Enter()
       orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
       if orig_res_t is None:
-        raise ValueError("true_fn must have a return value.")
+        raise ValueError("'true_fn' must have a return value.")
       context_t.ExitResult(res_t)
     finally:
       context_t.Exit()
@@ -1282,7 +1230,7 @@ def cond(pred,
       context_f.Enter()
       orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
       if orig_res_f is None:
-        raise ValueError("false_fn must have a return value.")
+        raise ValueError("'false_fn' must have a return value.")
       context_f.ExitResult(res_f)
     finally:
       context_f.Exit()
@@ -1302,14 +1250,15 @@ def cond(pred,
                                    expand_composites=True)
       except TypeError as e:
         raise TypeError(
-            "Incompatible return types of true_fn and false_fn: {}".format(e))
+            f"Incompatible return types of 'true_fn' and 'false_fn': {e}")
       except ValueError as e:
         raise ValueError(
-            "Incompatible return values of true_fn and false_fn: {}".format(e))
+            f"Incompatible return values of 'true_fn' and 'false_fn': {e}")
 
     # Add the final merge to the graph.
     if not res_t:
-      raise ValueError("true_fn and false_fn must return at least one result.")
+      raise ValueError(
+          "'true_fn' and 'false_fn' must return at least one result.")
 
     res_t_flat = nest.flatten(res_t, expand_composites=True)
     res_f_flat = nest.flatten(res_f, expand_composites=True)
@@ -1318,12 +1267,15 @@ def cond(pred,
       assert isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
       if x.dtype.base_dtype != y.dtype.base_dtype:
         raise ValueError(
-            "Outputs of true_fn and false_fn must have the same type: "
-            "%s, %s" % (x.dtype.name, y.dtype.name))
+            "Outputs of 'true_fn' and 'false_fn' must have the same type(s). "
+            f"Received {x.dtype.name} from 'true_fn' "
+            f"and {y.dtype.name} from 'false_fn'.")
 
     merges = [merge(pair)[0] for pair in zip(res_f_flat, res_t_flat)]
-    merges = _convert_flows_to_tensorarrays(
-        nest.flatten(orig_res_t, expand_composites=True), merges)
+    merges = nest.map_structure(
+        _convert_flow_to_tensorarray,
+        nest.flatten(orig_res_t, expand_composites=True),
+        merges)
 
     # Only add non-nested conds to the collection. Any nested control flow will
     # be encapsulated in the root context.
@@ -1352,8 +1304,9 @@ def _cast_indexed_slice_indices(a, b):
     a: A value, which may be an IndexedSlices.
     b: A value, which may be an IndexedSlices.
   """
-  if (isinstance(a, ops.IndexedSlices) and isinstance(b, ops.IndexedSlices)
-      and a.indices.dtype != b.indices.dtype):
+  if (isinstance(a, indexed_slices.IndexedSlices) and
+      isinstance(b, indexed_slices.IndexedSlices) and
+      a.indices.dtype != b.indices.dtype):
     # pylint: disable=protected-access
     a._indices = math_ops.cast(a.indices, dtypes.int64)
     b._indices = math_ops.cast(b.indices, dtypes.int64)
@@ -1500,7 +1453,7 @@ class WhileContext(ControlFlowContext):
       ValueError: If `parallel_iterations` has invalid value.
     """
     if not isinstance(parallel_iterations, int) or (parallel_iterations <= 0):
-      raise ValueError("`parallel_iterations` must be a positive integer: "
+      raise ValueError("'parallel_iterations' must be a positive integer: "
                        "%s" % parallel_iterations)
     self._name = ops.get_default_graph().unique_name(name)
     self._maximum_iterations = maximum_iterations
@@ -2133,7 +2086,7 @@ class WhileContext(ControlFlowContext):
     self.loop_exits.extend(exit_acc)
 
     self.ExitResult(exit_acc)
-    return ops.IndexedSlices(
+    return indexed_slices.IndexedSlices(
         indices=exit_acc[0],
         values=exit_acc[1],
         dense_shape=exit_acc[2] if shape_acc is not None else None)
@@ -2145,32 +2098,47 @@ class WhileContext(ControlFlowContext):
       if isinstance(x, ops.Tensor):
         self._values.add(x.name)
       else:
-        raise TypeError("Type %s not supported" % type(x))
+        raise TypeError("'values' must be a list of Tensors. "
+                        f"Received: {type(x)}.")
 
-  def _BuildLoop(self, pred, body, original_loop_vars, loop_vars,
-                 shape_invariants):
+  def _BuildLoop(self, pred, body, flat_orig_loop_vars, flat_loop_vars,
+                 loop_vars_signature):
     """Core: Add the loop termination condition and body to the graph."""
-    flat_loop_vars = nest.flatten(original_loop_vars, expand_composites=True)
+    flat_shape_invariants = nest.map_structure(
+        lambda spec: spec.shape,
+        nest.flatten(loop_vars_signature, expand_composites=True))
 
     # Let the context know the loop variables so the loop variables
     # would be added in the outer contexts properly.
-    self._InitializeValues(loop_vars)
-    real_vars = loop_vars
+    self._InitializeValues(flat_loop_vars)
     if self._outer_context:
-      real_vars = [self._outer_context.AddValue(x) for x in loop_vars]
+      real_vars = [self._outer_context.AddValue(x) for x in flat_loop_vars]
+    else:
+      real_vars = flat_loop_vars
+
+    enter_vars = []
     with ops.control_dependencies(None):
-      enter_vars = [
-          _Enter(
-              x,
-              self._name,
-              is_constant=False,
-              parallel_iterations=self._parallel_iterations,
-              use_input_shape=(shape_invariants is None)) for x in real_vars
-      ]
-      for x in enter_vars:
-        x.graph.prevent_feeding(x)
+      for real_var, shape_invariant in zip(real_vars, flat_shape_invariants):
+        enter_var = _Enter(
+            real_var,
+            self._name,
+            is_constant=False,
+            parallel_iterations=self._parallel_iterations,
+            use_input_shape=False)
+
+        if _ShapeLessThanOrEqual(real_var.get_shape(), shape_invariant):
+          enter_var.set_shape(shape_invariant)
+        else:
+          raise ValueError(
+              f"The shape invariant specified for {real_var.name} is not "
+              "compatible with the initial shape of the loop variable. It "
+              f"enters the loop with shape {real_var.get_shape()}, but the "
+              f"specified shape invariant is {shape_invariant}.")
+
+        enter_var.graph.prevent_feeding(enter_var)
         if self._outer_context:
-          self._outer_context.AddInnerOp(x.op)
+          self._outer_context.AddInnerOp(enter_var.op)
+        enter_vars.append(enter_var)
 
     # Finds the closest enclosing non-None control pivot.
     outer_context = self._outer_context
@@ -2187,7 +2155,6 @@ class WhileContext(ControlFlowContext):
           # pylint: disable=protected-access
           var.op._add_control_input(control_pivot.op)
           # pylint: enable=protected-access
-    _SetShapeInvariants(real_vars, enter_vars, shape_invariants)
 
     # Fix the control inputs and control flow context of these enter ops.
     self._FixControlInputsAndContext(enter_vars)
@@ -2197,12 +2164,12 @@ class WhileContext(ControlFlowContext):
     merge_vars = [merge([x, x])[0] for x in enter_vars]
     self._pivot_for_pred = merge_vars[0]
 
+    merge_vars_with_tensorarrays = nest.map_structure(
+        _convert_flow_to_tensorarray, flat_orig_loop_vars, merge_vars)
     # Build the graph for pred.
-    merge_vars_with_tensor_arrays = (
-        _convert_flows_to_tensorarrays(flat_loop_vars, merge_vars))
     packed_vars = nest.pack_sequence_as(
-        structure=original_loop_vars,
-        flat_sequence=merge_vars_with_tensor_arrays,
+        structure=loop_vars_signature,
+        flat_sequence=merge_vars_with_tensorarrays,
         expand_composites=True)
     c = ops.convert_to_tensor(pred(*packed_vars))
     self._pivot = loop_cond(c, name="LoopCond")
@@ -2213,16 +2180,16 @@ class WhileContext(ControlFlowContext):
     self._pivot_for_body = vars_for_body[0]
     # Convert TensorArray flow variables inside the context back into
     # their associated TensorArrays for calling the body.
-    vars_for_body_with_tensor_arrays = (
-        _convert_flows_to_tensorarrays(flat_loop_vars, vars_for_body))
+    vars_for_body_with_tensorarrays = nest.map_structure(
+        _convert_flow_to_tensorarray, flat_orig_loop_vars, vars_for_body)
     packed_vars_for_body = nest.pack_sequence_as(
-        structure=original_loop_vars,
-        flat_sequence=vars_for_body_with_tensor_arrays,
+        structure=loop_vars_signature,
+        flat_sequence=vars_for_body_with_tensorarrays,
         expand_composites=True)
     pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
     post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-    if not nest.is_sequence_or_composite(body_result):
+    if not nest.is_nested_or_composite(body_result):
       body_result = [body_result]
     if len(post_summaries) > len(pre_summaries):
       new_summaries = post_summaries[len(pre_summaries):]
@@ -2257,8 +2224,9 @@ class WhileContext(ControlFlowContext):
 
     # Add NextIteration and the back edges to complete the loop.
     if len(merge_vars) != len(result):
-      raise ValueError("Number of inputs and outputs of body must match "
-                       "loop_vars: %d, %d" % (len(merge_vars), len(result)))
+      raise ValueError("Number of inputs and outputs of 'body' must match "
+                       f"'loop_vars'. Got {len(merge_vars)} for the number of "
+                       f"inputs/outputs, and {len(result)} for 'loop_vars'.")
     next_vars = []
     for m, v in zip(merge_vars, result):
       next_vars.append(_AddNextAndBackEdge(m, v))
@@ -2276,18 +2244,23 @@ class WhileContext(ControlFlowContext):
                 return_same_structure):
     """Add the loop termination condition and body to the graph."""
 
-    # Keep original_loop_vars to identify which are TensorArrays
-    original_loop_vars = loop_vars
-    # Convert TensorArrays to their flow variables
+    # Keep flat_orig_loop_vars to identify which are TensorArrays
+    flat_orig_loop_vars = nest.flatten(loop_vars, expand_composites=True)
+
     loop_vars = nest.map_structure(
+        _convert_to_tensor_or_composite_or_tensorarray, loop_vars)
+    # Convert TensorArrays to their flow variables
+    flat_loop_vars = nest.map_structure(
         _convert_tensorarray_to_flow,
-        nest.flatten(loop_vars, expand_composites=False),
-        expand_composites=True)
-    loop_vars = ops.convert_n_to_tensor_or_composite(loop_vars)
-    if shape_invariants is None:
-      shape_invariants = nest.map_structure(
-          _get_shape_invariant, loop_vars, expand_composites=False)
-    loop_vars = nest.flatten(loop_vars, expand_composites=True)
+        nest.flatten(loop_vars, expand_composites=True))
+
+    if shape_invariants is not None:
+      loop_vars_signature = nest.map_structure(
+          _shape_invariant_to_type_spec, loop_vars, shape_invariants)
+    else:
+      loop_vars_signature = nest.map_structure(
+          _shape_invariant_to_type_spec, loop_vars)
+
     try:
       self.Enter()
       # _BuildLoop calls _update_input in several places. _mutation_lock()
@@ -2295,18 +2268,20 @@ class WhileContext(ControlFlowContext):
       # new ops.
       with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
         original_body_result, exit_vars = self._BuildLoop(
-            pred, body, original_loop_vars, loop_vars, shape_invariants)
+            pred, body, flat_orig_loop_vars, flat_loop_vars,
+            loop_vars_signature)
     finally:
       self.Exit()
 
     flat_result = nest.flatten(original_body_result, expand_composites=True)
     # Convert TensorArray flow variables outside the context back into
     # their associated TensorArrays for returning to caller.
-    exit_vars_with_tensor_arrays = (
-        _convert_flows_to_tensorarrays(flat_result, exit_vars))
+    exit_vars_with_tensorarrays = nest.map_structure(
+        _convert_flow_to_tensorarray, flat_result, exit_vars)
+
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
-        flat_sequence=exit_vars_with_tensor_arrays,
+        flat_sequence=exit_vars_with_tensorarrays,
         expand_composites=True)
 
     if return_same_structure:
@@ -2321,7 +2296,8 @@ class WhileContext(ControlFlowContext):
       if isinstance(e, ops.Tensor):
         xs = [e]
       else:
-        raise TypeError("Type %s not supported" % type(e))
+        raise TypeError("'enters' must be a list of Tensors. "
+                        f"Received: {type(e)}.")
       for x in xs:
         inp_op = x.op.inputs[0].op
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
@@ -2716,11 +2692,11 @@ def while_loop(cond,
 
   """
   if not callable(cond):
-    raise TypeError("cond must be callable.")
+    raise TypeError("'cond' must be callable.")
   if not callable(body):
-    raise TypeError("body must be callable.")
+    raise TypeError("'body' must be callable.")
   if parallel_iterations < 1:
-    raise TypeError("parallel_iterations must be a positive integer.")
+    raise TypeError("'parallel_iterations' must be a positive integer.")
 
   # Always enable control flow v2 if building a function, regardless of toggle.
   executing_eagerly = context.executing_eagerly()
@@ -2739,14 +2715,15 @@ def while_loop(cond,
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
-      raise ValueError("No loop variables provided")
+      raise ValueError("'loop_vars' must be provided.")
     try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
           maximum_iterations, name="maximum_iterations")
       if maximum_iterations.shape.ndims != 0:
-        raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
-                         maximum_iterations.shape)
+        raise ValueError(
+            "'maximum_iterations' must be a scalar. "
+            f"Received shape: {maximum_iterations.shape}")
 
       if executing_eagerly:
         counter = 0
@@ -2795,14 +2772,6 @@ def while_loop(cond,
       if maximum_iterations is not None:
         shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
 
-      nest.assert_same_structure(
-          loop_vars, shape_invariants, expand_composites=False)
-      shape_invariants = nest.map_structure(
-          _get_shape_invariant,
-          loop_vars,
-          shape_invariants,
-          expand_composites=False)
-
     loop_context = WhileContext(
         maximum_iterations=maximum_iterations,
         parallel_iterations=parallel_iterations,
@@ -2848,7 +2817,7 @@ def _AsTensorList(x, p):
       l.append(array_ops.identity(v))
     else:
       l.append(
-          ops.IndexedSlices(
+          indexed_slices.IndexedSlices(
               array_ops.identity(v.values), array_ops.identity(v.indices)))
   return l
 
@@ -2895,7 +2864,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
         if isinstance(output_tensor, ops.Tensor):
           return _Identity(output_tensor, name=name)
         else:
-          return ops.IndexedSlices(
+          return indexed_slices.IndexedSlices(
               _Identity(output_tensor.values, name=name), output_tensor.indices,
               output_tensor.dense_shape)
 
@@ -2962,8 +2931,8 @@ def group(*inputs, **kwargs):
     ops_on_device = {}  # device -> operations specified on the device.
     for inp in nest.flatten(inputs, expand_composites=True):
       if not hasattr(inp, "device"):
-        raise TypeError("Expected tf.group() expected Tensor arguments not "
-                        "'%s' with type '%s'" % (inp, type(inp)))
+        raise TypeError("'inputs' should be zero or more (nested) Tensors. "
+                        f"Received '{inp}' with type '{type(inp)}'.")
       dev = inp.device
       if dev in ops_on_device:
         ops_on_device[dev].append(inp)
@@ -3071,13 +3040,16 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
         if isinstance(c, ops.Tensor):
           c = c.op
         elif not isinstance(c, ops.Operation):
-          raise TypeError("Control input must be Operation or Tensor: %s" % c)
+          raise TypeError(
+              "'control_inputs' must only contain Operation or Tensor. "
+              f"Received: {type(c)}")
         gating_ops.append(c)
     # Note that in order to ensure ordering in the pbtxt, we must take care to
     # ensure the order here.
     gating_ops = sorted(set(gating_ops), key=lambda op: op._id)  # Uniquify ops.
     if not gating_ops:
-      raise ValueError("Must have at least one Tensor: %s" % tensors)
+      raise ValueError("'tensors' must have at least one Tensor. "
+                       f"Received: {tensors}.")
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
@@ -3167,7 +3139,8 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
     a tuple <list of scalar bool tensors, list of callables>.
   """
   if not isinstance(pred_fn_pairs, (list, _basetuple, dict)):
-    raise TypeError("fns must be a list, tuple, or dict")
+    raise TypeError("'pred_fn_pairs' must be a list, tuple, or dict. "
+                    f"Received: {type(pred_fn_pairs)}")
 
   if isinstance(pred_fn_pairs, collections.OrderedDict):
     pred_fn_pairs = pred_fn_pairs.items()
@@ -3177,7 +3150,7 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
       # which is nondeterministic in versions of Python < 3.6
       if not exclusive:
         raise ValueError("Unordered dictionaries are not supported for the "
-                         "`pred_fn_pairs` argument when `exclusive=False` and "
+                         "'pred_fn_pairs' argument when `exclusive=False` and "
                          "eager mode is enabled.")
       pred_fn_pairs = list(pred_fn_pairs.items())
     else:
@@ -3190,7 +3163,8 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
             "tests is deterministic but not guaranteed.", name)
   for pred_fn_pair in pred_fn_pairs:
     if not isinstance(pred_fn_pair, _basetuple) or len(pred_fn_pair) != 2:
-      raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
+      raise TypeError("Each entry in 'pred_fn_pairs' must be a 2-tuple. "
+                      f"Received {pred_fn_pair}.")
     pred, fn = pred_fn_pair
 
     if isinstance(pred, ops.Tensor):
@@ -3282,16 +3256,16 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
     branch_fns: validated list of callables for each branch (default last).
   """
   if not isinstance(branch_index, ops.Tensor):
-    raise TypeError("branch_index must be a Tensor, got {}".format(
+    raise TypeError("'branch_index' must be a Tensor, got {}".format(
         type(branch_index)))
   if not branch_index.dtype.is_integer:
-    raise TypeError("branch_index must be an integer Tensor, got {}".format(
+    raise TypeError("'branch_index' must be an integer Tensor, got {}".format(
         branch_index.dtype))
 
   if not branch_fns:
-    raise ValueError("Must provide at least one item in branch_fns")
+    raise ValueError("Must provide at least one item in 'branch_fns'")
   if not isinstance(branch_fns, (list, _basetuple, dict)):
-    raise TypeError("branch_fns must be a list, tuple, or dict")
+    raise TypeError("'branch_fns' must be a list, tuple, or dict")
 
   if isinstance(branch_fns, dict):
     branch_fns = branch_fns.items()
@@ -3301,7 +3275,8 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
 
   for key_fn_pair in branch_fns:
     if not isinstance(key_fn_pair, _basetuple) or len(key_fn_pair) != 2:
-      raise TypeError("Each entry in branch_fns must be a 2-tuple")
+      raise TypeError("Each entry in 'branch_fns' must be a 2-tuple. "
+                      f"Received {key_fn_pair}.")
     key, branch_fn = key_fn_pair
 
     if not isinstance(key, int):
@@ -3389,11 +3364,11 @@ def case_v2(pred_fn_pairs,
   operation returns the tensors generated by `default`.
 
   `tf.case` supports nested structures as implemented in
-  `tf.contrib.framework.nest`. All of the callables must return the same
-  (possibly nested) value structure of lists, tuples, and/or named tuples.
-  Singleton lists and tuples form the only exceptions to this: when returned by
-  a callable, they are implicitly unpacked to single values. This
-  behavior is disabled by passing `strict=True`.
+  `tf.nest`. All of the callables must return the same (possibly nested) value
+  structure of lists, tuples, and/or named tuples. Singleton lists and tuples
+  form the only exceptions to this: when returned by a callable, they are
+  implicitly unpacked to single values. This behavior is disabled by passing
+  `strict=True`.
 
   @compatibility(v2)
   `pred_fn_pairs` could be a dictionary in v1. However, tf.Tensor and
@@ -3494,11 +3469,11 @@ def case(pred_fn_pairs,
   operation returns the tensors generated by `default`.
 
   `tf.case` supports nested structures as implemented in
-  `tf.contrib.framework.nest`. All of the callables must return the same
-  (possibly nested) value structure of lists, tuples, and/or named tuples.
-  Singleton lists and tuples form the only exceptions to this: when returned by
-  a callable, they are implicitly unpacked to single values. This
-  behavior is disabled by passing `strict=True`.
+  `tf.nest`. All of the callables must return the same (possibly nested) value
+  structure of lists, tuples, and/or named tuples. Singleton lists and tuples
+  form the only exceptions to this: when returned by a callable, they are
+  implicitly unpacked to single values. This behavior is disabled by passing
+  `strict=True`.
 
   If an unordered dictionary is used for `pred_fn_pairs`, the order of the
   conditional tests is not guaranteed. However, the order is guaranteed to be

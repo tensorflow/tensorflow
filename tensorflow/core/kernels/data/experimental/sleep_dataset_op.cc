@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,9 +28,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 sleep_microseconds;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "sleep_microseconds",
-                                                   &sleep_microseconds));
+    int64_t sleep_microseconds;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "sleep_microseconds",
+                                                     &sleep_microseconds));
 
     OP_REQUIRES(ctx, sleep_microseconds >= 0,
                 errors::InvalidArgument("`sleep_microseconds` must be >= 0"));
@@ -42,7 +42,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            int64 sleep_microseconds)
+            int64_t sleep_microseconds)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           sleep_microseconds_(sleep_microseconds) {
@@ -66,7 +66,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "SleepDatasetOp::Dataset"; }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -166,7 +168,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     // TODO(b/117612213): Investigate autotuning for this value.
-    const int64 sleep_microseconds_;
+    const int64_t sleep_microseconds_;
   };
 };
 

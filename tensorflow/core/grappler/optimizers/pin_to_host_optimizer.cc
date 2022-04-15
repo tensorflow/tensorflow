@@ -34,7 +34,7 @@ namespace internal {
 
 // TODO(williamchan): Change this constant to be something smarter, maybe
 // dynamically determined.
-constexpr int64 kTensorMaxSize = 64;
+constexpr int64_t kTensorMaxSize = 64;
 
 // All the nodes that should be denylisted and not swapped.
 bool IsDenylisted(const NodeDef& node) {
@@ -61,7 +61,7 @@ bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
   }
 
   // Check size known and small.
-  const int64 size = NumCoefficients(prop.shape());
+  const int64_t size = NumCoefficients(prop.shape());
   if (size < 0 || size > kTensorMaxSize) {
     return false;
   }

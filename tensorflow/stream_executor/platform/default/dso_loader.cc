@@ -50,7 +50,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   port::Status status =
       port::Env::Default()->LoadDynamicLibrary(filename.c_str(), &dso_handle);
   if (status.ok()) {
-    LOG(INFO) << "Successfully opened dynamic library " << filename;
+    VLOG(1) << "Successfully opened dynamic library " << filename;
     return dso_handle;
   }
 
@@ -122,11 +122,19 @@ port::StatusOr<void*> GetCudnnDsoHandle() {
 }
 
 port::StatusOr<void*> GetNvInferDsoHandle() {
+#if defined(PLATFORM_WINDOWS)
+  return GetDsoHandle("nvinfer", "");
+#else
   return GetDsoHandle("nvinfer", GetTensorRTVersion());
+#endif
 }
 
 port::StatusOr<void*> GetNvInferPluginDsoHandle() {
+#if defined(PLATFORM_WINDOWS)
+  return GetDsoHandle("nvinfer_plugin", "");
+#else
   return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
+#endif
 }
 
 port::StatusOr<void*> GetRocblasDsoHandle() {
@@ -138,16 +146,22 @@ port::StatusOr<void*> GetMiopenDsoHandle() {
 }
 
 port::StatusOr<void*> GetHipfftDsoHandle() {
-#if TF_ROCM_VERSION < 40100
-  return GetDsoHandle("rocfft", "");
-#else
   return GetDsoHandle("hipfft", "");
-#endif
 }
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
 }
+
+port::StatusOr<void*> GetRocsolverDsoHandle() {
+  return GetDsoHandle("rocsolver", "");
+}
+
+#if TF_ROCM_VERSION >= 40500
+port::StatusOr<void*> GetHipsolverDsoHandle() {
+  return GetDsoHandle("hipsolver", "");
+}
+#endif
 
 port::StatusOr<void*> GetRoctracerDsoHandle() {
   return GetDsoHandle("roctracer64", "");
@@ -236,6 +250,18 @@ port::StatusOr<void*> GetRoctracerDsoHandle() {
   static auto result = new auto(DsoLoader::GetRoctracerDsoHandle());
   return *result;
 }
+
+port::StatusOr<void*> GetRocsolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetRocsolverDsoHandle());
+  return *result;
+}
+
+#if TF_ROCM_VERSION >= 40500
+port::StatusOr<void*> GetHipsolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipsolverDsoHandle());
+  return *result;
+}
+#endif
 
 port::StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());

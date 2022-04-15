@@ -48,7 +48,7 @@ class GetSessionHandleOp : public OpKernel {
     OP_REQUIRES(ctx, session_state != nullptr,
                 errors::FailedPrecondition(
                     "GetSessionHandle called on null session state"));
-    int64 id = session_state->GetNewId();
+    int64_t id = session_state->GetNewId();
     TensorStore::TensorAndKey tk{val, id, requested_device()};
     OP_REQUIRES_OK(ctx, ctx->tensor_store()->AddTensor(name(), tk));
 
@@ -75,21 +75,21 @@ REGISTER_KERNEL_BUILDER(Name("GetSessionHandle").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2").Device(DEVICE_CPU),
                         GetSessionHandleOp);
 
-#define REGISTER_GPU_KERNEL(type)                         \
+#define REGISTER_DEFAULT_KERNEL(type)                     \
   REGISTER_KERNEL_BUILDER(Name("GetSessionHandle")        \
-                              .Device(DEVICE_GPU)         \
+                              .Device(DEVICE_DEFAULT)     \
                               .HostMemory("handle")       \
                               .TypeConstraint<type>("T"), \
                           GetSessionHandleOp)             \
   REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2")      \
-                              .Device(DEVICE_GPU)         \
+                              .Device(DEVICE_DEFAULT)     \
                               .HostMemory("handle")       \
                               .TypeConstraint<type>("T"), \
                           GetSessionHandleOp)
 
-TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-REGISTER_GPU_KERNEL(bool);
-#undef REGISTER_GPU_KERNEL
+TF_CALL_NUMBER_TYPES(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+#undef REGISTER_DEFAULT_KERNEL
 
 class GetSessionTensorOp : public OpKernel {
  public:
@@ -114,16 +114,16 @@ class GetSessionTensorOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("GetSessionTensor").Device(DEVICE_CPU),
                         GetSessionTensorOp);
 
-#define REGISTER_GPU_KERNEL(type)                             \
+#define REGISTER_DEFAULT_KERNEL(type)                         \
   REGISTER_KERNEL_BUILDER(Name("GetSessionTensor")            \
-                              .Device(DEVICE_GPU)             \
+                              .Device(DEVICE_DEFAULT)         \
                               .HostMemory("handle")           \
                               .TypeConstraint<type>("dtype"), \
                           GetSessionTensorOp)
 
-TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-REGISTER_GPU_KERNEL(bool);
-#undef REGISTER_GPU_KERNEL
+TF_CALL_NUMBER_TYPES(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+#undef REGISTER_DEFAULT_KERNEL
 
 class DeleteSessionTensorOp : public OpKernel {
  public:
@@ -146,7 +146,7 @@ class DeleteSessionTensorOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DeleteSessionTensor").Device(DEVICE_CPU),
                         DeleteSessionTensorOp);
 REGISTER_KERNEL_BUILDER(
-    Name("DeleteSessionTensor").Device(DEVICE_GPU).HostMemory("handle"),
+    Name("DeleteSessionTensor").Device(DEVICE_DEFAULT).HostMemory("handle"),
     DeleteSessionTensorOp);
 
 }  // namespace tensorflow

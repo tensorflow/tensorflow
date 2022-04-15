@@ -80,8 +80,8 @@ struct ActivationRecord {
   Timespan timespan;                       // timespan of this invocation.
   TfFunctionExecutionMode execution_mode;  // execution mode.
   TfFunctionCompiler compiler;             // compiler used.
-  int64 tracing_count;  // the total tracing count of this function when this
-                        // invocation happened.
+  int64_t tracing_count;  // the total tracing count of this function when this
+                          // invocation happened.
   uint64 children_duration_ps;  // Sum of the duration of all (immediate)
                                 // children tf-functions of this function.
   ActivationRecord()
@@ -92,7 +92,7 @@ struct ActivationRecord {
         children_duration_ps(0) {}
   ActivationRecord(absl::string_view name, const Timespan& timespan,
                    TfFunctionExecutionMode exe_mode,
-                   TfFunctionCompiler compiler, int64 tracing_cnt)
+                   TfFunctionCompiler compiler, int64_t tracing_cnt)
       : function_name(std::string(name)),
         timespan(timespan),
         execution_mode(exe_mode),
@@ -112,10 +112,10 @@ struct ActivationRecord {
 // Entry or exit point of a tf-function.
 struct EntryOrExit {
   bool is_entry;        // true for entry, false for exit.
-  int64 index;          // index to the ActivationRecord.
+  int64_t index;        // index to the ActivationRecord.
   uint64 timestamp_ps;  // the time when this entry/exit happens.
   EntryOrExit() : is_entry(false), index(-1), timestamp_ps(0) {}
-  EntryOrExit(bool is_entry, int64 index, uint64 timestamp_ps)
+  EntryOrExit(bool is_entry, int64_t index, uint64 timestamp_ps)
       : is_entry(is_entry), index(index), timestamp_ps(timestamp_ps) {}
   std::string DebugString() const {
     std::string entry_or_exit = is_entry ? "entry, " : "exit,  ";
@@ -143,7 +143,7 @@ void CombineTfFunction(const TfFunction& src, TfFunction* dst) {
       std::max(src.total_tracing_count(), dst->total_tracing_count()));
   dst->set_compiler(CombineCompilers(src.compiler(), dst->compiler()));
   for (const auto& mode_metrics : src.metrics()) {
-    int32 execution_mode = mode_metrics.first;
+    int32_t execution_mode = mode_metrics.first;
     const TfFunctionMetrics& src_metrics = mode_metrics.second;
     TfFunctionMetrics* dst_metrics =
         gtl::FindOrNull(*dst->mutable_metrics(), execution_mode);
@@ -163,7 +163,7 @@ class TfFunctionExecutions {
     // Creates points_ and activations_ from line.
     line.ForEachEvent([&](const XEventVisitor& event) {
       absl::string_view mode;
-      int64 tracing_count = 0;
+      int64_t tracing_count = 0;
       event.ForEachStat([&mode, &tracing_count](const XStatVisitor& stat) {
         if (!stat.Type().has_value()) return;
         switch (stat.Type().value()) {
@@ -178,7 +178,7 @@ class TfFunctionExecutions {
       if (mode.empty()) return;
 
       // event is a tf-function.
-      int64 index = activations_.size();
+      int64_t index = activations_.size();
       auto timespan = event.GetTimespan();
       auto mode_compiler = Decode(event.Name(), mode);
       ActivationRecord activation_record =
@@ -223,7 +223,7 @@ class TfFunctionExecutions {
     for (const auto& record : activations_) {
       TfFunction* fun = &(*result.mutable_tf_functions())[record.function_name];
       fun->set_total_tracing_count(
-          std::max(static_cast<int64>(fun->total_tracing_count()),
+          std::max(static_cast<int64_t>(fun->total_tracing_count()),
                    record.tracing_count));
       fun->set_compiler(CombineCompilers(fun->compiler(), record.compiler));
       // The self-time of this function is the difference between the duration
@@ -245,7 +245,7 @@ class TfFunctionExecutions {
 
   // Calculates the children duration of every tf-function.
   void CalculateChildrenDurations() {
-    std::stack<int64> call_stack;
+    std::stack<int64_t> call_stack;
     for (const auto& pt : points_) {
       if (pt.is_entry) {
         // Function entry.

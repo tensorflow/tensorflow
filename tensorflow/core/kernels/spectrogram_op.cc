@@ -49,18 +49,18 @@ class AudioSpectrogramOp : public OpKernel {
 
     const auto input_as_matrix = input.matrix<float>();
 
-    const int64 sample_count = input.dim_size(0);
-    const int64 channel_count = input.dim_size(1);
+    const int64_t sample_count = input.dim_size(0);
+    const int64_t channel_count = input.dim_size(1);
 
-    const int64 output_width = spectrogram.output_frequency_channels();
-    const int64 length_minus_window = (sample_count - window_size_);
-    int64 output_height;
+    const int64_t output_width = spectrogram.output_frequency_channels();
+    const int64_t length_minus_window = (sample_count - window_size_);
+    int64_t output_height;
     if (length_minus_window < 0) {
       output_height = 0;
     } else {
       output_height = 1 + (length_minus_window / stride_);
     }
-    const int64 output_slices = channel_count;
+    const int64_t output_slices = channel_count;
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
@@ -71,7 +71,7 @@ class AudioSpectrogramOp : public OpKernel {
     auto output_flat = output_tensor->flat<float>().data();
 
     std::vector<float> input_for_channel(sample_count);
-    for (int64 channel = 0; channel < channel_count; ++channel) {
+    for (int64_t channel = 0; channel < channel_count; ++channel) {
       OP_REQUIRES(context, spectrogram.Reset(),
                   errors::InvalidArgument("Failed to Reset()"));
 

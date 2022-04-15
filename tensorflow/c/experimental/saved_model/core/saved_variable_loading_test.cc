@@ -36,8 +36,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class SavedVariableLoadingTest : public ::testing::TestWithParam<
-                                     std::tuple<DataType, std::vector<int64>>> {
+class SavedVariableLoadingTest
+    : public ::testing::TestWithParam<
+          std::tuple<DataType, std::vector<int64_t>>> {
  public:
   SavedVariableLoadingTest() {
     SessionOptions options;
@@ -112,7 +113,7 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithInvalidDevice) {
 TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   auto& test_params = GetParam();
   DataType dtype = std::get<0>(test_params);
-  std::vector<int64> shape_vector = std::get<1>(test_params);
+  std::vector<int64_t> shape_vector = std::get<1>(test_params);
   TensorShape shape(shape_vector);
 
   // Create the variable.

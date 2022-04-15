@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for py_builtins module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 import six
@@ -201,6 +197,51 @@ class PyBuiltinsTest(test.TestCase):
         self.assertEqual(out_capturer.getvalue(), 'test message [1, 2]\n')
     finally:
       sys.stdout = sys.__stdout__
+
+  def test_max(self):
+    self.assertEqual(py_builtins.max_([1, 3, 2]), 3)
+    self.assertEqual(py_builtins.max_(0, 2, 1), 2)
+
+  def test_max_tensor(self):
+    r = py_builtins.max_(constant_op.constant(2))
+    self.assertAllEqual(self.evaluate(r), 2)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([[2]]))
+    r = py_builtins.max_(constant_op.constant([1, 3, 2]))
+    self.assertAllEqual(self.evaluate(r), 3)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([[1, 3], [3, 4]]))
+    r = py_builtins.max_(
+        constant_op.constant(6), constant_op.constant(4),
+        constant_op.constant(8))
+    self.assertAllEqual(self.evaluate(r), 8)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(
+          constant_op.constant([6]), constant_op.constant(4),
+          constant_op.constant(8))
+
+  def test_min(self):
+    self.assertEqual(py_builtins.min_([2, 1, 3]), 1)
+    self.assertEqual(py_builtins.min_(2, 0, 1), 0)
+
+  def test_min_tensor(self):
+    r = py_builtins.min_(constant_op.constant(2))
+    self.assertAllEqual(self.evaluate(r), 2)
+    with self.assertRaises(ValueError):
+      py_builtins.min_(constant_op.constant([[2]]))
+    r = py_builtins.min_(constant_op.constant([3, 1, 2]))
+    self.assertAllEqual(self.evaluate(r), 1)
+    with self.assertRaises(ValueError):
+      py_builtins.min_(constant_op.constant([[1, 3], [3, 4]]))
+    r = py_builtins.min_(
+        constant_op.constant(6), constant_op.constant(4),
+        constant_op.constant(8))
+    self.assertAllEqual(self.evaluate(r), 4)
+    with self.assertRaises(ValueError):
+      py_builtins.min_(
+          constant_op.constant([6]), constant_op.constant(4),
+          constant_op.constant(8))
+
 
   def test_range(self):
     self.assertListEqual(list(py_builtins.range_(3)), [0, 1, 2])

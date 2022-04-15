@@ -50,6 +50,9 @@ class EagerOpRewriteTest : public ::testing::Test {
         new tensorflow::EagerOperation(eager_ctx_));
     EXPECT_EQ(Status::OK(),
               op.get()->Reset(op_name.c_str(), nullptr, false, &executor_));
+    EXPECT_EQ(Status::OK(),
+              op.get()->SetDeviceName(
+                  "/job:localhost/replica:0/task:0/device:CPU:0"));
     return op;
   }
 
@@ -58,7 +61,7 @@ class EagerOpRewriteTest : public ::testing::Test {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
     EXPECT_EQ(Status::OK(),
               EagerOpRewriteRegistry::Global()->RunRewrite(
-                  EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
+                  EagerOpRewriteRegistry::POST_PLACEMENT, orig_op, &out_op));
 
     // actual_op_name is same as original op name if rewrite didn't happen.
     string actual_op_name = orig_op->Name();
@@ -130,6 +133,7 @@ REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
                                "AvgPool3D",                      \
                                "AvgPool3DGrad",                  \
                                "BatchMatMul",                    \
+                               "Einsum",                         \
                                "FusedBatchNorm",                 \
                                "FusedBatchNormV2",               \
                                "FusedBatchNormV3",               \

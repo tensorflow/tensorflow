@@ -28,8 +28,7 @@ cc_test(
     srcs = ["profiler_test.cc"],
     deps = [
         ":profiler",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -41,7 +40,6 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite/core/api",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -50,8 +48,7 @@ cc_test(
     srcs = ["atrace_profiler_test.cc"],
     deps = [
         ":atrace_profiler",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -97,8 +94,7 @@ cc_test(
     srcs = ["profile_buffer_test.cc"],
     deps = [
         ":profile_buffer",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -113,9 +109,8 @@ cc_test(
     name = "time_test",
     srcs = ["time_test.cc"],
     deps = [
-        ":test_main",
         ":time",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -140,8 +135,33 @@ cc_test(
     ],
     deps = [
         ":memory_info",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "memory_usage_monitor",
+    srcs = ["memory_usage_monitor.cc"],
+    hdrs = ["memory_usage_monitor.h"],
+    copts = common_copts,
+    deps = [
+        ":memory_info",
+        "//tensorflow/lite:minimal_logging",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_test(
+    name = "memory_usage_monitor_test",
+    srcs = ["memory_usage_monitor_test.cc"],
+    tags = [
+    ],
+    deps = [
+        ":memory_info",
+        ":memory_usage_monitor",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -160,8 +180,7 @@ cc_test(
     srcs = ["profile_summary_formatter_test.cc"],
     deps = [
         ":profile_summary_formatter",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -186,25 +205,13 @@ cc_test(
     deps = [
         ":profile_summarizer",
         ":profiler",
-        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_library(
-    name = "test_main",
-    testonly = 1,
-    srcs = ["test_main.cc"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})

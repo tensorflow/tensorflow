@@ -26,7 +26,7 @@ tensorflow::Status Convert(const std::string& graph_def_contents,
                            const TocoFlags& toco_flags,
                            const ModelFlags& model_flags,
                            std::string* output_file_contents,
-                           int64* arithmetic_ops_count = nullptr);
+                           int64_t* arithmetic_ops_count = nullptr);
 
 tensorflow::Status Convert(const ParsedTocoFlags& parsed_toco_flags,
                            const ParsedModelFlags& parsed_model_flags);

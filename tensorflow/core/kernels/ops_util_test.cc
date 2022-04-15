@@ -70,7 +70,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyGet2dOutputSizeBoundaries(padding_struct pad_struct,
                                               error::Code code) {
-    int64 new_height, new_width, pad_rows, pad_cols;
+    int64_t new_height, new_width, pad_rows, pad_cols;
     Status status = GetWindowedOutputSize(
         pad_struct.input.in_height, pad_struct.input.filter_height,
         pad_struct.input.row_stride, pad_struct.input.padding, &new_height,
@@ -85,7 +85,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyGet2dOutputSizeValues(padding_struct pad_struct,
                                           error::Code code) {
-    int64 new_height, new_width, pad_rows, pad_cols;
+    int64_t new_height, new_width, pad_rows, pad_cols;
     Status status = GetWindowedOutputSize(
         pad_struct.input.in_height, pad_struct.input.filter_height,
         pad_struct.input.row_stride, pad_struct.input.padding, &new_height,
@@ -104,7 +104,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyGet2dOutputVerboseSizeValues(padding_struct pad_struct,
                                                  error::Code code) {
-    int64 new_height, new_width, pad_top, pad_bottom, pad_left, pad_right;
+    int64_t new_height, new_width, pad_top, pad_bottom, pad_left, pad_right;
     Status status = GetWindowedOutputSizeVerbose(
         pad_struct.input.in_height, pad_struct.input.filter_height,
         pad_struct.input.row_stride, pad_struct.input.padding, &new_height,
@@ -326,8 +326,8 @@ TEST_F(OpsUtilTest, Aligned1DSlice) {
   EXPECT_EQ(output, true);
 #else
   Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
-  int64 start = 0;
-  int64 end = EIGEN_MAX_ALIGN_BYTES;
+  int64_t start = 0;
+  int64_t end = EIGEN_MAX_ALIGN_BYTES;
   bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
   EXPECT_EQ(output, true);
   // Checks sliced 1D tensor is aligned for sanity.
@@ -340,8 +340,8 @@ TEST_F(OpsUtilTest, Aligned1DSlice) {
 #if EIGEN_MAX_ALIGN_BYTES > 0
 TEST_F(OpsUtilTest, Misaligned1DSlice) {
   Tensor t(DT_FLOAT, TensorShape({EIGEN_MAX_ALIGN_BYTES * 2}));
-  int64 start = 1;
-  int64 end = EIGEN_MAX_ALIGN_BYTES + 1;
+  int64_t start = 1;
+  int64_t end = EIGEN_MAX_ALIGN_BYTES + 1;
   bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
   EXPECT_EQ(output, false);
   // Checks sliced 1D tensor is misaligned for sanity.
@@ -362,10 +362,10 @@ TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
   EXPECT_EQ(output, true);
 #else
   // For multidimensional tensors, alignment is dictated by inner_dim_size.
-  int64 inner_dim_size = EIGEN_MAX_ALIGN_BYTES;
+  int64_t inner_dim_size = EIGEN_MAX_ALIGN_BYTES;
   Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
-  int64 start = 1;
-  int64 end = 2;
+  int64_t start = 1;
+  int64_t end = 2;
   bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
   EXPECT_EQ(output, true);
   // Checks sliced 2D is aligned, for sanity.
@@ -378,10 +378,10 @@ TEST_F(OpsUtilTest, Aligned2DSliceOfDim0) {
 #if EIGEN_MAX_ALIGN_BYTES > 0
 TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
   // For multidimensional tensors, alignment is dictated by inner_dim_size.
-  int64 inner_dim_size = EIGEN_MAX_ALIGN_BYTES + 1;
+  int64_t inner_dim_size = EIGEN_MAX_ALIGN_BYTES + 1;
   Tensor t(DT_FLOAT, TensorShape({3, inner_dim_size}));
-  int64 start = 1;
-  int64 end = 2;
+  int64_t start = 1;
+  int64_t end = 2;
   bool output = IsDim0SliceAligned<float>(t.shape(), start, end);
   EXPECT_EQ(output, false);
   // Checks sliced 2D is misaligned, for sanity.
@@ -393,16 +393,16 @@ TEST_F(OpsUtilTest, Misaligned2DSliceOfDim0) {
 
 TEST_F(OpsUtilTest, MisalignedEmptyShape) {
   TensorShape shape({});
-  int64 start = 1;
-  int64 end = 2;
+  int64_t start = 1;
+  int64_t end = 2;
   bool output = IsDim0SliceAligned<float>(shape, start, end);
   EXPECT_EQ(output, false);
 }
 
 TEST_F(OpsUtilTest, MisalignedEmptyDim0) {
   TensorShape shape({0, 1, 2});
-  int64 start = 0;
-  int64 end = 1;
+  int64_t start = 0;
+  int64_t end = 1;
   bool output = IsDim0SliceAligned<float>(shape, start, end);
   EXPECT_EQ(output, false);
 }

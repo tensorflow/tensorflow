@@ -53,7 +53,7 @@ class Functional(training_lib.Model):
   than with subclassed `Model`s, specifically:
 
   - Model cloning (`keras.models.clone`)
-  - Serialization (`model.get_config()/from_config`, `model.to_json()/to_yaml()`
+  - Serialization (`model.get_config()/from_config`, `model.to_json()`
   - Whole-model saving (`model.save()`)
 
   A `Functional` model can be instantiated by passing two arguments to
@@ -116,7 +116,6 @@ class Functional(training_lib.Model):
 
   @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs):
-    base_layer.keras_api_gauge.get_cell('Functional').set(True)
     # This method is needed for Sequential to reinitialize graph network when
     # layer is added or removed.
     self._is_graph_network = True
@@ -363,12 +362,12 @@ class Functional(training_lib.Model):
       dependencies['layer-%d' % layer_index] = layer
     return dependencies
 
-  @property
-  def _checkpoint_dependencies(self):
-    dependencies = [
-        trackable.TrackableReference(name=name, ref=layer)
-        for name, layer in self._layer_checkpoint_dependencies.items()]
-    dependencies.extend(super(Functional, self)._checkpoint_dependencies)
+  def _trackable_children(self,
+                          save_type=trackable.SaveType.CHECKPOINT,
+                          **kwargs):
+    dependencies = self._layer_checkpoint_dependencies
+    dependencies.update(
+        super(Functional, self)._trackable_children(save_type, **kwargs))
     return dependencies
 
   def _lookup_dependency(self, name):

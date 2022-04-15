@@ -18,10 +18,6 @@
    This ensures that your code will be minimally impacted by future tensorflow
    API changes. Import the module to prevent accidental usage of stale APIs.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 
 

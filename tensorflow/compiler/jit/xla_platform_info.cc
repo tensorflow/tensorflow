@@ -15,16 +15,45 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
+#include <utility>
+
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 
 namespace tensorflow {
 
-Status BuildXlaCompilationCache(DeviceBase* device,
+xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
+    absl::string_view visible_device_list) {
+  std::set<int> gpu_ids;
+  if (visible_device_list.empty()) {
+    return {{absl::nullopt}};
+  }
+  const std::vector<string> visible_devices =
+      absl::StrSplit(visible_device_list, ',');
+  for (const string& platform_device_id_str : visible_devices) {
+    int32_t platform_device_id;
+    if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
+      return errors::InvalidArgument(
+          "Could not parse entry in 'visible_device_list': '",
+          platform_device_id_str,
+          "'. visible_device_list = ", visible_device_list);
+    }
+    gpu_ids.insert(platform_device_id);
+  }
+  return {{gpu_ids}};
+}
+
+Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache) {
+  XlaCompilationCache::Config cache_config(
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(
-        platform_info.xla_device_metadata()->client(),
+        std::move(cache_config), platform_info.xla_device_metadata()->client(),
         platform_info.xla_device_metadata()->jit_device_type());
     return Status::OK();
   }
@@ -35,7 +64,7 @@ Status BuildXlaCompilationCache(DeviceBase* device,
     return platform.status();
   }
 
-  xla::StatusOr<xla::Compiler*> compiler_for_platform =
+  StatusOr<xla::Compiler*> compiler_for_platform =
       xla::Compiler::GetForPlatform(platform.ValueOrDie());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
@@ -60,6 +89,15 @@ Status BuildXlaCompilationCache(DeviceBase* device,
   client_options.set_platform(platform.ValueOrDie());
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
+
+  if (flr->config_proto()) {
+    string allowed_gpus =
+        flr->config_proto()->gpu_options().visible_device_list();
+    TF_ASSIGN_OR_RETURN(absl::optional<std::set<int>> gpu_ids,
+                        ParseVisibleDeviceList(allowed_gpus));
+    client_options.set_allowed_devices(gpu_ids);
+  }
+
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
     return client.status();
@@ -71,7 +109,8 @@ Status BuildXlaCompilationCache(DeviceBase* device,
                                    platform_info.device_type().type());
   }
   *cache = new XlaCompilationCache(
-      client.ValueOrDie(), DeviceType(registration->compilation_device_name));
+      std::move(cache_config), client.ValueOrDie(),
+      DeviceType(registration->compilation_device_name));
   return Status::OK();
 }
 
@@ -84,7 +123,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
   } else if (device->device_type() == DEVICE_GPU) {
-    platform_id = device->tensorflow_gpu_device_info()
+    platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();
@@ -142,8 +181,8 @@ XlaCompiler::Options GenerateCompilerOptions(
       (platform_info.platform_id() == se::host::kHostPlatformId);
   options.device_allocator = GetAllocator(device, stream, platform_info);
   if (platform_info.xla_device_metadata()) {
-    options.shape_representation_fn =
-        platform_info.xla_device_metadata()->shape_representation_fn();
+    options.shape_determination_fns =
+        platform_info.xla_device_metadata()->default_shape_determination_fns();
   }
   // If reference variables are not present in the graph, we can safely alias
   // passthrough parameters without performing a copy.

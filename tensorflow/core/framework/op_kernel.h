@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
@@ -78,6 +80,14 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
+class CoordinationServiceAgent;
+
+// A label that is added to kernels that are JIT compiled. These labels will be
+// removed before kernels are looked up, so they can be used without specifying
+// the label. This label is a temporary measure to allow JIT kernels to be
+// disabled if needed.
+extern const char* kJitKernelLabel;
+extern const char* kDisableJitKernelsEnvVar;
 
 class OpKernel {
  public:
@@ -227,33 +237,6 @@ class AsyncOpKernel : public OpKernel {
   void Compute(OpKernelContext* context) override;
 };
 
-// Wraps a tensor that is held by an Op across calls to Compute(). For memory
-// safety when using asynchronous devices like GPUs, the system must be notified
-// when a Tensor is used inside an Op execution. The wrapper ensures that all
-// uses of the Tensor are tracked, because in order to retrieve the Tensor the
-// caller must use AccessTensor which notifies the context.
-class PersistentTensor {
- public:
-  PersistentTensor() {}
-  explicit PersistentTensor(const Tensor& tensor) : tensor_(tensor) {}
-
-  // Caller does not own the returned Tensor*.
-  Tensor* AccessTensor(OpKernelConstruction* context);
-  // Caller does not own the returned Tensor*.
-  Tensor* AccessTensor(OpKernelContext* context);
-
-  // The check for initialization does not need to access the
-  // underlying tensor buffer.
-  bool IsInitialized() const { return tensor_.IsInitialized(); }
-
-  int64 NumElements() const { return tensor_.NumElements(); }
-
-  int64 AllocatedBytes() const { return tensor_.AllocatedBytes(); }
-
- private:
-  Tensor tensor_;
-};
-
 class OpKernelConstruction {
  public:
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
@@ -272,13 +255,8 @@ class OpKernelConstruction {
   // Op kernel construction. Scratch tensors should be allocated using
   // allocate_temp below. Some kernels need to keep tensors in between
   // invocations. If such a Tensor is allocated during kernel
-  // construction this must be done using allocate_persistent, and the
-  // Op may only store the returned PersistentTensor object. When the
-  // Tensor is needed in a subsequent invocation, it can be retrieved
-  // from the PersistentTensor using the AccessTensor method. This
-  // ensures that the system is made aware of any use of the tensor's
-  // allocated memory, which is needed for correctness on asynchronous
-  // devices such as GPUs.
+  // construction this also must be done using allocate_temp, and the
+  // Op may only store the returned Tensor object.
 
   // Allocates a temporary Tensor of the specified type and shape. The
   // Tensor must not be used after kernel construction is
@@ -287,18 +265,6 @@ class OpKernelConstruction {
                        Tensor* out_temp);
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp, AllocatorAttributes allocator_attr);
-
-  // Allocates a Tensor of the specified type and shape which the Op
-  // plans to maintain as persistent state. out_persistent holds the
-  // PersistentTensor which is the object the caller should store. For
-  // convenience, if out_tensor is non-null then it will be filled in
-  // with a Tensor* pointing to the newly-allocated tensor which the
-  // caller can use instead of calling
-  // out_persistent->AccessTensor. The caller does not own out_tensor
-  // and should not keep a copy of it. See comment above.
-  Status allocate_persistent(DataType type, const TensorShape& shape,
-                             PersistentTensor* out_persistent,
-                             Tensor** out_tensor);
 
   // User-supplied configuration of this operation.
   const NodeDef& def() const { return props_->node_def; }
@@ -596,7 +562,13 @@ class OpKernelContext {
     ~Params() { delete eigen_gpu_device; }
 
     // The step being executed.
-    int64 step_id = 0;
+    int64_t step_id = 0;
+
+    // Timestamp for the start of graph execution. Used for latency metrics.
+    int64_t start_time_usecs = 0;
+
+    // The deadline for the session to complete by. Empty if unspecified.
+    absl::optional<absl::Time> deadline;
 
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
@@ -707,6 +679,9 @@ class OpKernelContext {
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
+
+    // For access to distributed coordination service.
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -716,7 +691,13 @@ class OpKernelContext {
 
   Env* env() const { return params_->device->env(); }
 
-  int64 step_id() const { return params_->step_id; }
+  int64_t step_id() const { return params_->step_id; }
+
+  int64_t start_time_usecs() const { return params_->start_time_usecs; }
+
+  // The deadline for the session to complete by. Empty if unspecified in
+  // RunOptions.
+  absl::optional<absl::Time> deadline() const { return params_->deadline; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -949,20 +930,10 @@ class OpKernelContext {
   // Allocation of tensors during kernel execution inside the Compute
   // method:
   //
-  // There are three methods to allocate Tensors when an Op kernel
+  // There are two methods to allocate Tensors when an Op kernel
   // executes.
   //
-  // 1) allocate_persistent. This is only needed for Tensors that will
-  // be stored by the Op between invocations, and it *must* be used
-  // for those Tensors. The call returns a PersistentTensor, and that
-  // is the only object the Op is allowed to hold on to between
-  // invocations. When the Tensor is needed in a subsequent
-  // invocation, it can be retrieved from the PersistentTensor using
-  // the AccessTensor method. This ensures that the system is made
-  // aware of any use of the tensor's allocated memory, which is
-  // needed for correctness on asynchronous devices such as GPUs.
-  //
-  // 2) allocate_output. This should be used to allocate any tensor
+  // 1) allocate_output. This should be used to allocate any tensor
   // that is going to be used as an output from the Op at the end of
   // the current execution. The caller indicates which output the
   // Tensor will be assigned to, and the call returns the
@@ -970,13 +941,13 @@ class OpKernelContext {
   // to during kernel execution, and will be used as the designated
   // output when the kernel execution completes.
   //
-  // 3) allocate_temp. This should be used to allocate any scratch
+  // 2) allocate_temp. This should be used to allocate any scratch
   // storage that is needed while the kernel is executing, and will
   // not be retained by the Op.
   //
   // In some cases a Tensor needs to be used as an output even though
   // it was previously allocated elsewhere. The Tensor may have been
-  // passed as an input, or stored in a PersistentTensor during a
+  // passed as an input, or stored in a Tensor during a
   // previous kernel execution, or allocated earlier in the kernel
   // execution at a time when it was not known which output it would
   // be assigned to. In this case the kernel can use set_output or
@@ -1029,24 +1000,6 @@ class OpKernelContext {
     return allocate_temp(type, shape, out_temp, AllocatorAttributes());
   }
 
-  // Allocates a Tensor of the specified type and shape which the Op
-  // plans to maintain as persistent state. out_persistent holds the
-  // PersistentTensor which is the object the caller should store. For
-  // convenience, if out_tensor is non-null then it will be filled in
-  // with a Tensor* pointing to the newly-allocated tensor which the
-  // caller can use instead of calling
-  // out_persistent->AccessTensor. The caller does not own out_tensor
-  // and should not keep a copy of it. See comment above.
-  Status allocate_persistent(DataType type, const TensorShape& shape,
-                             PersistentTensor* out_persistent,
-                             Tensor** out_tensor, AllocatorAttributes attr);
-  Status allocate_persistent(DataType type, const TensorShape& shape,
-                             PersistentTensor* out_persistent,
-                             Tensor** out_tensor) {
-    return allocate_persistent(type, shape, out_persistent, out_tensor,
-                               AllocatorAttributes());
-  }
-
   // Copies a tensor (allocated by the caller) to the specified output
   // index.  REQUIRES: !IsRefType(expected_output_dtype(index))
   // REQUIRES: 'tensor' must have the same MemoryType as
@@ -1075,7 +1028,7 @@ class OpKernelContext {
   DeviceContext* op_device_context() {
     DeviceContext* ret = params_->op_device_context;
     if (ret == nullptr) {
-      auto* dev_info = device()->tensorflow_gpu_device_info();
+      auto* dev_info = device()->tensorflow_accelerator_device_info();
       if (dev_info) ret = dev_info->default_context;
     }
     return ret;
@@ -1204,6 +1157,11 @@ class OpKernelContext {
     return params_->step_container;
   }
 
+  // Access to distributed coordination service.
+  CoordinationServiceAgent* coordination_service_agent() const {
+    return params_->coordination_service_agent;
+  }
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);
   void CtxFailureWithWarning(const Status& s);
@@ -1225,23 +1183,23 @@ class OpKernelContext {
 
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
-  void record_temp_memory_allocation(int64 size, const Tensor& t)
+  void record_temp_memory_allocation(int64_t size, const Tensor& t)
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const
+  int64_t temp_memory_allocated() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
-  void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
+  void record_persistent_memory_allocation(int64_t size, int64_t alloc_id = -1)
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
-  int64 persistent_memory_allocated() const
+  int64_t persistent_memory_allocated() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
-  std::vector<int64> persistent_alloc_ids() const
+  std::vector<int64_t> persistent_alloc_ids() const
       TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
@@ -1324,12 +1282,12 @@ class OpKernelContext {
         TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
-    int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
+    int64_t temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
-    int64 persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
-    gtl::InlinedVector<std::pair<const void*, int64>, 2>
+    int64_t persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
+    gtl::InlinedVector<std::pair<const void*, int64_t>, 2>
         temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64_t, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
 
@@ -1345,7 +1303,6 @@ const Eigen::ThreadPoolDevice& OpKernelContext::eigen_device() const;
 
 template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const;
-
 
 // Register your OpKernel by specifying the Op's name, the device the
 // kernel runs on, any type attr constraints for this kernel, any

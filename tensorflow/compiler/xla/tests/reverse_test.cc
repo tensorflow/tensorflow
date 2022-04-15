@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -40,11 +39,11 @@ static std::array<bool, 1> use_bfloat16_params{false};
 #endif
 
 struct ReverseSpec {
-  std::vector<int64> input_dims;
-  std::vector<int64> reversal;
+  std::vector<int64_t> input_dims;
+  std::vector<int64_t> reversal;
   bool use_bfloat16;
 
-  string ToTestCaseName() const {
+  std::string ToTestCaseName() const {
     return absl::StrFormat(
         "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
         absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");
@@ -91,13 +90,13 @@ TEST_P(FloatReverseTest, Reverses) {
   Rev(a, spec.reversal);
 
   Literal expected = input_literal.Clone();
-  std::vector<int64> output_indices(spec.input_dims.size());
-  expected.EachCell<float>([&](absl::Span<const int64> indices, float) {
-    for (int64 i = 0; i < indices.size(); ++i) {
+  std::vector<int64_t> output_indices(spec.input_dims.size());
+  expected.EachCell<float>([&](absl::Span<const int64_t> indices, float) {
+    for (int64_t i = 0; i < indices.size(); ++i) {
       output_indices[i] = indices[i];
     }
     float value = input_literal.Get<float>(indices);
-    for (int64 dim : spec.reversal) {
+    for (int64_t dim : spec.reversal) {
       output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
     }
     expected.Set<float>(output_indices, value);
@@ -117,7 +116,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   XlaBuilder b(TestName());
   // Input shape is U8[1x2x3x4].
   // clang-format off
-  Array4D<uint8> input({{
+  Array4D<uint8_t> input({{
     {{1, 2, 3, 4},
      {5, 6, 7, 8},
      {9, 10, 11, 12}},
@@ -127,10 +126,10 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   }});
   // clang-format on
 
-  Rev(ConstantR4FromArray4D<uint8>(&b, input), {0, 3});
+  Rev(ConstantR4FromArray4D<uint8_t>(&b, input), {0, 3});
 
   // clang-format off
-  Array4D<uint8> expected({{
+  Array4D<uint8_t> expected({{
     {{4, 3, 2, 1},
      {8, 7, 6, 5},
      {12, 11, 10, 9}},
@@ -139,7 +138,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
      {24, 23, 22, 21}},
   }});
   // clang-format on
-  ComputeAndCompareR4<uint8>(&b, expected, {});
+  ComputeAndCompareR4<uint8_t>(&b, expected, {});
 }
 
 // Tests the reverse operation on a 4D float array on dimension 0 and 1.

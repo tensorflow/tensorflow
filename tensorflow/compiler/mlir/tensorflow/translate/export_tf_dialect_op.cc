@@ -62,13 +62,13 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
 }
 
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
-// attribute already exists with a different value, returns an error.
+// attribute already exists then this will just retain the set value.
 template <typename ContainerT,
           typename = typename std::enable_if<std::is_same<
               llvm::Optional<llvm::ArrayRef<int64_t>>,
               decltype(*std::declval<ContainerT>().begin())>::value>::type>
-Status SetShapeAttribute(absl::string_view name, ContainerT shapes,
-                         AttrValueMap* values) {
+void SetShapeAttribute(absl::string_view name, ContainerT shapes,
+                       AttrValueMap* values) {
   AttrValue value;
   auto& shape_list = *value.mutable_list();
   for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
@@ -80,11 +80,10 @@ Status SetShapeAttribute(absl::string_view name, ContainerT shapes,
     }
   }
 
-  auto result = values->insert({string(name), value});
-  assert(result.second && "cannot have multiple attributes with the same name");
-  (void)result;
-
-  return Status::OK();
+  // If shape is already set, override it. This can happen if we import
+  // without shape inference enabled and so couldn't be removed on import and
+  // are not explicitly dropped later.
+  (*values)[string(name)] = value;
 }
 
 // Collects all the unregistered attributes for an TF dialect operation.
@@ -107,9 +106,9 @@ Status GetUnregisteredAttrs(
   }
   // Attributes are not in the registered attributes set will be ignored.
   for (auto& attr : inst->getAttrs()) {
-    auto attr_name = attr.first.c_str();
-    if (registered_attrs.find(attr_name) == registered_attrs.end()) {
-      attrs_to_ignore->insert(attr_name);
+    if (registered_attrs.find(attr.getName()) == registered_attrs.end()) {
+      attrs_to_ignore->insert(
+          absl::string_view(attr.getName().data(), attr.getName().size()));
     }
   }
   return Status::OK();
@@ -129,7 +128,7 @@ StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
   if (derived_attrs) {
     for (auto derived_attr : derived_attrs) {
       attrs_to_ignore.insert(
-          mlir::StringRefToView(derived_attr.first.strref()));
+          mlir::StringRefToView(derived_attr.getName().strref()));
     }
   }
 
@@ -187,8 +186,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
       mlir::TF::ResultShapeRange output_shapes = {
           mlir::TF::ResultShapeIterator(begin),
           mlir::TF::ResultShapeIterator(end)};
-      TF_RETURN_IF_ERROR(
-          SetShapeAttribute("_output_shapes", output_shapes, attributes));
+      SetShapeAttribute("_output_shapes", output_shapes, attributes);
     }
   }
 

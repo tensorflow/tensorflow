@@ -44,14 +44,22 @@ namespace tensorflow {
 
 const char* const kColocationAttrName = "_class";
 const char* const kColocationGroupPrefix = "loc:@";
+// For TPU distributed rewrite, TPU args are collected and "staged" on the local
+// host using an IdentityN TF op. Some args may result from a remote source.
+// When all arg tensors are available, the TPUExecute op can be inovoked. See
+// DistributedTPURewritePass for more details.
+const char* const kTpuExecuteStagingOp = "IdentityN";
+const char* const kTpuExecuteStagingNodeName = "_variable_copy";
 
 AttrSlice::AttrSlice() : ndef_(nullptr) {
   static const AttrValueMap* const kEmptyAttrValueMap = new AttrValueMap;
   attrs_ = kEmptyAttrValueMap;
 }
 
+// Do not cache the map field reference because that may be invalidated on
+// Clear.
 AttrSlice::AttrSlice(const NodeDef& node_def)
-    : ndef_(&node_def), attrs_(&ndef_->attr()) {}
+    : ndef_(&node_def), attrs_(nullptr) {}
 
 AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
 
@@ -90,7 +98,7 @@ string AttrSlice::SummarizeNode() const {
 
 string AttrSlice::DebugString() const {
   std::vector<string> attr_key_vals;
-  attr_key_vals.reserve(attrs_->size());
+  attr_key_vals.reserve(attrs()->size());
   for (const auto& it : *this) {
     const string& name = it.first;
     const AttrValue& attr_value = it.second;
@@ -131,8 +139,9 @@ string FormatNodeDefForError(
   return !has_experimental_debug_info ||
                  experimental_debug_info.original_node_names().empty()
              ? errors::FormatNodeNameForError(string(node_name))
-             : errors::FormatNodeNamesForError(
-                   experimental_debug_info.original_node_names());
+             : errors::FormatOriginalNodeLocationForError(
+                   experimental_debug_info.original_node_names(),
+                   experimental_debug_info.original_func_names());
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
@@ -152,9 +161,10 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
   // Because most nodes have a small number of attributes, a simple linear scan
   // is generally more efficient than a hashed lookup.  If google::protobuf::Map
   // changes so that it supports efficient lookups using StringPiece instead of
-  // const string&, then this code could be changed to use attrs_->find() again.
+  // const string&, then this code could be changed to use attrs()->find()
+  // again.
 
-  for (const auto& attr : *attrs_) {
+  for (const auto& attr : *attrs()) {
     if (attr.first == attr_name) {
       return &attr.second;
     }
@@ -163,18 +173,17 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
 }
 
 const AttrValue* AttrSlice::FindByString(const string& attr_name) const {
-  auto iter = attrs_->find(attr_name);
-  if (iter != attrs_->end()) {
+  auto iter = attrs()->find(attr_name);
+  if (iter != attrs()->end()) {
     return &iter->second;
   } else {
     return nullptr;
   }
 }
 
-Status AttrSlice::Find(StringPiece attr_name,
-                       const AttrValue** attr_value) const {
-  *attr_value = Find(attr_name);
-  if (*attr_value != nullptr) {
+Status AttrSlice::CheckFind(StringPiece attr_name,
+                            const AttrValue* attr_value) const {
+  if (attr_value != nullptr) {
     return Status::OK();
   }
   Status s = errors::NotFound("No attr named '", attr_name, "' in NodeDef:");
@@ -187,12 +196,24 @@ Status AttrSlice::Find(StringPiece attr_name,
   return s;
 }
 
+Status AttrSlice::Find(StringPiece attr_name,
+                       const AttrValue** attr_value) const {
+  *attr_value = Find(attr_name);
+  return CheckFind(attr_name, *attr_value);
+}
+
+Status AttrSlice::FindByString(const string& attr_name,
+                               const AttrValue** attr_value) const {
+  *attr_value = FindByString(attr_name);
+  return CheckFind(attr_name, *attr_value);
+}
+
 bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
   if (size() != other.size()) return false;
 
-  for (const auto& attr : *other.attrs_) {
-    auto iter = attrs_->find(attr.first);
-    if (iter == attrs_->end()) return false;
+  for (const auto& attr : *other.attrs()) {
+    auto iter = attrs()->find(attr.first);
+    if (iter == attrs()->end()) return false;
     // TODO(irving): Comparing AttrValues by proto is slightly buggy, since
     // TensorProto is a nonunique representation of Tensor.  This bug will go
     // away once AttrSlice switches over to NodeInfo.
@@ -266,17 +287,17 @@ DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
-DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
-DEFINE_TRY_GET_ATTR(int64, i, "int", emplace_back, v, ;)
+DEFINE_GET_ATTR(int64_t, i, "int", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(int64_t, i, "int", emplace_back, v, ;)
 DEFINE_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
-    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+    if (static_cast<int64_t>(static_cast<int32>(v)) != v) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
                                      " out of range for an int32");
     })
 DEFINE_TRY_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
-    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+    if (static_cast<int64_t>(static_cast<int32>(v)) != v) {
       static int log_counter = 0;
       if (log_counter < 10) {
         log_counter++;
@@ -287,11 +308,8 @@ DEFINE_TRY_GET_ATTR(
     })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(float, f, "float", emplace_back, v, ;)
-// std::vector<bool> specialization does not have emplace_back until
-// c++14, so we have to use push_back (see
-// http://en.cppreference.com/w/cpp/container/vector/emplace_back)
-DEFINE_GET_ATTR(bool, b, "bool", push_back, v, ;)
-DEFINE_TRY_GET_ATTR(bool, b, "bool", push_back, v, ;)
+DEFINE_GET_ATTR(bool, b, "bool", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(bool, b, "bool", emplace_back, v, ;)
 DEFINE_GET_ATTR(DataType, type, "type", emplace_back, static_cast<DataType>(v),
                 ;)
 DEFINE_TRY_GET_ATTR(DataType, type, "type", emplace_back,
@@ -447,11 +465,11 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
-    int64 repeats = -1;
+    int64_t repeats = -1;
     TF_RETURN_IF_ERROR(
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     // We can't handle outputs that are larger than int32 sizes.
-    if (static_cast<int64>(static_cast<int32>(repeats)) != repeats) {
+    if (static_cast<int64_t>(static_cast<int32>(repeats)) != repeats) {
       return errors::InvalidArgument("Number of outputs is too big: ", repeats);
     }
     if (repeats < 0) {
@@ -476,13 +494,14 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
-    TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs).Find(arg_def.type_attr(), &attr_value));
+    TF_RETURN_IF_ERROR(AttrSlice(node_or_attrs)
+                           .FindByString(arg_def.type_attr(), &attr_value));
     sig->push_back(attr_value->type());
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs).Find(arg_def.type_list_attr(), &attr_value));
+        AttrSlice(node_or_attrs)
+            .FindByString(arg_def.type_list_attr(), &attr_value));
     for (int dtype : attr_value->list().type()) {
       sig->push_back(static_cast<DataType>(dtype));
     }
@@ -725,6 +744,17 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
   }
 }
 
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def) {
+  AttrSlice attrs(*node_def);
+  for (const auto& attr_def : op_def.attr()) {
+    if (attr_def.has_default_value()) {
+      const AttrValue* attr = attrs.Find(attr_def.name());
+      if (attr && AreAttrValuesEqual(*attr, attr_def.default_value()))
+        node_def->mutable_attr()->erase(attr_def.name());
+    }
+  }
+}
+
 namespace {
 
 using ::tensorflow::tstring;
@@ -873,8 +903,8 @@ void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
   }
 ADD_NODE_ATTR(StringPiece)
 ADD_NODE_ATTR(const char*)
-ADD_NODE_ATTR(int32)
-ADD_NODE_ATTR(int64)
+ADD_NODE_ATTR(int32_t)
+ADD_NODE_ATTR(int64_t)
 ADD_NODE_ATTR(float)
 ADD_NODE_ATTR(double)
 ADD_NODE_ATTR(bool)
@@ -887,7 +917,7 @@ ADD_NODE_ATTR(gtl::ArraySlice<StringPiece>)
 ADD_NODE_ATTR(gtl::ArraySlice<const char*>)
 ADD_NODE_ATTR(gtl::ArraySlice<string>)
 ADD_NODE_ATTR(gtl::ArraySlice<int32>)
-ADD_NODE_ATTR(gtl::ArraySlice<int64>)
+ADD_NODE_ATTR(gtl::ArraySlice<int64_t>)
 ADD_NODE_ATTR(gtl::ArraySlice<float>)
 ADD_NODE_ATTR(gtl::ArraySlice<bool>)
 ADD_NODE_ATTR(const std::vector<bool>&)
@@ -944,6 +974,27 @@ Status MaybeAddPrefixToColocationConstraints(
       if (match.find(string(original)) != match.end()) {
         (*constraints_list->mutable_s(i)) =
             strings::StrCat(kColocationGroupPrefix, prefix, original);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status MaybeUpdateColocationConstraintsWithMap(
+    const std::map<absl::string_view, absl::string_view>& node_name_map,
+    NodeDef* node_def) {
+  auto attr = node_def->mutable_attr()->find(kColocationAttrName);
+  if (attr == node_def->mutable_attr()->end()) {
+    return Status::OK();
+  }
+  auto constraints_list = attr->second.mutable_list();
+  auto constraints_size = constraints_list->s_size();
+  for (size_t i = 0; i < constraints_size; ++i) {
+    StringPiece original(constraints_list->s(i));
+    if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
+      if (node_name_map.find(original) != node_name_map.end()) {
+        (*constraints_list->mutable_s(i)) =
+            strings::StrCat(kColocationGroupPrefix, node_name_map.at(original));
       }
     }
   }

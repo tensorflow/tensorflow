@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 
 std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids) {
-  std::vector<int64> values;
+  std::vector<int64_t> values;
   values.reserve(ids.size());
   for (GlobalDeviceId id : ids) {
     values.push_back(id.value());

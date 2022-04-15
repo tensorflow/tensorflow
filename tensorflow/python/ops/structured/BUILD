@@ -155,6 +155,7 @@ py_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # Times out frequently.
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",

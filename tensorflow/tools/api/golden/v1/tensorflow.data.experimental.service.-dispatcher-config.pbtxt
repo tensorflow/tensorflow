@@ -27,6 +27,10 @@ tf_class {
     name: "work_dir"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "worker_addresses"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

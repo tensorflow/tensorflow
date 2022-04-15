@@ -135,7 +135,7 @@ class BaseMicroFrontendTest : public ::testing::Test {
     micro_frontend->SetInput(input);
 
     // Call Invoke.
-    micro_frontend->Invoke();
+    ASSERT_EQ(micro_frontend->Invoke(), kTfLiteOk);
 
     // Mimic padding behaviour with zero_padding = true.
     std::vector<int> output_flattened;
@@ -197,9 +197,3 @@ TEST_F(TwoConsecutive36InputsMicroFrontendTest, MicroFrontendBlackBoxTest) {
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

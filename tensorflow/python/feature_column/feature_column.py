@@ -127,10 +127,6 @@ are a somewhat duplicate of the code here. Please make sure to update logic
 in both places.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import math
@@ -2753,7 +2749,7 @@ class _SharedEmbeddingColumn(
 def _check_shape(shape, key):
   """Returns shape if it's valid, raises error otherwise."""
   assert shape is not None
-  if not nest.is_sequence(shape):
+  if not nest.is_nested(shape):
     shape = [shape]
   shape = tuple(shape)
   for dimension in shape:

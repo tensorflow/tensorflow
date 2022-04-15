@@ -14,10 +14,6 @@
 # ==============================================================================
 """Support for sorting tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -171,13 +167,15 @@ def _sort_or_argsort(values, axis, direction, return_argsort):
     ValueError: If axis is not a constant scalar, or the direction is invalid.
   """
   if direction not in _SORT_IMPL:
-    raise ValueError('%s should be one of %s' % (direction, ', '.join(
-        sorted(_SORT_IMPL.keys()))))
+    valid_directions = ', '.join(sorted(_SORT_IMPL.keys()))
+    raise ValueError(f'Argument `direction` should be one of {valid_directions}'
+                     f'. Received: direction={direction}')
   # Axis must be an integer, not a Tensor.
   axis = framework_ops.convert_to_tensor(axis, name='axis')
   axis_static = tensor_util.constant_value(axis)
   if axis.shape.ndims not in (None, 0) or axis_static is None:
-    raise ValueError('axis must be a constant scalar')
+    raise ValueError(
+        f'Argument `axis` must be a constant scalar. Received: axis={axis}.')
   axis_static = int(axis_static)  # Avoids NumPy casting error
 
   values = framework_ops.convert_to_tensor(values, name='values')
@@ -197,6 +195,7 @@ def _descending_sort(values, axis, return_argsort=False):
   Returns:
     The sorted values.
   """
+  # TODO(b/190410105): replace with a proper sort kernel.
   k = array_ops.shape(values)[axis]
   rank = array_ops.rank(values)
   static_rank = values.shape.ndims
@@ -240,10 +239,44 @@ def _descending_sort(values, axis, return_argsort=False):
 
 
 def _ascending_sort(values, axis, return_argsort=False):
-  # Negate the values to get the ascending order from descending sort.
-  values_or_indices = _descending_sort(-values, axis, return_argsort)
-  # If not argsort, negate the values again.
-  return values_or_indices if return_argsort else -values_or_indices
+  """Sorts values in ascending order.
+
+  Args:
+    values: Tensor of numeric values.
+    axis: Index of the axis which values should be sorted along.
+    return_argsort: If False, return the sorted values. If True, return the
+      indices that would sort the values.
+
+  Returns:
+    The sorted values.
+  """
+  # TODO(b/190410105): replace with a proper sort kernel.
+  # If values are integers, we need special handling.
+  dtype = values.dtype
+  if dtype.is_unsigned:
+    # Subtract values from dtype.max to reverse sort order.
+    offset = dtype.max
+    values_or_indices = _descending_sort(offset - values, axis, return_argsort)
+    return values_or_indices if return_argsort else offset - values_or_indices
+
+  elif dtype.is_integer:
+    # Negate and subtract 1 to map dtype.min to dtype.max.  Technically this
+    # will result in signed-integer-overflow UB for dtype.min, though
+    # practically should produce correct results on all systems.
+    #
+    # Casting to unsigned would be better, but uint* subtraction is not
+    # supported on all devices.
+    #
+    # Although more complex and slightly slower than descend+reverse, this
+    # approach preserves sort stability.
+    values_or_indices = _descending_sort(-values - 1, axis, return_argsort)
+    return values_or_indices if return_argsort else -values_or_indices - 1
+
+  else:
+    # Otherwise, negate the values and use descending sort.
+    values_or_indices = _descending_sort(-values, axis, return_argsort)
+    # If not argsort, negate the values again.
+    return values_or_indices if return_argsort else -values_or_indices
 
 
 _SORT_IMPL = {

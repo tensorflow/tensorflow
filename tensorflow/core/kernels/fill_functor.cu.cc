@@ -72,7 +72,8 @@ struct FillFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
                   typename TTypes<T>::ConstScalar in) {
     Eigen::internal::scalar_const_op<T> f(in.data());
-    To32Bit(out).device(d) = To32Bit(out).nullaryExpr(f);
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) { out32.device(d) = out32.nullaryExpr(f); }, out);
   }
 };
 
@@ -81,11 +82,12 @@ TF_CALL_NUMBER_TYPES(DEFINE_FILL_GPU);
 TF_CALL_bool(DEFINE_FILL_GPU);
 #undef DEFINE_FILL_GPU
 
-// Partial specialization of FillFunctor<Device=GPUDevice, T>.
+// Partial specialization of SetZeroFunctor<Device=GPUDevice, T>.
 template <typename T>
 struct SetZeroFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    To32Bit(out).device(d) = To32Bit(out).constant(T(0));
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) { out32.device(d) = out32.constant(T(0)); }, out);
   }
 };
 
@@ -101,11 +103,12 @@ TF_CALL_bool(DEFINE_SETZERO_GPU);
 TF_CALL_variant(DEFINE_SETZERO_GPU);
 #undef DEFINE_SETZERO_GPU
 
-// Partial specialization of FillFunctor<Device=GPUDevice, T>.
+// Partial specialization of SetOneFunctor<Device=GPUDevice, T>.
 template <typename T>
 struct SetOneFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    To32Bit(out).device(d) = To32Bit(out).constant(T(1));
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) { out32.device(d) = out32.constant(T(1)); }, out);
   }
 };
 
@@ -113,6 +116,23 @@ struct SetOneFunctor<GPUDevice, T> {
 TF_CALL_NUMBER_TYPES(DEFINE_SETONE_GPU);
 TF_CALL_bool(DEFINE_SETONE_GPU);
 #undef DEFINE_SETONE_GPU
+
+// Partial specialization of SetNanFunctor<Device=GPUDevice, T>.
+template <typename T>
+struct SetNanFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) {
+          out32.device(d) = out32.constant(Eigen::NumTraits<T>::quiet_NaN());
+        },
+        out);
+  }
+};
+
+#define DEFINE_SETNAN_GPU(T) template struct SetNanFunctor<GPUDevice, T>;
+TF_CALL_NUMBER_TYPES(DEFINE_SETNAN_GPU);
+TF_CALL_bool(DEFINE_SETNAN_GPU);
+#undef DEFINE_SETNAN_GPU
 
 }  // end namespace functor
 }  // end namespace tensorflow

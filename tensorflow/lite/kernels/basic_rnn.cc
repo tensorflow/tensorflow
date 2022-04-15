@@ -333,7 +333,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                          TfLiteTypeGetName(input_weights->type));
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 }  // namespace rnn

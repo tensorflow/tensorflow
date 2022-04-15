@@ -26,14 +26,14 @@ TEST_F(ClientLibraryTestBase, DeepGraph) {
   XlaBuilder b(TestName());
   XlaOp x;
   XlaOp y;
-  auto x_data = CreateR0Parameter<int32>(3, 0, "x", &b, &x);
-  auto y_data = CreateR0Parameter<int32>(1, 1, "y", &b, &y);
+  auto x_data = CreateR0Parameter<int32_t>(3, 0, "x", &b, &x);
+  auto y_data = CreateR0Parameter<int32_t>(1, 1, "y", &b, &y);
   XlaOp z = x;
   for (int i = 0; i < kDepth; ++i) {
     z = Add(z, y);
   }
-  ComputeAndCompareR0<int32>(&b, /*expected=*/kDepth + 3,
-                             {x_data.get(), y_data.get()});
+  ComputeAndCompareR0<int32_t>(&b, /*expected=*/kDepth + 3,
+                               {x_data.get(), y_data.get()});
 }
 }  // namespace
 }  // namespace xla

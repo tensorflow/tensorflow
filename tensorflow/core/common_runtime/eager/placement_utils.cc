@@ -49,7 +49,7 @@ static bool IsPinnableOp(StringPiece op_name) {
 // Validate if the remote device with the given incarnation is valid in the
 // remote device manager of the current eager context.
 static Status ValidateTensorHandleRemoteDevice(EagerContext* ctx,
-                                               int64 device_incarnation) {
+                                               int64_t device_incarnation) {
   if (ctx->remote_device_mgr()->ContainsDevice(device_incarnation)) {
     return Status::OK();
   }
@@ -116,7 +116,7 @@ Status MaybePinSmallOpsToCpu(
       return Status::OK();
     }
 
-    int64 num_elements;
+    int64_t num_elements;
     TF_RETURN_IF_ERROR(arg->NumElements(&num_elements));
     if (num_elements > 64) {
       *result = false;

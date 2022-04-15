@@ -20,11 +20,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 
 // Helper interface for making queries about the HLO IR.
 namespace hlo_query {
+
+// Returns whether the given opcode is a collective communications operation.
+bool IsCollectiveCommunicationOp(HloOpcode op);
 
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.
@@ -73,13 +77,19 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
                                          HloInstruction** matching_operand,
                                          HloInstruction** other_operand);
 
+// Returns whether the module contains the given collective communication
+// instructions with constrained layout.
+bool ContainsLayoutConstrainedCollective(const HloModule& module, HloOpcode op);
+
 // Returns whether the module contains all-reduce instructions with constrained
 // layout.
-bool ContainsLayoutConstrainedAllReduce(const HloModule& module);
+inline bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
+  return ContainsLayoutConstrainedCollective(module, HloOpcode::kAllReduce);
+}
 
 // Returns the next available channel id that can be used in the given module
 // (for HloChannelInstructions).
-int64 NextChannelId(const HloModule& module);
+int64_t NextChannelId(const HloModule& module);
 
 // Returns whether the module contains host send/recv with X64 data type.
 // This function is called after X64Rewriter, so X64 host transfers are already

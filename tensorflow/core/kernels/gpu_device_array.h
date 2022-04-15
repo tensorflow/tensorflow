@@ -42,9 +42,9 @@ namespace tensorflow {
 template <typename ValueType, int MaxInlineValues = 8>
 class GpuDeviceArrayOnHost {
  public:
-  GpuDeviceArrayOnHost(OpKernelContext* context, int32 size)
+  GpuDeviceArrayOnHost(OpKernelContext* context, int32_t size)
       : context_(context),
-        total_bytes_(static_cast<int64>(size) * sizeof(ValueType)) {
+        total_bytes_(static_cast<int64_t>(size) * sizeof(ValueType)) {
     data_.size = size;
   }
 
@@ -88,8 +88,10 @@ class GpuDeviceArrayOnHost {
     stream->ThenMemcpy(&output_values_base,
                        out_of_line_values_on_host_.flat<int8>().data(),
                        total_bytes_);
-    context_->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, [tensor_ref]() { tensor_ref.Unref(); });
+    context_->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream,
+                                 [tensor_ref]() { tensor_ref.Unref(); });
     data_.out_of_line_values = reinterpret_cast<ValueType*>(
         out_of_line_values_on_gpu_.flat<int8>().data());
     return Status::OK();
@@ -105,7 +107,7 @@ class GpuDeviceArrayOnHost {
   bool inlined() const { return data_.size <= MaxInlineValues; }
 
   OpKernelContext* const context_;
-  const int64 total_bytes_;  // total size of all pointers.
+  const int64_t total_bytes_;  // total size of all pointers.
   ValueType* values_ = nullptr;
   GpuDeviceArrayStruct<ValueType, MaxInlineValues> data_;
 

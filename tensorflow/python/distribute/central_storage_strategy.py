@@ -14,10 +14,6 @@
 # ==============================================================================
 """Class implementing a single machine parameter server strategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy

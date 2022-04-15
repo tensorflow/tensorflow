@@ -78,7 +78,7 @@ function test_tf_imports() {
 
   # test basic keras is available
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
-  if ! [[ ${RET_VAL} == *'tensorflow.keras'* ]]; then
+  if ! [[ ${RET_VAL} == *'keras.api'* ]]; then
     echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
@@ -93,6 +93,13 @@ function test_tf_imports() {
   fi
 
   RESULT=$?
+
+  # TODO(b/210940071): Debug import order. Ignore returned errors.
+  set +e
+  python -m pip install google-cloud-bigquery
+  $(python -c "from google.cloud.bigquery_v2 import types; import tensorflow")
+  $(python -c "import tensorflow; from google.cloud.bigquery_v2 import types")
+  set -e
 
   popd
   return $RESULT

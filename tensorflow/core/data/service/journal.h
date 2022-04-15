@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_JOURNAL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_JOURNAL_H_
 
+#include <string>
+
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_reader.h"
@@ -26,7 +28,7 @@ namespace data {
 
 // Returns the location of the journal file within the journal directory.
 std::string DataServiceJournalFile(const std::string& journal_dir,
-                                   int64 sequence_number);
+                                   int64_t sequence_number);
 
 // Interface for writing to a journal.
 class JournalWriter {
@@ -104,11 +106,9 @@ class FileJournalReader : public JournalReader {
   Env* env_;
   const std::string journal_dir_;
   // Sequence number of current journal file.
-  int64 sequence_number_ = 0;
-  // Current offset into `file_`.
-  uint64 offset_ = 0;
+  int64_t sequence_number_ = 0;
   std::unique_ptr<RandomAccessFile> file_;
-  std::unique_ptr<io::RecordReader> reader_;
+  std::unique_ptr<io::SequentialRecordReader> reader_;
 };
 
 }  // namespace data

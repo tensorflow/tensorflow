@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_POW_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_POW_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 // Raises F32 value a to the power of b.
-extern "C" float __powisf2(float a, tensorflow::int32 b);
+extern "C" float __powisf2(float a, int32_t b);
 
 // Raises F64 value a to the power of b.
-extern "C" double __powidf2(double a, tensorflow::int32 b);
+extern "C" double __powidf2(double a, int32_t b);
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_POW_H_

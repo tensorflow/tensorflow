@@ -16,7 +16,6 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     protodeps = [
-        ":tpu_embedding_output_layout_proto",
         ":optimization_parameters_proto",
     ],
     visibility = ["//visibility:public"],
@@ -29,15 +28,6 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     protodeps = ["//tensorflow/compiler/xla/service:hlo_proto"],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
-    name = "tpu_embedding_output_layout_proto",
-    srcs = [
-        "tpu_embedding_output_layout.proto",
-    ],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -106,13 +96,6 @@ tf_pyclif_proto_library(
 #     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":optimization_parameters_proto"],
-# )
-#
-# py_proto_library(
-#     name = "tpu_embedding_output_layout_py_pb2",
-#     api_version = 2,
-#     visibility = ["//visibility:public"],
-#     deps = [":tpu_embedding_output_layout_proto"],
 # )
 #
 # py_proto_library(

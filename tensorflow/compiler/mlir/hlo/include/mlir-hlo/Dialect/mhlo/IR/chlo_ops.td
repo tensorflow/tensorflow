@@ -30,10 +30,11 @@ limitations under the License.
 #define CHLO_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
+include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
 def HLOClient_Dialect : Dialect {
   let name = "chlo";
@@ -51,13 +52,19 @@ def HLOClient_Dialect : Dialect {
     and provide conversion patterns to fully materialize into lower level
     dialects.
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
+class HLOClient_Op<string mnemonic, list<Trait> traits> :
     Op<HLOClient_Dialect, mnemonic, traits> {
-  // TODO(b/129012527) Much of this custom verification should be expressed as
-  // type constraints.
-  let verifier = [{ return Verify(*this); }];
+}
+
+class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
+  let cppNamespace = "::mlir::chlo::OpTrait";
+}
+
+def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 }
 
 //===----------------------------------------------------------------------===//
@@ -76,11 +83,9 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 //===----------------------------------------------------------------------===//
 
 class HLOClient_BroadcastBinaryElementwiseOp<
-  string mnemonic, list<OpTrait> traits> :
-        HLOClient_Op<mnemonic,
-            !listconcat(traits, [
-              DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-              ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>])> {
+  string mnemonic, list<Trait> traits> : HLOClient_Op<mnemonic, traits # [
+      HLO_BroadcastingElementwise, HLOClient_Broadcasting,
+      InferTensorTypeWithReify]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -89,15 +94,17 @@ class HLOClient_BroadcastBinaryElementwiseOp<
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
-  let builders = [
-    OpBuilder<(ins "Value":$left, "Value":$right,
-      "DenseIntElementsAttr":$broadcast_dimensions)>];
-
   let results = (outs HLO_Tensor);
 
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict `:`
     `(` type($lhs) `,` type($rhs) `)` `->` type(results)
+  }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
   }];
 }
 
@@ -175,6 +182,19 @@ def HLOClient_BroadcastMulOp : HLOClient_BroadcastBinaryElementwiseOp<
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+def HLOClient_BroadcastNextAfterOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_next_after",
+    [NoSideEffect, SameOperandsAndResultElementType]> {
+  string summary = "std::nextafter operator (with optional broadcasting)";
+
+  string description = [{
+    Returns the next representable value of `lhs` in the direction of `rhs`,
+    element-wise. It can also return a subnormal number.
+
+    Equivalent to the C++ std::nextafter function.
   }];
 }
 
@@ -348,6 +368,39 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
 // not part of the HLO compiler instructions as modelled by the MHLO dialect.
 //===----------------------------------------------------------------------===//
 
+def HLOClient_NextAfterOp : HLOClient_Op<"next_after", [NoSideEffect,
+    SameOperandsAndResultType]> {
+  let summary = "std::nextafter operator";
+  let description = [{
+    Returns the next representable value of `x` in the direction of `y`,
+    element-wise. It can also return a subnormal number.
+
+    Equivalent to the C++ std::nextafter function.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$x, HLO_FpTensor:$y);
+  let results = (outs HLO_FpTensor:$result);
+
+  let assemblyFormat = [{
+    $x `,` $y attr-dict `:` type($x) `,` type($y) `->` type(results)
+  }];
+}
+
+def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
+    SameOperandsAndResultType]> {
+  let summary = "Polygamma function";
+  let description = [{
+    Returns `Polygamma(operand, operand)` element-wise.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$n, HLO_FpTensor:$x);
+  let results = (outs HLO_FpTensor:$result);
+
+  let assemblyFormat = [{
+    $n `,` $x attr-dict `:` type($n) `,` type($x) `->` type(results)
+  }];
+}
+
 def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
     SameOperandsAndResultType]> {
   let summary = "Hurwitz zeta function";
@@ -364,21 +417,6 @@ def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
 
   let assemblyFormat = [{
     $x `,` $q attr-dict `:` type($x) `,` type($q) `->` type(results)
-  }];
-}
-
-def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
-    SameOperandsAndResultType]> {
-  let summary = "Polygamma function";
-  let description = [{
-    Returns `Polygamma(operand, operand)` element-wise.
-  }];
-
-  let arguments = (ins HLO_FpTensor:$n, HLO_FpTensor:$x);
-  let results = (outs HLO_FpTensor:$result);
-
-  let assemblyFormat = [{
-    $n `,` $x attr-dict `:` type($n) `,` type($x) `->` type(results)
   }];
 }
 
@@ -409,15 +447,29 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 // Unary op
 //===----------------------------------------------------------------------===//
 
-class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+class HLOClient_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
-    !listconcat(traits, [InferFusibilityOpInterface, NoSideEffect,
-    SameOperandsAndResultShape])> {
+    traits # [InferShapeEqualityOpInterface, NoSideEffect, Elementwise,
+    SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);
 
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+
+  let extraClassDeclaration = [{
+    static LogicalResult inferReturnTypeComponents(MLIRContext* context,
+        Optional<Location> location, ValueRange operands,
+        DictionaryAttr attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(OpBuilder& builder, ValueRange operands,
+        SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+          operands.front(), &reifiedReturnShapes);
+    }
   }];
 }
 
@@ -555,12 +607,9 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
   }];
 }
 
-def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
-    [NoSideEffect, SameOperandsAndResultShape,
-     InferTypeOpInterface,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-         ["inferReturnTypeComponents"]>,
-     NativeOpTrait<"InferTensorType">]> {
+def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
+    HLOClient_Broadcasting, HLO_BroadcastingElementwise,
+    SameOperandsAndResultShape, InferTensorTypeWithReify]> {
   let summary = "Constant like operator";
 
   let description = [{
@@ -571,7 +620,8 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
   let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
@@ -676,18 +726,19 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
 // Broadcasting select op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastSelectOp : HLOClient_Op<
-    "broadcast_select",
-    [NoSideEffect,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-         ["inferReturnTypeComponents"]>]> {
+def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select",
+    [NoSideEffect, HLOClient_Broadcasting, HLO_BroadcastingElementwise,
+     InferTensorTypeWithReify]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{
@@ -708,6 +759,12 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<
   let assemblyFormat = [{
     $pred `,` $on_true `,` $on_false attr-dict `:`
     `(` type($pred) `,` type($on_true) `,` type($on_false) `)` `->` type(results)
+  }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
   }];
 }
 
@@ -754,6 +811,81 @@ def HLOClient_MinimumBroadcastShapesOp :
 
   let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
 
+  let hasVerifier = 1;
+}
+
+def HLOClient_RankSpecializationClusterOp
+    : HLOClient_Op<"rank_specialization_cluster", [
+    DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+    SingleBlockImplicitTerminator<"RankSpecializationClusterYieldOp">,
+    RecursiveSideEffects]> {
+
+  let summary = "Cluster of operations that will be rank-specialized together.";
+
+  let description = [{
+    Groups compatible element-wise operatons together so that they can be
+    rank-specialized together. The operation takes and yields a variadic number
+    of (unranked) tensor operands. Its body region holds one block with one
+    block argument per input tensor of the same type. All operations in this
+    block must only operate on these block arguments. Results are returned
+    through the `rank_specialization_cluster_yield` operation.
+
+    Example:
+
+    ```
+    %0 = "chlo.rank_specialization_cluster"(%arg0, %arg1, %arg2) ({
+    ^bb0(%arg0_ : tensor<*xf32>, %arg1_ : tensor<*xf32>, %arg2_ : tensor<*xf32>):
+      %1 = chlo.broadcast_multiply %arg0_, %arg1_
+          : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      %2 = chlo.broadcast_add %1, %arg2_
+          : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      "chlo.rank_specialization_cluster_yield"(%2) : (tensor<*xf32>) -> ()
+    }) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    ```
+  }];
+
+  let arguments = (ins Variadic<HLO_Tensor>:$operands);
+  let results = (outs Variadic<HLO_Tensor>:$results);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasVerifier = 1;
+}
+
+def HLOClient_RankSpecializationClusterYieldOp
+    : HLOClient_Op<"rank_specialization_cluster_yield", [NoSideEffect,
+    ReturnLike, Terminator, HasParent<"RankSpecializationClusterOp">]> {
+
+  let summary = "Yield operation for `rank_specialization_cluster`";
+  let description = [{
+    This operation yields the results from within the
+    `chlo.rank_specialization_cluster` operation's region. The operation takes
+    an arbitrary number of operands and produces no results. The operand number
+    and types must match the number and types of the parent
+    `rank_specialization_cluster` operation's results.
+  }];
+
+  let arguments = (ins Variadic<HLO_Tensor>:$results);
+}
+
+def HLOClient_DynamicReshapeOp: HLOClient_Op<"dynamic_reshape", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
+  let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
+  let description = [{
+    Reshapes `operand` to `output_shape`. This allows a single dimension to be
+    specified as -1, and it will be computed by the op to create a valid
+    reshape.
+
+    Requires:
+    - The length of `output_shape` is equal to the rank of `result`.
+    - The number of elements in `operand` (that is, the product of extents of
+      its shape) is equal to the number of elements in `output_shape` (that is,
+      the product of values in `output_shape` with one dimension possibly
+      computed).
+    - All shape values should be at least -1, and only one extent can be -1.
+  }];
+
+  let arguments = (ins HLO_Tensor:$operand, HLO_DimensionTensor:$output_shape);
+  let results = (outs HLO_Tensor:$result);
 }
 
 #endif  // CHLO_OPS

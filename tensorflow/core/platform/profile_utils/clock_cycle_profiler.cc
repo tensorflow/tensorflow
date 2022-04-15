@@ -25,7 +25,7 @@ void ClockCycleProfiler::DumpStatistics(const string& tag) {
   const double count = GetCount();
   const std::chrono::duration<double> average_time =
       profile_utils::CpuUtils::ConvertClockCycleToTime(
-          static_cast<int64>(average_clock_cycle + 0.5));
+          static_cast<int64_t>(average_clock_cycle + 0.5));
   LOG(INFO) << tag << ": average = "
             << std::chrono::duration_cast<std::chrono::microseconds>(
                    average_time)

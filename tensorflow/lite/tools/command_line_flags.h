@@ -79,26 +79,51 @@ class Flag {
         name, [val](const T& v) { *val = v; }, *val, usage, flag_type);
   }
 
-  Flag(const char* name, const std::function<void(const int32_t&)>& hook,
-       int32_t default_value, const std::string& usage_text,
-       FlagType flag_type);
-  Flag(const char* name, const std::function<void(const int64_t&)>& hook,
-       int64_t default_value, const std::string& usage_text,
-       FlagType flag_type);
-  Flag(const char* name, const std::function<void(const float&)>& hook,
-       float default_value, const std::string& usage_text, FlagType flag_type);
-  Flag(const char* name, const std::function<void(const bool&)>& hook,
-       bool default_value, const std::string& usage_text, FlagType flag_type);
-  Flag(const char* name, const std::function<void(const std::string&)>& hook,
-       const std::string& default_value, const std::string& usage_text,
+// "flag_T" is same as "default_value_T" for trivial types, like int32, bool
+// etc. But when it's a complex type, "default_value_T" is generally a const
+// reference "flag_T".
+#define CONSTRUCTOR_WITH_ARGV_INDEX(flag_T, default_value_T)         \
+  Flag(const char* name,                                             \
+       const std::function<void(const flag_T& /*flag_val*/,          \
+                                int /*argv_position*/)>& hook,       \
+       default_value_T default_value, const std::string& usage_text, \
        FlagType flag_type);
 
+#define CONSTRUCTOR_WITHOUT_ARGV_INDEX(flag_T, default_value_T)            \
+  Flag(const char* name, const std::function<void(const flag_T&)>& hook,   \
+       default_value_T default_value, const std::string& usage_text,       \
+       FlagType flag_type)                                                 \
+      : Flag(                                                              \
+            name, [hook](const flag_T& flag_val, int) { hook(flag_val); }, \
+            default_value, usage_text, flag_type) {}
+
+  CONSTRUCTOR_WITH_ARGV_INDEX(int32_t, int32_t)
+  CONSTRUCTOR_WITHOUT_ARGV_INDEX(int32_t, int32_t)
+
+  CONSTRUCTOR_WITH_ARGV_INDEX(int64_t, int64_t)
+  CONSTRUCTOR_WITHOUT_ARGV_INDEX(int64_t, int64_t)
+
+  CONSTRUCTOR_WITH_ARGV_INDEX(float, float)
+  CONSTRUCTOR_WITHOUT_ARGV_INDEX(float, float)
+
+  CONSTRUCTOR_WITH_ARGV_INDEX(bool, bool)
+  CONSTRUCTOR_WITHOUT_ARGV_INDEX(bool, bool)
+
+  CONSTRUCTOR_WITH_ARGV_INDEX(std::string, const std::string&)
+  CONSTRUCTOR_WITHOUT_ARGV_INDEX(std::string, const std::string&)
+
+#undef CONSTRUCTOR_WITH_ARGV_INDEX
+#undef CONSTRUCTOR_WITHOUT_ARGV_INDEX
+
   FlagType GetFlagType() const { return flag_type_; }
+
+  std::string GetFlagName() const { return name_; }
 
  private:
   friend class Flags;
 
-  bool Parse(const std::string& arg, bool* value_parsing_ok) const;
+  bool Parse(const std::string& arg, int argv_position,
+             bool* value_parsing_ok) const;
 
   std::string name_;
   enum {
@@ -111,7 +136,8 @@ class Flag {
 
   std::string GetTypeName() const;
 
-  std::function<bool(const std::string&)> value_hook_;
+  std::function<bool(const std::string& /*read_value*/, int /*argv_position*/)>
+      value_hook_;
   std::string default_for_display_;
 
   std::string usage_text_;

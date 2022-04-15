@@ -393,6 +393,21 @@ typedef struct SP_StreamExecutor {
   // likely a whole device).
   void (*synchronize_all_activity)(const SP_Device* device, TF_Status* status);
 
+  // Zero out `size` bytes starting at the location.
+  void (*mem_zero)(const SP_Device* device, SP_Stream stream,
+                   SP_DeviceMemoryBase* location, uint64_t size,
+                   TF_Status* status);
+
+  // Set the 8-bit patterns starting at the location with `size` bytes.
+  void (*memset)(const SP_Device* device, SP_Stream stream,
+                 SP_DeviceMemoryBase* location, uint8_t pattern, uint64_t size,
+                 TF_Status* status);
+
+  // Set the 32-bit patterns starting at the location with `size` bytes.
+  void (*memset32)(const SP_Device* device, SP_Stream stream,
+                   SP_DeviceMemoryBase* location, uint32_t pattern,
+                   uint64_t size, TF_Status* status);
+
   // Enqueues on a stream a user-specified function to be run on the host.
   // `callback_arg` should be passed as the first argument to `callback_fn`.
   TF_Bool (*host_callback)(const SP_Device* device, SP_Stream stream,
@@ -435,9 +450,15 @@ typedef struct SP_Platform {
   // Whether to wrap allocator for this device with an allocator that uses BFC
   // (best-fit with coalescing) strategy.
   TF_Bool use_bfc_allocator;
+
+  // Whether to force the memory allocations to grow over time instead of
+  // allocating it all at once. When this is set to true, the value of
+  // allow_growth is ignored.
+  TF_Bool force_memory_growth;
 } SP_Platform;
 
-#define SP_PLATFORM_STRUCT_SIZE TF_OFFSET_OF_END(SP_Platform, use_bfc_allocator)
+#define SP_PLATFORM_STRUCT_SIZE \
+  TF_OFFSET_OF_END(SP_Platform, force_memory_growth)
 
 typedef struct SP_PlatformFns {
   size_t struct_size;

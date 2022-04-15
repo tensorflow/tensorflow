@@ -41,8 +41,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using xla::StatusOr;
-
 // Copies a subgraph from `graph` to `output` by performing a reverse DFS
 // starting at nodes in vector `stack`.
 // `node_map` is a vector indexed by source node ID to dest nodes.
@@ -115,7 +113,7 @@ StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   builder.Attr("T", type);
   builder.Attr("index", index);
   TF_RETURN_IF_ERROR(builder.Finalize(&arg_def));
-  return AddNodeDefToGraph(arg_def, graph);
+  return graph->AddNode(arg_def);
 }
 
 // Builds a graph for the loop condition.
@@ -229,6 +227,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   // maintain the invariant of a unique Enter node per argument of the final
   // loop.
   std::vector<WhileLoopArg> args;
+  args.reserve(frame->args.size());
   for (const WhileLoopArg& arg : frame->args) {
     if (arg.is_loop_invariant) {
       args.push_back(arg);
@@ -437,10 +436,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
   // Add some internal attributes which need to be propagated.
-  // TODO(b/160275126): attributes shouldn't be hard-coded here
-  for (const char* attr_name :
-       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
-        kTpuReplicateAttrName}) {
+  for (absl::string_view attr_name : kAttrsToPropagate) {
     string attr_val;
     if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
@@ -460,7 +456,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   }
   builder.Input(inputs);
   TF_RETURN_IF_ERROR(builder.Finalize(&while_def));
-  TF_ASSIGN_OR_RETURN(Node * while_node, AddNodeDefToGraph(while_def, graph));
+  TF_ASSIGN_OR_RETURN(Node * while_node, graph->AddNode(while_def));
 
   // Copies edges to the Enter nodes and from the Exit nodes onto the While.
   for (int i = 0, end = frame->args.size(); i < end; ++i) {

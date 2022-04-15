@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_ERRORS_H_
 
 #include <sstream>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 
@@ -57,16 +59,67 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 
 }  // namespace internal
 
+// Maps UNIX errors into a Status.
+Status IOError(const string& context, int err_number);
+
+// Returns all payloads from a Status as a key-value map.
+inline std::unordered_map<std::string, std::string> GetPayloads(
+    const ::tensorflow::Status& status) {
+  std::unordered_map<std::string, std::string> payloads;
+  status.ForEachPayload(
+      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        payloads[std::string(key)] = std::string(value);
+      });
+  return payloads;
+}
+
+// Inserts all given payloads into the given status. Will overwrite existing
+// payloads if they exist with the same key.
+inline void InsertPayloads(
+    ::tensorflow::Status& status,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  for (const auto& payload : payloads) {
+    status.SetPayload(payload.first, payload.second);
+  }
+}
+
+// Copies all payloads from one Status to another. Will overwrite existing
+// payloads in the destination if they exist with the same key.
+inline void CopyPayloads(const ::tensorflow::Status& from,
+                         ::tensorflow::Status& to) {
+  from.ForEachPayload(
+      [&to](tensorflow::StringPiece key, tensorflow::StringPiece value) {
+        to.SetPayload(key, value);
+      });
+}
+
+// Creates a new status with the given code, message and payloads.
+inline ::tensorflow::Status Create(
+    Code code, ::tensorflow::StringPiece message,
+    const std::unordered_map<std::string, std::string>& payloads) {
+  Status status(code, message);
+  InsertPayloads(status, payloads);
+  return status;
+}
+
+// Returns a new Status, replacing its message with the given.
+inline ::tensorflow::Status CreateWithUpdatedMessage(
+    const ::tensorflow::Status& status, ::tensorflow::StringPiece message) {
+  return Create(status.code(), message, GetPayloads(status));
+}
+
 // Append some context to an error message.  Each time we append
 // context put it on a new line, since it is possible for there
 // to be several layers of additional context.
 template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
   std::vector<StackFrame> stack_trace = status->stack_trace();
-  *status = ::tensorflow::Status(
+  auto new_status = ::tensorflow::Status(
       status->code(),
       ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...),
       std::move(stack_trace));
+  CopyPayloads(*status, new_status);
+  *status = std::move(new_status);
 }
 
 // For propagating errors when calling a function.
@@ -91,16 +144,22 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 //   if (errors::IsInvalidArgument(status)) { ... }
 //   switch (status.code()) { case error::INVALID_ARGUMENT: ... }
 
-#define DECLARE_ERROR(FUNC, CONST)                                       \
-  template <typename... Args>                                            \
-  ::tensorflow::Status FUNC(Args... args) {                              \
-    return ::tensorflow::Status(                                         \
-        ::tensorflow::error::CONST,                                      \
-        ::tensorflow::strings::StrCat(                                   \
-            ::tensorflow::errors::internal::PrepareForStrCat(args)...)); \
-  }                                                                      \
-  inline bool Is##FUNC(const ::tensorflow::Status& status) {             \
-    return status.code() == ::tensorflow::error::CONST;                  \
+#define DECLARE_ERROR(FUNC, CONST)                                        \
+  template <typename... Args>                                             \
+  ::tensorflow::Status FUNC(Args... args) {                               \
+    return ::tensorflow::Status(                                          \
+        ::tensorflow::error::CONST,                                       \
+        ::tensorflow::strings::StrCat(                                    \
+            ::tensorflow::errors::internal::PrepareForStrCat(args)...));  \
+  }                                                                       \
+  template <typename... Args>                                             \
+  ::tensorflow::Status FUNC##WithPayloads(                                \
+      const ::tensorflow::StringPiece& message,                           \
+      const std::unordered_map<std::string, std::string>& payloads) {     \
+    return errors::Create(::tensorflow::error::CONST, message, payloads); \
+  }                                                                       \
+  inline bool Is##FUNC(const ::tensorflow::Status& status) {              \
+    return status.code() == ::tensorflow::error::CONST;                   \
   }
 
 DECLARE_ERROR(Cancelled, CANCELLED)
@@ -155,6 +214,33 @@ std::string FormatColocationNodeForError(const T& names) {
 
 inline std::string FormatFunctionForError(const std::string& name) {
   return strings::StrCat("{{function_node ", name, "}}");
+}
+
+inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
+                                                  const std::string& op_name) {
+  assert(IsUnavailable(s));
+  return Status(
+      error::INTERNAL,
+      strings::StrCat(
+          s.error_message(), "\nExecuting non-communication op <", op_name,
+          "> originally returned UnavailableError, and was replaced by "
+          "InternalError to avoid invoking TF network error handling logic."));
+}
+
+template <typename T>
+std::string FormatOriginalNodeLocationForError(const T& node_names,
+                                               const T& func_names) {
+  std::vector<std::string> error_message;
+  for (int i = 0; i != node_names.size(); ++i) {
+    if (i != 0) {
+      error_message.push_back(", ");
+    }
+    if (i < func_names.size()) {
+      error_message.push_back(FormatFunctionForError(func_names[i]));
+    }
+    error_message.push_back(FormatNodeNameForError(node_names[i]));
+  }
+  return absl::StrJoin(error_message, "");
 }
 
 // The CanonicalCode() for non-errors.

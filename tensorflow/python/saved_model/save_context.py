@@ -14,10 +14,6 @@
 # ==============================================================================
 """Context for building SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import threading
 
@@ -32,7 +28,7 @@ class SaveContext(threading.local):
 
   def options(self):
     if not self.in_save_context():
-      raise ValueError("not in a SaveContext")
+      raise ValueError("Not in a SaveContext.")
     return self._options
 
   def enter_save_context(self, options):
@@ -52,7 +48,7 @@ _save_context = SaveContext()
 @contextlib.contextmanager
 def save_context(options):
   if in_save_context():
-    raise ValueError("already in a SaveContext")
+    raise ValueError("Already in a SaveContext.")
   _save_context.enter_save_context(options)
   try:
     yield

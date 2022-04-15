@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace interpreter {
@@ -89,8 +88,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<LayoutAssignment>(
-      hlo_module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout);
+      hlo_module->mutable_entry_computation_layout());
 
   return pipeline.Run(hlo_module).status();
 }

@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "absl/numeric/bits.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace {
@@ -43,8 +44,8 @@ xla::XlaOp CreateKthOrderStatisticComputation(xla::XlaBuilder* builder,
                                               const TensorShape& input_shape,
                                               const xla::XlaOp input,
                                               const xla::XlaOp k) {
-  const int64 height = input_shape.dim_size(0);
-  const int64 width = input_shape.dim_size(1);
+  const int64_t height = input_shape.dim_size(0);
+  const int64_t width = input_shape.dim_size(1);
 
   xla::XlaOp input_sm32 = xla::BitcastConvertType(input, xla::S32);
   xla::XlaOp zero_r0 = xla::ConstantR0<int32>(builder, 0);
@@ -145,9 +146,9 @@ REGISTER_XLA_OP(Name("KthOrderStatistic"), KthOrderStatistic);
 // TopK with reasonable semantics.
 std::pair<xla::XlaOp, xla::XlaOp> CreateTopKUnique(
     xla::XlaBuilder* builder, const xla::XlaOp input,
-    const TensorShape& input_shape, int64 k, bool masked_with_iota) {
-  const int64 height = input_shape.dim_size(0);
-  const int64 width = input_shape.dim_size(1);
+    const TensorShape& input_shape, int64_t k, bool masked_with_iota) {
+  const int64_t height = input_shape.dim_size(0);
+  const int64_t width = input_shape.dim_size(1);
 
   xla::XlaOp iota_r1 = xla::Iota(builder, xla::S32, width);
   xla::XlaOp iota_r2 = xla::Broadcast(iota_r1, {height});
@@ -186,9 +187,8 @@ std::pair<xla::XlaOp, xla::XlaOp> CreateTopKUnique(
 
   xla::XlaOp topk_indices_r2;
   if (masked_with_iota) {
-    int32 log2_ceiling = tensorflow::Log2Ceiling(width);
-    int32 next_power_of_two = 1U << log2_ceiling;
-    int32 count_mask = next_power_of_two - 1;
+    int32_t next_power_of_two = absl::bit_ceil<uint64_t>(width);
+    int32_t count_mask = next_power_of_two - 1;
     xla::XlaOp mask_r0 = xla::ConstantR0(builder, count_mask);
     xla::XlaOp mask_r2 = xla::Broadcast(mask_r0, {height, k});
     xla::XlaOp topk_r2_s32 = xla::BitcastConvertType(topk_r2, xla::S32);
@@ -257,16 +257,15 @@ REGISTER_XLA_OP(Name("TopKUnique"), TopKUnique);
 // TopK with reasonable semantics.
 xla::XlaOp CreateMakeUnique(xla::XlaBuilder* builder, const xla::XlaOp input,
                             const TensorShape& input_shape) {
-  const int64 height = input_shape.dim_size(0);
-  const int64 width = input_shape.dim_size(1);
+  const int64_t height = input_shape.dim_size(0);
+  const int64_t width = input_shape.dim_size(1);
 
   xla::XlaOp zero_r0 = xla::ConstantR0(builder, 0U);
   xla::XlaOp zero_r2 = xla::Broadcast(zero_r0, {height, width});
 
   // count_mask is used to mask away the low order bits to ensure
   // that every element is distinct.
-  uint32 log2_ceiling = static_cast<uint32>(std::ceil(std::log2(width)));
-  uint32 next_power_of_two = 1U << log2_ceiling;
+  uint32_t next_power_of_two = absl::bit_ceil<uint64_t>(width);
   uint32 count_mask = ~(next_power_of_two - 1);
   xla::XlaOp count_mask_r0 = xla::ConstantR0(builder, count_mask);
   xla::XlaOp count_mask_r2 = xla::Broadcast(count_mask_r0, {height, width});

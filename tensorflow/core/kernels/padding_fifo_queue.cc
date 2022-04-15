@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/kernels/padding_fifo_queue.h"
+
 #include <deque>
 #include <vector>
 
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -35,10 +36,10 @@ namespace tensorflow {
 
 PaddingFIFOQueue::PaddingFIFOQueue(
     int capacity, const DataTypeVector& component_dtypes,
-    const std::vector<PartialTensorShape>& partial_shapes, const string& name)
+    const std::vector<PartialTensorShape>& component_shapes, const string& name)
     : FIFOQueue(capacity, component_dtypes,
-                ConvertShapesPartialDimensionsToZero(partial_shapes), name),
-      partial_shapes_(partial_shapes) {}
+                ConvertShapesPartialDimensionsToZero(component_shapes), name),
+      partial_shapes_(component_shapes) {}
 
 Status PaddingFIFOQueue::Initialize() {
   Status s = FIFOQueue::Initialize();
@@ -57,12 +58,11 @@ Status PaddingFIFOQueue::Initialize() {
 /* static */
 Status PaddingFIFOQueue::GetElementComponent(
     const PaddingFIFOQueue::Tuple& tuple, int component, OpKernelContext* ctx,
-    PersistentTensor* out_tensor) {
+    Tensor* out_tensor) {
   TensorShape element_shape(tuple[component].shape());
-  Tensor* element_access = nullptr;
-  TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-      tuple[component].dtype(), element_shape, out_tensor, &element_access));
-  *element_access = tuple[component];
+  TF_RETURN_IF_ERROR(
+      ctx->allocate_temp(tuple[component].dtype(), element_shape, out_tensor));
+  *out_tensor = tuple[component];
   return Status::OK();
 }
 
@@ -99,15 +99,15 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
            this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int32 queue_size = queues_[0].size();
+            int32_t queue_size = queues_[0].size();
             if (closed_ && queue_size < attempt->elements_requested) {
               // If we don't have enough for a full dequeue, we have
               // to reset the attempt tuple.
               if (!attempt->tuples.empty()) {
                 // Restore already-dequeued elements to the front of the queue.
-                for (int64 i = attempt->tuples.size() - 1; i >= 0; --i) {
+                for (int64_t i = attempt->tuples.size() - 1; i >= 0; --i) {
                   for (int j = 0; j < num_components(); ++j) {
-                    PersistentTensor element;
+                    Tensor element;
                     Status s = GetElementComponent(attempt->tuples[i], j,
                                                    attempt->context, &element);
                     if (!s.ok()) {
@@ -160,7 +160,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 std::vector<Tuple>& tuples = attempt->tuples;
 
                 std::vector<bool> dynamic_shape;
-                const int64 batch_size = tuples.size();
+                const int64_t batch_size = tuples.size();
 
                 for (int i = 0; i < num_components(); ++i) {
                   const PartialTensorShape partial_shape =
@@ -173,7 +173,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       shape.AddDim(partial_shape.dim_size(j + 1));
                     } else {
                       // Expand sizes to match.
-                      int64 max_val = 0;
+                      int64_t max_val = 0;
                       for (const Tuple& t : tuples) {
                         max_val = std::max(max_val, t[i].shape().dim_size(j));
                       }
@@ -195,8 +195,6 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
 
                   dynamic_shape.push_back(has_dynamic_shape);
-
-                  // TODO(ebrevdo): should this be a persistent tensor?
                   attempt->tuple.emplace_back(element);
                 }
 
@@ -250,7 +248,7 @@ Status PaddingFIFOQueue::ValidateTuple(const Tuple& tuple) {
 
 Status PaddingFIFOQueue::ValidateManyTuple(const Tuple& tuple) {
   TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
-  const int64 batch_size = tuple[0].dim_size(0);
+  const int64_t batch_size = tuple[0].dim_size(0);
   for (size_t i = 0; i < tuple.size(); ++i) {
     // Expected shape is [batch_size] + partial_shapes_[i]
     const PartialTensorShape expected_shape =
@@ -401,7 +399,7 @@ std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(
   for (size_t i = 0; i < shapes.size(); ++i) {
     const PartialTensorShape& partial = partial_shapes[i];
     TensorShape& shape = shapes[i];
-    for (int64 s : partial.dim_sizes()) shape.AddDim(s < 0 ? 0 : s);
+    for (int64_t s : partial.dim_sizes()) shape.AddDim(s < 0 ? 0 : s);
   }
   return shapes;
 }

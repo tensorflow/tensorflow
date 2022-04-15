@@ -120,7 +120,7 @@ Status RewriteGraphForExecution(
 class ArgFeedRewrite : public PruneRewrite {
  public:
   ArgFeedRewrite(const string* endpoint_name,
-                 const DeviceAttributes* device_info, int32 arg_index)
+                 const DeviceAttributes* device_info, int32_t arg_index)
       : PruneRewrite(endpoint_name, device_info), arg_index_(arg_index) {}
   Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
                  Node** out_node) override;
@@ -141,7 +141,7 @@ class RecvFeedRewrite : public PruneRewrite {
 class RetvalFetchRewrite : public PruneRewrite {
  public:
   RetvalFetchRewrite(const string* endpoint_name,
-                     const DeviceAttributes* device_info, int32 retval_index)
+                     const DeviceAttributes* device_info, int32_t retval_index)
       : PruneRewrite(endpoint_name, device_info), retval_index_(retval_index) {}
   Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
                  Node** out_node) override;

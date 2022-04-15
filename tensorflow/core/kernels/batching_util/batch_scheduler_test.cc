@@ -113,6 +113,32 @@ TEST(BatchTest, DeletionBlocksUntilClosed) {
   deleted.WaitForNotification();
 }
 
+TEST(BatchTest, RemoveAllTasks) {
+  Batch<FakeTask> batch;
+
+  auto task0 = new FakeTask(3);
+  batch.AddTask(std::unique_ptr<FakeTask>(task0));
+
+  auto task1 = new FakeTask(7);
+  batch.AddTask(std::unique_ptr<FakeTask>(task1));
+
+  batch.Close();
+  EXPECT_TRUE(batch.IsClosed());
+
+  std::vector<std::unique_ptr<FakeTask>> tasks_in_batch =
+      batch.RemoveAllTasks();
+  EXPECT_EQ(2, tasks_in_batch.size());
+  EXPECT_TRUE(batch.empty());
+
+  EXPECT_EQ(task0, tasks_in_batch[0].get());
+  EXPECT_EQ(task1, tasks_in_batch[1].get());
+
+  // RemoveAllTasks returns empty vector from the second call and on, since
+  // batch is closed.
+  EXPECT_THAT(batch.RemoveAllTasks(), ::testing::IsEmpty());  // second call
+  EXPECT_THAT(batch.RemoveAllTasks(), ::testing::IsEmpty());  // third call
+}
+
 }  // namespace
 }  // namespace serving
 }  // namespace tensorflow

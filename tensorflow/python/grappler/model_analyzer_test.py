@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the cost analyzer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -43,10 +39,10 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     report = model_analyzer.GenerateModelReport(mg)
 
     # Check the report headers
-    self.assertTrue(b"a [Const]" in report)
-    self.assertTrue(b"a [Const]" in report)
-    self.assertTrue(b"c [Add]" in report)
-    self.assertTrue(b"d [AddN]" in report)
+    self.assertIn(b"a [Const]", report)
+    self.assertIn(b"a [Const]", report)
+    self.assertIn(b"c [AddV2]", report)
+    self.assertIn(b"d [AddN]", report)
 
     # Also print the report to make it easier to debug
     print("{}".format(report))
@@ -64,8 +60,8 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     report = model_analyzer.GenerateModelReport(mg, debug=True)
 
     # Check the report headers
-    self.assertTrue(b"input 0 (int32) has known value" in report)
-    self.assertTrue(b"input 1 (int32) has known value" in report)
+    self.assertIn(b"input 0 (int32) has known value", report)
+    self.assertIn(b"input 1 (int32) has known value", report)
 
     # Also print the report to make it easier to debug
     print("{}".format(report))

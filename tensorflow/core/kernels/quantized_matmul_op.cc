@@ -87,11 +87,11 @@ class QuantizedMatMulOp : public OpKernel {
                 errors::InvalidArgument("max_a must be larger than min_a."));
     OP_REQUIRES(context, (max_b > min_b),
                 errors::InvalidArgument("max_b must be larger than min_b."));
-    const int32 offset_a = FloatToQuantizedUnclamped<T1>(0.0f, min_a, max_a);
-    const int32 offset_b = FloatToQuantizedUnclamped<T2>(0.0f, min_b, max_b);
-    const int32 offset_c = 0;
-    const int32 mult_c = 1;
-    const int32 shift_c = 0;
+    const int32_t offset_a = FloatToQuantizedUnclamped<T1>(0.0f, min_a, max_a);
+    const int32_t offset_b = FloatToQuantizedUnclamped<T2>(0.0f, min_b, max_b);
+    const int32_t offset_c = 0;
+    const int32_t mult_c = 1;
+    const int32_t shift_c = 0;
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(a.shape()),

@@ -86,7 +86,7 @@ void TestModel(tflite::BuiltinOperator op, const TensorData& input1,
   m->SetInput1(input1_values);
   m->SetInput2(input2_values);
 
-  m->Invoke();
+  ASSERT_EQ(m->Invoke(), kTfLiteOk);
   const auto reference_output = m->GetOutput();
   const auto reference_output_shape = m->GetOutputShape();
   m->ApplyDelegateAndInvoke();
@@ -106,7 +106,7 @@ void TestModelConstInput(tflite::BuiltinOperator op, const TensorData& input1,
   m->SetInput1(input1_values);
   m->SetInput2(input2_values);
 
-  m->Invoke();
+  ASSERT_EQ(m->Invoke(), kTfLiteOk);
   const auto reference_output = m->GetOutput();
   const auto reference_output_shape = m->GetOutputShape();
   m->ApplyDelegateAndInvoke();

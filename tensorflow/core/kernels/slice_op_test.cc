@@ -68,8 +68,8 @@ static void SliceHelper(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * kDim * size *
-                          sizeof(T));
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * kDim *
+                          size * sizeof(T));
 }
 
 void BM_SliceFloat(::testing::benchmark::State& state) {

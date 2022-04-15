@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
@@ -32,7 +34,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) return failure();
-    auto defining_op = op->getOperand(0).getDefiningOp();
+    auto *defining_op = op->getOperand(0).getDefiningOp();
     auto defining_op_int =
         llvm::dyn_cast_or_null<InferShapedTypeOpInterface>(defining_op);
     if (!defining_op_int) return failure();
@@ -48,8 +50,8 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     OperationState state(op->getLoc(), "mhlo_test.return_type_components",
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
-    auto new_op = rewriter.createOperation(state);
-    for (auto it : llvm::enumerate(components)) {
+    auto *new_op = rewriter.create(state);
+    for (const auto &it : llvm::enumerate(components)) {
       if (it.value().hasRank()) {
         new_op->setAttr((StringRef("dims") + Twine(it.index())).str(),
                         rewriter.getI64ArrayAttr(it.value().getDims()));
@@ -70,11 +72,12 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) return failure();
-    auto defining_op = llvm::dyn_cast_or_null<InferShapedTypeOpInterface>(
-        op->getOperand(0).getDefiningOp());
+    auto defining_op =
+        op->getOperand(0).getDefiningOp<InferShapedTypeOpInterface>();
     if (!defining_op) return failure();
     SmallVector<Value, 4> return_shapes;
-    if (failed(defining_op.reifyReturnTypeShapes(rewriter, return_shapes))) {
+    if (failed(defining_op.reifyReturnTypeShapes(
+            rewriter, defining_op->getOperands(), return_shapes))) {
       return failure();
     }
     rewriter.replaceOp(op, return_shapes);
@@ -83,21 +86,25 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
 };
 
 struct TestInferShapedTypeMethodsPass
-    : public PassWrapper<TestInferShapedTypeMethodsPass, FunctionPass> {
+    : public TestInferShapedTypeMethodsPassBase<
+          TestInferShapedTypeMethodsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();
   }
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
+    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createTestInferShapedTypeMethodsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 

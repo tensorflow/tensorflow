@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """SaveableHook, for running callbacks at save and restore time."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.training.tracking import base
 

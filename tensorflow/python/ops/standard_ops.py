@@ -16,15 +16,10 @@
 # pylint: disable=unused-import
 """Import names of Tensor Flow standard Ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import platform as _platform
 import sys as _sys
 
 from tensorflow.python import autograph
-from tensorflow.python.training.experimental import loss_scaling_gradient_tape
 
 # pylint: disable=g-bad-import-order
 # Imports the following modules so that @RegisterGradient get executed.
@@ -42,7 +37,7 @@ from tensorflow.python.ops import tensor_array_grad
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.python.ops.array_ops import *
+from tensorflow.python.ops.array_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.check_ops import *
 from tensorflow.python.ops.clip_ops import *
 from tensorflow.python.ops.special_math_ops import *
@@ -72,7 +67,7 @@ from tensorflow.python.ops.logging_ops import timestamp
 from tensorflow.python.ops.lookup_ops import initialize_all_tables
 from tensorflow.python.ops.lookup_ops import tables_initializer
 from tensorflow.python.ops.manip_ops import *
-from tensorflow.python.ops.math_ops import *
+from tensorflow.python.ops.math_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
 from tensorflow.python.ops.partitioned_variables import *
@@ -106,16 +101,11 @@ from tensorflow.python.ops.stateless_random_ops import *
 from tensorflow.python.ops.string_ops import *
 from tensorflow.python.ops.template import *
 from tensorflow.python.ops.tensor_array_ops import *
-from tensorflow.python.ops.variable_scope import *
+from tensorflow.python.ops.variable_scope import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.variables import *
 from tensorflow.python.ops.parallel_for.control_flow_ops import vectorized_map
 
-# pylint: disable=g-import-not-at-top
-if _platform.system() == "Windows":
-  from tensorflow.python.compiler.tensorrt import trt_convert_windows as trt
-else:
-  from tensorflow.python.compiler.tensorrt import trt_convert as trt
-# pylint: enable=g-import-not-at-top
+from tensorflow.python.compiler.tensorrt import trt_convert as trt
 
 # pylint: enable=wildcard-import
 # pylint: enable=g-bad-import-order

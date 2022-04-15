@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for Calibrator."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
@@ -166,9 +161,14 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         yield [np.ones(shape=(1, 2, 2, 3), dtype=np.float32)]
 
     with self.assertRaisesRegex(ValueError, 'Size mismatch'):
-      quantizer.calibrate_and_quantize(input_gen, dtypes.float32,
-                                       dtypes.float32, False, dtypes.int8,
-                                       False)
+      quantizer.calibrate_and_quantize(
+          input_gen,
+          dtypes.float32,
+          dtypes.float32,
+          False,
+          activations_type=dtypes.int8,
+          bias_type=dtypes.int32,
+          resize_input=False)
 
   def test_invalid_type_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(

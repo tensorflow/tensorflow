@@ -45,22 +45,24 @@ namespace profiler {
 
 namespace {
 
-constexpr int64 kInvalidStepId = -1;
+constexpr int64_t kInvalidStepId = -1;
 
 // Index of the time-sorted memory_profile_snapshots list, and the
 // MemoryActivityMetadata proto it contains.
-using IndexMetaPair = std::pair<int64 /*index*/, const MemoryActivityMetadata*>;
+using IndexMetaPair =
+    std::pair<int64_t /*index*/, const MemoryActivityMetadata*>;
 
-bool IsMemoryAllocation(int64 event_type) {
+bool IsMemoryAllocation(int64_t event_type) {
   return event_type == HostEventType::kMemoryAllocation;
 }
 
-bool IsMemoryDeallocation(int64 event_type) {
+bool IsMemoryDeallocation(int64_t event_type) {
   return event_type == HostEventType::kMemoryDeallocation;
 }
 
 void UpdateProfileSummary(const MemoryAggregationStats& stats,
-                          int64 time_offset_ps, MemoryProfileSummary* summary) {
+                          int64_t time_offset_ps,
+                          MemoryProfileSummary* summary) {
   // Update the peak memory usage over allocator's lifetime.
   summary->set_peak_bytes_usage_lifetime(stats.peak_bytes_in_use());
   MemoryAggregationStats* peak_stats = summary->mutable_peak_stats();
@@ -87,7 +89,7 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
   // kMemoryDeallocation.
   plane.ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {
-      int64 event_type = event.Type().value_or(kUnknownHostEventType);
+      int64_t event_type = event.Type().value_or(kUnknownHostEventType);
       if (!(IsMemoryAllocation(event_type) ||
             IsMemoryDeallocation(event_type))) {
         return;
@@ -177,7 +179,7 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
 // 0 for their step ids. Those at the step boundaries or at the end get the
 // previous snapshot's step id + 1.
 void UpdateStepId(PerAllocatorMemoryProfile* memory_profile) {
-  int64 last_valid_step_id = -1;
+  int64_t last_valid_step_id = -1;
   // Snapshots are already sorted in time.
   for (auto& snapshot : *memory_profile->mutable_memory_profile_snapshots()) {
     DCHECK(snapshot.has_activity_metadata());
@@ -229,9 +231,9 @@ void UpdateDeallocation(PerAllocatorMemoryProfile* memory_profile) {
 }
 
 // Return the step id for the peak memory usage data point.
-int64 GetPeakMemoryStep(int64 peak_bytes_profile,
-                        const PerAllocatorMemoryProfile* memory_profile) {
-  int64 peak_bytes_profile_step_id = 0;
+int64_t GetPeakMemoryStep(int64_t peak_bytes_profile,
+                          const PerAllocatorMemoryProfile* memory_profile) {
+  int64_t peak_bytes_profile_step_id = 0;
   for (const auto& snapshot : memory_profile->memory_profile_snapshots()) {
     // Get the step id of the peak memory usage.
     if (peak_bytes_profile ==
@@ -268,7 +270,8 @@ struct MetadataComparator {
 
 // If applicable, add items into active_allocs vector and special_allocations
 // proto for the unmapped memory usage (in heap) and stack reservation at peak.
-void InsertSpecialAllocations(int64 unmapped_allocation_bytes, int64 step_id,
+void InsertSpecialAllocations(int64_t unmapped_allocation_bytes,
+                              int64_t step_id,
                               PerAllocatorMemoryProfile* memory_profile,
                               std::vector<IndexMetaPair>* active_allocs) {
   int index = 0;
@@ -287,7 +290,7 @@ void InsertSpecialAllocations(int64 unmapped_allocation_bytes, int64 step_id,
     special_allocation->set_tensor_shape("unknown");
     active_allocs->push_back({--index, special_allocation});
   }
-  int64 stack_bytes =
+  int64_t stack_bytes =
       memory_profile->profile_summary().peak_stats().stack_reserved_bytes();
   if (stack_bytes > 0) {
     MemoryActivityMetadata* special_allocation =
@@ -319,12 +322,12 @@ bool operator==(const IndexMetaPair& a, const IndexMetaPair& b) {
 
 // Generate the memory breakdown table of active allocations at the peak usage
 // (within profiling window) and fill each ActiveAllocation proto (i.e. a row).
-void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
+void ProcessActiveAllocations(int64_t peak_bytes_profile_step_id,
                               PerAllocatorMemoryProfile* memory_profile) {
-  int64 unmapped_allocation_bytes =
+  int64_t unmapped_allocation_bytes =
       memory_profile->profile_summary().peak_stats().heap_allocated_bytes();
-  int64 unmapped_deallocation_bytes = 0;
-  absl::flat_hash_map<int64 /*address*/, IndexMetaPair> active_alloc_map;
+  int64_t unmapped_deallocation_bytes = 0;
+  absl::flat_hash_map<int64_t /*address*/, IndexMetaPair> active_alloc_map;
   // Only account for the memory activities in the step that includes peak
   // memory usage.
   for (int i = 0; i < memory_profile->memory_profile_snapshots_size(); i++) {
@@ -392,91 +395,95 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
           << memory_profile->active_allocations_size();
 }
 
-struct Sample {
-  int64 orig_index;  // original index to the snapshot.
-  MemoryProfileSnapshot* snapshot;
-};
-
-// This function samples max_num_snapshots from snapshots. We first keep the
-// snapshots referenced by active_allocations in the samples. After this, if
-// there is still room for more samples, we pick more from snapshots into the
-// samples. Then, we sort the samples in time (so that they can be correctly
-// displayed on the timeline). Finally, we need to adjust the original indices
-// (to snapshots) in active_allocations to the new indices in the samples.
-void SampleSnapshots(
-    int64 max_num_snapshots,
+// This function saves the MemoryProfileSnapshots referenced by
+// <active_allocations> max_num_snapshots.
+void SaveActiveAllocationSnapshots(
     protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots,
     protobuf::RepeatedPtrField<ActiveAllocation>* active_allocations) {
-  if (snapshots->size() <= max_num_snapshots) return;
-
-  std::vector<Sample> samples;
-
-  // First, puts the snapshots referenced by active_allocations in samples[].
-  absl::flat_hash_set<int64> allocation_snapshot_indices;
+  std::vector<MemoryProfileSnapshot*> samples;
+  // Puts the snapshots referenced by active_allocations in <samples>.
   for (const auto& allocation : *active_allocations) {
     auto orig_index = allocation.snapshot_index();
     if (orig_index < 0) continue;
-    allocation_snapshot_indices.insert(orig_index);
-    samples.push_back({orig_index, &(*snapshots)[orig_index]});
-    if (allocation_snapshot_indices.size() >= max_num_snapshots) break;
+    samples.push_back(&(*snapshots)[orig_index]);
   }
 
-  // Second, extracts remaining samples from snapshots.
-  int64 num_samples_remained =
-      max_num_snapshots - allocation_snapshot_indices.size();
-  if (num_samples_remained > 0) {
-    std::vector<Sample> remaining;
-    for (int64 i = 0; i < snapshots->size(); i++) {
-      if (allocation_snapshot_indices.contains(i)) continue;
-      // snapshots[i] is not yet sampled; put it in remaining[] for further
-      // consideration.
-      remaining.push_back({i, &(*snapshots)[i]});
-    }
-    // Moves the num_samples_remained snapshots with least free bytes to the
-    // beginning of remaining[].
-    absl::c_partial_sort(
-        remaining, remaining.begin() + num_samples_remained,
-        [](const Sample& a, const Sample& b) {
-          return a.snapshot->aggregation_stats().free_memory_bytes() <
-                 b.snapshot->aggregation_stats().free_memory_bytes();
-        });
-    // Copies the first num_samples_remained in remaining[] to samples[].
-    for (int64 i = 0; i < num_samples_remained; i++)
-      samples.push_back(remaining[i]);
-  }
-
-  // Third, sorts samples[] in ascending order of time_offset_ps.
-  absl::c_sort(samples, [](const Sample& a, const Sample& b) {
-    return a.snapshot->time_offset_ps() < b.snapshot->time_offset_ps();
-  });
-
-  // Fourth, constructs a map from the original snapshot index to samples index.
-  absl::flat_hash_map</*original=*/int64, /*new=*/int64> index_map;
-  for (int64 i = 0; i < samples.size(); i++) {
-    index_map[samples[i].orig_index] = i;
-  }
-
-  // Fifth, changes the original snapshot indices in active_allocations to the
-  // sample indices.
+  // Change the reference index in <active_allocations>.
+  int new_index = 0;
   for (auto& allocation : *active_allocations) {
-    auto orig_index = allocation.snapshot_index();
-    if (orig_index < 0) continue;
-    auto new_index = gtl::FindWithDefault(index_map, orig_index, -1);
+    int64_t origin_index = allocation.snapshot_index();
+    if (origin_index < 0) continue;
     allocation.set_snapshot_index(new_index);
+    new_index++;
   }
 
-  // Sixth, replaces *snapshot by samples[]
   protobuf::RepeatedPtrField<MemoryProfileSnapshot> new_snapshots;
   new_snapshots.Reserve(samples.size());
   for (const auto& sample : samples) {
-    *new_snapshots.Add() = std::move(*sample.snapshot);
+    *new_snapshots.Add() = std::move(*sample);
   }
   *snapshots = std::move(new_snapshots);
 }
 
+// Sample <max_num_snapshots> memory profile snapshots from the original memory
+// profile data.
+void SampleMemoryProfileTimeline(int64_t max_num_snapshots,
+                                 PerAllocatorMemoryProfile* memory_profile) {
+  const protobuf::RepeatedPtrField<MemoryProfileSnapshot>& original_snapshots =
+      memory_profile->memory_profile_snapshots();
+  protobuf::RepeatedPtrField<MemoryProfileSnapshot>* timeline_snapshots =
+      memory_profile->mutable_sampled_timeline_snapshots();
+  int64_t snapshot_count = original_snapshots.size();
+  if (snapshot_count > max_num_snapshots) {
+    // When there are more memory profile data than <max_num_snapshots>, we
+    // sample the origin data using a max box filter. Filter width is
+    // <filter_width>, collect <count> samples starting from the <start> index
+    // in the original snapshots.
+    auto max_box_filter = [&](int filter_width, int count, int start) {
+      for (int i = 0; i < count; i++) {
+        // Use a max function to get the MemoryProfileSnapshot with the largest
+        // memory usage in the box filter.
+        const MemoryProfileSnapshot* max_snapshot =
+            &original_snapshots[start + filter_width * i];
+        int64_t max_bytes =
+            max_snapshot->aggregation_stats().heap_allocated_bytes() +
+            max_snapshot->aggregation_stats().stack_reserved_bytes();
+        for (int index = start + filter_width * i + 1;
+             index < start + filter_width * (i + 1); index++) {
+          int64_t bytes = original_snapshots[index]
+                              .aggregation_stats()
+                              .heap_allocated_bytes() +
+                          original_snapshots[index]
+                              .aggregation_stats()
+                              .stack_reserved_bytes();
+          if (bytes > max_bytes) {
+            max_snapshot = &original_snapshots[index];
+            max_bytes = bytes;
+          }
+        }
+        *timeline_snapshots->Add() = *max_snapshot;
+      }
+    };
+
+    int width = snapshot_count / max_num_snapshots;
+    int count1 = max_num_snapshots * (width + 1) - snapshot_count;
+    int count2 = max_num_snapshots - count1;
+
+    // Collect <count1> samples with box filter width <width>, then collect
+    // <count2> samples with box filter width <width+1>, the total number of
+    // samples collected will be <max_num_snapshot>.
+    max_box_filter(width, count1, 0);
+    max_box_filter(width + 1, count2, width * count1);
+  } else {
+    // When the number of original snapshots are smaller than
+    // <max_num_snapshots>, just copy all the data points to the timeline.
+    *timeline_snapshots = original_snapshots;
+  }
+}
+
 // Post-process the memory profile to correctly update proto fields, and break
 // down peak memory usage for each allocator.
-void ProcessMemoryProfileProto(int64 max_num_snapshots,
+void ProcessMemoryProfileProto(int64_t max_num_snapshots,
                                MemoryProfile* memory_profile) {
   memory_profile->set_num_hosts(1);
   // Add sorted memory ids within memory profile data to the selection list.
@@ -503,14 +510,18 @@ void ProcessMemoryProfileProto(int64 max_num_snapshots,
     UpdateStepId(allocator_memory_profile);
     UpdateDeallocation(allocator_memory_profile);
 
-    int64 peak_step_id =
+    // Sample a subset of MemoryProfileSnapshots to display in the frontend
+    // memory timeline graph.
+    SampleMemoryProfileTimeline(max_num_snapshots, allocator_memory_profile);
+
+    int64_t peak_step_id =
         GetPeakMemoryStep(allocator_memory_profile->profile_summary()
                               .peak_stats()
                               .peak_bytes_in_use(),
                           allocator_memory_profile);
     ProcessActiveAllocations(peak_step_id, allocator_memory_profile);
-    SampleSnapshots(max_num_snapshots, snapshots,
-                    allocator_memory_profile->mutable_active_allocations());
+    SaveActiveAllocationSnapshots(
+        snapshots, allocator_memory_profile->mutable_active_allocations());
   }
 }
 
@@ -534,9 +545,12 @@ Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
 }  // namespace
 
 MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
-                                           int64 max_num_snapshots) {
+                                           int64_t max_num_snapshots) {
   MemoryProfile memory_profile = GenerateMemoryProfile(&host_plane);
   ProcessMemoryProfileProto(max_num_snapshots, &memory_profile);
+  // Default version number is 0, set version number to 1 here due to the new
+  // memory profile sampling algorithm.
+  memory_profile.set_version(1);
   return memory_profile;
 }
 

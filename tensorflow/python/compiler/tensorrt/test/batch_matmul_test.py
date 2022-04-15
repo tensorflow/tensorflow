@@ -14,10 +14,6 @@
 # ==============================================================================
 """Model script to test TF-TensorRT integration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 
 import numpy as np
@@ -69,7 +65,7 @@ class BatchMatMulTwoTensorTest(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "relu"]}
+    return {"TRTEngineOp_000": ["matmul", "relu"]}
 
 
 class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
@@ -88,7 +84,7 @@ class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+    return {"TRTEngineOp_000": ["matmul", "kernel"]}
 
 
 class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
@@ -106,7 +102,7 @@ class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+    return {"TRTEngineOp_000": ["matmul", "kernel"]}
 
 
 if __name__ == "__main__":

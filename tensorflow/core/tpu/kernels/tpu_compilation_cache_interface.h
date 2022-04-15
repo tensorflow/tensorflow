@@ -85,7 +85,7 @@ class CompilationCacheEntryRef {
 
 class TpuCompilationCacheInterface : public ResourceBase {
  public:
-  explicit TpuCompilationCacheInterface(int64 max_cache_size);
+  explicit TpuCompilationCacheInterface(int64_t max_cache_size);
   ~TpuCompilationCacheInterface() override;
 
   // Ensures there is an entry for key present in the cache. By the time
@@ -107,7 +107,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   Status CompileIfKeyAbsent(
       const TpuCompilationCacheKey& subgraph_key,
       const SessionMetadata* session_metadata,
-      CompilationRefHolder* per_step_ref_holder, int64* uid,
+      CompilationRefHolder* per_step_ref_holder, int64_t* uid,
       std::vector<std::string>* proto_key,
       std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
@@ -127,12 +127,12 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // called if per_step_ref_holder was NOT nullptr in the corresponding call to
   // CompileIfKeyAbsent(subgraph_key, ...). Otherwise, use Release(int64
   // subgraph_uid).
-  Status MarkEntryForEviction(int64 subgraph_uid);
+  Status MarkEntryForEviction(int64_t subgraph_uid);
 
   // Manually discards a reference to the compiled subgraph. This should only be
   // called if per_step_ref_holder was nullptr in the corresponding call to
   // CompileIfKeyAbsent(subgraph_key, ...).
-  Status Release(int64 subgraph_uid);
+  Status Release(int64_t subgraph_uid);
 
   // Looks up an executable corresponding to the model-parallel core index of
   // the subgraph represented by key. On success a pointer to an EntryRef
@@ -143,12 +143,12 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // Looks up an executable corresponding to the model-parallel core index of
   // the subgraph represented by uid. On success a pointer to an EntryRef
   // holding the program is returned in entry.
-  Status Lookup(int64 uid, int proto_index,
+  Status Lookup(int64_t uid, int proto_index,
                 std::unique_ptr<CompilationCacheEntryRef>* entry);
 
   // Looks up the subgraph represented by uid, and returns the vector of keys,
   // one per core, corresponding to that subgraph.
-  Status GetKeysFromUid(int64 uid, std::vector<std::string>* keys);
+  Status GetKeysFromUid(int64_t uid, std::vector<std::string>* keys);
 
   // Makes a reference holder for this cache, that can be stored in the per-step
   // resource manager and will ensure that compiled entries persist until the
@@ -196,7 +196,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   Status CompileIfKeyAbsentHelper(
       const TpuCompilationCacheKey& subgraph_key,
       const SessionMetadata* session_metadata,
-      CompilationRefHolder* per_step_ref_holder, int64* uid,
+      CompilationRefHolder* per_step_ref_holder, int64_t* uid,
       std::vector<std::string>* proto_key,
       std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
@@ -275,17 +275,17 @@ class TpuCompilationCacheInterface : public ResourceBase {
 
   // The maximum size of entries that are stored in the cache before entries are
   // marked for eviction.
-  const int64 max_cache_size_;
+  const int64_t max_cache_size_;
   // Mutex to protect access to shared resources under multi-threading
   // environment.
   absl::Mutex mu_;
   // The total size of entries that are stored and not marked for eviction.
-  int64 cache_size_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t cache_size_ ABSL_GUARDED_BY(mu_) = 0;
   // The total size of entries that are marked for eviction.
-  int64 marked_for_eviction_size_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t marked_for_eviction_size_ ABSL_GUARDED_BY(mu_) = 0;
   // The value to assign to the last_use field of the next entry that is looked
   // up.
-  int64 use_counter_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t use_counter_ ABSL_GUARDED_BY(mu_) = 0;
   // session_key_map_ and fingerprint_key_map_ are used for looking up the
   // cache_ key matching a given subgraph key. When doing a lookup, check
   // session_key_map_ first to avoid unnecessay fingerprint computation.
@@ -302,7 +302,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       ABSL_GUARDED_BY(mu_);
   // All the subgraph entries that can be looked up in the cache, indexed by
   // uid.
-  absl::node_hash_map<int64, CompiledSubgraph*> entries_by_uid_
+  absl::node_hash_map<int64_t, CompiledSubgraph*> entries_by_uid_
       ABSL_GUARDED_BY(mu_);
   // All the protos that can be looked up in the cache, indexed by proto
   // key. The value of the map is a subgraph and the index of the proto compiled
@@ -312,7 +312,8 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // Map from last_use to entry, used to mark entries for eviction in LRU
   // order. If an entry's last_use counter is not present as a key in
   // entries_by_last_use_ then the entry has been marked for eviction.
-  std::map<int64, CompiledSubgraph*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
+  std::map<int64_t, CompiledSubgraph*> entries_by_last_use_
+      ABSL_GUARDED_BY(mu_);
 
   TpuCompilationMetrics tpu_compilation_metrics_;
 

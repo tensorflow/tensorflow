@@ -75,7 +75,7 @@ TEST(CostEstimatorTest, MultiplyCosts) {
   EXPECT_EQ(product.intermediate_memory_time, Costs::NanoSeconds(40));
   EXPECT_EQ(product.intermediate_memory_read_time, Costs::NanoSeconds(50));
   EXPECT_EQ(product.intermediate_memory_write_time, Costs::NanoSeconds(60));
-  EXPECT_EQ(product.max_memory, 10);
+  EXPECT_EQ(product.max_memory, 1);
   EXPECT_EQ(product.max_per_op_buffers, 2);
   EXPECT_EQ(product.max_per_op_streaming, 3);
   EXPECT_EQ(product.num_ops_total, 1);

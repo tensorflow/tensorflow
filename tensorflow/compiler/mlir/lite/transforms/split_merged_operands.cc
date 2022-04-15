@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -66,8 +66,20 @@ namespace TFL {
 namespace {
 
 struct SplitMergedOperandsPass
-    : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<SplitMergedOperandsPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitMergedOperandsPass)
+
+  void runOnOperation() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-split-merged-operands";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Split merged stateful operands for tfl operations.";
+  }
 };
 
 LogicalResult DuplicateValueIfNeeded(Operation* op,
@@ -101,9 +113,9 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
   return success();
 }
 
-void SplitMergedOperandsPass::runOnFunction() {
+void SplitMergedOperandsPass::runOnOperation() {
   llvm::DenseSet<Value> stateful_values;
-  auto func = getFunction();
+  auto func = getOperation();
   OpBuilder builder(func);
   for (auto& bb : func.getBody()) {
     for (auto& op : bb) {
@@ -123,9 +135,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass() {
   return std::make_unique<SplitMergedOperandsPass>();
 }
 
-static PassRegistration<SplitMergedOperandsPass> pass(
-    "tfl-split-merged-operands",
-    "Split merged stateful operands for tfl operations.");
+static PassRegistration<SplitMergedOperandsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

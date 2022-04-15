@@ -82,16 +82,16 @@ class ImmutableDictTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testSetItemFails(self):
     d = immutable_dict.ImmutableDict({'x': 1, 'y': 2})
     with self.assertRaises(TypeError):
-      d['x'] = 5
+      d['x'] = 5  # pylint: disable=unsupported-assignment-operation
     with self.assertRaises(TypeError):
-      d['z'] = 5
+      d['z'] = 5  # pylint: disable=unsupported-assignment-operation
 
   def testDelItemFails(self):
     d = immutable_dict.ImmutableDict({'x': 1, 'y': 2})
     with self.assertRaises(TypeError):
-      del d['x']
+      del d['x']  # pylint: disable=unsupported-delete-operation
     with self.assertRaises(TypeError):
-      del d['z']
+      del d['z']  # pylint: disable=unsupported-delete-operation
 
 
 if __name__ == '__main__':

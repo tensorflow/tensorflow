@@ -14,11 +14,6 @@
 # ==============================================================================
 """Companion classes for mid level API for TPU Embeddings in TF2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import abc
 import math
 import typing
@@ -31,6 +26,7 @@ from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
@@ -65,9 +61,10 @@ class _Optimizer(object):
     self.clip_weight_min = clip_weight_min
     self.clip_weight_max = clip_weight_max
     if not use_gradient_accumulation and clipvalue is not None:
-      raise ValueError("Received non-None gradient clipping limit {} but "
-                       "use_gradient_accumulation is not set to True.".format(
-                           clipvalue))
+      raise ValueError(
+          f"When `use_gradient_accumulation` is False, gradient clipping "
+          f"cannot be used and `clipvalue` should be left as None. "
+          f"Received value {clipvalue} for argument `clipvalue`.")
     if clipvalue is None:
       clipvalue = (None, None)
     elif not isinstance(clipvalue, tuple):
@@ -80,8 +77,9 @@ class _Optimizer(object):
 
     if (slot_variable_creation_fn is not None and
         not callable(slot_variable_creation_fn)):
-      raise ValueError("slot_variable_creation_fn must be either None or a "
-                       "callable.")
+      raise ValueError(
+          f"Argument `slot_variable_creation_fn` must be either None or a "
+          f"callable. Received: {slot_variable_creation_fn}")
     self.slot_variable_creation_fn = slot_variable_creation_fn
 
   @abc.abstractmethod
@@ -214,6 +212,7 @@ class SGD(_Optimizer):
 
   def __init__(self,
                learning_rate: Union[float, Callable[[], float]] = 0.01,
+               use_gradient_accumulation: bool = True,
                clip_weight_min: Optional[float] = None,
                clip_weight_max: Optional[float] = None,
                weight_decay_factor: Optional[float] = None,
@@ -224,6 +223,8 @@ class SGD(_Optimizer):
     Args:
       learning_rate: The learning rate. It should be a floating point value or a
         callable taking no arguments for a dynamic learning rate.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
       weight_decay_factor: amount of weight decay to apply; None means that the
@@ -241,8 +242,6 @@ class SGD(_Optimizer):
         'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
         information on gradient accumulation and its impact on tpu embeddings.
     """
-    use_gradient_accumulation = clipvalue is not None
-
     super(SGD, self).__init__(
         learning_rate, use_gradient_accumulation, clip_weight_min,
         clip_weight_max, weight_decay_factor,
@@ -356,7 +355,9 @@ class Adagrad(_Optimizer):
         multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
-      raise ValueError("Adagrad initial_accumulator_value must be positive")
+      raise ValueError(
+          f"Argument `initial_accumulator_value` must be a positive float. "
+          f"Received: {initial_accumulator_value}")
     self.initial_accumulator_value = initial_accumulator_value
 
   def _slot_names(self) -> List[Text]:
@@ -375,6 +376,137 @@ class Adagrad(_Optimizer):
 
   def _retrieve(self) -> Callable[..., core.Tensor]:
     return tpu_ops.retrieve_tpu_embedding_adagrad_parameters
+
+
+@tf_export("tpu.experimental.embedding.AdagradMomentum")
+class AdagradMomentum(_Optimizer):
+  """Optimization parameters for Adagrad + Momentum with TPU embeddings.
+
+  Pass this to `tf.tpu.experimental.embedding.TPUEmbedding` via the `optimizer`
+  argument to set the global optimizer and its parameters:
+
+  ```python
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      ...
+      optimizer=tf.tpu.experimental.embedding.AdagradMomentum(0.1))
+  ```
+
+  This can also be used in a `tf.tpu.experimental.embedding.TableConfig` as the
+  optimizer parameter to set a table specific optimizer. This will override the
+  optimizer and parameters for global embedding optimizer defined above:
+
+  ```python
+  table_one = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...,
+      optimizer=tf.tpu.experimental.embedding.AdagradMomentum(0.2))
+  table_two = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...)
+
+  feature_config = (
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_one),
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_two))
+
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=...
+      optimizer=tf.tpu.experimental.embedding.AdagradMomentum(0.1))
+  ```
+
+  In the above example, the first feature will be looked up in a table that has
+  a learning rate of 0.2 while the second feature will be looked up in a table
+  that has a learning rate of 0.1.
+
+  See 'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for a
+  complete description of these parameters and their impacts on the optimizer
+  algorithm.
+  """
+
+  def __init__(
+      self,
+      learning_rate: Union[float, Callable[[], float]] = 0.001,
+      momentum: float = 0.0,
+      use_nesterov: bool = False,
+      exponent: float = 2,
+      beta2: float = 1,
+      epsilon: float = 1e-10,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
+      clipvalue: Optional[ClipValueType] = None):
+    """Optimization parameters for Adagrad + Momentum.
+
+    Args:
+      learning_rate: The learning rate. It should be a floating point value or a
+        callable taking no arguments for a dynamic learning rate.
+      momentum: Moving average parameter for the momentum accumulator.
+      use_nesterov: Whether to use the Nesterov variant of momentum. See
+        Sutskever et al., 2013.
+      exponent: Exponent for the Adagrad accumulator.
+      beta2: Moving average parameter for the Adagrad accumulator.
+      epsilon: initial accumulator for Adagrad accumulator.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+      slot_variable_creation_fn: If you wish do directly control the creation of
+        the slot variables, set this to a callable taking three parameters: a
+          table variable, a list of slot names to create for it, and a list of
+          initializers. This function should return a dict with the slot names
+          as keys and the created variables as values with types matching the
+          table variable. When set to None (the default), uses the built-in
+          variable creation.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tuple of scalar values (min,
+        max) to set a separate maximum or minimum. If one of the two entries is
+        None, then there will be no clipping that direction.
+    """
+    super(AdagradMomentum,
+          self).__init__(learning_rate, use_gradient_accumulation,
+                         clip_weight_min, clip_weight_max, weight_decay_factor,
+                         multiply_weight_decay_factor_by_learning_rate,
+                         clipvalue, slot_variable_creation_fn)
+    if epsilon <= 0:
+      raise ValueError("Adagrad momentum: epsilon must be positive")
+    if exponent <= 0:
+      raise ValueError("Adagrad momentum: Precondition exponent must >0")
+    self.momentum = momentum
+    self.use_nesterov = use_nesterov
+    self.exponent = exponent
+    self.beta2 = beta2
+    self.epsilon = epsilon
+
+  def _slot_names(self) -> List[Text]:
+    return ["accumulators", "momenta"]
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+    super(AdagradMomentum, self)._set_optimization_parameters(parameters)
+    parameters.adagrad_momentum.SetInParent()
+    parameters.adagrad_momentum.momentum = self.momentum
+    parameters.adagrad_momentum.use_nesterov = self.use_nesterov
+    parameters.adagrad_momentum.exponent = self.exponent
+    parameters.adagrad_momentum.beta2 = self.beta2
+    parameters.adagrad_momentum.epsilon = self.epsilon
+
+  def _load(self) -> Callable[..., ops.Operation]:
+    return tpu_ops.load_tpu_embedding_adagrad_momentum_parameters
+
+  def _retrieve(self) -> Callable[..., core.Tensor]:
+    return tpu_ops.retrieve_tpu_embedding_adagrad_momentum_parameters
 
 
 @tf_export("tpu.experimental.embedding.FTRL")
@@ -497,7 +629,9 @@ class FTRL(_Optimizer):
                      multiply_weight_decay_factor_by_learning_rate, clipvalue,
                      slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
-      raise ValueError("FTRL initial_accumulator_value must be positive")
+      raise ValueError(
+          f"Argument `initial_accumulator_value` must be a positive float. "
+          f"Received: {initial_accumulator_value}")
     self.initial_accumulator_value = initial_accumulator_value
     self.learning_rate_power = learning_rate_power
     self.l1_regularization_strength = l1_regularization_strength
@@ -644,16 +778,18 @@ class Adam(_Optimizer):
         multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if beta_1 < 0. or beta_1 >= 1.:
-      raise ValueError("beta1 must be in the range [0, 1), but received {}."
-                       .format(beta_1))
+      raise ValueError(
+          f"Argument `beta_1` must be >= 0 and < 1. Received: {beta_1}.")
     if beta_2 < 0. or beta_2 >= 1.:
-      raise ValueError("beta2 must be in the range [0, 1), but received {}."
-                       .format(beta_2))
+      raise ValueError(
+          f"Argument `beta_2` must be >= 0 and < 1. Received: {beta_1}.")
     if epsilon <= 0.:
       raise ValueError("epsilon must be positive; got {}.".format(epsilon))
     if not use_gradient_accumulation and not lazy_adam:
       raise ValueError(
-          "When disabling Lazy Adam, gradient accumulation must be used.")
+          "When disabling lazy Adam (`lazy_adam=False`), "
+          "gradient accumulation must be used. "
+          "Set `use_gradient_accumulation` to False.")
 
     self.beta_1 = beta_1
     self.beta_2 = beta_2
@@ -723,7 +859,7 @@ class TableConfig(object):
   def __init__(self,
                vocabulary_size: int,
                dim: int,
-               initializer: Optional[Callable[[Any], None]],
+               initializer: Optional[Callable[[Any], None]] = None,
                optimizer: Optional[_Optimizer] = None,
                combiner: Text = "mean",
                name: Optional[Text] = None):
@@ -759,19 +895,27 @@ class TableConfig(object):
       ValueError: if `combiner` is not supported.
     """
     if not isinstance(vocabulary_size, int) or vocabulary_size < 1:
-      raise ValueError("Invalid vocabulary_size {}.".format(vocabulary_size))
+      raise ValueError(
+          f"Argument `vocabulary_size` must be an int and must be >= 1. "
+          f"Received: {vocabulary_size}")
 
     if not isinstance(dim, int) or dim < 1:
-      raise ValueError("Invalid dim {}.".format(dim))
+      raise ValueError(
+          f"Argument `dim` (embedding dimension) "
+          f"must be an int and must be >= 1. Received: {dim}")
 
     if (initializer is not None) and (not callable(initializer)):
-      raise ValueError("initializer must be callable if specified.")
+      raise ValueError(
+          f"Argument `initializer` must be a callable (or None). "
+          f"Received: {initializer}")
     if initializer is None:
       initializer = init_ops_v2.TruncatedNormal(mean=0.0,
                                                 stddev=1/math.sqrt(dim))
-
-    if combiner not in ("mean", "sum", "sqrtn"):
-      raise ValueError("Invalid combiner {}".format(combiner))
+    accepted_combiners = ("mean", "sum", "sqrtn")
+    if combiner not in accepted_combiners:
+      raise ValueError(
+          f"Argument `combiner` must be one of {accepted_combiners}. "
+          f"Received: {combiner}")
 
     self.vocabulary_size = vocabulary_size
     self.dim = dim
@@ -836,6 +980,15 @@ class FeatureConfig(object):
   features will be looked up in the first table and the third feature will be
   looked up in the second table.
 
+  You can also specify the output shape for each feature. The output shape
+  should be the expected activation shape excluding the table dimension. For
+  dense and sparse tensor, the output shape should be the same as the input
+  shape excluding the last dimension. For ragged tensor, the output shape can
+  mismatch the input shape.
+
+  NOTE: The `max_sequence_length` will be only used when the input tensor has
+  rank 2 and the `output_shape` is not set in the feature config.
+
   When feeding features into `embedding.enqueue` they can be `tf.Tensor`s,
   `tf.SparseTensor`s or `tf.RaggedTensor`s. When the argument
   `max_sequence_length` is 0, the default, you should expect a output of
@@ -848,6 +1001,8 @@ class FeatureConfig(object):
   def __init__(self,
                table: TableConfig,
                max_sequence_length: int = 0,
+               validate_weights_and_indices: bool = True,
+               output_shape: Optional[Union[List[int], TensorShape]] = None,
                name: Optional[Text] = None):
     """Feature configuration.
 
@@ -858,6 +1013,14 @@ class FeatureConfig(object):
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
+      validate_weights_and_indices: If true, uses safe_embedding_lookup during
+        serving which ensures there are no empty rows and all weights and ids
+        are positive at the expense of extra compute cost.
+      output_shape: Optional argument to config the output shape of the feature
+        activation. If provided, the feature feeding to the `embedding.enqueue`
+        has to match the shape (for ragged tensor, the input shape and output
+        shape can mismatch). If not provided, the shape can be either provided
+        to the `embedding.build` or auto detected at the runtime.
       name: An optional name for the feature, useful for debugging.
 
     Returns:
@@ -869,27 +1032,36 @@ class FeatureConfig(object):
       ValueError: if `max_sequence_length` not an integer or is negative.
     """
     if not isinstance(table, TableConfig):
-      raise ValueError("table is type {}, expected "
-                       "`tf.tpu.experimental.embedding.TableConfig`".format(
-                           type(table)))
+      raise ValueError(f"Argument `table` has invalid type {type(table)}. "
+                       "Expected `tf.tpu.experimental.embedding.TableConfig`.")
 
     if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
-      raise ValueError("Invalid max_sequence_length {}.".format(
-          max_sequence_length))
+      raise ValueError(
+          f"Argument `max_sequence_length` must be an int and must be >= 0. "
+          f"Received: {max_sequence_length}")
 
     self.table = table
     self.max_sequence_length = max_sequence_length
     self.name = name
+    self.output_shape = TensorShape(output_shape)
+
+    if not isinstance(
+        validate_weights_and_indices, bool):
+      raise ValueError(
+          f"Argument `validate_weights_and_indices` must be a boolean. "
+          f"Received: {validate_weights_and_indices}")
+
+    self.validate_weights_and_indices = validate_weights_and_indices
 
   def __repr__(self):
-    return (
-        "FeatureConfig(table={table!r}, "
-        "max_sequence_length={max_sequence_length!r}, name={name!r})"
-        .format(
-            table=self.table,
-            max_sequence_length=self.max_sequence_length,
-            name=self.name)
-    )
+    return ("FeatureConfig(table={table!r}, "
+            "max_sequence_length={max_sequence_length!r}, "
+            "validate_weights_and_indices={"
+            "validate_weights_and_indices!r}, name={name!r})".format(
+                table=self.table,
+                max_sequence_length=self.max_sequence_length,
+                validate_weights_and_indices=self.validate_weights_and_indices,
+                name=self.name))
 
 
 def log_tpu_embedding_configuration(

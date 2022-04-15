@@ -18,8 +18,8 @@ As described in the [Introduction](intro.md), AutoGraph aims to preserve the
 semantics of valid Python code. If a control flow statement runs in graph
 execution without raising an error, then AutoGraph will also execute it as
 normal Python control flow. Statements which would normally raise an error, for
-example because a `tf.Tensor` cannot be used as a `bool` in an `if` statement,
-are converted to TensorFlow control flow ops.
+example an `if` statement using a `bool` `Tensor` as condition, are converted to
+TensorFlow control flow ops.
 
 #### Analogy with compile-time constants and code optimization
 
@@ -118,9 +118,9 @@ first with a temporary graph, to determine whether it evaluates to a
 `tf.Tensor`, then if it is a `tf.Tensor`, it's executed a second time in the
 proper graph.
 
-In other words, when tracing executes both branches of an if statement.
-Similarly, the body of loops is executed once (even if the loop would otherwise
-not iterate at all).
+In other words, tracing executes both branches of an if statement. Similarly,
+the body of loops is executed once (even if the loop would otherwise not iterate
+at all).
 
 This explains why inserting `print` statements in an `if` statement produces
 this output:
@@ -173,7 +173,7 @@ For example, the conditional below will run as a `tf.cond` (its condition is a
 i = 0
 if tf.greater(i, 0):
   i = 1
-# i is not a Tensor
+# i is now a Tensor
 ```
 
 ### `if` statements
@@ -269,8 +269,8 @@ Caution: A loop in which the type of the condition changes across iterations, in
 a way that would influence the way the loop is executed, is not allowed in
 AutoGraph.
 
-For example, the loop below will generate an error. After the first iteration,
-`i` becomes a tf.Tensor, because
+For example, the loop below will generate an error, because after the first
+iteration, `i` becomes a tf.Tensor:
 
 ```
 i = 0
@@ -297,7 +297,7 @@ iteration: [3, 4]
 Note: If possible, AutoGraph will also set the `maximum_iteration` parameter
 of the `tf.while_loop`.
 
-`for` statements that iterate over a the output of a `tf.range` are executed as
+`for` statements that iterate over the output of a `tf.range` are executed as
 TensorFlow loops by converting them to a `tf.while_loop` which uses the
 arguments passed to the `tf.range`:
 
@@ -315,9 +315,9 @@ for i in tf.data.Dataset.range(3):
   tf.print('iteration:', i)
 ```
 
-`for` statements that iterate over a _distributed_ `tf.data.Dataset` and which
-do not contain `break` or `return` statements are executed as TensorFlow loops
-by converting them to the datasets' `reduce` ops:
+`for` statements that iterate over a _distributed dataset_ and which do not
+contain `break` or `return` statements are executed as TensorFlow loops by
+converting them to the dataset's `reduce` ops:
 
 ```
 for i in tf.distribute.OneDeviceStrategy('cpu').experimental_distribute_dataset(

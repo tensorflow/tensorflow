@@ -63,7 +63,7 @@ Status DynamicPartitionGrad(const Scope& scope, const Operation& op,
   // [g1, g2, g4, g5, g3]
   auto data = op.input(0);
   auto partitions = op.input(1);
-  int32 num_partitions;
+  int32_t num_partitions;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "num_partitions", &num_partitions));
 
@@ -118,17 +118,17 @@ Status DynamicStitchGrad(const Scope& scope, const Operation& op,
   // indices and data are two equal-sized lists passed
   // into DynamicStitch.
   // num_values = 2
-  int32 num_values = op.num_inputs() / 2;
+  int32_t num_values = op.num_inputs() / 2;
 
   // Stop propagation along the indices list
-  for (int32 i = 0; i < num_values; i++) {
+  for (int32_t i = 0; i < num_values; i++) {
     grad_outputs->push_back(NoGradient());
   }
 
   // DynamicStitch shuffles its data to the output (using items in
   // indices) so the gradient propagated to a given data input simply
   // selects the gradient for its output position.
-  for (int32 i = 0; i < num_values; i++) {
+  for (int32_t i = 0; i < num_values; i++) {
     // index has the destination positions for the i'th data
     // element. We cast it into an int32 if necessary, so we can use
     // it from a Gather op.

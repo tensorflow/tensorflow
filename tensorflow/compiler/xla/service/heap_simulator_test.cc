@@ -204,7 +204,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   };
-  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
+  absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
   memory_by_computation[cond_computation] = 5;
   memory_by_computation[body_computation] = 16;
 
@@ -225,7 +225,7 @@ const char kShare[] = "Share";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const HloValue*>>;
+using CallSequence = std::vector<std::pair<std::string, const HloValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm<HloValue> {
@@ -233,25 +233,25 @@ class HeapCallRecorder : public HeapAlgorithm<HloValue> {
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
   ~HeapCallRecorder() override {}
 
-  void Alloc(const HloValue* buffer, int64 size) override {
+  void Alloc(const HloValue* buffer, int64_t size) override {
     calls_->emplace_back(kAlloc, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
     // call.  This isn't a valid assignment, but allows us to easily test for
     // buffer sharing.
-    const int64 offset = result_.chunk_map.size();
+    const int64_t offset = result_.chunk_map.size();
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
 
   void ShareWith(const HloValue* buffer, const HloValue* shared,
-                 int64 size) override {
+                 int64_t size) override {
     calls_->emplace_back(kShare, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
     // call.  This isn't a valid assignment, but allows us to easily test for
     // buffer sharing.
-    const int64 offset = result_.chunk_map[shared].offset;
+    const int64_t offset = result_.chunk_map[shared].offset;
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
-  void Free(const HloValue* buffer, int64 size) override {
+  void Free(const HloValue* buffer, int64_t size) override {
     calls_->emplace_back(kFree, buffer);
   }
   Result Finish() override {
@@ -283,7 +283,8 @@ class HeapSimulatorTracker {
 
   // Constructor for testing a single entry computation.
   explicit HeapSimulatorTracker(
-      const string& name, std::unique_ptr<HloComputation> entry_computation,
+      const std::string& name,
+      std::unique_ptr<HloComputation> entry_computation,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
@@ -293,7 +294,7 @@ class HeapSimulatorTracker {
     Init(instruction_sequence, can_share_buffer);
   }
 
-  explicit HeapSimulatorTracker(const string& name) {
+  explicit HeapSimulatorTracker(const std::string& name) {
     HloModuleConfig config;
     module_ = absl::make_unique<HloModule>(name, config);
   }
@@ -336,7 +337,7 @@ class HeapSimulatorTracker {
                                                                   index);
   }
 
-  int64 OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
+  int64_t OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
     const HloValue* buffer = BufferAt(instruction, index);
     CHECK_EQ(1, result_.heap_results.size());
     return result_.heap_results.at(0).chunk_map.at(buffer).offset;
@@ -346,7 +347,7 @@ class HeapSimulatorTracker {
   void ExpectCallSequence(const CallSequence& expected) const {
     auto to_string = [](const CallSequence& sequence) {
       std::string output;
-      for (int64 i = 0; i < sequence.size(); ++i) {
+      for (int64_t i = 0; i < sequence.size(); ++i) {
         auto pair = sequence.at(i);
         absl::StrAppendFormat(&output, "%d", i);
         absl::StrAppendFormat(&output, " :%s", pair.first);
@@ -370,8 +371,8 @@ class HeapSimulatorTracker {
                            const ShapeIndex& index_a,
                            const HloInstruction* instruction_b,
                            const ShapeIndex& index_b) {
-    int64 offset_a = OffsetAt(instruction_a, index_a);
-    int64 offset_b = OffsetAt(instruction_b, index_b);
+    int64_t offset_a = OffsetAt(instruction_a, index_a);
+    int64_t offset_b = OffsetAt(instruction_b, index_b);
     EXPECT_EQ(offset_a, offset_b);
   }
 
@@ -500,10 +501,10 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
          const ShapeIndex& user_index) -> absl::optional<bool> {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      return true;
-    }
-    return false;
+    return instr->opcode() == HloOpcode::kFusion &&
+           operand->shape().IsArray() &&
+           ShapeUtil::Equal(operand->shape(),
+                            ShapeUtil::GetSubshape(instr->shape(), user_index));
   };
 
   HloModuleConfig config;
@@ -661,8 +662,8 @@ TEST_F(HeapSimulatorTest, BufferReusedOnce) {
   tracker.RunWholeModule({a_param, neg, fusion});
 
   auto neg_buffer = tracker.OffsetAt(neg, {});
-  int64 output_buffer_0 = tracker.OffsetAt(fusion, {0});
-  int64 output_buffer_1 = tracker.OffsetAt(fusion, {1});
+  int64_t output_buffer_0 = tracker.OffsetAt(fusion, {0});
+  int64_t output_buffer_1 = tracker.OffsetAt(fusion, {1});
   // Only one buffer should be shared.
   EXPECT_TRUE((neg_buffer == output_buffer_0) ^
               (neg_buffer == output_buffer_1));
@@ -1023,18 +1024,18 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
         : GlobalDecreasingSizeBestFitHeap(/*alignment=*/1) {}
 
     // Finds a chunk candidate and returns the offset and the new heap size.
-    std::pair<int64, int64> FindChunkCandidate(const HloValue* buffer,
-                                               int64 size, int64 start,
-                                               int64 end,
-                                               int64 preferred_offset = -1) {
+    std::pair<int64_t, int64_t> FindChunkCandidate(
+        const HloValue* buffer, int64_t size, int64_t start, int64_t end,
+        int64_t preferred_offset = -1) {
       buffer_interval_.buffer = buffer;
       buffer_interval_.size = size;
       buffer_interval_.start = start;
       buffer_interval_.end = end;
       chunk_candidate_ = GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
           buffer_interval_, preferred_offset);
-      EXPECT_EQ(chunk_candidate_.chunk.size, size);
-      return {chunk_candidate_.chunk.offset, chunk_candidate_.heap_size};
+      EXPECT_EQ(chunk_candidate_.size, size);
+      return {chunk_candidate_.offset,
+              result_.UpdatedHeapSize(chunk_candidate_)};
     }
 
     // Commits the previously found chunk candidate.
@@ -1045,7 +1046,7 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
 
    private:
     BufferInterval buffer_interval_;
-    ChunkCandidate chunk_candidate_;
+    Chunk chunk_candidate_;
   };
 
   InheritedGlobalDecreasingSizeBestFitHeap heap_;
@@ -1312,7 +1313,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
   //  0|+--d--+  +--b--+
   //   -----------------------------------------> time
   //    0  1  2  3  4  5  6  7  8  9 10 11 12 13
-  using pair = std::pair<int64, int64>;
+  using pair = std::pair<int64_t, int64_t>;
   EXPECT_EQ(pair(5, 10), heap_.FindChunkCandidate(buffer_a_, 5, 6, 10, 5));
   heap_.CommitChunk();  // offset: 5, size: 5, start: 6, end: 10
   // Preferred offset 5 is returned.

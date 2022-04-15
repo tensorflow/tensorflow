@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -144,7 +145,7 @@ Status ComputeTheoreticalJacobianTranspose(
   ClientSession session(scope);
   for (int y_idx = 0; y_idx < y_num; y_idx++) {
     auto dy_data_flat = dy_datas[y_idx].flat<Y_T>();
-    const int64 dy_size = y_shapes[y_idx].num_elements();
+    const int64_t dy_size = y_shapes[y_idx].num_elements();
 
     // Compute the theoretical Jacobians one row at a time by back propagating
     // '1.0' (or '1' and 'i' if y is complex) for each element of 'dy', while
@@ -158,7 +159,13 @@ Status ComputeTheoreticalJacobianTranspose(
         TF_RETURN_IF_ERROR(session.Run(feed_list, dxs, &dxout));
 
         for (int x_idx = 0; x_idx < x_num; x_idx++) {
-          const int64 x_size = x_shapes[x_idx].num_elements();
+          if (x_shapes[x_idx] != dxout[x_idx].shape()) {
+            return errors::Internal("Gradient for input ", x_idx,
+                                    " expected shape ",
+                                    x_shapes[x_idx].DebugString(), " but was ",
+                                    dxout[x_idx].shape().DebugString());
+          }
+          const int64_t x_size = x_shapes[x_idx].num_elements();
           auto jacobian = (*jacobian_ts)[x_idx * y_num + y_idx].matrix<JAC_T>();
           auto dx_flat = dxout[x_idx].flat<X_T>();
           for (int r = 0; r < x_size; ++r) {
@@ -220,7 +227,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
   ClientSession session(scope);
   for (int x_idx = 0; x_idx < x_num; x_idx++) {
     auto x_data_flat = (*x_datas)[x_idx].flat<X_T>();
-    const int64 x_size = x_shapes[x_idx].num_elements();
+    const int64_t x_size = x_shapes[x_idx].num_elements();
 
     // Compute the numeric Jacobian one column at a time by perturbing each
     // element of 'x_data' (positively and negatively) by 'delta', and
@@ -246,7 +253,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
           // Jacobian.
           auto y_pos_flat = y_pos[y_idx].flat<Y_T>();
           auto y_neg_flat = y_neg[y_idx].flat<Y_T>();
-          const int64 y_size = y_shapes[y_idx].num_elements();
+          const int64_t y_size = y_shapes[y_idx].num_elements();
           const Y_T scale = 2 * delta;
           auto jacobian = (*jacobian_ts)[x_idx * y_num + y_idx].matrix<JAC_T>();
           for (int c = 0; c < y_size; ++c) {
@@ -305,13 +312,13 @@ void InitJacobians(const OutputList& xs,
   for (int x_idx = 0; x_idx < x_num; x_idx++) {
     // The number of rows is the number of elements in the x tensor multiplied
     // by the number of Jacobian entries needed to represent each x type.
-    const int64 x_size =
+    const int64_t x_size =
         x_shapes[x_idx].num_elements() * JacobianStride<X_T>::value;
     for (int y_idx = 0; y_idx < y_num; y_idx++) {
       // The number of columns is the number of elements in the y tensor
       // multiplied by the number of Jacobian entries needed to represent each
       // y type.
-      const int64 y_size =
+      const int64_t y_size =
           y_shapes[y_idx].num_elements() * JacobianStride<Y_T>::value;
       Tensor jacobian_t(jacobian_type, {x_size, y_size});
       auto jacobian_t_flat = jacobian_t.flat<JAC_T>();

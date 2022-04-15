@@ -31,12 +31,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif
 
-// TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
-#if !defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)
+#if !defined(__s390x__) && !defined(TFLITE_WITHOUT_XNNPACK)
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #endif
 
@@ -78,14 +77,13 @@ TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options);
 
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling);
-#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
 TfLiteDelegatePtr CreateHexagonDelegate(
     const TfLiteHexagonDelegateOptions* options,
     const std::string& library_directory_path);
 #endif
 
-// TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
-#if !defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)
+#if !defined(__s390x__) && !defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate();
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* options);

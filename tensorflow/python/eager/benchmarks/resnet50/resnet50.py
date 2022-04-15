@@ -20,10 +20,6 @@ Recognition](https://arxiv.org/abs/1512.03385)
 Adapted from tf.keras.applications.ResNet50. A notable difference is that the
 model here outputs logits while the Keras model outputs probability.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 import tensorflow as tf

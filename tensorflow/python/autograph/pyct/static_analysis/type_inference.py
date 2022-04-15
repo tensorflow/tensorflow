@@ -27,10 +27,6 @@ values are also considered static for the purpose of analysis.
 Requires reaching function definitions analysis.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 from typing import Any, Callable, Dict, Set

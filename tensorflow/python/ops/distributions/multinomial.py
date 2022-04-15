@@ -14,10 +14,6 @@
 # ==============================================================================
 """The Multinomial distribution class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -294,9 +290,11 @@ class Multinomial(distribution.Distribution):
   def _covariance(self):
     p = self.probs * array_ops.ones_like(
         self.total_count)[..., array_ops.newaxis]
+    # pylint: disable=invalid-unary-operand-type
     return array_ops.matrix_set_diag(
-        -math_ops.matmul(self._mean_val[..., array_ops.newaxis],
-                         p[..., array_ops.newaxis, :]),  # outer product
+        -math_ops.matmul(
+            self._mean_val[..., array_ops.newaxis],
+            p[..., array_ops.newaxis, :]),  # outer product
         self._variance())
 
   def _variance(self):

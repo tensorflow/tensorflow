@@ -218,6 +218,8 @@ Tensor* OpsTestBase::GetOutput(int output_index) {
 
 Allocator* OpsTestBase::allocator() { return allocator_; }
 
+OpKernel* OpsTestBase::op_kernel() { return kernel_.get(); }
+
 const DataTypeVector& OpsTestBase::output_types() const {
   return kernel_->output_types();
 }

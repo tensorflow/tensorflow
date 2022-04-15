@@ -10,7 +10,7 @@ classification</a>, which classifies the overall image. See the
 more information about image segmenters.
 
 Use the Task Library `ImageSegmenter` API to deploy your custom image segmenters
-or pretrained ones into your model apps.
+or pretrained ones into your mobile apps.
 
 ## Key features of the ImageSegmenter API
 
@@ -60,17 +60,28 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
+
+Note: starting from version 4.1 of the Android Gradle plugin, .tflite will be
+added to the noCompress list by default and the aaptOptions above is not needed
+anymore.
 
 ### Step 2: Using the model
 
 ```java
 // Initialization
-ImageSegmenterOptions options = ImageSegmenterOptions.builder().setOutputType(OutputType.CONFIDENCE_MASK).build();
-ImageSegmenter imageSegmenter = ImageSegmenter.createFromFileAndOptions(context, modelFile, options);
+ImageSegmenterOptions options =
+    ImageSegmenterOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setOutputType(OutputType.CONFIDENCE_MASK)
+        .build();
+ImageSegmenter imageSegmenter =
+    ImageSegmenter.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Segmentation> results = imageSegmenter.segment(image);
@@ -82,14 +93,10 @@ for more options to configure `ImageSegmenter`.
 
 ## Run inference in C++
 
-Note: we are working on improving the usability of the C++ Task Library, such as
-providing prebuilt binaries and creating user-friendly workflows to build from
-source code. The C++ API may be subject to change.
-
 ```c++
 // Initialization
 ImageSegmenterOptions options;
-options.mutable_model_file_with_metadata()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
 std::unique_ptr<ImageSegmenter> image_segmenter = ImageSegmenter::CreateFromOptions(options).value();
 
 // Run inference
@@ -140,7 +147,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageSegmenter` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+metadata for image segmenters using the
+[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_segmenters).
 
 *   Input image tensor (kTfLiteUInt8/kTfLiteFloat32)
 

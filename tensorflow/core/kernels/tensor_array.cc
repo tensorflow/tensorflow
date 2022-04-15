@@ -79,7 +79,7 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 
 }  // namespace tensor_array
 
-std::atomic<int64> TensorArray::tensor_array_counter{0};
+std::atomic<int64_t> TensorArray::tensor_array_counter{0};
 
 Status TensorArray::CopyShapesFrom(TensorArray* rhs,
                                    const TensorShape* shape_to_prepend) {

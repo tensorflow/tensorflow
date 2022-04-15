@@ -49,7 +49,7 @@ class MfccOp : public OpKernel {
                 errors::InvalidArgument(
                     "Input sample_rate should be a scalar tensor, got ",
                     sample_rate_tensor.shape().DebugString(), " instead."));
-    const int32 sample_rate = sample_rate_tensor.scalar<int32>()();
+    const int32_t sample_rate = sample_rate_tensor.scalar<int32>()();
 
     const int spectrogram_channels = spectrogram.dim_size(2);
     const int spectrogram_samples = spectrogram.dim_size(1);

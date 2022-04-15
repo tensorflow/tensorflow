@@ -106,7 +106,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
 }
 
 TEST_F(FunctionsTest, FromSimpleFunctionDef) {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
       "XTimesTwo",
@@ -402,7 +402,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
 }
 
 TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
       "GenerateTwo",
@@ -506,7 +506,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithControlOutputs) {
 }
 
 TEST_F(FunctionsTest, MakeFunctionDef) {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
       "XTimesTwo",

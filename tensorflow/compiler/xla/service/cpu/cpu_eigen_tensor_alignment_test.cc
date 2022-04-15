@@ -28,7 +28,7 @@ namespace {
 using CpuEigenTensorAlignmentTest = HloTestBase;
 
 TEST_F(CpuEigenTensorAlignmentTest, EigenConvAlignment) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule ConvOperation
 
 ENTRY ConvOperation {
@@ -44,13 +44,13 @@ ENTRY ConvOperation {
   HloInstruction* conv = module->entry_computation()->root_instruction();
 
   TargetMachineFeaturesWithFakeAlignmentLogic target_machine_with_no_alignment(
-      [](int64 size) { return 1; });
+      [](int64_t size) { return 1; });
 
   EXPECT_FALSE(PotentiallyImplementedAsEigenConvolution(
       *conv, target_machine_with_no_alignment));
 
   TargetMachineFeaturesWithFakeAlignmentLogic
-      target_machine_with_full_alignment([](int64 size) {
+      target_machine_with_full_alignment([](int64_t size) {
         return TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
 

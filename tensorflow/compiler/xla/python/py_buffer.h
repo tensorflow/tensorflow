@@ -37,7 +37,7 @@ namespace xla {
 // b) to add Python-specific functionality.
 //
 // A `PyBuffer` can be used from Python without being wrapped in a Python
-// `DeviceArray` object, at the condition there is no associated LazyExpr.
+// `DeviceArray` object.
 class PyBuffer {
  public:
   // pybind11::object typed subclass for PyBuffer objects.
@@ -70,6 +70,7 @@ class PyBuffer {
 
   std::shared_ptr<PyClient> client() const { return client_; }
   PjRtBuffer* buffer() const { return buffer_.get(); }
+  std::shared_ptr<PjRtBuffer> shared_ptr_buffer() const { return buffer_; }
 
   ClientAndPtr<PjRtDevice> device() const;
   absl::string_view platform_name() const {
@@ -79,8 +80,12 @@ class PyBuffer {
 
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
+  std::pair<Status, bool> CopyToRemoteDevice(
+      absl::string_view serialized_descriptor) const;
 
-  int64 OnDeviceSizeInBytes() { return buffer_->OnDeviceSizeInBytes(); }
+  StatusOr<size_t> OnDeviceSizeInBytes() {
+    return buffer_->GetOnDeviceSizeInBytes();
+  }
 
   void Delete() {
     buffer_->Delete();
@@ -91,6 +96,21 @@ class PyBuffer {
   // This is useful because we may wish to change JAX metadata (e.g., the sticky
   // device) without copying the buffer.
   object Clone() const;
+
+  // Returns xla::InvalidArgument if the buffer has been deleted.
+  // See `PjRtFuture` for the semantics of `IsReady` and `IsKnownReady`.
+  StatusOr<bool> IsReady() {
+    if (buffer_->IsDeleted()) {
+      return InvalidArgument("DeviceArray has been deleted.");
+    }
+    return buffer_->GetReadyFuture().IsReady();
+  }
+  StatusOr<bool> IsKnownReady() {
+    if (buffer_->IsDeleted()) {
+      return InvalidArgument("DeviceArray has been deleted.");
+    }
+    return buffer_->GetReadyFuture().IsKnownReady();
+  }
 
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
@@ -107,7 +127,7 @@ class PyBuffer {
   const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
 
   // Returns the size (i.e. number of elements) of the (host) numpy array.
-  StatusOr<int64> size();
+  StatusOr<int64_t> size();
 
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_device_shape().dimensions_size(); }

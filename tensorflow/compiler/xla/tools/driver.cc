@@ -53,10 +53,29 @@ If the outputs differ, there is a miscompile.
 Run with an environment variable VERBOSE set to see logging.
 )";
 
-// Function to be linked with.
+// Must be kept ABI-compatible with the real definition of XlaCustomCallStatus.
+struct XlaCustomCallStatus {
+  // If 'failed' is true then 'message' is present; otherwise it is absent.
+  // (The 'bool' followed by 'std::string' is ABI-compatible with
+  // 'absl::optional<std::string>').
+  bool failed;
+  std::string message;
+  // To account for extra struct padding at the end.
+  std::string padding;
+};
+
 extern "C" {
+// Function to be linked with.
 extern void EntryModule(char* result_buffer, char* run_opts, char** params,
-                        char** buffer_table, int* prof_counters);
+                        char** buffer_table, void* status,
+                        int64_t* prof_counters);
+
+// Must be kept in sync with the real definition of this runtime function.
+bool __xla_cpu_runtime_StatusIsSuccess(  // NOLINT: This doesn't need a
+                                         // prototype.
+    const XlaCustomCallStatus* status) {
+  return !(status->failed);
+}
 }
 
 namespace {
@@ -334,9 +353,9 @@ template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
 void FillIntT(void* buffer, int num_elements) {
   std::mt19937 generator(kSeed);
   T* casted = static_cast<T*>(buffer);
-  std::uniform_int_distribution<T> distr(kLowerBound, kUpperBound);
+  std::uniform_int_distribution<> distr(kLowerBound, kUpperBound);
   for (int i = 0; i < num_elements; i++) {
-    casted[i] = distr(generator);
+    casted[i] = static_cast<T>(distr(generator));
   }
 }
 
@@ -484,10 +503,13 @@ int main(int argc, char** argv) {
     }
   }
 
+  XlaCustomCallStatus status;
+
   Log("Launching module");
   EntryModule(/*result_buffer=*/nullptr,
               /*run_opts=*/nullptr,
               /*params=*/nullptr, table.AsPtr(),
+              /*status=*/&status,
               /*prof_counters=*/nullptr);
 
   std::cout << "Output:" << std::endl;

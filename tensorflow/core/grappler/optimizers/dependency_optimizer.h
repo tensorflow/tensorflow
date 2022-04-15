@@ -40,9 +40,6 @@ class DependencyOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
-
  private:
   // Returns true if bypassing node does not increase the number of edges or
   // number of edges crossing a device boundary.

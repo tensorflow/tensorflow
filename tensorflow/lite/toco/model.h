@@ -280,7 +280,7 @@ struct DataTypeImpl<ArrayDataType::kUint32> {
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kInt64> {
-  typedef int64 Type;
+  typedef int64_t Type;
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kUint64> {
@@ -1301,8 +1301,8 @@ struct FloorModOperator : Operator {
 struct RandomUniformOperator : Operator {
   RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
   ArrayDataType dtype = ArrayDataType::kNone;
-  int64 seed;
-  int64 seed2;
+  int64_t seed;
+  int64_t seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments
@@ -2212,8 +2212,8 @@ struct SegmentSumOperator : Operator {
 // be used for the transient array at hand. The 'start' and 'end' values are
 // offsets from the start of the workspace buffer, expressed in bytes.
 struct Alloc {
-  int64 start = 0;
-  int64 end = 0;
+  int64_t start = 0;
+  int64_t end = 0;
 };
 
 inline bool operator<(const Alloc& a, const Alloc& b) {
@@ -2435,7 +2435,7 @@ class Model {
   const ArrayMap& GetArrayMap() const { return arrays; }
   ArrayMap& GetMutableArrayMap() { return arrays; }
 
-  int64 ArithmeticOpsCount() const { return ops_count; }
+  int64_t ArithmeticOpsCount() const { return ops_count; }
 
   void AddInvalidInputArray(std::string invalid_input_array) {
     invalid_input_arrays_.insert(invalid_input_array);
@@ -2462,7 +2462,7 @@ class Model {
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
   // Arithmetic operations performed in the model.
-  int64 ops_count = 0;
+  int64_t ops_count = 0;
 
  private:
   // The associative array mapping names to Array's.

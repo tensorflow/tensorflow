@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/core/platform/types.h"
 
 // Utilities for emitting LLVM IR related to HLO tuples.
 
@@ -83,7 +82,7 @@ void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
 // the output buffer of its corresponding operand. A GetTupleElement instruction
 // forwards the pointer to underlying tuple element buffer at the given index.
 // Returns an llvm value representing a pointer to the tuple element buffer.
-llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
+llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  int alignment, llvm::Value* operand,
                                  llvm::IRBuilder<>* b);
 }  // namespace llvm_ir

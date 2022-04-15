@@ -56,9 +56,9 @@ Graph* SetUpKmeansPlusPlusInitialization(int num_dims, int num_points,
   Tensor seed(DT_INT64, TensorShape({}));
   Tensor num_retries_per_sample(DT_INT64, TensorShape({}));
   points.flat<float>().setRandom();
-  sample_size.flat<int64>().setConstant(num_to_sample);
-  seed.flat<int64>().setConstant(12345);
-  num_retries_per_sample.flat<int64>().setConstant(retries_per_sample);
+  sample_size.flat<int64_t>().setConstant(num_to_sample);
+  seed.flat<int64_t>().setConstant(12345);
+  num_retries_per_sample.flat<int64_t>().setConstant(retries_per_sample);
 
   TF_CHECK_OK(NodeBuilder("kmeans_plus_plus_initialization_op",
                           "KmeansPlusPlusInitialization")
@@ -76,8 +76,8 @@ void BM_KmeansPlusPlusInitialization(::testing::benchmark::State& state) {
   Graph* g = SetUpKmeansPlusPlusInitialization(
       num_dims, num_points, num_to_sample, retries_per_sample);
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_points *
-                          num_dims * num_to_sample);
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                          num_points * num_dims * num_to_sample);
 }
 
 #define BENCHMARK_KMEANS_PLUS_PLUS(p, c, d, r)                     \
@@ -120,7 +120,7 @@ Graph* SetUpKMC2Initialization(int num_points) {
   Tensor distances(DT_FLOAT, TensorShape({num_points}));
   Tensor seed(DT_INT64, TensorShape({}));
   distances.flat<float>().setRandom();
-  seed.flat<int64>().setConstant(12345);
+  seed.flat<int64_t>().setConstant(12345);
 
   TF_CHECK_OK(
       NodeBuilder("KMC2ChainInitializationOp", "KMC2ChainInitialization")
@@ -134,8 +134,8 @@ template <int num_points, int num_to_sample, int num_dims>
 void BM_KMC2Initialization(::testing::benchmark::State& state) {
   Graph* g = SetUpKMC2Initialization(num_points);
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_points *
-                          num_dims * num_to_sample);
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                          num_points * num_dims * num_to_sample);
 }
 #define BENCHMARK_KMC2(p, c, d)               \
   void BM_KMC2Initialization_##p##_##c##_##d( \
@@ -177,7 +177,7 @@ Graph* SetUpNearestNeighbors(int num_dims, int num_points, int num_centers,
   Tensor top(DT_INT64, TensorShape({}));
   points.flat<float>().setRandom();
   centers.flat<float>().setRandom();
-  top.flat<int64>().setConstant(k);
+  top.flat<int64_t>().setConstant(k);
 
   TF_CHECK_OK(NodeBuilder("nearest_centers_op", "NearestNeighbors")
                   .Input(test::graph::Constant(g, points))
@@ -191,8 +191,8 @@ template <int num_dims, int num_points, int num_centers, int k>
 void BM_NearestNeighbors(::testing::benchmark::State& state) {
   Graph* g = SetUpNearestNeighbors(num_dims, num_points, num_centers, k);
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_points *
-                          num_dims * num_centers);
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+                          num_points * num_dims * num_centers);
 }
 
 constexpr int kTop1 = 1;

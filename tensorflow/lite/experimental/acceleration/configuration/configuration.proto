@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// WARNING: Until b/191428000 is fixed you need to manually generate and update
+// the generated flatbuffer code when modifying this file. See BUILD for more
+// information.
+
 // This schema defines how to configure TFLite for delegation. These
 // definitions can be used in multiple ways: as output of a compatibility list,
 // in benchmarking tools and to decouple delegate instantiation from code.
@@ -56,6 +60,8 @@ enum Delegate {
   EDGETPU = 5;
   // The Coral EdgeTpu Dev Board / USB accelerator.
   EDGETPU_CORAL = 6;
+  // Apple CoreML.
+  CORE_ML = 7;
 }
 
 enum NNAPIExecutionPreference {
@@ -87,6 +93,9 @@ message ComputeSettings {
   // Identifiers to use for instrumentation and telemetry.
   optional string model_namespace_for_statistics = 3;
   optional string model_identifier_for_statistics = 4;
+
+  // 'Maybe' acceleration: use mini-benchmark to select settings.
+  optional MinibenchmarkSettings settings_to_test_locally = 5;
 }
 
 // NNAPI delegate settings.
@@ -138,6 +147,17 @@ message NNAPISettings {
   // float16 (16-bit floating point) arithmetic when doing calculations on
   // float32 (32-bit floating point).
   optional bool allow_fp16_precision_for_fp32 = 10;
+
+  // Whether to use NNAPI Burst mode.
+  // Burst mode allows accelerators to efficiently manage resources, which
+  // would significantly reduce overhead especially if the same delegate
+  // instance is to be used for multiple inferences.
+  optional bool use_burst_computation = 11;
+
+  // Optional pointer to NNAPI Support Library provided pointer to
+  // NnApiSLDriverImplFL5 which can be used to construct the
+  // NNAPI delegate.
+  optional int64 support_library_handle = 12;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL
@@ -151,15 +171,76 @@ enum GPUBackend {
   // METAL = 4;
 }
 
+// GPU inference priorities define relative priorities given by the GPU delegate
+// to different client needs.
+// Corresponds to TfLiteGpuInferencePriority.
+enum GPUInferencePriority {
+  GPU_PRIORITY_AUTO = 0;
+  GPU_PRIORITY_MAX_PRECISION = 1;
+  GPU_PRIORITY_MIN_LATENCY = 2;
+  GPU_PRIORITY_MIN_MEMORY_USAGE = 3;
+}
+
+// GPU inference preference for initialization time vs. inference time.
+// Corresponds to TfLiteGpuInferenceUsage.
+enum GPUInferenceUsage {
+  // Delegate will be used only once, therefore, bootstrap/init time should
+  // be taken into account.
+  GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0;
+
+  // Prefer maximizing the throughput. Same delegate will be used repeatedly on
+  // multiple inputs.
+  GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1;
+}
+
 // GPU Delegate settings.
 //
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
 message GPUSettings {
+  // Ignored if inference_priority1/2/3 are set.
   optional bool is_precision_loss_allowed = 1;
   optional bool enable_quantized_inference = 2 [default = true];
   optional GPUBackend force_backend = 3;
-  // TODO(b/152019007): add remaining options.
+
+  // Ordered priorities provide better control over desired semantics,
+  // where priority(n) is more important than priority(n+1). Therefore,
+  // each time inference engine needs to make a decision, it uses
+  // ordered priorities to do so.
+  //
+  // Default values correspond to GPU_PRIORITY_AUTO.
+  // AUTO priority can only be used when higher priorities are fully specified.
+  // For example:
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = AUTO, priority3 = AUTO
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = MAX_PRECISION,
+  //            priority3 = AUTO
+  //   INVALID: priority1 = AUTO, priority2 = MIN_LATENCY, priority3 = AUTO
+  //   INVALID: priority1 = MIN_LATENCY, priority2 = AUTO,
+  //            priority3 = MAX_PRECISION
+  // Invalid priorities will result in error.
+  //
+  // For more information, see TfLiteGpuDelegateOptionsV2.
+  optional GPUInferencePriority inference_priority1 = 4
+      [default = GPU_PRIORITY_AUTO];
+  optional GPUInferencePriority inference_priority2 = 5
+      [default = GPU_PRIORITY_AUTO];
+  optional GPUInferencePriority inference_priority3 = 6
+      [default = GPU_PRIORITY_AUTO];
+
+  // Whether to optimize for compilation+execution time or execution time only.
+  optional GPUInferenceUsage inference_preference = 7;
+
+  // Model serialization. Setting both of these fields will also set the
+  // TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION flag on the delegate.
+  //
+  // GPU model serialization directory passed in TfLiteGpuDelegateOptionsV2.
+  // This should be set to the application's code cache directory so that it can
+  // not be accessed by other apps and is correctly deleted on app updates.
+  // tflite::StatefulNnApiDelegate
+  optional string cache_directory = 8;
+  // Normally, the model name with version number should be provided here, since
+  // each model needs an unique ID to avoid cache collision.
+  optional string model_token = 9;
 }
 
 // Hexagon Delegate settings.
@@ -179,6 +260,37 @@ message HexagonSettings {
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h
 message XNNPackSettings {
   optional int32 num_threads = 1;
+}
+
+// CoreML Delegate settings.
+//
+// See
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/coreml/coreml_delegate.h
+message CoreMLSettings {
+  // Note the enum order change from the above header for better proto practice.
+  enum EnabledDevices {
+    // Always create Core ML delegate.
+    DEVICES_ALL = 0;
+    // Create Core ML delegate only on devices with Apple Neural Engine.
+    DEVICES_WITH_NEURAL_ENGINE = 1;
+  }
+  // Only create delegate when Neural Engine is available on the device.
+  optional EnabledDevices enabled_devices = 1;
+
+  // Specifies target Core ML version for model conversion.
+  // Core ML 3 come with a lot more ops, but some ops (e.g. reshape) is not
+  // delegated due to input rank constraint.
+  // if not set to one of the valid versions, the delegate will use highest
+  // version possible in the platform.
+  // Valid versions: (2, 3)
+  optional int32 coreml_version = 2;
+  // This sets the maximum number of Core ML delegates created.
+  // Each graph corresponds to one delegated node subset in the
+  // TFLite model. Set this to 0 to delegate all possible partitions.
+  optional int32 max_delegated_partitions = 3 [default = 0];
+  // This sets the minimum number of nodes per partition delegated with
+  // Core ML delegate. Defaults to 2.
+  optional int32 min_nodes_per_partition = 4 [default = 2];
 }
 
 // EdgeTPU device spec.
@@ -246,6 +358,20 @@ message EdgeTpuInactivePowerConfig {
 // EdgeTPU Delegate settings.
 //
 message EdgeTpuSettings {
+  // Float truncation types for EdgeTPU.
+  enum FloatTruncationType {
+    UNSPECIFIED = 0;
+    NO_TRUNCATION = 1;
+    BFLOAT16 = 2;
+    HALF = 3;
+  }
+
+  enum QosClass {
+    QOS_UNDEFINED = 0;
+    BEST_EFFORT = 1;
+    REALTIME = 2;
+  }
+
   // Target inference power state for running the model.
   optional EdgeTpuPowerState inference_power_state = 1;
 
@@ -260,6 +386,12 @@ message EdgeTpuSettings {
 
   // A unique identifier of the input TfLite model.
   optional string model_token = 5;
+
+  // Float truncation type for EdgeTPU.
+  optional FloatTruncationType float_truncation_type = 6;
+
+  // QoS class to determine chunking size for PRO onward.
+  optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -310,6 +442,7 @@ message TFLiteSettings {
   optional GPUSettings gpu_settings = 3;
   optional HexagonSettings hexagon_settings = 4;
   optional XNNPackSettings xnnpack_settings = 5;
+  optional CoreMLSettings coreml_settings = 11;
 
   // How to configure CPU execution.
   optional CPUSettings cpu_settings = 6;
@@ -380,6 +513,11 @@ enum BenchmarkEventType {
   ERROR = 3;
   // Benchmark data has been sent for logging.
   LOGGED = 4;
+  // Benchmark encountered an error but was able to continue. The error is not
+  // related to the model execution but to the mini-benchmark logic. An example
+  // of error is a failure when trying to set the CPU affinity of the benchmark
+  // runner process.
+  RECOVERED_ERROR = 5;
 }
 
 // A correctness metric from a benchmark, for example KL-divergence between
@@ -443,8 +581,10 @@ message BenchmarkError {
   optional int32 exit_code = 2;
   // Signal the process received.
   optional int32 signal = 3;
-  // Handled error.
+  // Handled tflite error.
   repeated ErrorCode error_code = 4;
+  // Mini-benchmark error code.
+  optional int32 mini_benchmark_error_code = 5;
 }
 
 // Top-level benchmarking event stored on-device. All events for a model are
@@ -464,4 +604,88 @@ message BenchmarkEvent {
   // 2. Optionally, telemetry timestamps.
   optional int64 boottime_us = 5;
   optional int64 wallclock_us = 6;
+}
+
+// Represent the decision on the best acceleration from the mini-benchmark.
+message BestAccelerationDecision {
+  // Number of events used to take the decision.
+  // Using just the size instaed of the full list of events to save space.
+  optional int32 number_of_source_events = 1;
+
+  // Event with min latency in the source ones.
+  optional BenchmarkEvent min_latency_event = 2;
+
+  // Min latency as read from min_latency_event.
+  optional int64 min_inference_time_us = 3;
+}
+
+// Represent a failure during the initialization of the mini-benchmark.
+message BenchmarkInitializationFailure {
+  // Status code returned by the mini-benchmark initialization function.
+  optional int32 initialization_status = 1;
+}
+
+// Events generated by the mini-benchmark before and after triggering
+// the different configuration-specific benchmarks
+message MiniBenchmarkEvent {
+  // Not using oneof because of the way the generated cpp code.
+  // See comment above on TfLite settings for details.
+
+  // If set to true, this event is used to mark all previous events in the
+  // mini-benchmark internal storage as read and one of the other fields
+  // in this message will have a value.
+  optional bool is_log_flushing_event = 1;
+  // Event generated when a best acceleration decision is taken.
+  optional BestAccelerationDecision best_acceleration_decision = 2;
+  // Reports a failure during mini-benchmark initialization.
+  optional BenchmarkInitializationFailure initialization_failure = 3;
+  // Event generated while benchmarking the different settings to test locally.
+  optional BenchmarkEvent benchmark_event = 4;
+}
+
+// How to access the model for mini-benchmark.
+// Since mini-benchmark runs in a separate process, it can not access an
+// in-memory model. It can read the model either from a file or from a file
+// descriptor. The file descriptor typically comes from the Android asset
+// manager.
+//
+// Users should set either filename, or all of fd, offset and length.
+message ModelFile {
+  // Filename for reading model from.
+  optional string filename = 1;
+  // File descriptor to read model from.
+  optional int64 fd = 2;
+  // Offset for model in file descriptor.
+  optional int64 offset = 3;
+  // Length of model in file descriptor.
+  optional int64 length = 4;
+}
+
+// Where to store mini-benchmark state.
+message BenchmarkStoragePaths {
+  // Base path to the files used to to store benchmark results in. Two files
+  // will be generated: one with the given path and an extra file to store
+  // events related to best acceleration results at path storage_file_path +
+  // ".extra.fb". Must be specific to the model.
+  // Note on Android, this should be the code cache directory.
+  optional string storage_file_path = 1;
+
+  // Path to a directory for intermediate files (lock files, extracted
+  // binaries).
+  // Note on Android, this typically is the data cache directory (i.e. the one
+  // returned by `getCacheDir()`).
+  optional string data_directory_path = 2;
+}
+
+// How to run a minibenchmark.
+message MinibenchmarkSettings {
+  // Which settings to test. This would typically be filled in from an
+  // allowlist.
+  repeated TFLiteSettings settings_to_test = 1;
+  // How to access the model. This would typically be set dynamically, as it
+  // depends on the application folder and/or runtime state.
+  optional ModelFile model_file = 2;
+  // Where to store state. This would typically be set dynamically, as it
+  // depends on the application folder.
+  optional BenchmarkStoragePaths storage_paths = 3;
 }

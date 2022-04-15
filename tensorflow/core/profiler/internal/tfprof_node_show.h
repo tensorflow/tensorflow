@@ -28,7 +28,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
@@ -48,7 +47,7 @@ class ShowNode {
   GraphNodeProto* mutable_proto();
   const GraphNodeProto& proto() const;
 
-  void ReInit(int64 step);
+  void ReInit(int64_t step);
 
   void AggregateTotalStats(ShowNode* node);
 
@@ -68,7 +67,7 @@ class GraphNode : public ShowNode {
  public:
   explicit GraphNode(TFGraphNode* node) : ShowNode(node) {}
 
-  bool Trackable(int64 step) const { return node->trackable(step); }
+  bool Trackable(int64_t step) const { return node->trackable(step); }
 
   std::vector<GraphNode*> children;
   std::vector<GraphNode*> show_children;
@@ -88,7 +87,7 @@ class ShowMultiNode {
   explicit ShowMultiNode(TFMultiGraphNode* node);
   virtual ~ShowMultiNode() {}
 
-  bool ReInit(int64 step, const std::vector<string>& type_regexes);
+  bool ReInit(int64_t step, const std::vector<string>& type_regexes);
 
   const string& name() const { return node->name(); }
   MultiGraphNodeProto* mutable_proto();

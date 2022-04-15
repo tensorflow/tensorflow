@@ -48,10 +48,17 @@ HostStream::~HostStream() {
   thread_.reset();
 }
 
-bool HostStream::EnqueueTask(std::function<void()> fn) {
-  CHECK(fn != nullptr);
+bool HostStream::EnqueueTask(std::function<void()> task) {
+  return EnqueueTaskWithStatus([task = std::move(task)]() {
+    task();
+    return port::Status::OK();
+  });
+}
+
+bool HostStream::EnqueueTaskWithStatus(std::function<port::Status()> task) {
+  CHECK(task != nullptr);
   absl::MutexLock lock(&mu_);
-  work_queue_.push(std::move(fn));
+  work_queue_.push(std::move(task));
   return true;
 }
 
@@ -64,27 +71,36 @@ void HostStream::WorkLoop() {
   tensorflow::port::ScopedFlushDenormal flush;
   tensorflow::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::queue<std::function<void()>> queue;
+    std::queue<std::function<port::Status()>> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
       std::swap(queue, work_queue_);
     }
     while (!queue.empty()) {
-      std::function<void()>& fn = queue.front();
+      std::function<port::Status()>& fn = queue.front();
       if (!fn) {
         return;
       }
-      fn();
+      status_.Update(fn());
       queue.pop();
     }
   }
 }
 
-void HostStream::BlockUntilDone() {
+port::Status HostStream::BlockUntilDone() {
   absl::Notification done;
-  EnqueueTask([&done]() { done.Notify(); });
+  port::Status status;
+  EnqueueTask([&done, &status, this]() {
+    // This task is always executed synchronously before 'status_' is updated
+    // with the result of the task (always OK() in this case), so we don't need
+    // to worry about locking access to 'status_'.
+    status = status_;
+    status_ = port::Status::OK();
+    done.Notify();
+  });
   done.WaitForNotification();
+  return status;
 }
 
 }  // namespace host

@@ -14,12 +14,10 @@
 # ==============================================================================
 """A Python interface for creating TensorFlow servers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import device_attributes_pb2
-from tensorflow.python import _pywrap_device_lib
+# pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import _pywrap_device_lib
 
 
 def list_local_devices(session_config=None):

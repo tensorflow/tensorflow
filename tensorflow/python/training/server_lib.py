@@ -14,10 +14,6 @@
 # ==============================================================================
 """A Python interface for creating TensorFlow servers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import device_filters_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2

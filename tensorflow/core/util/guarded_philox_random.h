@@ -48,24 +48,24 @@ class GuardedPhiloxRandom {
   Status Init(OpKernelConstruction* context);
 
   // Initialize with given seeds.
-  void Init(int64 seed, int64 seed2);
+  void Init(int64_t seed, int64_t seed2);
   void Init(random::PhiloxRandom::ResultType counter,
             random::PhiloxRandom::Key key);
 
   // Reserve a certain number of 128-bit samples.
   // This function is thread safe.  The returned generator is valid for the
   // given number of samples, and can be used without a lock.
-  random::PhiloxRandom ReserveSamples128(int64 samples);
+  random::PhiloxRandom ReserveSamples128(int64_t samples);
 
   // Reserve a certain number of 32-bit samples.
-  random::PhiloxRandom ReserveSamples32(int64 samples) {
+  random::PhiloxRandom ReserveSamples32(int64_t samples) {
     return ReserveSamples128((samples + 3) / 4);
   }
 
   // Reserve enough random samples in the generator for the given output count.
-  random::PhiloxRandom ReserveRandomOutputs(int64 output_count,
+  random::PhiloxRandom ReserveRandomOutputs(int64_t output_count,
                                             int multiplier) {
-    int64 conservative_sample_count = output_count * multiplier;
+    int64_t conservative_sample_count = output_count * multiplier;
     return ReserveSamples128(conservative_sample_count);
   }
 

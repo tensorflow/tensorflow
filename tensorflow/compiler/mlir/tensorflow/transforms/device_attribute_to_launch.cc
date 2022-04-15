@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -30,8 +31,8 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct DeviceAttributeToLaunch
-    : public PassWrapper<DeviceAttributeToLaunch, FunctionPass> {
-  void runOnFunction() override;
+    : public DeviceAttributeToLaunchPassBase<DeviceAttributeToLaunch> {
+  void runOnOperation() override;
 };
 
 void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
@@ -48,11 +49,11 @@ void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
       builder.create<tf_device::ReturnOp>(op->getLoc(), op->getResults())
           .getOperation();
   MLIRContext* context = launch_op.getContext();
-  op->removeAttr(Identifier::get(kDeviceAttr, context));
+  op->removeAttr(StringAttr::get(context, kDeviceAttr));
   op->moveBefore(return_op);
 }
 
-void DeviceAttributeToLaunch::runOnFunction() {
+void DeviceAttributeToLaunch::runOnOperation() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
 
   getOperation().walk([&](Operation* op) {

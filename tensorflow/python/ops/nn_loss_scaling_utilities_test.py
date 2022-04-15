@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for loss scaling utilities in tensorflow.ops.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
@@ -43,6 +39,30 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
     per_example_loss = [1, 2, 3, 4, 5]
     loss = nn_impl.compute_average_loss(per_example_loss, global_batch_size=10)
     self.assertEqual(self.evaluate(loss), 1.5)
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeNonScalar(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "global_batch_size must be scalar"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=[10])
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeFloat(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        TypeError, "global_batch_size must be an int"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=10.0)
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeNegative(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        errors_impl.InvalidArgumentError, "global_batch_size must be positive"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=-1)
+
+  def testComputeAverageLossGlobalBatchSize_BatchSizeZero(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    with self.assertRaisesWithPredicateMatch(
+        errors_impl.InvalidArgumentError, "global_batch_size must be positive"):
+      nn_impl.compute_average_loss(per_example_loss, global_batch_size=0)
 
   @combinations.generate(
       combinations.combine(
@@ -127,7 +147,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
     # Static rank
     with self.assertRaisesRegex(
         ValueError, "Invalid value passed for `per_example_loss`. "
-        "Expected a tensor with at least rank 1,"):
+        "Expected a tensor with at least rank 1."):
       nn_impl.compute_average_loss(per_example_loss)
 
     with context.graph_mode():

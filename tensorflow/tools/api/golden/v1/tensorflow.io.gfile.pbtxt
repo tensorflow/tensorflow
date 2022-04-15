@@ -13,12 +13,20 @@ tf_module {
     argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_registered_schemes"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "glob"
     argspec: "args=[\'pattern\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "isdir"
     argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "join"
+    argspec: "args=[\'path\'], varargs=paths, keywords=None, defaults=None"
   }
   member_method {
     name: "listdir"

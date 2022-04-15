@@ -378,6 +378,16 @@ TEST(ArrayOpsTest, GatherV2_ShapeFn) {
   INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d1_0,d1_1,d0_2]");
   axis_dim_t = test::AsScalar(-1);
   INFER_OK(op, "[1,2,3];[5,6];[]", "[d0_0,d0_1,d1_0,d1_1]");
+
+  // Batch dimensions > 0
+  // Create another node since we can't overwrite the original batch dims.
+  ShapeInferenceTestOp batch_op("GatherV2");
+  AddNodeAttr("batch_dims", 1, &batch_op.node_def);
+  INFER_OK(batch_op, "[1,4800,8];[1,28400];[]", "[?,?,?]");
+
+  ShapeInferenceTestOp batch_op_2("GatherV2");
+  AddNodeAttr("batch_dims", 2, &batch_op_2.node_def);
+  INFER_OK(batch_op_2, "[1,2,3,4,5];[1,2,3];[]", "[?,?,?,?,?]");
 }
 
 TEST(ArrayOpsTest, GatherNd_ShapeFn) {
@@ -457,7 +467,7 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     // E.g., if padding is ((1,10),(2,20),(3,30)) then values 11,22,23 are added
     // to input dims to get output.
     Tensor paddings_t(DT_INT64, TensorShape{3, 2});
-    test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
+    test::FillValues<int64_t>(&paddings_t, {1, 10, 2, 20, 3, 30});
     op.input_tensors[1] = &paddings_t;
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
@@ -488,7 +498,7 @@ TEST(ArrayOpsTest, PadV2_ShapeFn) {
   // E.g., if padding is ((1,10),(2,20),(3,30)) then values 11,22,23 are added
   // to input dims to get output.
   Tensor paddings_t(DT_INT64, TensorShape{3, 2});
-  test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  test::FillValues<int64_t>(&paddings_t, {1, 10, 2, 20, 3, 30});
   op.input_tensors[1] = &paddings_t;
   INFER_OK(op, "[100,200,300];[3,2];[]", "[111,222,333]");
   INFER_OK(op, "[100,?,300];[3,2];[]", "[111,?,333]");
@@ -521,7 +531,7 @@ TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
   // subtracted.  E.g., if padding is ((1,10),(2,20),(3,30)) then
   // values 11,22,23 are subtracted to input dims to get output.
   Tensor paddings_t(DT_INT64, TensorShape{3, 2});
-  test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  test::FillValues<int64_t>(&paddings_t, {1, 10, 2, 20, 3, 30});
   op.input_tensors[1] = &paddings_t;
 
   INFER_OK(op, "[111,222,333];[3,2]", "[100,200,300]");
@@ -556,7 +566,7 @@ TEST(ArrayOpsTest, BroadcastTo_ShapeFn) {
   INFER_ERROR("Shape must be at most rank 1 but is rank 2", op, "[2,2];[1]");
 
   Tensor shape_t(DT_INT64, TensorShape{3});
-  test::FillValues<int64>(&shape_t, {2, 10, 3});
+  test::FillValues<int64_t>(&shape_t, {2, 10, 3});
   op.input_tensors[1] = &shape_t;
   INFER_OK(op, "[1,?,1];[3]", "[2,10,3]");
   INFER_OK(op, "[1,1,1];[3]", "[2,10,3]");
@@ -628,50 +638,50 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
   op.input_tensors[1] = &dim_t;
 
   // Expand at front of tensor.
-  for (int32 idx : {0, -4}) {
+  for (int32_t idx : {0, -4}) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
   }
 
   // Expand at middle of tensor.
-  for (int32 idx : {1, -3}) {
+  for (int32_t idx : {1, -3}) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
 
     // Repeat with int64.
-    dim_t = test::AsScalar<int64>(idx);
+    dim_t = test::AsScalar<int64_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
   }
-  for (int32 idx : {2, -2}) {
+  for (int32_t idx : {2, -2}) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
 
     // Repeat with int64.
-    dim_t = test::AsScalar<int64>(idx);
+    dim_t = test::AsScalar<int64_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
   }
 
-  for (int32 idx : {3, -1}) {
+  for (int32_t idx : {3, -1}) {
     // Expand at the end.
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
 
     // Repeat with int64.
-    dim_t = test::AsScalar<int64>(idx);
+    dim_t = test::AsScalar<int64_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
   }
-  for (int32 idx : {4, -5}) {
+  for (int32_t idx : {4, -5}) {
     // Invalid idx.
     dim_t = test::AsScalar<int32>(idx);
     INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
-    dim_t = test::AsScalar<int64>(idx);
+    dim_t = test::AsScalar<int64_t>(idx);
     INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
   }
 
@@ -997,7 +1007,7 @@ TEST(ArrayOpsTest, Placeholder_ShapeFn) {
   {
     // Partial shape
     ShapeInferenceTestOp op("Placeholder");
-    const int64 dims[2] = {1, -1};
+    const int64_t dims[2] = {1, -1};
     PartialTensorShape shape;
     TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 2, &shape));
     TF_ASSERT_OK(NodeDefBuilder("test", "Placeholder")
@@ -1143,7 +1153,8 @@ TEST(ArrayOpsTest, Squeeze_ShapeFn) {
 
 TEST(ArrayOpsTest, ReverseSequence_ShapeFn) {
   ShapeInferenceTestOp op("ReverseSequence");
-  auto rebuild_node_def = [&op](const int32 seq_dim, const int32 batch_dim) {
+  auto rebuild_node_def = [&op](const int32_t seq_dim,
+                                const int32_t batch_dim) {
     TF_ASSERT_OK(NodeDefBuilder("test", "ReverseSequence")
                      .Input("input", 0, DT_FLOAT)
                      .Input("seq_lengths", 1, DT_INT64)
@@ -1249,7 +1260,7 @@ TEST(ArrayOpsTest, Tile_ShapeFn) {
   op.input_tensors[1] = &multiples;
   INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
   // Test 64-bit tensor type
-  multiples = test::AsTensor<int64>({2, 3, 4, 5});
+  multiples = test::AsTensor<int64_t>({2, 3, 4, 5});
   INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
 }
 
@@ -1260,14 +1271,14 @@ TEST(ArrayOpsTest, EditDistance_ShapeFn) {
   // If the shape tensors are not available, the output shape is unknown.
   INFER_OK(op, "[?,?];[?];[4];[?,?];[?];[4]", "?");
 
-  Tensor hypothesis_shape = test::AsTensor<int64>({2, 30, 4, 50});
+  Tensor hypothesis_shape = test::AsTensor<int64_t>({2, 30, 4, 50});
   op.input_tensors[2] = &hypothesis_shape;
-  Tensor truth_shape = test::AsTensor<int64>({20, 3, 40, 5});
+  Tensor truth_shape = test::AsTensor<int64_t>({20, 3, 40, 5});
   op.input_tensors[5] = &truth_shape;
   INFER_OK(op, "[?,?];[?];[4];[?,?];[?];[4]", "[20,30,40]");
 
   // Shape elements don't match
-  hypothesis_shape = test::AsTensor<int64>({2});
+  hypothesis_shape = test::AsTensor<int64_t>({2});
   op.input_tensors[2] = &hypothesis_shape;
   INFER_ERROR("Num elements of hypothesis_shape does not match truth_shape", op,
               "[?,?];[?];[1];[?,?];[?];[4]");
@@ -1363,6 +1374,8 @@ TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
   INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op,
               "[1,2,?,4,5];[];[1]");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[1]");
+  (*op.node_def.mutable_attr())["axis"].set_i(-2);
+  INFER_ERROR("axis should be at least -1, got -2", op, "?;?;?");
 }
 
 TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
@@ -1387,7 +1400,7 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   Tensor paddings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
-  paddings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
+  paddings = test::AsTensor<int64_t>({4, 2, 2, 4}, {{2, 2}});
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
 
   // Bad paddings values
@@ -1512,7 +1525,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_ERROR("rank", op, "[4,8,8,3];[4]");
   INFER_ERROR("3 and 2", op, "[4,8,8,3];[2,3]");
 
-  Tensor croppings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
+  Tensor croppings = test::AsTensor<int64_t>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,10,10,d0_3]");
 

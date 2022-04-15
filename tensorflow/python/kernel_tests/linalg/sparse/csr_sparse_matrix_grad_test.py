@@ -14,10 +14,6 @@
 # ==============================================================================
 """CSR sparse matrix tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -107,9 +103,6 @@ class CSRSparseMatrixGradTest(test.TestCase):
         grad_out_vals = sess.run(grad_out)
         self.assertAllClose(grad_vals, grad_out_vals)
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm,
-      skip_message="sparse-matrix-add op not supported on ROCm")
   @test_util.run_deprecated_v1
   def testLargeBatchSparseMatrixAddGrad(self):
     if not self._gpu_available:

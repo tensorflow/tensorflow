@@ -29,7 +29,7 @@ KeyValueStore::KeyValueStore() = default;
   // TODO(phawkins): the synchronization here is very coarse, but probably
   // sufficient for its current application.
   if (!mu_.AwaitWithTimeout(absl::Condition(&key_is_present), timeout)) {
-    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, "");
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, key);
   }
   *value = entries_.find(key)->second;
   return ::grpc::Status::OK;

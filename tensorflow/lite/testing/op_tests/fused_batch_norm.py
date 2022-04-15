@@ -13,9 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for fused_batch_norm."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import numpy as np
 
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -32,16 +30,17 @@ def make_fused_batch_norm_tests(options):
       "input_shape": [[1, 1, 6, 2]],
       "epsilon": [0.001, 0.1],
       "is_training": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 1, 6, 2]],
+      "epsilon": [0.001, 0.1],
+      "is_training": [True],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, None, 6, 2]],
+      "epsilon": [0.001, 0.1],
+      "is_training": [True, False],
   }]
-
-  # Training support in MLIR converter.
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [{
-        "dtype": [tf.float32],
-        "input_shape": [[1, 1, 6, 2]],
-        "epsilon": [0.001, 0.1],
-        "is_training": [True],
-    }]
 
   def build_graph(parameters):
     """Build the testing graph for fused batch normalization."""
@@ -73,9 +72,15 @@ def make_fused_batch_norm_tests(options):
     return [x, input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    # Fill dynamic shape with a random number.
+    input_shape = parameters["input_shape"]
+    input_shape = [
+        np.random.randint(1, 10) if v is None else v for v in input_shape
+    ]
+
     input_values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"]),
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(parameters["dtype"], input_shape),
+        create_tensor_data(parameters["dtype"], input_shape)
     ]
 
     return input_values, sess.run(

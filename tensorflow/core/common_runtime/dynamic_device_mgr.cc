@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
 #include <iterator>
 #include <memory>
 #include <vector>
@@ -110,7 +111,7 @@ Status DynamicDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   return Status::OK();
 }
 
-bool DynamicDeviceMgr::ContainsDevice(int64 device_incarnation) const {
+bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
   tf_shared_lock l(devices_mu_);
   return device_incarnation_set_.contains(device_incarnation);
 }
@@ -222,17 +223,22 @@ Status DynamicDeviceMgr::RemoveDevicesByName(
 }
 
 Device* DynamicDeviceMgr::HostCPU() const {
+  Device* device = cpu_device_.load(std::memory_order_relaxed);
+
+  // Host CPU device can't be removed, so if we found valid device once, we
+  // do not need to check that it is still in the device list.
+  if (device != nullptr) return device;
+
   mutex_lock l(devices_mu_);
-  if (cpu_device_ == nullptr) {
-    for (int i = 0; i < dynamic_devices_.size(); ++i) {
-      auto* d = dynamic_devices_[i].get();
-      if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
-        cpu_device_ = d;
-        break;
-      }
+  for (int i = 0; i < dynamic_devices_.size(); ++i) {
+    Device* d = dynamic_devices_[i].get();
+    if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
+      cpu_device_ = d;
+      break;
     }
   }
-  return cpu_device_;
+
+  return cpu_device_.load(std::memory_order_relaxed);
 }
 
 }  // namespace tensorflow

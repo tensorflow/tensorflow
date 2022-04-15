@@ -33,19 +33,19 @@ class GroupIterable;  // Predeclare GroupIterable for Group.
 // provide access into the underlying SparseTensor.
 class Group {
  public:
-  Group(GroupIterable* iter, int64 loc, int64 next_loc)
+  Group(GroupIterable* iter, int64_t loc, int64_t next_loc)
       : iter_(iter), loc_(loc), next_loc_(next_loc) {}
 
-  std::vector<int64> group() const;
-  int64 group_at(size_t index) const;
-  TTypes<int64>::UnalignedConstMatrix indices() const;
+  std::vector<int64_t> group() const;
+  int64_t group_at(size_t index) const;
+  TTypes<int64_t>::UnalignedConstMatrix indices() const;
   template <typename T>
   typename TTypes<T>::UnalignedVec values() const;
 
  private:
   GroupIterable* iter_;
-  int64 loc_;
-  int64 next_loc_;
+  int64_t loc_;
+  int64_t next_loc_;
 };
 
 /////////////////
@@ -76,11 +76,11 @@ class Group {
 // Forward declaration of SparseTensor
 class GroupIterable {
  public:
-  typedef gtl::ArraySlice<int64> VarDimArray;
+  typedef gtl::ArraySlice<int64_t> VarDimArray;
 
   GroupIterable(Tensor ix, Tensor vals, int dims, const VarDimArray& group_dims)
       : ix_(ix),
-        ix_matrix_(ix_.matrix<int64>()),
+        ix_matrix_(ix_.matrix<int64_t>()),
         vals_(vals),
         dims_(dims),
         group_dims_(group_dims.begin(), group_dims.end()) {}
@@ -88,7 +88,7 @@ class GroupIterable {
   class IteratorStep;
 
   IteratorStep begin() { return IteratorStep(this, 0); }
-  IteratorStep at(int64 loc) {
+  IteratorStep at(int64_t loc) {
     CHECK(loc >= 0 && loc <= ix_.dim_size(0))
         << "loc provided must lie between 0 and " << ix_.dim_size(0);
     return IteratorStep(this, loc);
@@ -96,7 +96,7 @@ class GroupIterable {
   IteratorStep end() { return IteratorStep(this, ix_.dim_size(0)); }
 
   template <typename TIX>
-  inline bool GroupMatches(const TIX& ix, int64 loc_a, int64 loc_b) const {
+  inline bool GroupMatches(const TIX& ix, int64_t loc_a, int64_t loc_b) const {
     for (int d : group_dims_) {
       if (ix(loc_a, d) != ix(loc_b, d)) {
         return false;
@@ -107,7 +107,7 @@ class GroupIterable {
 
   class IteratorStep {
    public:
-    IteratorStep(GroupIterable* iter, int64 loc)
+    IteratorStep(GroupIterable* iter, int64_t loc)
         : iter_(iter), loc_(loc), next_loc_(loc_) {
       UpdateEndOfGroup();
     }
@@ -118,24 +118,24 @@ class GroupIterable {
     IteratorStep& operator++();    // prefix ++
     IteratorStep operator++(int);  // postfix ++
     Group operator*() const { return Group(iter_, loc_, next_loc_); }
-    int64 loc() const { return loc_; }
+    int64_t loc() const { return loc_; }
 
    private:
     GroupIterable* iter_;
-    int64 loc_;
-    int64 next_loc_;
+    int64_t loc_;
+    int64_t next_loc_;
   };
 
  private:
   friend class Group;
   const Tensor ix_;
-  const TTypes<int64>::ConstMatrix ix_matrix_;
+  const TTypes<int64_t>::ConstMatrix ix_matrix_;
   Tensor vals_;
   const int dims_;
-  const gtl::InlinedVector<int64, 8> group_dims_;
+  const gtl::InlinedVector<int64_t, 8> group_dims_;
 };
 
-inline int64 Group::group_at(size_t index) const {
+inline int64_t Group::group_at(size_t index) const {
   const auto& ix_t = iter_->ix_matrix_;
   return ix_t(loc_, index);
 }

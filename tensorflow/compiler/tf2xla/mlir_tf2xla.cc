@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -144,7 +144,7 @@ Status ConvertGraphDefToXlaViaMlir(
 
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
 
   // Construct a CPU device and add the device to the operations.
@@ -162,10 +162,10 @@ Status ConvertGraphDefToXlaViaMlir(
   // Convert the MLIR module to XLA computation. If the input graph can't be
   // lowered down to a single graph node with a single island by the previous
   // step, this step will return an error.
-  return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
-                                     computation,
-                                     /*use_tuple_args=*/false,
-                                     /*return_tuple=*/true);
+  return ConvertMLIRToXlaComputation(
+      *module, /*device_type=*/"XLA_CPU_JIT", computation,
+      /*use_tuple_args=*/false, /*prefer_tf2xla=*/false,
+      /*return_tuple=*/true);
 }
 
 }  // namespace tensorflow

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/compression_ops.h"
 
 #include "tensorflow/core/data/compression_utils.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -46,8 +48,23 @@ UncompressElementOp::UncompressElementOp(OpKernelConstruction* ctx)
 
 void UncompressElementOp::Compute(OpKernelContext* ctx) {
   Tensor tensor = ctx->input(0);
+  OP_REQUIRES(
+      ctx, tensor.dims() == 0,
+      errors::InvalidArgument("UncompressElement requires its input to be a "
+                              "scalar, but encountered an input with ",
+                              tensor.dims(), " dimensions."));
+  OP_REQUIRES(
+      ctx, tensor.dtype() == DT_VARIANT,
+      errors::InvalidArgument("UncompressElement requires its input to be a "
+                              "variant, but encountered an input with dtype ",
+                              DataTypeString(tensor.dtype())));
   const Variant& variant = tensor.scalar<Variant>()();
   const CompressedElement* compressed = variant.get<CompressedElement>();
+  OP_REQUIRES(
+      ctx, compressed != nullptr,
+      errors::InvalidArgument(
+          "Input does not contain a compressed element. Instead got tensor ",
+          tensor.DebugString()));
 
   std::vector<Tensor> components;
   OP_REQUIRES_OK(ctx, UncompressElement(*compressed, &components));

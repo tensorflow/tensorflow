@@ -24,12 +24,23 @@ namespace {
 
 // This pass is only available in the tf-opt binary for testing.
 class MarkInitializedVariablesTestPass
-    : public PassWrapper<MarkInitializedVariablesTestPass, FunctionPass> {
+    : public PassWrapper<MarkInitializedVariablesTestPass,
+                         OperationPass<FuncOp>> {
  public:
-  void runOnFunction() override {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MarkInitializedVariablesTestPass)
+
+  StringRef getArgument() const final {
+    return "tf-saved-model-mark-initialized-variables-test";
+  }
+
+  StringRef getDescription() const final {
+    return "Mark variables as initialized or not.";
+  }
+
+  void runOnOperation() override {
     TF::test_util::FakeSession session;
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
-            getFunction(), &session, &getContext())))
+            getOperation(), &session)))
       return signalPassFailure();
   }
 };
@@ -37,12 +48,23 @@ class MarkInitializedVariablesTestPass
 // This pass is only available in the tf-opt binary for testing.
 class MarkInitializedVariablesInvalidSessionTestPass
     : public PassWrapper<MarkInitializedVariablesInvalidSessionTestPass,
-                         FunctionPass> {
+                         OperationPass<FuncOp>> {
  public:
-  void runOnFunction() override {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      MarkInitializedVariablesInvalidSessionTestPass)
+
+  StringRef getArgument() const final {
+    return "tf-saved-model-mark-initialized-variables-invalid-session-test";
+  }
+
+  StringRef getDescription() const final {
+    return "Mark variables as initialized or not, but with invalid session.";
+  }
+
+  void runOnOperation() override {
     // Pass an invalid session argument, which is a nullptr.
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
-            getFunction(), /*session=*/nullptr, &getContext())))
+            getOperation(), /*session=*/nullptr)))
       return signalPassFailure();
   }
 };
@@ -52,14 +74,10 @@ class MarkInitializedVariablesInvalidSessionTestPass
 namespace tf_saved_model {
 
 static PassRegistration<MarkInitializedVariablesTestPass>
-    mark_initialized_variables_test_pass(
-        "tf-saved-model-mark-initialized-variables-test",
-        "Mark variables as initialized or not.");
+    mark_initialized_variables_test_pass;
 
 static PassRegistration<MarkInitializedVariablesInvalidSessionTestPass>
-    mark_initialized_variables_invalid_session_test_pass(
-        "tf-saved-model-mark-initialized-variables-invalid-session-test",
-        "Mark variables as initialized or not, but with invalid session.");
+    mark_initialized_variables_invalid_session_test_pass;
 
 }  // namespace tf_saved_model
 }  // namespace mlir
