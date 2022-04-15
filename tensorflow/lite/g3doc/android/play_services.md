@@ -298,7 +298,7 @@ Google Play Store automatically receive the required libraries.
 TensorFlow Lite in Google Play services is currently at public beta and has the
 following limitations:
 
-*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/performance/nnapi)
+*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/android/delegates/nnapi)
     is currently supported by Google Play services. Other TensorFlow Lite
     [Delegates](https://www.tensorflow.org/lite/performance/delegates),
     including GPU, XNNPack, and Flex are not currently supported.
