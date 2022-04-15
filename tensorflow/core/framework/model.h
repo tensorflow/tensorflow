@@ -329,7 +329,7 @@ class Node {
   // `Batch`. It can be 0 if the ratio is unknown.
   virtual double Ratio() const { return 1.0; }
 
-  // Computes the self time of the node to produce one element.
+  // Computes the self time in nanoseconds of the node to produce one element.
   virtual double ComputeSelfTime() const;
 
   // Given the average time between events when the elements in the buffer are
@@ -376,7 +376,7 @@ class Node {
   // operate over immutable state while allowing concurrent model updates.
   std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element processing time spent in this node.
+  // Returns the per-element processing time in nanoseconds spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the total number of bytes buffered in all nodes in the subtree for
@@ -388,9 +388,9 @@ class Node {
   // would be used by the subtree nodes if all of their buffers were full.
   double TotalMaximumBufferedBytes() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element CPU time spent in the subtree rooted in this node.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each node of the subtree.
+  // Returns the per-element CPU time in nanoseconds spent in the subtree rooted
+  // in this node. If `processing_times` is not `nullptr`, collects the
+  // per-element CPU time spent in each node of the subtree.
   double TotalProcessingTime(NodeValues* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
@@ -842,11 +842,11 @@ class ModelTiming {
     double pipeline_weight = 0.0;
     // The self time it takes this node to produce the elements needed to
     // produce one element of the root of the pipeline.
-    double self_time = 0.0;
+    double self_time_nsec = 0.0;
     // The total time it takes this node and the subtree rooted at this node to
     // produce the elements needed to produce one element at the root of the
     // pipeline.
-    double total_time = 0.0;
+    double total_time_nsec = 0.0;
   };
 
   explicit ModelTiming(std::shared_ptr<Model> model);

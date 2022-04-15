@@ -1377,15 +1377,17 @@ TEST_F(ModelTimingTest, Interleave) {
   EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
   EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10,
+                   model_timing.GetTiming(interleave.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(30, model_timing.GetTiming(batch_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
+  EXPECT_DOUBLE_EQ(30, model_timing.GetTiming(batch_1.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20,
+                   model_timing.GetTiming(interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time_nsec);
 }
 
 TEST_F(ModelTimingTest, ParallelInterleave) {
@@ -1451,17 +1453,17 @@ TEST_F(ModelTimingTest, ParallelInterleave) {
   EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
   EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
+      10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
+      20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time_nsec);
 }
 
 TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
@@ -1528,17 +1530,17 @@ TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
   EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
   EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time);
+      10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      30, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(12, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(8, model_timing.GetTiming(batch_3.get())->total_time);
+      30, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(12, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(8, model_timing.GetTiming(batch_3.get())->total_time_nsec);
 }
 
 TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
@@ -1638,21 +1640,25 @@ TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
   EXPECT_DOUBLE_EQ(
       0.4, model_timing.GetTiming(parallel_map_2.get())->pipeline_weight);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(parallel_map_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(parallel_map_2.get())->self_time);
+      10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      10, model_timing.GetTiming(parallel_map_1.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      10, model_timing.GetTiming(parallel_map_2.get())->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(parallel_map_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(parallel_map_2.get())->total_time);
+      20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      6, model_timing.GetTiming(parallel_map_1.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      4, model_timing.GetTiming(parallel_map_2.get())->total_time_nsec);
 }
 
 TEST_F(ModelTimingTest, ParallelInterleave_With_InactiveNodes) {
@@ -1742,21 +1748,23 @@ TEST_F(ModelTimingTest, ParallelInterleave_With_InactiveNodes) {
   EXPECT_DOUBLE_EQ(
       0.5, model_timing.GetTiming(parallel_map_1.get())->pipeline_ratio);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_4.get())->self_time);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(parallel_map_1.get())->self_time);
+      10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_4.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      5, model_timing.GetTiming(parallel_map_1.get())->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
-  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_4.get())->total_time);
-  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(parallel_map_1.get())->total_time);
+      20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_4.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      0, model_timing.GetTiming(parallel_map_1.get())->total_time_nsec);
 }
 
 }  // namespace

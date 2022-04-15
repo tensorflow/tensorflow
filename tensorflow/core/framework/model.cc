@@ -2352,7 +2352,8 @@ void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
       node_ratio = 1.0;
     }
     node_timing.pipeline_ratio = parent_pipeline_ratio * node_ratio;
-    node_timing.self_time = parent_pipeline_ratio * node->ComputeSelfTime();
+    node_timing.self_time_nsec =
+        parent_pipeline_ratio * node->ComputeSelfTime();
   }
 }
 
@@ -2401,10 +2402,11 @@ void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
         continue;
       }
       DCHECK(timing_nodes_.find(input.get()) != timing_nodes_.end());
-      input_total_time += timing_nodes_[input.get()].total_time;
+      input_total_time += timing_nodes_[input.get()].total_time_nsec;
     }
-    node_timing.total_time =
-        node_timing.self_time * node_timing.pipeline_weight + input_total_time;
+    node_timing.total_time_nsec =
+        node_timing.self_time_nsec * node_timing.pipeline_weight +
+        input_total_time;
   }
 }
 
