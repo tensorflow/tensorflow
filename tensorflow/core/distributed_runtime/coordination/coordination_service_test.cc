@@ -1071,4 +1071,30 @@ TEST_F(CoordinateTwoTasksTest,
   Status other_task_status = client_1_.GetStatus();
   EXPECT_TRUE(errors::IsInternal(other_task_status)) << other_task_status;
 }
+
+TEST_F(CoordinateTwoTasksTest,
+       ShutdownWithBarrier_BarrierFailsWithoutClientConnection_ServiceStops) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/true);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  Status barrier_status;
+
+  absl::Notification n;
+  coord_service_->ShutdownTaskAsync(task_0_, [&n, &barrier_status](Status s) {
+    barrier_status = s;
+    n.Notify();
+  });
+  // Block until barrier times out.
+  n.WaitForNotification();
+
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status)) << barrier_status;
+
+  // Service stops because no service-to-client connection is available for
+  // error propagation.
+  // Task 1 still sends unexpected heartbeat because it doesn't know that
+  // service has stopped yet, which should fail.
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+}
 }  // namespace tensorflow
