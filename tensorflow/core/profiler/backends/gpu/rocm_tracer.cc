@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/internal/gpu/rocm_tracer.h"
+#include "tensorflow/core/profiler/backends/gpu/rocm_tracer.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"

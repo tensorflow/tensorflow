@@ -25,7 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
 #endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/direct_session.h"
 #include "tensorflow/core/framework/allocator.h"

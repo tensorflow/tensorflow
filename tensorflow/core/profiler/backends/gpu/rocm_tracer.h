@@ -34,7 +34,7 @@ struct MemcpyDetails {
   // The amount of data copied for memcpy events.
   size_t num_bytes;
   // The destination device for peer-2-peer communication (memcpy). The source
-  // device is implicit: its the current device.
+  // device is implicit: it's the current device.
   uint32_t destination;
   // Whether or not the memcpy is asynchronous.
   bool async;

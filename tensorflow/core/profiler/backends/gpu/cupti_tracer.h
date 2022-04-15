@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
 #include "tensorflow/core/profiler/utils/buffer_pool.h"
 
 namespace tensorflow {

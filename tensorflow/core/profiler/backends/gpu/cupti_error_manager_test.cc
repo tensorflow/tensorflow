@@ -15,7 +15,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/profiler/internal/gpu/cupti_error_manager.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_error_manager.h"
 
 #include <cstdint>
 #include <memory>
@@ -23,11 +23,11 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/internal/gpu/cuda_test.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
-#include "tensorflow/core/profiler/internal/gpu/mock_cupti.h"
+#include "tensorflow/core/profiler/backends/gpu/cuda_test.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_tracer.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_wrapper.h"
+#include "tensorflow/core/profiler/backends/gpu/mock_cupti.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {

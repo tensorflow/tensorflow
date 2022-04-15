@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_tracer.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
-#include "tensorflow/core/profiler/internal/gpu/nvtx_utils.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
+#include "tensorflow/core/profiler/backends/gpu/nvtx_utils.h"
 
 namespace tensorflow {
 namespace profiler {

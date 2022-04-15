@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Creates some GPU activity to test functionalities of gpuperfcounter/gputrace.
-#include "tensorflow/core/profiler/internal/gpu/cuda_test.h"
+#include "tensorflow/core/profiler/backends/gpu/cuda_test.h"
 
 #if GOOGLE_CUDA
 #include <stdio.h>

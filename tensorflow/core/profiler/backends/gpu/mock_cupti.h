@@ -22,7 +22,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"
 
 namespace tensorflow {
 namespace profiler {

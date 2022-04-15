@@ -166,7 +166,7 @@ cc_library(
 tf_cuda_library(
     name = "profiler_backends",
     cuda_deps = [
-        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+        "//tensorflow/core/profiler/backends/gpu:device_tracer",
     ],
     visibility = ["//tensorflow:internal"],
     deps = [

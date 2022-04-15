@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_wrapper.h"
 
 #include <type_traits>
 
