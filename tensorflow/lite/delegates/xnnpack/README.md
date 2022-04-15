@@ -459,6 +459,11 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `CONCATENATION`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `DEPTH_TO_SPACE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -517,6 +522,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `RESIZE_BILINEAR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SPLIT`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
