@@ -355,8 +355,23 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
 ; CHECK: }
       )";
 
+  std::string pattern3 = R"(
+; CHECK-LABEL: @fusion
+; CHECK: load <2 x float>
+; CHECK: load <2 x float>
+; CHECK-NOT: load <2 x float>
+; CHECK: fadd <2 x float>
+; CHECK: store <2 x float>
+; CHECK: fmul <2 x float>
+; CHECK: store <2 x float>
+; CHECK-NOT: store <2 x float>
+; CHECK-NOT: fadd
+; CHECK-NOT: fmul
+; CHECK: }
+      )";
+
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{pattern1,pattern2},
+                     std::vector<std::string>{pattern1,pattern2,pattern3},
                      /*match_optimized_ir=*/true);
 }
 
