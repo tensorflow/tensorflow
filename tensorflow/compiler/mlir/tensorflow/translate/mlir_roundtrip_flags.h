@@ -74,8 +74,6 @@ struct GraphImportConfig {
   // - session runtime is used (session runtime has issues with function names
   //   rewritten by functionalization).
   // Otherwise, this parameter should be set to false.
-  // TODO(b/228119515) this currently only works for replicated TPU and needs to
-  // be generalized (CPU, GPU, single core TPU)
   bool restrict_functionalization_to_compiled_nodes = false;
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.

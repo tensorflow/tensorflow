@@ -124,10 +124,14 @@ Status GenerateResourceSharedNameIfEmpty(
 }
 
 bool IsCompiledNode(const Node* n) {
-  // TODO(b/229028654) remove cast once C++17 is available
+  // TODO(b/229028654) remove casts once C++17 is available
   absl::string_view kTPUReplicateAttrStr(mlir::TF::kTPUReplicateAttr.data(),
                                          mlir::TF::kTPUReplicateAttr.size());
-  return n->attrs().Find(kTPUReplicateAttrStr);
+  absl::string_view kCompileDeviceTypeAttrStr(
+      mlir::TF::kCompileDeviceTypeAttr.data(),
+      mlir::TF::kCompileDeviceTypeAttr.size());
+  return n->attrs().Find(kTPUReplicateAttrStr) ||
+         n->attrs().Find(kCompileDeviceTypeAttrStr);
 }
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
