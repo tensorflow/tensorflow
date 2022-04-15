@@ -2906,7 +2906,7 @@ class DelegateContext {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.init = [](TfLiteContext* context, const char* buffer,
                          size_t) -> void* {
     auto* delegate_context = new DelegateContext();
@@ -2924,8 +2924,6 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
                             TfLiteNode* node) -> TfLiteStatus {
     return node->user_data ? kTfLiteOk : kTfLiteError;
   };
-  registration.invoke = nullptr;
-  registration.custom_name = nullptr;
 
   const auto* delegate_data =
       reinterpret_cast<const DelegateContext::DelegateData*>(delegate->data_);
