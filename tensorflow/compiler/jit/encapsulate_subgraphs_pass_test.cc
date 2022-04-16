@@ -2514,7 +2514,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
-            {"shapes", absl::Span<const TensorShapeProto>({})},
+            {"shapes", absl::Span<const >({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
              absl::Span<const string>({"_xla_token_arg_node"})},
