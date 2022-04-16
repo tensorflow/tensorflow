@@ -37,6 +37,9 @@ _XlaOpMetadata = Any
 
 _T = TypeVar("_T")
 
+class XlaRuntimeError(RuntimeError):
+  pass
+
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType

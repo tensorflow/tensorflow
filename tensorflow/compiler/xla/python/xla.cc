@@ -80,6 +80,10 @@ bool IsOptimizedBuild() {
 PYBIND11_MODULE(xla_extension, m) {
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
+  // Exceptions
+  py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
+                                          PyExc_RuntimeError);
+
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)

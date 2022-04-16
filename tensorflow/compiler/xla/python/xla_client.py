@@ -661,6 +661,8 @@ def heap_profile(client: Client) -> bytes:
   return gzip.compress(client.heap_profile())
 
 
+XlaRuntimeError = _xla.XlaRuntimeError
+
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.
 atexit.register(_xla.collect_garbage)
