@@ -302,7 +302,7 @@ class DepthwiseConv2DTest(test.TestCase):
       input_size *= s
     for s in filter_in_sizes:
       filter_size *= s
-    # Initializes the input and filter tensor with numbers incrementing from 1.
+    # Initializes the input and filter tensor with numbers incrementing to 1.0.
     x1 = [f * 1.0 / input_size for f in range(1, input_size + 1)]
     x1 = np.array(x1).reshape(tensor_in_sizes)
     x2 = [f * 1.0 / filter_size for f in range(1, filter_size + 1)]
@@ -1024,10 +1024,40 @@ class DepthwiseConv2DTest(test.TestCase):
                                   padding, "float64")
 
 
-# Please refer to the following gist for more info:
-# https://gist.github.com/duncanriach/4c18cb07a73510c5fcb2deb52adbffaa
-class DepthwiseConv2DDeterministicTest(test.TestCase):
+class DepthwiseConv2DDeterministicTest(DepthwiseConv2DTest):
   """Test determinism-related functionality of tf.nn.depthwise_conv2d."""
+
+  @classmethod
+  def setUpClass(cls):
+    super(DepthwiseConv2DDeterministicTest, cls).setUpClass()
+    # The op-determinism setting can be enabled and disabled on-the-fly.
+    # However, if cuDNN convolution is used (as it is for these tests) then its
+    # setting at the time will influence which algorithm for a particular layer
+    # configuration is cached (independently for XLA and non-XLA operation).
+    #
+    # If DepthwiseConv2DTest were to run first and cause a nondeterministic
+    # cuDNN algorithm to be cached for the configurations used by the
+    # determinism tests below, then it should cause them to fail.
+    #
+    # This persistence of state between tests could also reduce the quality of
+    # the testing for the cases where cuDNN convolution is used for both the
+    # nondeterministic and deterministic operation because algorithm selection,
+    # when this test class and its parent are run (in either order) on an
+    # instance of TensorFlow, may be different from algorithm selection when the
+    # tests were run independently.
+    #
+    # If necessary, a workaround for this issue would be to move
+    # DepthwiseConv2DDeterministicTest into a sparate test file and thereby run
+    # it under a different test.main().
+    #
+    # TODO(duncanriach): Implement cuDNN auto-tuning cache invalidation and
+    # and execute when op-determinism setting is changed.
+    tf_config.enable_op_determinism()
+
+  @classmethod
+  def tearDownClass(cls):
+    super(DepthwiseConv2DDeterministicTest, cls).tearDownClass()
+    tf_config.disable_op_determinism()
 
   def _genParams(self,
                  use_cudnn=False,
@@ -1037,9 +1067,11 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
     random_seed.set_seed(seed)
     batch_size = 2  # no interaction over batch, so make small
     if use_cudnn:
-      # One input channel, plus a cuDNN-supported filter size and number of
-      # output channels will result in cuDNN being used for both
-      # backprop-to-input and backprop-to-filter on cuDNN 7 and higher.
+      # When op-determinism is not enabled, one input channel, plus a
+      # cuDNN-supported filter size and number of output channels will result
+      # in cuDNN being used for both backprop-to-input and backprop-to-filter on
+      # cuDNN 7.6.3 and higher. When op-determnism is enabled, cuDNN is always
+      # used for backprop-to-filter.
       input_channels = 1
     else:
       input_channels = 2  # no interaction over channels, so make small
@@ -1052,7 +1084,7 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
     input_data = random_ops.random_normal(input_shape, dtype=dtype)
     # The following filter size results in nondeterminism being exercised in
     # cuDNN backprop (when determinism is not enabled) to both input and filter
-    # as well as in the specialized depthwise backprop to filter.
+    # as well as in the specialized (non-cuDNN) depthwise backprop to filter.
     filter_height = 7
     filter_width = 7
     channel_multiplier = 10
@@ -1070,90 +1102,77 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
       output_shape = (batch_size, output_channels, output_height, output_width)
     return input_data, filter_data, strides, padding, output_shape
 
-  def _testForwardCase(self,
-                       use_cudnn=False,
-                       data_format="NHWC",
-                       dtype=dtypes.float32):
+  def _testForwardDeterminismCase(self,
+                                  use_cudnn=False,
+                                  data_format="NHWC",
+                                  dtype=dtypes.float32):
     for seed in range(5):
       p = self._genParams(use_cudnn, data_format, dtype, seed=seed)
       input_data, filter_data, strides, padding, _ = p
 
-      with test_util.deterministic_ops():
-        result_a = nn_impl.depthwise_conv2d_v2(input_data, filter_data, strides,
-                                               padding, data_format)
-        result_b = nn_impl.depthwise_conv2d_v2(input_data, filter_data, strides,
-                                               padding, data_format)
+      result_a = nn_impl.depthwise_conv2d_v2(input_data, filter_data, strides,
+                                             padding, data_format)
+      result_b = nn_impl.depthwise_conv2d_v2(input_data, filter_data, strides,
+                                             padding, data_format)
 
       self.assertAllEqual(result_a, result_b)
 
   @test_util.run_gpu_only
-  def testForwardGPU(self):
+  def testForwardDeterminismGPU(self):
     for use_cudnn in [False, True]:
       for data_format in ["NHWC", "NCHW"]:
         for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-          self._testForwardCase(use_cudnn, data_format, dtype=dtype)
+          self._testForwardDeterminismCase(use_cudnn, data_format, dtype=dtype)
 
-  def testForwardCPU(self):
+  def testForwardDeterminismCPU(self):
     if tf_config.list_physical_devices("GPU"):
       self.skipTest("Test only runs when there is no GPU")
     data_format = "NHWC"  # CPU does not implement NCHW version of op
     for dtype in [dtypes.float32, dtypes.float64]:
-      self._testForwardCase(data_format=data_format, dtype=dtype)
+      self._testForwardDeterminismCase(data_format=data_format, dtype=dtype)
 
-  def _testBackwardCase(self,
-                        using_gpu=False,
-                        use_cudnn=False,
-                        data_format="NHWC",
-                        dtype=dtypes.float32):
+  def _testBackwardDeterminismCase(self,
+                                   using_gpu=False,
+                                   use_cudnn=False,
+                                   data_format="NHWC",
+                                   dtype=dtypes.float32):
     p = self._genParams(use_cudnn, data_format, dtype, seed=123)
     input_data, filter_data, strides, padding, output_shape = p
 
-    with test_util.deterministic_ops():
+    def Gradients(upstream_gradients):
+      with backprop.GradientTape() as tape:
+        tape.watch(input_data)
+        tape.watch(filter_data)
+        op_output = nn_impl.depthwise_conv2d_v2(input_data, filter_data,
+                                                strides, padding, data_format)
+        gradient_injector_output = op_output * upstream_gradients
+      return tape.gradient(gradient_injector_output,
+                           [input_data, filter_data])
 
-      def Gradients(upstream_gradients):
-        with backprop.GradientTape() as tape:
-          tape.watch(input_data)
-          tape.watch(filter_data)
-          op_output = nn_impl.depthwise_conv2d_v2(input_data, filter_data,
-                                                  strides, padding, data_format)
-          gradient_injector_output = op_output * upstream_gradients
-        return tape.gradient(gradient_injector_output,
-                             [input_data, filter_data])
-
-      if using_gpu and not use_cudnn:
-        # This tests depends on other tests, tests which do not enable
-        # op-determinism, to ensure that determinism-unimplemented exceptions
-        # are not erroneously thrown when op-determinism is not enabled.
-        ctx_mgr = self.assertRaisesRegex(
-            errors.UnimplementedError, "A deterministic GPU implementation of" +
-            " DepthwiseConvBackpropFilter is not currently available.")
-      else:
-        ctx_mgr = contextlib.suppress()
-
-      with ctx_mgr:
-        # Test only two seeds, since testing takes a long time
-        for seed in (987, 988):
-          upstream_gradients = random_ops.random_normal(output_shape,
-                                                        dtype=dtype, seed=seed)
-          input_gradients_a, filter_gradients_a = Gradients(upstream_gradients)
-          input_gradients_b, filter_gradients_b = Gradients(upstream_gradients)
-          self.assertAllEqual(input_gradients_a, input_gradients_b)
-          self.assertAllEqual(filter_gradients_a, filter_gradients_b)
+    # Test only two seeds, since testing takes a long time
+    for seed in (987, 988):
+      upstream_gradients = random_ops.random_normal(output_shape,
+                                                    dtype=dtype, seed=seed)
+      input_gradients_a, filter_gradients_a = Gradients(upstream_gradients)
+      input_gradients_b, filter_gradients_b = Gradients(upstream_gradients)
+      self.assertAllEqual(input_gradients_a, input_gradients_b)
+      self.assertAllEqual(filter_gradients_a, filter_gradients_b)
 
   @test_util.run_gpu_only
-  def testBackwardGPU(self):
+  def testBackwardDeterminismGPU(self):
     using_gpu = True
     for use_cudnn in [False, True]:
       for data_format in ["NHWC", "NCHW"]:
         for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-          self._testBackwardCase(using_gpu, use_cudnn, data_format, dtype)
+          self._testBackwardDeterminismCase(
+              using_gpu, use_cudnn, data_format, dtype)
 
-  def testBackwardCPU(self):
+  def testBackwardDeterminismCPU(self):
     if tf_config.list_physical_devices("GPU"):
       self.skipTest("Test only runs when there is no GPU")
     data_format = "NHWC"  # CPU does not implement NCHW version of op
     for dtype in [dtypes.float32, dtypes.float64]:
-      self._testBackwardCase(data_format=data_format, dtype=dtype)
+      self._testBackwardDeterminismCase(data_format=data_format, dtype=dtype)
 
 
 if __name__ == "__main__":

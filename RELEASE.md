@@ -15,7 +15,7 @@
 
 # Major Features and Improvements
 
-* `tf.keras`:
+*   `tf.keras`:
 
     * Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
       class implements the sharpness-aware minimization technique, which boosts
@@ -41,6 +41,13 @@
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+*   When running on GPU (with cuDNN version 7.6.3 and newer),
+    `tf.nn.depthwise_conv2d` backprop to `filter` (and therefore also
+    `tf.keras.layers.DepthwiseConv2D`) now operate deterministically (and
+    `tf.errors.UnimplementedError` is no longer thrown) when op-determinism has
+    been enabled via `tf.config.experimental.enable_op_determinism`. This closes
+    issue [47174](https://github.com/tensorflow/tensorflow/issues/47174).
 
 # Thanks to our Contributors
 

@@ -1758,14 +1758,13 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
     const T* input, T* filter_backprop, TensorFormat data_format) {
   auto stream = ctx->op_device_context()->stream();
 
-  // By disabling this exception, we can discover if other determinism
-  // exceptions are reached in the execution of a given model.
+  // It's simpler to catch this here than in
+  // DepthwiseConv2dNativeBackpropFilterOp
   OP_REQUIRES(
-      ctx,
-      !OpDeterminismRequired() || DisableDepthwiseConvDeterminismExceptions(),
-      errors::Unimplemented(
+      ctx, !OpDeterminismRequired(), errors::Unimplemented(
           "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
-          " not currently available."));
+          " not available with this version of cuDNN. Use version 7.6.3 or"
+          " newer."));
 
   // Initialize the results to 0.
   int num_filter_backprop =
