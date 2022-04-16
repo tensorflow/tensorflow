@@ -74,7 +74,9 @@ void AssignRefVariable(
       if (same_shape) {
         reshaped_old_lhs = old_lhs;
       } else {
-        CHECK(reshaped_old_lhs.CopyFrom(old_lhs, rhs.shape()));
+        OP_REQUIRES(ctx, reshaped_old_lhs.CopyFrom(old_lhs, rhs.shape()),
+                    errors::Internal(
+                        "Unable to copy the value tensor to the ref input"));
         context->replace_ref_input(input_ref_index, reshaped_old_lhs,
                                    /* lock_held */ true);
       }
