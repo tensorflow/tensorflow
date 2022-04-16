@@ -35,13 +35,12 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 
-class HloClientDialect : public Dialect {
+class ChloDialect : public Dialect {
   void initialize();
 
  public:
-  explicit HloClientDialect(MLIRContext* context)
-      : Dialect(getDialectNamespace(), context,
-                TypeID::get<HloClientDialect>()) {
+  explicit ChloDialect(MLIRContext* context)
+      : Dialect(getDialectNamespace(), context, TypeID::get<ChloDialect>()) {
     initialize();
   }
   Operation* materializeConstant(OpBuilder& builder, Attribute value, Type type,

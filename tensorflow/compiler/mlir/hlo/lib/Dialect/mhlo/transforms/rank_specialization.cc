@@ -281,7 +281,7 @@ struct MergeRankSpecializationClusterOpsPattern
 struct RankSpecializationClusterPass
     : public RankSpecializationClusterPassBase<RankSpecializationClusterPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::HloClientDialect>();
+    registry.insert<mhlo::MhloDialect, chlo::ChloDialect>();
   }
 
   void runOnOperation() override {
@@ -919,8 +919,8 @@ struct RankSpecializationToSCFPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
-                    func::FuncDialect, shape::ShapeDialect, scf::SCFDialect>();
+    registry.insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
+                    shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {

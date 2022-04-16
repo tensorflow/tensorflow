@@ -61,7 +61,7 @@ void LegalizeTFNoFallback::runOnOperation() {
 
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<chlo::HloClientDialect>();
+  target.addLegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
