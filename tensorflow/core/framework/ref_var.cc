@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,8 +45,9 @@ void AssignRefVariable(
   }
 
   {
-    mutex_lock l(*context->input_ref_mutex(0));
-    const Tensor& old_lhs = context->mutable_input(0, /* lock_held */ true);
+    mutex_lock l(*context->input_ref_mutex(input_ref_index));
+    const Tensor& old_lhs =
+        context->mutable_input(input_ref_index, /* lock_held */ true);
     const bool same_shape = old_lhs.shape().IsSameSize(rhs.shape());
     if (validate_shape) {
       OP_REQUIRES(context, same_shape,
@@ -74,7 +75,7 @@ void AssignRefVariable(
         reshaped_old_lhs = old_lhs;
       } else {
         CHECK(reshaped_old_lhs.CopyFrom(old_lhs, rhs.shape()));
-        context->replace_ref_input(0, reshaped_old_lhs,
+        context->replace_ref_input(input_ref_index, reshaped_old_lhs,
                                    /* lock_held */ true);
       }
       if (use_locking) {
@@ -84,11 +85,12 @@ void AssignRefVariable(
     } else {
       // 2. Try to reuse the rhs.
       std::unique_ptr<Tensor> input_alias = context->forward_input(
-          1, OpKernelContext::Params::kNoReservation /*output_index*/,
+          value_index, OpKernelContext::Params::kNoReservation /*output_index*/,
           rhs.dtype(), rhs.shape(), DEVICE_MEMORY, attr);
       if (input_alias != nullptr) {
         // Update the ref to point to the new buffer.
-        context->replace_ref_input(0, *input_alias, /* lock_held */ true);
+        context->replace_ref_input(input_ref_index, *input_alias,
+                                   /* lock_held */ true);
         return;
       }
 
@@ -101,7 +103,8 @@ void AssignRefVariable(
       // We track memory of variables in variable ops instead of in this
       // assign op.
       context->clear_recorded_memory();
-      context->replace_ref_input(0, copy_tensor, /* lock_held */ true);
+      context->replace_ref_input(input_ref_index, copy_tensor,
+                                 /* lock_held */ true);
       if (use_locking) {
         copy(context, &copy_tensor, rhs);
         return;
@@ -112,7 +115,8 @@ void AssignRefVariable(
   // The tensor has already been initialized and the right hand side
   // matches the left hand side's shape. We have been told to do the
   // copy outside the lock.
-  Tensor old_unlocked_lhs = context->mutable_input(0, /* lock_held */ false);
+  Tensor old_unlocked_lhs =
+      context->mutable_input(input_ref_index, /* lock_held */ false);
   copy(context, &old_unlocked_lhs, rhs);
 }
 }  //  end namespace tensorflow
