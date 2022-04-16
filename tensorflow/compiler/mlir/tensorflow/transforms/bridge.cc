@@ -334,7 +334,7 @@ tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   Status status = mlir::TFTPU::RunTFXLABridge(module, enable_logging,
                                               CreateTFXLABridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device type*/ "cpu/gpu", /*bridge version*/ "v2",
+      /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
       /*result*/ status == Status::OK() ? "success" : "failure");
   return status;
