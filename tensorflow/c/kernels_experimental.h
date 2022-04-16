@@ -116,6 +116,30 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorShape(
 TF_CAPI_EXPORT extern bool TF_IsRefInput(TF_OpKernelContext* ctx, int i,
                                          TF_Status* status);
 
+// Expose higher level AddN operation for Pluggable vendors to implement
+// in the plugin for Variant data types. The API takes in the context and a
+// callback provided by pluggable vendor to do a Binary Add operation on the
+// tensors unwrapped from the Variant tensors. The ownership of all tensors is
+// retained by the framework, so Pluggable vendors do not need to manually
+// delete them.
+TF_CAPI_EXPORT extern void TF_AddNVariant(
+    TF_OpKernelContext* ctx,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, const TF_Tensor* a,
+                            const TF_Tensor* b, TF_Tensor* out),
+    TF_Status* status);
+
+// Expose higher level ZerosLike operation for Pluggable vendors to implement
+// in the plugin for Variant data types. The API takes in the context and a
+// callback provided by pluggable vendor to do a ZerosLike operation on the
+// tensors unwrapped from the Variant tensors. The ownership of all tensors is
+// retained by the framework, so Pluggable vendors do not need to manually
+// delete them.
+TF_CAPI_EXPORT extern void TF_ZerosLikeVariant(
+    TF_OpKernelContext* ctx,
+    void (*zeros_like_func)(TF_OpKernelContext* ctx, const TF_Tensor* input,
+                            TF_Tensor* out),
+    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

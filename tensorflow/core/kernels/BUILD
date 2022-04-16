@@ -2952,6 +2952,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tensor_list_util",
+    srcs = ["tensor_list_util.cc"],
+    hdrs = ["tensor_list_util.h"],
+    deps = [
+        ":tensor_list",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "list_kernels",
     srcs = ["list_kernels.cc"],
@@ -2964,6 +2975,7 @@ tf_kernel_library(
         ":concat_lib",
         ":fill_functor",
         ":tensor_list",
+        ":tensor_list_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",

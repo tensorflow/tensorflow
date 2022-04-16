@@ -90,6 +90,7 @@ exports_files(
         "tensor_util.h",
         "thread_factory.h",
         "tracking_allocator.h",
+        "variant_ops.h",
         "versions.h",
     ],
     visibility = [
@@ -248,6 +249,7 @@ filegroup(
         "variant.h",
         "variant_encode_decode.h",
         "variant_op_registry.h",
+        "variant_ops.h",
         "variant_tensor_data.h",
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
@@ -288,6 +290,7 @@ filegroup(
         "run_handler_util.cc",
         "tensor_slice.cc",
         "tensor_util.cc",
+        "variant_ops.cc",
         "versions.cc",
     ],
 )
@@ -436,6 +439,8 @@ filegroup(
         "tensor_util.cc",
         "tensor_util.h",
         "thread_factory.h",
+        "variant_ops.cc",
+        "variant_ops.h",
         "versions.cc",
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
