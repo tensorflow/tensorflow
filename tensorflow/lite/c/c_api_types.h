@@ -113,13 +113,7 @@ typedef struct TfLiteQuantizationParams {
 } TfLiteQuantizationParams;
 
 // --------------------------------------------------------------------------
-// Opaque types used by c_api.h, c_api_opaque.h and common.h.
-
-// TfLiteOpaqueContext is an opaque version of TfLiteContext;
-typedef struct TfLiteOpaqueContext TfLiteOpaqueContext;
-
-// TfLiteOpaqueNode is an opaque version of TfLiteNode;
-typedef struct TfLiteOpaqueNode TfLiteOpaqueNode;
+// Opaque types used by c_api_opaque.h.
 
 // TfLiteOpaqueTensor is an opaque version of TfLiteTensor;
 typedef struct TfLiteOpaqueTensor TfLiteOpaqueTensor;
