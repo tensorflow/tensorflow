@@ -1863,7 +1863,10 @@ TEST_F(OpTest, BatchMatMul) {
 
 TEST_F(OpTest, BatchMatMulV2) {
   if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
-  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+  // :randomized_tests_seeded is flaky with --tf_xla_random_seed=200839030
+  // See b/229622638.
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
+  Repeatedly([this]() {
     const BatchMatMulArguments a = ChooseBatchMatMulArguments(true);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchMatMulV2")
                                              .RandomInput(a.dtype, a.lhs_dims)
