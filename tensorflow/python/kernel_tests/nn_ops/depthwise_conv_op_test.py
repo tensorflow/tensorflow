@@ -14,8 +14,6 @@
 # ==============================================================================
 """Functional tests for depthwise convolutional operations."""
 
-import contextlib
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
