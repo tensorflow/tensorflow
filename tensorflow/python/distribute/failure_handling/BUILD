@@ -66,6 +66,7 @@ tf_py_test(
     name = "gce_failure_handler_test",
     srcs = ["gce_failure_handler_test.py"],
     tags = [
+        "no_oss",  # TODO(b/229155465): Test sometimes times out
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test
     ],
