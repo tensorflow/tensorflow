@@ -597,7 +597,7 @@ Concrete Functions:
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'INVALID_SIGNATURE', '--input_exprs', 'x2=[1,2,3]'
-    ] + (['--use_tfrt'] if use_tfrt else []))
+    ])
     with self.assertRaisesRegex(ValueError,
                                 'Could not find signature "INVALID_SIGNATURE"'):
       saved_model_cli.run(args)
