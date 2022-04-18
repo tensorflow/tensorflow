@@ -753,6 +753,7 @@ def tf_cc_shared_object(
             visibility = visibility,
         )
 
+# TODO(b/229550590): Remove. Labels should be string literals (go/build-style#other-conventions).
 def get_cc_shared_library_target_name(name):
     return name + "_st"  # Keep short. See b/221093790
 
