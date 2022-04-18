@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -370,10 +371,13 @@ Operation* BuildCompileOp(
   metadata.set_mlir_fingerprint(mlir_fingerprint);
 
   std::string txt_metadata;
-  if (tpu_compile_metadata_debug)
-    txt_metadata = metadata.DebugString();
-  else
+  if (tpu_compile_metadata_debug) {
+    ::tensorflow::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    printer.PrintToString(metadata, &txt_metadata);
+  } else {
     metadata.SerializeToString(&txt_metadata);
+  }
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),
