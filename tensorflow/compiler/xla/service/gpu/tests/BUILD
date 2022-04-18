@@ -116,7 +116,9 @@ tf_cc_test(
 tf_cc_test(
     name = "fusion_logical_index_test",
     srcs = ["fusion_logical_index_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
