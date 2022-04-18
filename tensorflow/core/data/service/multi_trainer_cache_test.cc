@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -41,6 +42,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::monitoring::testing::CellReader;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
 using ::testing::Gt;
@@ -232,6 +234,34 @@ TEST(MultiTrainerCacheTest, AlternateTrainerExtendsCache) {
   EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(3))));
   EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(4))));
   EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(5))));
+}
+
+TEST(MultiTrainerCacheTest, CacheHitMetrics) {
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/multi_trainer_cache_queries");
+  EXPECT_EQ(cell_reader.Delta("true"), 0);
+  EXPECT_EQ(cell_reader.Delta("false"), 0);
+  EXPECT_EQ(cell_reader.Read("true"), 0);
+  EXPECT_EQ(cell_reader.Read("false"), 0);
+
+  const size_t num_elements = 10;
+  MultiTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
+  for (size_t i = 0; i < num_elements; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
+  }
+  EXPECT_EQ(cell_reader.Delta("true"), 0);
+  EXPECT_EQ(cell_reader.Delta("false"), 10);
+  EXPECT_EQ(cell_reader.Read("true"), 0);
+  EXPECT_EQ(cell_reader.Read("false"), 10);
+
+  for (size_t i = 0; i < num_elements; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(i)));
+  }
+  EXPECT_EQ(cell_reader.Delta("true"), 10);
+  EXPECT_EQ(cell_reader.Delta("false"), 0);
+  EXPECT_EQ(cell_reader.Read("true"), 10);
+  EXPECT_EQ(cell_reader.Read("false"), 10);
 }
 
 TEST(MultiTrainerCacheTest, ConcurrentReaders) {

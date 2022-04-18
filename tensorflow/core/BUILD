@@ -1909,6 +1909,18 @@ tf_cc_tests(
 )
 
 tf_cc_test(
+    name = "cell_reader_test",
+    size = "small",
+    srcs = ["//tensorflow/core/lib/monitoring:cell_reader_test.cc"],
+    deps = [
+        ":test",
+        ":test_main",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:counter",
+    ],
+)
+
+tf_cc_test(
     name = "lib_random_random_distributions_test",
     srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_distributions_test"],
     tags = ["optonly"],
