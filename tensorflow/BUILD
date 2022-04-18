@@ -1106,6 +1106,11 @@ tf_cc_shared_library(
         "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
     ],
+    dynamic_deps = [
+        # TODO(b/229550590): Rename libtensorflow_framework.so.2_st to libtensorflow_framework.so.2.
+        "//tensorflow:libtensorflow_framework.so.%s_st" % VERSION,
+    ],
+    framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
@@ -1125,13 +1130,32 @@ tf_cc_shared_library(
     # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:env",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
+        "//tensorflow/c:logging",
+        "//tensorflow/c:ops",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/saved_model:loader_lite_impl",
+        "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/data:standalone",
-    ],
+        "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+        "//tensorflow/core/profiler:profiler_impl",
+        "//tensorflow/core/util:determinism",
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+        "//tensorflow/stream_executor:stream_executor_impl",
+    ] + tf_additional_binary_deps(),
 )
 
 # ** Targets for Windows build (start) **

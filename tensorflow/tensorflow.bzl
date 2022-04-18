@@ -760,6 +760,7 @@ def get_cc_shared_library_target_name(name):
 def tf_cc_shared_library(
         name,
         srcs = [],
+        dynamic_deps = [],
         static_deps = [],
         deps = [],
         data = [],
@@ -822,6 +823,7 @@ def tf_cc_shared_library(
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
+            dynamic_deps = dynamic_deps,
             static_deps = static_deps,
             shared_lib_name = name_os_full,
             user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
