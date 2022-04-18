@@ -587,7 +587,7 @@ Concrete Functions:
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'regress_x2_to_y3', '--input_exprs', 'x2=[1,2,3]'
-    ] + (['--use_tfrt'] if use_tfrt else []))
+    ])
     with self.assertRaises(ValueError):
       saved_model_cli.run(args)
 
