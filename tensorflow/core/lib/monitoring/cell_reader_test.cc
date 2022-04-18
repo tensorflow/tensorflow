@@ -26,8 +26,8 @@ auto* test_counter = monitoring::Counter<0>::New(
     "/tensorflow/monitoring/test/counter", "Test counter.");
 
 auto* test_counter_with_labels = monitoring::Counter<2>::New(
-    "/tensorflow/monitoring/test/counter_with_labels", "label1", "label2",
-    "Test counter with two labels.");
+    "/tensorflow/monitoring/test/counter_with_labels",
+    "Test counter with two labels.", "label1", "label2");
 
 TEST(CellReaderTest, CounterDeltaNoLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
