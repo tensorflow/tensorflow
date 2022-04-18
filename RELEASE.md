@@ -17,14 +17,17 @@
 
 * `tf.keras`:
 
-  *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
+    * Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
       class implements the sharpness-aware minimization technique, which boosts
       model performance on various tasks, e.g., ResNet on image classification.
-
-*   `tf.keras`:
     * `EinsumDense` layer moved from experimental to core. Its import path moved
       from `tf.keras.layers.experimental.EinsumDense` to
       `tf.keras.layers.EinsumDense`.
+    * Added `subset="both"` support in
+      `tf.keras.utils.image_dataset_from_directory` and
+      `tf.keras.utils.text_dataset_from_directory`, to be used with the
+      `validation_split` argument, for returning both dataset splits at once,
+      as a tuple.
 
 *   `tf.math`:
 
