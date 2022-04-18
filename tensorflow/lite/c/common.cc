@@ -14,13 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
-
 #include "tensorflow/lite/c/c_api_types.h"
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-#include <string>
-
-#include "tensorflow/lite/tensorflow_profiler_logger.h"
-#endif
 
 #ifndef TF_LITE_STATIC_MEMORY
 #include <stdlib.h>
@@ -57,47 +51,6 @@ int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
-
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-// TODO(b/203471957): remove duplicate implementation at kernel_util.cc.
-//     We cannot use that implementation here due to a cyclic dependency.
-const std::string GetShapeDebugString(const TfLiteIntArray* shape) {
-  std::string str;
-  for (int d = 0; d < shape->size; ++d) {
-    if (str.empty())
-      str = "[" + std::to_string(shape->data[d]);
-    else
-      // Don't add space after "," to make the output consistent with
-      // tensorflow::shape_inference::InferenceContext::DebugString()
-      str += "," + std::to_string(shape->data[d]);
-  }
-  if (str.empty()) {
-    str = "[]";
-  } else {
-    str += "]";
-  }
-  return str;
-}
-
-void AddTraceMe(bool is_allocating, TfLiteTensor* tensor, size_t num_bytes) {
-  if (tensor == nullptr || num_bytes == 0) return;
-  AddTraceMe(is_allocating, num_bytes,
-             reinterpret_cast<int64_t>(tensor->data.raw),
-             tensor->name ? tensor->name : "",
-             tensor->dims ? GetShapeDebugString(tensor->dims) : "[]");
-}
-
-void OnTfLiteTensorAlloc(TfLiteTensor* tensor, size_t num_bytes) {
-  AddTraceMe(true, tensor, num_bytes);
-}
-
-void OnTfLiteTensorDealloc(TfLiteTensor* tensor) {
-  if (tensor != nullptr) {
-    size_t num_bytes = tensor->bytes;
-    AddTraceMe(false, tensor, num_bytes);
-  }
-}
-#endif  // TF_LITE_TENSORFLOW_PROFILER
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   size_t alloc_size = TfLiteIntArrayGetSizeInBytes(size);
@@ -146,9 +99,6 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 void TfLiteTensorDataFree(TfLiteTensor* t) {
   if (t->allocation_type == kTfLiteDynamic ||
       t->allocation_type == kTfLitePersistentRo) {
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    OnTfLiteTensorDealloc(t);
-#endif
     free(t->data.raw);
   }
   t->data.raw = nullptr;
@@ -211,7 +161,7 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   t->dims = nullptr;
 
   if (t->dims_signature) {
-    TfLiteIntArrayFree((TfLiteIntArray*)t->dims_signature);
+    TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
   }
   t->dims_signature = nullptr;
 
@@ -241,12 +191,16 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 }
 
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
-  if (!src || !dst) return kTfLiteOk;
-  if (src->bytes != dst->bytes) return kTfLiteError;
-  if (src == dst) return kTfLiteOk;
+  if (!src || !dst)
+    return kTfLiteOk;
+  if (src->bytes != dst->bytes)
+    return kTfLiteError;
+  if (src == dst)
+    return kTfLiteOk;
 
   dst->type = src->type;
-  if (dst->dims) TfLiteIntArrayFree(dst->dims);
+  if (dst->dims)
+    TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
   memcpy(dst->data.raw, src->data.raw, src->bytes);
   dst->buffer_handle = src->buffer_handle;
@@ -264,17 +218,8 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.raw) {
     tensor->data.raw = (char*)malloc(num_bytes);
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    OnTfLiteTensorAlloc(tensor, num_bytes);
-#endif
   } else if (num_bytes > tensor->bytes) {
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    OnTfLiteTensorDealloc(tensor);
-#endif
     tensor->data.raw = (char*)realloc(tensor->data.raw, num_bytes);
-#ifdef TF_LITE_TENSORFLOW_PROFILER
-    OnTfLiteTensorAlloc(tensor, num_bytes);
-#endif
   }
   tensor->bytes = num_bytes;
 }
