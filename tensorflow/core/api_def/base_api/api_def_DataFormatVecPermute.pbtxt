@@ -26,7 +26,7 @@ END
   }
   summary: "Permute input tensor from `src_format` to `dst_format`."
   description: <<END
-Given a source and destination format strings of length n=4 or 5, the input
+Given source and destination format strings of length n=4 or 5, the input
 tensor must be a vector of size n or n-2, or a 2D tensor of shape
 (n, 2) or (n-2, 2).
 
