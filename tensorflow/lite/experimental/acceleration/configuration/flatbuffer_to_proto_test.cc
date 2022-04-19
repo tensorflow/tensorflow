@@ -407,8 +407,11 @@ TEST_F(ConversionTest, XNNPackSettings) {
       settings_.tflite_settings->xnnpack_settings.get();
 
   input_settings->num_threads = 2;
+  input_settings->flags =
+      tflite::XNNPackFlags::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8;
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(compute.tflite_settings().xnnpack_settings().num_threads(), 2);
+  EXPECT_EQ(compute.tflite_settings().xnnpack_settings().flags(), 3);
 }
 
 TEST_F(ConversionTest, CoreMLSettings) {
