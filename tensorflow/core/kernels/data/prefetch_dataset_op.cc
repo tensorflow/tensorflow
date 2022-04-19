@@ -188,26 +188,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
-        if (legacy_autotune_) {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 auto_tuner_.buffer_limit() != 0) {
+        while (buffer_.empty() && !prefetch_thread_finished_ &&
+               buffer_limit() != 0) {
+          if (legacy_autotune_) {
             auto_tuner_.RecordEmpty();
             buffer_size_->value = auto_tuner_.buffer_limit();
-            RecordStop(ctx);
-            cond_var_->wait(l);
-            RecordStart(ctx);
           }
-        } else {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 buffer_size_->value != 0) {
-            RecordStop(ctx);
-            cond_var_->wait(l);
-            RecordStart(ctx);
-          }
-        }
-
-        if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          RecordStop(ctx);
+          cond_var_->wait(l);
+          RecordStart(ctx);
         }
 
         if (!buffer_.empty()) {

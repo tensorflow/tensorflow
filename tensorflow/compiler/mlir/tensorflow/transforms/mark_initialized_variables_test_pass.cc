@@ -27,6 +27,8 @@ class MarkInitializedVariablesTestPass
     : public PassWrapper<MarkInitializedVariablesTestPass,
                          OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MarkInitializedVariablesTestPass)
+
   StringRef getArgument() const final {
     return "tf-saved-model-mark-initialized-variables-test";
   }
@@ -48,6 +50,9 @@ class MarkInitializedVariablesInvalidSessionTestPass
     : public PassWrapper<MarkInitializedVariablesInvalidSessionTestPass,
                          OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      MarkInitializedVariablesInvalidSessionTestPass)
+
   StringRef getArgument() const final {
     return "tf-saved-model-mark-initialized-variables-invalid-session-test";
   }

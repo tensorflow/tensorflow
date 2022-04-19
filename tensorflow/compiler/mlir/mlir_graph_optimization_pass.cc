@@ -363,9 +363,9 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   mlir::MLIRContext context(registry);
   GraphImportConfig import_config;
   import_config.upgrade_legacy = true;
-  // Restrict functionalization to TPU nodes to avoid problems in v1 session
-  // runtime.
-  import_config.restrict_functionalization_to_tpu_nodes = true;
+  // Restrict functionalization to compiled nodes to avoid problems in v1
+  // session runtime.
+  import_config.restrict_functionalization_to_compiled_nodes = true;
 
   auto module_ref_status = ConvertGraphToMlir(
       **options.graph, debug_info, *options.flib_def, import_config, &context);

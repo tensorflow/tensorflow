@@ -1111,9 +1111,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   };
 
   auto make_gemm_thunk =
-      [&](auto op, absl::optional<double> gemm_bias_beta = absl::nullopt,
-          bool implements_whole_instruction =
-              true) -> StatusOr<std::unique_ptr<Thunk>> {
+      [&](auto op, absl::optional<double> gemm_bias_beta =
+                       absl::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
     TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.lhs()));
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
@@ -1136,6 +1135,9 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     backend.set_lhs_stride(op.lhs_stride());
     backend.set_rhs_stride(op.rhs_stride());
 
+    config.use_cublaslt =
+        hlo_module_config_.debug_options().xla_gpu_enable_cublaslt();
+
     auto& dims = *backend.mutable_dot_dimension_numbers();
     auto mlir_dims = op.dot_dimension_numbers();
 
@@ -1152,8 +1154,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
               dims.mutable_rhs_contracting_dimensions());
 
     return std::unique_ptr<Thunk>(
-        new GemmThunk(GetThunkInfo(op), std::move(config), lhs, rhs, output,
-                      implements_whole_instruction));
+        new GemmThunk(GetThunkInfo(op), std::move(config), lhs, rhs, output));
   };
 
   TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
@@ -1184,9 +1185,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
           /*destination_buffer=*/output,
           /*mem_size=*/
           ShapeUtil::ByteSizeOf(GetShape(gemm.output()))));
-      TF_ASSIGN_OR_RETURN(
-          auto thunk, make_gemm_thunk(gemm, gemm_bias_beta,
-                                      /*implements_whole_instruction=*/false));
+      TF_ASSIGN_OR_RETURN(auto thunk, make_gemm_thunk(gemm, gemm_bias_beta));
       thunks.push_back(std::move(thunk));
       return std::unique_ptr<Thunk>(
           new SequentialThunk(GetThunkInfo(op), std::move(thunks)));
@@ -1980,12 +1979,12 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
       auto fused_operand = fused_computation->parameter_instruction(i);
-      fused_emitter.BindGenerator(
-          *fused_operand, [this, &ir_arrays, i, fused_operand](
-                              const llvm_ir::IrArray::Index& index) {
-            return ir_arrays[i].EmitReadArrayElement(index, &b_,
-                                                     fused_operand->name());
-          });
+      fused_emitter.BindGenerator(*fused_operand,
+                                  [this, &ir_arrays, i, fused_operand](
+                                      const llvm_ir::IrArray::Index& index) {
+                                    return ir_arrays[i].EmitReadArrayElement(
+                                        index, &b_, fused_operand->name());
+                                  });
     }
 
     // Array to write into.  Because this is an in-place operation, this is the
@@ -4212,23 +4211,23 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
       b_.CreateICmpULT(thread_id_info.thread_id_x,
                        tiling_kernel_info.output_tile_bounds[kDimY]));
 
-  ksl.If("reduction_write_output",
-         b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-           for (int oidx = 0; oidx < num_outputs; oidx++) {
-             llvm::Value* output_address = GetOutputAddressForReduction(
-                 partial_result_idx, index_ty, reduction_codegen_state,
-                 tiling_kernel_info, output_arrays, reduction, oidx);
-             if (reduction_codegen_state.IsRaceFree()) {
-               Store(Load(shmem_transposed_addrs[oidx].first, "output_value"),
-                     output_address);
-             } else {
-               CHECK_EQ(num_outputs, 1);
-               TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                   *reducer, output_address,
-                   shmem_transposed_addrs[oidx].first));
-             }
-           }
-         });
+  ksl.If(
+      "reduction_write_output",
+      b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
+        for (int oidx = 0; oidx < num_outputs; oidx++) {
+          llvm::Value* output_address = GetOutputAddressForReduction(
+              partial_result_idx, index_ty, reduction_codegen_state,
+              tiling_kernel_info, output_arrays, reduction, oidx);
+          if (reduction_codegen_state.IsRaceFree()) {
+            Store(Load(shmem_transposed_addrs[oidx].first, "output_value"),
+                  output_address);
+          } else {
+            CHECK_EQ(num_outputs, 1);
+            TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                *reducer, output_address, shmem_transposed_addrs[oidx].first));
+          }
+        }
+      });
 }
 
 llvm::Value* IrEmitterUnnested::EmitThreadId(int64_t threads_per_block,

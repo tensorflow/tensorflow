@@ -50,7 +50,11 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
   Type element_type = orig.cast<ShapedType>().getElementType();
   TensorType inferred;
   if (shape.hasRank()) {
-    inferred = RankedTensorType::get(shape.getShape(), element_type);
+    // Replace dimensions less than -1 with ?
+    SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
+    for (int64_t &dim : dims)
+      if (dim < -1) dim = -1;
+    inferred = RankedTensorType::get(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }
@@ -101,6 +105,8 @@ class AttributesPassBase : public PassWrapper<PassT, OperationPass<>> {
 class ConsolidateAttributesPassImpl
     : public AttributesPassBase<ConsolidateAttributesPassImpl> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConsolidateAttributesPassImpl)
+
   void runOnOperation() override;
 
  private:
@@ -362,6 +368,9 @@ namespace {
 class PrepareAttributesForExportPassImpl
     : public AttributesPassBase<PrepareAttributesForExportPassImpl> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      PrepareAttributesForExportPassImpl)
+
   void runOnOperation() override;
 
  private:

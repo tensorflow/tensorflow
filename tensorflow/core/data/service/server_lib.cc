@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/server_lib.h"
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"

@@ -12,7 +12,7 @@ func.func @batchNormInference_2D_inner_features(
     -> (tensor<4x256xf32>) {
   // CHECK-DAG: %[[EPS_BCAST:.+]] = mhlo.constant dense<1.001000e-05> : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS_BCAST]] : tensor<256xf32>
-  // CHECK-DAG: %[[STDDEV:.+]] = "mhlo.sqrt"(%[[VARIANCE_EPS]]) : (tensor<256xf32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[STDDEV:.+]] = mhlo.sqrt %[[VARIANCE_EPS]] : tensor<256xf32>
   // CHECK-DAG: %[[STDDEV_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[STDDEV]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<4x256xf32>
   // CHECK-DAG: %[[SCALE_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[SCALE]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<4x256xf32>
   // CHECK-DAG: %[[OFFSET_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[OFFSET]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<4x256xf32>
@@ -47,7 +47,7 @@ func.func @batchNormTraining_2D_inner_features(
   // CHECK-DAG: %[[E2X:.+]] = mhlo.multiply %[[EX]], %[[EX]] : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE:.+]] = mhlo.subtract %[[EX2]], %[[E2X]] : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS_BCAST]] : tensor<256xf32>
-  // CHECK-DAG: %[[STDDEV:.+]] = "mhlo.sqrt"(%[[VARIANCE_EPS]]) : (tensor<256xf32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[STDDEV:.+]] = mhlo.sqrt %[[VARIANCE_EPS]] : tensor<256xf32>
   // CHECK-DAG: %[[EX_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[EX]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<4x256xf32>
   // CHECK-DAG: %[[X_CENTER:.+]] = mhlo.subtract %[[X]], %[[EX_BCAST]] : tensor<4x256xf32>
   // CHECK-DAG: %[[STDDEV_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[STDDEV]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<4x256xf32>
@@ -100,7 +100,7 @@ func.func @batchNormTraining_4D_middle_features(
   // CHECK-DAG: %[[E2X:.+]] = mhlo.multiply %[[EX]], %[[EX]] : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE:.+]] = mhlo.subtract %[[EX2]], %[[E2X]] : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS_BCAST]] : tensor<256xf32>
-  // CHECK-DAG: %[[STDDEV:.+]] = "mhlo.sqrt"(%[[VARIANCE_EPS]]) : (tensor<256xf32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[STDDEV:.+]] = mhlo.sqrt %[[VARIANCE_EPS]] : tensor<256xf32>
   // CHECK-DAG: %[[EX_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[EX]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<3x4x256x6xf32>
   // CHECK-DAG: %[[X_CENTER:.+]] = mhlo.subtract %[[X]], %[[EX_BCAST]] : tensor<3x4x256x6xf32>
   // CHECK-DAG: %[[STDDEV_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[STDDEV]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<3x4x256x6xf32>
@@ -217,7 +217,7 @@ func.func @batchNormInference_dynamic_shape(
   // CHECK-DAG: %[[TO_DIM_TENSOR:.+]] = tensor.from_elements %[[DIM]] : tensor<1xindex>
   // CHECK-DAG: %[[EPS_BCAST:.+]] =  "mhlo.dynamic_broadcast_in_dim"(%[[EPS]], %[[TO_DIM_TENSOR]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS_BCAST]] : tensor<?xf32>
-  // CHECK-DAG: %[[STDDEV:.+]] = "mhlo.sqrt"(%[[VARIANCE_EPS]]) : (tensor<?xf32>) -> tensor<?xf32>
+  // CHECK-DAG: %[[STDDEV:.+]] = mhlo.sqrt %[[VARIANCE_EPS]] : tensor<?xf32>
   // CHECK-DAG: %[[INPUT_DIM_0:.+]] = tensor.dim %[[X]], %[[C0]] : tensor<?x?x?x?xf32>
   // CHECK-DAG: %[[INPUT_DIM_1:.+]] = tensor.dim %[[X]], %[[C1]] : tensor<?x?x?x?xf32>
   // CHECK-DAG: %[[INPUT_DIM_2:.+]] = tensor.dim %[[X]], %[[C2]] : tensor<?x?x?x?xf32>

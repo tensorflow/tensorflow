@@ -301,7 +301,7 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("release_dynamic_tensors",
                           BenchmarkParam::Create<bool>(false));
-  default_params.AddParam("use_dynamic_tensors_for_large_tensors",
+  default_params.AddParam("optimize_memory_for_large_tensors",
                           BenchmarkParam::Create<int32_t>(0));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
@@ -377,8 +377,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "Ensure dynamic tensor's memory is released when they "
                        "are not used."),
       CreateFlag<int32_t>(
-          "use_dynamic_tensors_for_large_tensors", &params_,
-          "Use dynamic tensor for large tensors to optimize memory usage.")};
+          "optimize_memory_for_large_tensors", &params_,
+          "Optimize memory usage for large tensors with sacrificing latency.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -419,8 +419,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print post-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
                       "Release dynamic tensor memory", verbose);
-  LOG_BENCHMARK_PARAM(int32_t, "use_dynamic_tensors_for_large_tensors",
-                      "Use dynamic tensor for large tensors", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
+                      "Optimize memory usage for large tensors", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -633,8 +633,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   InterpreterOptions options;
   options.SetEnsureDynamicTensorsAreReleased(
       params_.Get<bool>("release_dynamic_tensors"));
-  options.SetDynamicAllocationForLargeTensors(
-      params_.Get<int32_t>("use_dynamic_tensors_for_large_tensors"));
+  options.OptimizeMemoryForLargeTensors(
+      params_.Get<int32_t>("optimize_memory_for_large_tensors"));
   interpreter_->ApplyOptions(&options);
 
   owned_delegates_.clear();

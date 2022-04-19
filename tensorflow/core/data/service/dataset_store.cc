@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"

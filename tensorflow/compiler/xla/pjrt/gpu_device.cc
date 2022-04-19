@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
@@ -199,7 +203,8 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
 }
 
 // Builds an xla::LocalClient for the GPU platform.
-StatusOr<LocalClient*> GetGpuXlaClient() {
+StatusOr<LocalClient*> GetGpuXlaClient(
+    const absl::optional<std::set<int>>& allowed_devices) {
   // "gpu" will be substitued by the default defined in platform_util.cc
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("gpu"));
@@ -208,6 +213,7 @@ StatusOr<LocalClient*> GetGpuXlaClient() {
   }
   LocalClientOptions options;
   options.set_platform(platform);
+  options.set_allowed_devices(allowed_devices);
   return ClientLibrary::GetOrCreateLocalClient(options);
 }
 
@@ -515,8 +521,10 @@ std::string GpuDevice::ToString() const {
 
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
-    std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id) {
-  TF_ASSIGN_OR_RETURN(LocalClient * xla_client, GetGpuXlaClient());
+    std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
+    const absl::optional<std::set<int>>& allowed_devices) {
+  TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
+                      GetGpuXlaClient(allowed_devices));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
       BuildLocalDeviceStates(xla_client, asynchronous));

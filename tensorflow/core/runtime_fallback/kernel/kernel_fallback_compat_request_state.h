@@ -37,14 +37,20 @@ namespace tfd {
 // initialization and read-only afterwards.
 class FallbackResourceArray {
  public:
-  // Set `tensor` in the array at `index`. `index` should be dense and duplicate
-  // indices are not allowed.
+  // Sets `tensor` in the array at `index`. `index` should be dense and
+  // duplicate indices are not allowed.
   void SetResource(int index, tensorflow::tfrt_stub::ImmutableTensor tensor);
 
-  // Get the resource tensor wrapped in AsyncValue value at `index`.
+  // Returns the resource tensor wrapped in AsyncValue value at `index`.
   tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>*
   GetResource(int index) const {
     return resource_async_values_.at(index).get();
+  }
+
+  // Returns the resource tensor at `index`.
+  const tensorflow::tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
+      int index) const {
+    return resource_async_values_.at(index)->get();
   }
 
  private:

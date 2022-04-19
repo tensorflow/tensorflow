@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace {
 
 struct TriangularSolveRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::TriangularSolveOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::TriangularSolveOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::TriangularSolveOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::TriangularSolveOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::TriangularSolveOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

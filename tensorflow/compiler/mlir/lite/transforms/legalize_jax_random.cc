@@ -56,6 +56,8 @@ namespace {
 struct LegalizeJaxRandomPass
     : public PassWrapper<LegalizeJaxRandomPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
+
   StringRef getArgument() const final { return "tfl-legalize-random"; }
   StringRef getDescription() const final {
     return "Replace jax.random.uniform/normal with tfl.custom.";

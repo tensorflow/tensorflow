@@ -167,18 +167,6 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
-def LowerIndexCastPass
-    : Pass<"kernelgen-lower-index-cast", "mlir::func::FuncOp"> {
-  let summary = "Lower index cast on tensors to tensor dialect";
-  let constructor = "transforms::CreateLowerIndexCastPass()";
-}
-
-def ShapeSimplification
-    : Pass<"kernelgen-shape-simplification", "mlir::func::FuncOp"> {
-  let summary = "Simplify shape ops";
-  let constructor = "transforms::CreateShapeSimplification()";
-}
-
 def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
   let summary = "Pass to create vectorized operations for CPU.";
   let constructor = "transforms::CreateVectorizationPass()";

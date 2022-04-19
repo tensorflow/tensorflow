@@ -191,6 +191,16 @@ func.func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   func.return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: concatenate_noop_typecast
+func.func @concatenate_noop_typecast(%arg0: tensor<?xi32>) -> tensor<4xi32> {
+  // CHECK-SAME: [[ARG:%.+]]: tensor<?xi32>
+  // CHECK-NEXT: [[RES:%.+]] = tensor.cast [[ARG]] : tensor<?xi32> to tensor<4xi32>
+  %0 = "mhlo.concatenate"(%arg0) { dimension = 0 : i64 } : (tensor<?xi32>) -> tensor<4xi32>
+
+  // CHECK: return [[RES]]
+  func.return %0 : tensor<4xi32>
+}
+
 // CHECK-LABEL: concatenate_remove_operand
 func.func @concatenate_remove_operand(%arg0: tensor<4xi32>, %arg1: tensor<0xi32>) -> tensor<4xi32> {
   // CHECK-SAME: [[ARG0:%.+]]: tensor<4xi32>
@@ -694,7 +704,7 @@ func.func @broadcast_in_dim_constant_fold_complex() -> tensor<1x64x224x224xcompl
 // CHECK-LABEL: @complex_expand_fold
 func.func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xcomplex<f32>>)
-  %1 = "mhlo.real"(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
+  %1 = mhlo.real(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %2 = "mhlo.imag"(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   // CHECK: return %arg0, %arg1
   func.return %1, %2 : tensor<4xf32>, tensor<4xf32>
@@ -702,7 +712,7 @@ func.func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (t
 
 // CHECK-LABEL: @complex_collapse_fold
 func.func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f32>> {
-  %0 = "mhlo.real"(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
+  %0 = mhlo.real(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %1 = "mhlo.imag"(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %2 = "mhlo.complex"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
   // CHECK: return %arg0
@@ -831,9 +841,9 @@ func.func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 func.func @dynamic_reshape_rank_1_to_rank_1(%arg0: tensor<?xcomplex<f32>>,
     %shape: tensor<?xindex>) -> tensor<?xf32> {
-  // CHECK: [[RES:%[a-zA-Z0-9]+]] = "mhlo.real"([[ARG0]]) : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // CHECK: [[RES:%[a-zA-Z0-9]+]] = mhlo.real([[ARG0]]) : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   // CHECK: return [[RES]]
-  %0 = "mhlo.real"(%arg0): (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  %0 = mhlo.real(%arg0): (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   %1 = shape.shape_of %arg0 : tensor<?xcomplex<f32>> -> tensor<1xindex>
   %2 = shape.num_elements %1 : tensor<1xindex> -> index
   %3 = tensor.from_elements %2 : tensor<1xindex>

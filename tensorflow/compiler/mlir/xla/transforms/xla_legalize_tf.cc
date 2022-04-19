@@ -294,9 +294,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   ConversionTarget target(*context);
   if (legalize_chlo) {
-    target.addIllegalDialect<chlo::HloClientDialect>();
+    target.addIllegalDialect<chlo::ChloDialect>();
   } else {
-    target.addLegalDialect<chlo::HloClientDialect>();
+    target.addLegalDialect<chlo::ChloDialect>();
   }
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<arith::ArithmeticDialect>();

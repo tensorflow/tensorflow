@@ -23,11 +23,11 @@ namespace tensorflow {
 namespace {
 
 struct ReplicaIdRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::ReplicaIdOp> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::ReplicaIdOp> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<
       lmhlo::ReplicaIdOp>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::ReplicaIdOp>::GpuAsyncOpConversionPattern;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::ReplicaIdOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::ReplicaIdOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -39,11 +39,11 @@ struct ReplicaIdRewritePattern
 };
 
 struct PartitionIdRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::PartitionIdOp> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::PartitionIdOp> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<
       lmhlo::PartitionIdOp>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::PartitionIdOp>::GpuAsyncOpConversionPattern;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::PartitionIdOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::PartitionIdOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

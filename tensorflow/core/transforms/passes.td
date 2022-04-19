@@ -150,6 +150,64 @@ def FunctionalToRegion : Pass<"tfg-functional-to-region", "ModuleOp"> {
   let dependentDialects = ["tfg::TFGraphDialect"];
 }
 
+
+def RegionToFunctional : Pass<"tfg-region-to-functional", "ModuleOp"> {
+  let summary = "Convert region-based control-flow ops to functional.";
+  let description = [{
+    This pass converts region-based TFG control-flow operations to functional
+    forms. For example, it converts `IfRegion` and `WhileRegion` to `If` and
+    `While`.
+
+    If a control token is implicitly captured in the region but whose defining op
+    does not produce a data value, it cannot be converted to an explicit capture.
+    Example:
+
+    ```mlir
+    %ctl = NoOp [...]
+    %Case, %ctl_0 = CaseRegion %branch_index {
+      %Thing, %ctl_1 = Thing [%ctl]
+    }
+    ```
+
+    Because `%ctl` has no associated data value, the control edge cannot be
+    propagated into the region body using a block argument.
+
+    However, if `force_control_capture` is set, all region ops are guaranteed to
+    be converted to functional ops by inserting a chain `Const` op:
+
+    ```mlir
+    %ctl = NoOp [...]
+    %unused, %ctl_captured = Const [%ctl]
+    %Case, %ctl_0 = CaseRegion %branch_index {
+      %Thing, %ctl_1 = Thing [%ctl_captured]
+    }
+    ```
+
+    When converted to functional form:
+
+    ```mlir
+    %ctl = NoOp [...]
+    %unused, %ctl_captured = Const [%ctl]
+    %Case, %ctl_0 = Case(%branch_index, %unused)
+    ```
+
+    And in the function body:
+
+    ```mlir
+    %Thing, %ctl = Thing [%unused.ctl]
+    ```
+  }];
+
+  let constructor = "CreateRegionToFunctionalPass()";
+  let dependentDialects = ["tfg::TFGraphDialect"];
+
+  let options = [
+    Option<"force_control_capture", "force-control-capture", "bool",
+    /*default=*/"false", "Force the capture of control tokens by inserting "
+                         "chain `Const` ops">
+  ];
+}
+
 def ControlFlowSink : Pass<"tfg-cf-sink", "GraphFuncOp"> {
   let summary = "Perform control-flow sink on region-based control-flow ops.";
   let description = [{
@@ -187,6 +245,10 @@ def ControlFlowSink : Pass<"tfg-cf-sink", "GraphFuncOp"> {
   }];
 
   let constructor = "CreateControlFlowSinkPass()";
+
+  let statistics = [
+    Statistic<"num_sunk", "num-sunk", "Number of operations sunk">,
+  ];
 }
 
 def Remapper : Pass<"remapper"> {
@@ -331,4 +393,31 @@ def ShapeInference : Pass<"shape-inference"> {
            "The graph producer version">
   ];
   let constructor = "CreateShapeInferencePass()";
+}
+
+def ConstantFoldingPass : Pass<"constant-folding"> {
+  let summary = "constant-folding on tfg";
+  let description = [{
+    This pass will fold operations into constants and do full/partial propagte
+    the constants iteratively.
+  }];
+
+  let constructor = "CreateConstantFoldingPass()";
+  let options = [
+   ListOption<"nodes_to_preserve_", "nodes-to-preserve", "std::string",
+              "Comma separated list of ops that won't be optimized.",
+              "llvm::cl::ZeroOrMore">,
+   ListOption<"feeds_", "feeds", "std::string",
+              "Comma separated list of feed ops.", "llvm::cl::ZeroOrMore">,
+   ListOption<"fetches_", "fetches", "std::string",
+              "Comma separated list of fetch ops.", "llvm::cl::ZeroOrMore">,
+   Option<"disable_compressed_tensor_optimization_",
+          "disable-compressed-tensor-optimization", "bool",
+          /*default=*/"false",
+          "Determine if we should disable compressed tensor optimization">,
+   Option<"fold_quantization_emulation_",
+          "fold-quantization-emulation", "bool",
+          /*default=*/"true",
+          "Determine if we should fold quantization emulation ops">
+  ];
 }

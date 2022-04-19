@@ -48,6 +48,8 @@ class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(BreakUpIslands)
+
   StringRef getArgument() const final { return "tf-executor-break-up-islands"; }
 
   StringRef getDescription() const final {

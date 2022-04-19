@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
 namespace Eigen {
@@ -51,10 +50,6 @@ class SimpleDevice : public tensorflow::DeviceBase {
       tensorflow::AllocatorAttributes attr) override;
 
  private:
-  // The SimpleDevice is supposed to be used for evaluating single operation. To
-  // avoid the overhead of thread creation. Set a small and conservative number
-  // as the default.
-  static constexpr int kThreads = 2;
   std::unique_ptr<tensorflow::thread::ThreadPool> eigen_worker_;
   tensorflow::DeviceBase::CpuWorkerThreads eigen_worker_threads_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;

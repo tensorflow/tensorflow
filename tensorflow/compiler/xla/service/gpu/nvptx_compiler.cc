@@ -147,8 +147,12 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
-  // Find the fastest algorithm for GEMMs.
-  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  // Find the fastest algorithm for GEMMs. Skip on Ampere and later as the
+  // algorithm goes unused.
+  if (!stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  }
 
   if (!IsBefEnabled(hlo_module->config())) {
     // Transform TriangularSolve ops into custom-calls, so we can add temp

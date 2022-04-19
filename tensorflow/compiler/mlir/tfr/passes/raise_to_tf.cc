@@ -467,6 +467,8 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 class RaiseToTFOpsPass
     : public PassWrapper<RaiseToTFOpsPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseToTFOpsPass)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
                     arith::ArithmeticDialect, func::FuncDialect>();

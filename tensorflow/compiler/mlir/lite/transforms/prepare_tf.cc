@@ -100,6 +100,8 @@ namespace {
 // Prepare TF operations in functions for subsequent legalization.
 class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
+
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,

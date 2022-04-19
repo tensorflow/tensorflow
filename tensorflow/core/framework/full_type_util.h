@@ -40,6 +40,10 @@ namespace full_type {
 // Note: Type constructors are meant to create static type definitions in the
 // op definition (i.e. the OpDef proto).
 
+// Helper for a no-op type constructor that indicates that the node's type
+// should be set by external means (typically by the user).
+OpTypeConstructor NoOp();
+
 // Helper for a type constructor of <t>[] (with no parameters).
 OpTypeConstructor Nullary(FullTypeId t);
 

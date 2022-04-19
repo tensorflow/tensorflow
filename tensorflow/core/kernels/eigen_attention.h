@@ -184,8 +184,9 @@ struct GlimpseExtractionOp {
           } break;
           case UNIFORM: {
             // Initialize the glimpse with uniform noise.
-            typedef typename internal::remove_const<
-                typename internal::traits<Input>::Scalar>::type Scalar;
+            typedef std::remove_const_t<
+                typename internal::traits<Input>::Scalar>
+                Scalar;
             TensorFixedSize<Scalar, Sizes<> > mini;
             mini.device(device) = input.template chip<3>(i).minimum();
             TensorFixedSize<float, Sizes<> > range;
@@ -206,8 +207,9 @@ struct GlimpseExtractionOp {
             // of each channel, and use them to shape the gaussian.
             DSizes<Index, 2> glimpse_size(width_, height_);
             DSizes<Index, 2> input_size(input_width, input_height);
-            typedef typename internal::remove_const<
-                typename internal::traits<Input>::Scalar>::type Scalar;
+            typedef std::remove_const_t<
+                typename internal::traits<Input>::Scalar>
+                Scalar;
 
             for (int j = 0; j < num_channels; ++j) {
               TensorFixedSize<Scalar, Sizes<> > mean;

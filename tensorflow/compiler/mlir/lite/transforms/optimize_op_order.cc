@@ -104,6 +104,8 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 // model.
 struct OptimizeOpOrderPass
     : public PassWrapper<OptimizeOpOrderPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeOpOrderPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

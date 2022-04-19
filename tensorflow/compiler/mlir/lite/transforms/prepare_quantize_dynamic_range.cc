@@ -84,6 +84,8 @@ class PrepareDynamicRangeQuantizePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareDynamicRangeQuantizePass)
+
   // Constructor used by the PassRegistration. This is only used by test.
   explicit PrepareDynamicRangeQuantizePass() {
     quant_specs_.inference_type = enable_float16_quantization

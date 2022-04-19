@@ -134,6 +134,8 @@ class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AdjustLayout)
+
   StringRef getArgument() const final { return "xla-adjust-layout"; }
   StringRef getDescription() const final {
     return "Adjust layouts so infeed send & receive use the same format.";

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -263,6 +264,52 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   }
 }
 
+StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
+PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                                      PjRtDevice* device) {
+  CHECK(device != nullptr);
+  absl::Mutex mu;
+  bool done = false;
+  StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
+      recv_buffers_or;
+
+  auto shared_this = shared_from_this();
+  pjrt_client_->MakeCrossHostReceiveBuffers(
+      shapes, device,
+      [&done, &recv_buffers_or, &shared_this,
+       &mu](StatusOr<std::pair<std::vector<PjRtCrossHostRecvBuffer>,
+                               PjRtCrossHostSendCancelNotifier>>&& buffers_or) {
+        absl::MutexLock l(&mu);
+        done = true;
+        if (buffers_or.ok()) {
+          py::gil_scoped_acquire gil;
+          auto& buffers = buffers_or.ValueOrDie().first;
+          std::vector<std::pair<pybind11::bytes, pybind11::object>>
+              recv_buffers;
+          for (auto& buf : buffers) {
+            std::string desc = buf.serialized_descriptors[0];
+            pybind11::bytes py_desc = pybind11::bytes(desc);
+            auto traceback = Traceback::Get();
+            auto py_buf =
+                PyBuffer::Make(shared_this, std::move(buf.buffer), traceback);
+            recv_buffers.push_back(std::make_pair(py_desc, py_buf));
+          }
+          recv_buffers_or = recv_buffers;
+        } else {
+          recv_buffers_or = buffers_or.status();
+        }
+      });
+
+  {
+    py::gil_scoped_release gil_release;
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(
+        +[](bool* done) { return *done; }, &done));
+  }
+
+  return recv_buffers_or;
+}
+
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
@@ -487,12 +534,12 @@ void CpuCallback::Call(void* result, void** arg_ptrs,
     return;
   }
   if (!PyTuple_Check(result_tuple.ptr())) {
-    throw std::runtime_error(
+    throw xla::XlaRuntimeError(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
                         static_cast<std::string>(py::repr(result_tuple))));
   }
   if (PyTuple_Size(result_tuple.ptr()) != results_.size()) {
-    throw std::runtime_error(
+    throw xla::XlaRuntimeError(
         absl::StrFormat("CPU callback expected a tuple with %d results, got %d",
                         results_.size(), PyTuple_Size(result_tuple.ptr())));
   }
@@ -501,7 +548,7 @@ void CpuCallback::Call(void* result, void** arg_ptrs,
         PyTuple_GetItem(result_tuple.ptr(), i));
     if (results_[i].type == TOKEN) {
       if (!output.is_none()) {
-        throw std::runtime_error(absl::StrFormat(
+        throw xla::XlaRuntimeError(absl::StrFormat(
             "Token output from Python callback should be None, got %s",
             static_cast<std::string>(py::repr(output))));
       }
@@ -513,7 +560,7 @@ void CpuCallback::Call(void* result, void** arg_ptrs,
     absl::Span<int64_t const> dims(
         reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
     if (dims != results_[i].expected_dims) {
-      throw std::runtime_error(absl::StrFormat(
+      throw xla::XlaRuntimeError(absl::StrFormat(
           "Mismatched result shape for %d-th return value from CPU callback; "
           "expected array with dimensions %s, got %s",
           i, absl::StrJoin(results_[i].expected_dims, ","),
@@ -530,7 +577,7 @@ void CpuCallback::Call(void* result, void** arg_ptrs,
               results_[i].reversed_layout,
               /*input_layout=*/TransposePlan::Striding{strides});
       if (!plan.ok()) {
-        throw std::runtime_error(plan.status().ToString());
+        throw xla::XlaRuntimeError(plan.status().ToString());
       }
       plan.ValueOrDie()->Execute(array.data(), outputs[i]);
     }

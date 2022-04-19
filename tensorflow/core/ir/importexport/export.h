@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_GRAPHDEF_H_
 
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -33,6 +34,14 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+// Compute the name to use in GraphDef for a given Value (either the result of
+// an operation or a block operand if a function argument) and store the result
+// in the provided name string. The `control_ty` is the instance of the
+// `ControlType` to compare against and detect a control dependency case.
+tensorflow::Status GetValueName(Value operand, std::string &name,
+                                Type control_ty);
+
 // Exports a GraphFunc operation as a new entry in the function library,
 // overwriting any existing functions.
 tensorflow::Status ExportFunction(mlir::tfg::GraphFuncOp func_op,

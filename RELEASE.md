@@ -26,6 +26,13 @@
       from `tf.keras.layers.experimental.EinsumDense` to
       `tf.keras.layers.EinsumDense`.
 
+*   `tf.math`:
+
+    * Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the
+      optimized alternatives to `tf.math.top_k` on TPU. The performance
+      difference range from 8 to 100 times depending on the size of k.
+      When running on CPU and GPU, a non-optimized XLA kernel is used.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

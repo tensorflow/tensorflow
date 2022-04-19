@@ -21,3 +21,6 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
 
 // Checks if the data format is "NHWC".
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
+
+def FalseBoolAttr : AttrConstraint<
+  CPred<"!$_self.cast<BoolAttr>().getValue()">>;

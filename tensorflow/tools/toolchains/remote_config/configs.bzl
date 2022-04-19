@@ -256,6 +256,58 @@ def initialize_rbe_configs():
         python_install_path = "/usr/local",
     )
 
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-clang_manylinux2014-cuda11.1-cudnn8-tensorrt7.2",
+        compiler = "/clang11/bin/clang",
+        cuda_version = "11.1",
+        cudnn_version = "8",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.7", "3.8", "3.9", "3.10"],
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "7.2",
+        sysroot = "/dt9",
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-gcc9_manylinux2014-cuda11.1-cudnn8-tensorrt7.2",
+        compiler = "/dt9/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        cuda_version = "11.1",
+        cudnn_version = "8",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.7", "3.8", "3.9", "3.10"],
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "7.2",
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-clang_manylinux2014-cuda11.4-cudnn8.2-tensorrt7.2",
+        compiler = "/clang11/bin/clang",
+        cuda_version = "11.4",
+        cudnn_version = "8.2",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.7", "3.8", "3.9", "3.10"],
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "7.2",
+        sysroot = "/dt9",
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-gcc9_manylinux2014-cuda11.4-cudnn8.2-tensorrt7.2",
+        compiler = "/dt9/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        cuda_version = "11.4",
+        cudnn_version = "8.2",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.7", "3.8", "3.9", "3.10"],
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "7.2",
+        python_install_path = "/usr/local",
+    )
+
     tensorflow_rbe_win_config(
         name = "windows_py37",
         python_bin_path = "C:/Python37/python.exe",

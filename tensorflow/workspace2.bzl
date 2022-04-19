@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "422d6a76dfcc9f8830b3fc1602d50c7db76ad565310df54e78bd1a3f3bf0852b",
-        strip_prefix = "XNNPACK-5b5b61f38ebfc0ed7e930654300750c29920ade7",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/5b5b61f38ebfc0ed7e930654300750c29920ade7.zip"),
+        sha256 = "a481a9c4c9de0042cc2b3cf36ce7ba9fc93a2a07be009361e109ae2b566e209b",
+        strip_prefix = "XNNPACK-a9c0465458e185d8189f483b1bdd8965a3341838",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/a9c0465458e185d8189f483b1bdd8965a3341838.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -242,10 +242,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "d070e2ffc5476c496a6a872a6f246bfddce8e7797d6ba605a7c8d72866743bf9",
-        strip_prefix = "re2-506cfa4bffd060c06ec338ce50ea3468daa6c814",
+        sha256 = "b90430b2a9240df4459108b3e291be80ae92c68a47bc06ef2dc419c5724de061",
+        strip_prefix = "re2-a276a8c738735a0fe45a6ee590fe2df69bcf4502",
         system_build_file = "//third_party/systemlibs:re2.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/re2/archive/a276a8c738735a0fe45a6ee590fe2df69bcf4502.tar.gz"),
     )
 
     tf_http_archive(

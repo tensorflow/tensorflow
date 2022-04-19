@@ -53,6 +53,7 @@ td_library(
     name = "ptq_td_files",
     srcs = [
         "passes/lift_quantizable_spots_as_functions.td",
+        "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
         "passes/utils.td",
@@ -64,6 +65,19 @@ td_library(
         "@llvm-project//mlir:ArithmeticOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
+)
+
+gentbl_cc_library(
+    name = "prepare_lifting_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/prepare_lifting.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/prepare_lifting.td",
+    deps = [":ptq_td_files"],
 )
 
 gentbl_cc_library(
@@ -117,6 +131,8 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions.inc",
         "passes/post_quantize.cc",
+        "passes/prepare_lifting.cc",
+        "passes/prepare_lifting.inc",
         "passes/prepare_quantize.cc",
         "passes/prepare_quantize.inc",
         "passes/quantize.cc",

@@ -1905,6 +1905,34 @@ TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, b228599972) {
+  absl::string_view hlo_string = R"(
+HloModule entry, is_scheduled=true
+
+fused_computation {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %result0 = f32[2,3]{1,0} copy(%p0)
+  %result1 = f32[2,3]{1,0} copy(%p0)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(%result0, %result1)
+}
+
+ENTRY entry {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  %unused = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(%p0), kind=kLoop, calls=%fused_computation
+  %unused.0 = f32[2,3]{1,0} get-tuple-element(%unused), index=0
+  %unused.1 = f32[2,3]{1,0} get-tuple-element(%unused), index=1
+  %negate.0 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.0)
+  %negate.1 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.1)
+
+  ROOT %result = f32[2,3]{1,0} negate(%p1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest, b172243149) {
   // Tests for the failure in b/172243149, where if we skip processing
   // non-copy allocations that are in default memory can actually cause

@@ -302,10 +302,10 @@ add {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  %0 = "mhlo.convert"(%arg0) : (tensor<4xf32>) -> tensor<4xf64>
+  // CHECK-NEXT:  %0 = mhlo.convert(%arg0) : (tensor<4xf32>) -> tensor<4xf64>
   %convert.3 = f64[4] convert(f32[4] %Arg_0.1)
 
-  // CHECK-NEXT:  %1 = "mhlo.convert"(%arg1) : (tensor<4xf32>) -> tensor<4xf64>
+  // CHECK-NEXT:  %1 = mhlo.convert(%arg1) : (tensor<4xf32>) -> tensor<4xf64>
   %convert.4 = f64[4] convert(f32[4] %Arg_1.2)
 
   // CHECK-NEXT:  mhlo.add %0, %1
@@ -316,7 +316,7 @@ add {
 %test_cosine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT:  "mhlo.cosine"(%arg0) : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+  // CHECK-NEXT:  mhlo.cosine %arg0 : tensor<1x16x16x3xf32>
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
@@ -495,7 +495,7 @@ add {
 %test_exponential (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.exponential"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  mhlo.exponential %arg0 : tensor<16xf32>
   ROOT %exp.2 = f32[16] exponential(f32[16] %arg0.1)
 }
 
@@ -503,7 +503,7 @@ add {
 %test_expm1 (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK:  "mhlo.exponential_minus_one"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK:  mhlo.exponential_minus_one %arg0 : tensor<16xf32>
   ROOT %expm1.2 = f32[16] exponential-minus-one(f32[16] %arg0.1)
 }
 
@@ -519,7 +519,7 @@ add {
 %test_floor (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.floor"([[A0]]) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  mhlo.floor [[A0]] : tensor<16xf32>
   ROOT %floor.2 = f32[16] floor(f32[16] %arg0.1)
 }
 
@@ -557,7 +557,7 @@ add {
 %test_imag (Arg_0.1: c64[4]) -> f32[4] {
   %Arg_0.1 = c64[4] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.imag"(%arg0) : (tensor<4xcomplex<f32>>) -> tensor<4xf32>
+  // CHECK-NEXT:  mhlo.imag(%arg0) : (tensor<4xcomplex<f32>>) -> tensor<4xf32>
   ROOT %imag.3 = f32[4] imag(c64[4] %Arg_0.1)
 }
 
@@ -613,7 +613,7 @@ add {
 %test_log (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.log"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  mhlo.log %arg0 : tensor<16xf32>
   ROOT %log.2 = f32[16] log(f32[16] %arg0.1)
 }
 
@@ -621,7 +621,7 @@ add {
 %test_log1p (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK:  "mhlo.log_plus_one"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK:  mhlo.log_plus_one %arg0 : tensor<16xf32>
   ROOT %log1p.2 = f32[16] log-plus-one(f32[16] %arg0.1)
 }
 
@@ -697,7 +697,7 @@ add {
 %test_negate (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.negate"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  mhlo.negate %arg0 : tensor<16xf32>
   ROOT %negate.2 = f32[16] negate(f32[16] %arg0.1)
 }
 
@@ -705,7 +705,7 @@ add {
 %test_not (arg0.1: pred[16]) -> pred[16] {
   %arg0.1 = pred[16] parameter(0)
 
-  // CHECK:  "mhlo.not"(%arg0) : (tensor<16xi1>) -> tensor<16xi1>
+  // CHECK:  mhlo.not %arg0 : tensor<16xi1>
   ROOT %not.2 = pred[16] not(pred[16] %arg0.1)
 }
 
@@ -722,7 +722,7 @@ add {
 %test_logistic (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.logistic"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK-NEXT:  mhlo.logistic %arg0 : tensor<16xf32>
   ROOT %logistic.2 = f32[16] logistic(f32[16] %arg0.1)
 }
 
@@ -790,7 +790,7 @@ add {
 %test_popcnt (arg0.1: s32[16]) -> s32[16] {
   %arg0.1 = s32[16] parameter(0)
 
-  // CHECK:  "mhlo.popcnt"(%arg0) : (tensor<16xi32>) -> tensor<16xi32>
+  // CHECK:  mhlo.popcnt %arg0 : tensor<16xi32>
   ROOT %popcnt.2 = s32[16] popcnt(s32[16] %arg0.1)
 }
 
@@ -827,7 +827,7 @@ add {
 %test_real (Arg_0.1: c64[4]) -> f32[4] {
   %Arg_0.1 = c64[4] parameter(0)
 
-  // CHECK-NEXT:  "mhlo.real"(%arg0) : (tensor<4xcomplex<f32>>) -> tensor<4xf32>
+  // CHECK-NEXT:  mhlo.real(%arg0) : (tensor<4xcomplex<f32>>) -> tensor<4xf32>
   ROOT %real.3 = f32[4] real(c64[4] %Arg_0.1)
 }
 
@@ -1017,7 +1017,7 @@ add {
 %test_rsqrt (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
-  // CHECK:  "mhlo.rsqrt"([[ARG0]]) : (tensor<16xf32>) -> tensor<16xf32>
+  // CHECK:  mhlo.rsqrt [[ARG0]] : tensor<16xf32>
   ROOT %rsqrt.2 = f32[16] rsqrt(f32[16] %arg0.1)
 }
 
@@ -1169,7 +1169,7 @@ add {
 %test_sine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT:  "mhlo.sine"(%arg0) : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+  // CHECK-NEXT:  mhlo.sine %arg0 : tensor<1x16x16x3xf32>
   ROOT %sine.3 = f32[1,16,16,3]{3,2,1,0} sine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
@@ -1223,7 +1223,7 @@ add {
 %test_tanh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT:  "mhlo.tanh"(%arg0) : (tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+  // CHECK-NEXT:  mhlo.tanh %arg0 : tensor<1x16x16x3xf32>
   ROOT %tanh.3 = f32[1,16,16,3]{3,2,1,0} tanh(f32[1,16,16,3]{3,2,1,0} %arg0.1), metadata={op_type="Tanh" op_name="embedded_inference/tanh_model/Tanh"}
 }
 
@@ -1330,8 +1330,8 @@ add {
   %Arg_1.2 = c128[2] parameter(1)
   %abs.4 = f64[2] abs(c128[2] %Arg_1.2)
 
-  // CHECK:  "mhlo.abs"(%[[ARG0]]) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
-  // CHECK:  "mhlo.abs"(%[[ARG1]]) : (tensor<2xcomplex<f64>>) -> tensor<2xf64>
+  // CHECK:  mhlo.abs(%[[ARG0]]) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  // CHECK:  mhlo.abs(%[[ARG1]]) : (tensor<2xcomplex<f64>>) -> tensor<2xf64>
   ROOT %tuple.5 = (f32[2], f64[2]) tuple(f32[2] %abs.3, f64[2] %abs.4)
 }
 
@@ -1340,7 +1340,7 @@ add {
 %unsigned_int(Arg_0.1: u16[4]) -> u16[4] {
   %Arg_0.1 = u16[4] parameter(0)
 
-  // CHECK: "mhlo.not"(%[[ARG0]]) : (tensor<4xui16>) -> tensor<4xui16>
+  // CHECK: mhlo.not %[[ARG0]] : tensor<4xui16>
   ROOT %not.2 = u16[4] not(u16[4] %Arg_0.1)
 }
 
@@ -1349,7 +1349,7 @@ add {
 %rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
   // CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
-  // CHECK: %[[TUPLE:.+]] = "mhlo.tuple"(%[[RNG0]], %[[RNG1]]) {xla_shape = "(u64[3]{0}, u32[2,2]{1,0})"} : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>  
+  // CHECK: %[[TUPLE:.+]] = "mhlo.tuple"(%[[RNG0]], %[[RNG1]]) {xla_shape = "(u64[3]{0}, u32[2,2]{1,0})"} : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
   // CHECK: return %[[TUPLE]]
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
 }
@@ -1358,7 +1358,7 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
 %cbrt (Arg_0.1: f32[3,4]) -> f32[3,4] {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.cbrt"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: mhlo.cbrt %[[ARG0]] : tensor<3x4xf32>
   ROOT %cbrt = f32[3,4] cbrt(f32[3,4] %Arg_0.1)
 }
 

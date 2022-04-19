@@ -19,7 +19,7 @@ HloModule indexed_conditional
 
 // CHECK: "lmhlo.case"(%{{.*}}) ({
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.negate"
+// CHECK:   mhlo.negate
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
@@ -27,7 +27,7 @@ HloModule indexed_conditional
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.floor"
+// CHECK:   mhlo.floor
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : (memref<i32>) -> ()
 

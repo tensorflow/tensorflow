@@ -877,7 +877,6 @@ cc_library(
         ":node_def_proto_cc",
         ":node_def_util",
         ":op_def_proto_cc",
-        ":tensor",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
         "//tensorflow/core/lib/core:errors",

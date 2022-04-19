@@ -200,6 +200,7 @@ llvm::Optional<func::CallOp> IsSingleCallRegion(Region& region,
     if (it->getResult(0) != yield.getOperand(0)) return llvm::None;
     call_consumer = cast<ToBoolOp>(*it);
     it++;
+    if (it == block.rend()) return llvm::None;
   }
 
   // Check if there is a Call before the Yield.
