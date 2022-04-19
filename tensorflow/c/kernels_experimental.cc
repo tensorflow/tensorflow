@@ -211,7 +211,11 @@ void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
     OP_REQUIRES_OK(cc_ctx, s);
 
     TF_Tensor* tf_rhs = TF_TensorFromTensor(rhs, &s);
-    OP_REQUIRES_OK(cc_ctx, s);
+
+    if (!s.ok()) {
+      TF_DeleteTensor(tf_lhs);
+      OP_REQUIRES_OK(cc_ctx, s);
+    }
 
     copyFunc(ctx, tf_rhs, tf_lhs);
   };
