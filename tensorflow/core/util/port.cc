@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/port.h"
-
+#include "tensorflow/core/util/onednn_env_vars.h"
 
 namespace tensorflow {
 
@@ -59,11 +59,5 @@ bool GpuSupportsHalfMatMulAndConv() {
 #endif
 }
 
-bool IsMklEnabled() {
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
-  return true;
-#else
-  return false;
-#endif  // INTEL_MKL && ENABLE_MKL
-}
+bool IsMklEnabled() { return IsMKLEnabled(); }
 }  // end namespace tensorflow

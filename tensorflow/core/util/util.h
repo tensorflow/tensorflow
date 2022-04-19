@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 
 namespace tensorflow {
 
