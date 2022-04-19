@@ -465,14 +465,6 @@ absl::Status GPUOperationFromNodePart0(
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (attr.groups != 1) {
-          const int src_group_size = attr.weights.shape.i;
-          const int dst_group_size = attr.weights.shape.o / attr.groups;
-          if (src_group_size % 4 != 0 || dst_group_size % 4 != 0) {
-            return absl::UnimplementedError(
-                "No support of grouped convolution for this channels sizes.");
-          }
-        }
         if (!hints.Check(ModelHints::kNoWinogradOptimizations) &&
             WinogradFromNode(gpu_info, inputs, outputs, op_def, hints,
                              input_shape, output_shape, attr, gpu_subgraph)
@@ -480,7 +472,10 @@ absl::Status GPUOperationFromNodePart0(
           return absl::OkStatus();
         } else {
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-          if (!shared_conv_weights) {
+          if (attr.groups != 1) {
+            gpu_subgraph->operations[0].name = "convolution_2d_grouped";
+          }
+          if (!shared_conv_weights || attr.weights.id == -1) {
             *gpu_op =
                 SelectConvolution(attr, output_shape, gpu_info, op_def, hints);
           } else {
