@@ -405,7 +405,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
-  delete gpu_device_info_;
+  delete accelerator_device_info_;
   if (scratch_) gpu_allocator_->DeallocateRaw(scratch_);
   device_context_->Unref();
 }
@@ -488,15 +488,15 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
-  gpu_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
-  gpu_device_info_->stream = stream_->compute;
-  gpu_device_info_->default_context = device_context_;
-  gpu_device_info_->event_mgr = em_;
+  accelerator_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
+  accelerator_device_info_->stream = stream_->compute;
+  accelerator_device_info_->default_context = device_context_;
+  accelerator_device_info_->event_mgr = em_;
   PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id_, &platform_device_id));
-  gpu_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_accelerator_device_info(gpu_device_info_);
+  accelerator_device_info_->gpu_id = platform_device_id.value();
+  set_tensorflow_accelerator_device_info(accelerator_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we

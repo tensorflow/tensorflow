@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
@@ -238,6 +240,12 @@ std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
     const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def) {
   return absl::make_unique<GPUOperation>(
       CreateQuantizeAndDequantize(op_def, attr));
+}
+
+void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
+                std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateCast(op_def, gpu_info);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 }  // namespace gpu

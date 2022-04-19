@@ -508,6 +508,11 @@ GpuDevice::GpuDevice(int id,
 
 absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
 
+std::string GpuDevice::ToString() const {
+  return absl::StrFormat("GpuDevice(id=%i, process_index=%i)", id(),
+                         process_index());
+}
+
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id) {

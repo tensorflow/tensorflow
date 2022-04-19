@@ -18,14 +18,16 @@ from typing import List, Optional, Tuple
 from absl import logging
 import numpy as np
 
-from tensorflow.dtensor import python as dtensor
+from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _print_context(num_global_devices: int, num_clients: int, client_id: int,
-                   device_type: str, mesh: dtensor.Mesh) -> None:
+                   device_type: str, mesh: layout.Mesh) -> None:
   logging.info('This is client %d of %d clients', client_id, num_clients)
   logging.info('Number of global %s devices: %d', device_type.upper(),
                num_global_devices)
@@ -37,10 +39,11 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
   # pylint: enable=protected-access
 
 
+@tf_export('experimental.dtensor.create_mesh', v1=[])
 def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
                 mesh_name: str = '',
                 devices: Optional[List[str]] = None,
-                device_type: Optional[str] = None) -> dtensor.Mesh:
+                device_type: Optional[str] = None) -> layout.Mesh:
   """Creates a single-client mesh.
 
   If both `mesh_dims` and `devices` are specified, they must match each otehr.
@@ -87,7 +90,7 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
   shape = [d[1] for d in mesh_dims]
   global_device_ids = np.arange(len(devices)).reshape(shape)
   local_device_ids = np.ravel(global_device_ids).tolist()
-  mesh = dtensor.Mesh(
+  mesh = layout.Mesh(
       dim_names=dim_names,
       global_device_ids=global_device_ids,
       local_device_ids=local_device_ids,
@@ -102,12 +105,13 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
   return mesh
 
 
+@tf_export('experimental.dtensor.create_distributed_mesh', v1=[])
 def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
                             mesh_name: str = '',
                             num_global_devices: Optional[int] = None,
                             num_clients: Optional[int] = None,
                             client_id: Optional[int] = None,
-                            device_type: str = 'CPU') -> dtensor.Mesh:
+                            device_type: str = 'CPU') -> layout.Mesh:
   """Creates a single- or multi-client mesh.
 
   For CPU and GPU meshes, users can choose to use fewer local devices than what
@@ -138,17 +142,17 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     # This is particularly useful on single clients when users want to create
     # meshes that use fewer logical devices than what's available.
     if num_global_devices is None:
-      num_global_devices = dtensor.num_global_devices(device_type)
+      num_global_devices = api.num_global_devices(device_type)
     if num_global_devices <= 0:
       raise ValueError(f'num_global_devices ({num_global_devices}) must be > 0')
 
     if num_clients is None:
-      num_clients = dtensor.num_clients()
+      num_clients = api.num_clients()
     if num_clients <= 0:
       raise ValueError(f'num_clients ({num_clients}) must be > 0')
 
     if client_id is None:
-      client_id = dtensor.client_id()
+      client_id = api.client_id()
     if client_id < 0:
       raise ValueError(f'client_id ({client_id}) must be >= 0')
     if client_id >= num_clients:
@@ -161,12 +165,12 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
 
     # It's allowed to create a CPU or GPU mesh using fewer logical devices than
     # what's available. If so, just use the first N logical devices.
-    num_available_devices = dtensor.num_local_devices(device_type)
+    num_available_devices = api.num_local_devices(device_type)
     if num_local_devices > num_available_devices:
       raise ValueError(f'Not enough devices; {num_local_devices} needed, '
                        f'only {num_available_devices} available')
-    local_devices = dtensor.local_devices(device_type,
-                                          client_id)[:num_local_devices]
+    local_devices = api.local_devices(device_type,
+                                      client_id)[:num_local_devices]
 
     dim_names = [d[0] for d in mesh_dims]
     shape = [d[1] for d in mesh_dims]
@@ -175,7 +179,7 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     start_idx = num_local_devices * client_id
     local_device_ids = flattened[start_idx:start_idx + num_local_devices]
 
-    mesh = dtensor.Mesh(
+    mesh = layout.Mesh(
         dim_names=dim_names,
         global_device_ids=global_device_ids,
         local_device_ids=local_device_ids,
@@ -207,8 +211,8 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     shape = [mesh_dim[1] for mesh_dim in mesh_dims]
     mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name)
     _print_context(
-        dtensor.num_global_devices(device_type), dtensor.num_clients(),
-        dtensor.client_id(), device_type, mesh)
+        api.num_global_devices(device_type), api.num_clients(), api.client_id(),
+        device_type, mesh)
     return mesh
 
   raise ValueError(f'Device type {device_type} is not CPU, GPU or TPU')

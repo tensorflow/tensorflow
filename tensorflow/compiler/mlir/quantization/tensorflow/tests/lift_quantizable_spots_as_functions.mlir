@@ -89,6 +89,46 @@ func.func @float_conv_strides_equals_to_dilations(%arg0: tensor<1x3x4x3xf32>, %a
 
 // -----
 
+// CHECK-LABEL: float_depthwise_conv
+func.func @float_depthwise_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x1xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
+  %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1]
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
+  %1 = "tf.BiasAdd"(%0, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+  %2 = "tf.Relu6"(%1) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+  %3 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1]
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
+  %4 = "tf.BiasAdd"(%3, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+  %5 = "tf.Relu"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+  %6 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1]
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
+  %7 = "tf.BiasAdd"(%6, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+  func.return %2, %5, %7 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+
+// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
+// CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
+// CHECK-SAME: f = @fused_depthwise_conv2d_with_bias_and_relu6_fn_1}
+// CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
+// CHECK-SAME: f = @fused_depthwise_conv2d_with_bias_and_relu_fn_1}
+// CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
+// CHECK-SAME: f = @fused_depthwise_conv2d_with_bias_fn_1}
+// CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
+// CHECK: }
+}
+
+// -----
+
 // CHECK-LABEL: float_matmul
 func.func @float_matmul(
   %arg0: tensor<1x10xf32>, %arg1: tensor<10x10xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
@@ -173,6 +213,45 @@ func.func @float_conv_no_bias(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2x
 // CHECK-LABEL: private @fused_conv2d_with_relu6_fn_1
 // CHECK-LABEL: private @fused_conv2d_with_relu_fn_1
 // CHECK-LABEL: private @fused_conv2d_fn_1
+}
+
+// -----
+
+// CHECK-LABEL: float_depthwise_conv_no_bias
+func.func @float_depthwise_conv_no_bias(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x1xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
+  %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1]
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
+  %1 = "tf.Relu6"(%0) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+  %3 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1]
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
+  %4 = "tf.Relu"(%3) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+  %6 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1]
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xf32>) -> tensor<*xf32>
+  func.return %1, %4, %6 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
+// CHECK-SAME: f = @fused_depthwise_conv2d_with_relu6_fn_1}
+// CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: f = @fused_depthwise_conv2d_with_relu_fn_1}
+// CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: f = @fused_depthwise_conv2d_fn_1}
+// CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
+// CHECK: }
+
+// CHECK-LABEL: private @fused_depthwise_conv2d_with_relu6_fn_1
+// CHECK-LABEL: private @fused_depthwise_conv2d_with_relu_fn_1
+// CHECK-LABEL: private @fused_depthwise_conv2d_fn_1
 }
 
 // -----

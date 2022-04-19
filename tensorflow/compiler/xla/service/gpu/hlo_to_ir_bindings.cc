@@ -172,11 +172,12 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
       << "IrEmitterUnnested should instead use LMHLO to get the IrArray";
 
   llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
+  Shape new_shape = ShapeUtil::GetSubshape(hlo.shape(), shape_index);
+  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(new_shape, module_);
   CHECK_NE(base_ptr, nullptr)
       << "Buffer not assigned for shape_index " << shape_index.ToString()
       << " of " << hlo.ToString();
-  llvm_ir::IrArray ir_array(base_ptr,
-                            ShapeUtil::GetSubshape(hlo.shape(), shape_index));
+  llvm_ir::IrArray ir_array(base_ptr, pointee_type, new_shape);
 
   return ir_array;
 }

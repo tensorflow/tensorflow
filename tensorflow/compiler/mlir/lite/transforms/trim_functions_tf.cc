@@ -46,6 +46,8 @@ namespace {
 class TrimFunctionsPass
     : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TrimFunctionsPass)
+
   explicit TrimFunctionsPass() : trim_funcs_allowlist_(trim_funcs_allowlist) {}
   explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist)
       : trim_funcs_allowlist_(trim_funcs_allowlist) {}

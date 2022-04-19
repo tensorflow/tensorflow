@@ -93,6 +93,9 @@ inline bool IsNonConstQuantizeOp(Operation* op) {
 class RaiseTargetSubgraphsPass
     : public mlir::PassWrapper<RaiseTargetSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseTargetSubgraphsPass)
+
  private:
   llvm::StringRef getArgument() const final {
     return "tfl-raise-target-subgraphs";

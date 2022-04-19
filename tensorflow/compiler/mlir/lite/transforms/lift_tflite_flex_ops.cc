@@ -232,6 +232,8 @@ class LiftTfliteFlexOpsPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LiftTfliteFlexOpsPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-lift-tflite-flex-ops";
   }

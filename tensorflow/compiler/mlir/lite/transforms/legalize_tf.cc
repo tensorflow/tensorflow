@@ -80,6 +80,8 @@ class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTF)
+
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF&) {}
   explicit LegalizeTF(bool run_tfl_runtime_verification,

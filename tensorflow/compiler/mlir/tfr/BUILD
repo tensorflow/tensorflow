@@ -250,6 +250,7 @@ tf_cc_test(
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

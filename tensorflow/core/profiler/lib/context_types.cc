@@ -38,6 +38,8 @@ const char* GetContextTypeString(ContextType context_type) {
       return "tpu_embed";
     case ContextType::kGpuLaunch:
       return "gpu_launch";
+    case ContextType::kBatcher:
+      return "batcher";
   }
 }
 

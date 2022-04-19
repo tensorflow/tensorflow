@@ -1872,6 +1872,12 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
     }
     return false;
   };
+  auto tensorIsOutput = [&](int index) {
+    for (int idx : outputs_) {
+      if (idx == index) return true;
+    }
+    return false;
+  };
   // Release dynamic tensor's memory if the current node is the last one that
   // uses the tensor.
   for (int input_index = 0; input_index < node.inputs->size; ++input_index) {
@@ -1880,7 +1886,7 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
     if (!input_tensor || input_tensor->allocation_type != kTfLiteDynamic ||
         input_tensor->type == kTfLiteString ||
         input_tensor->type == kTfLiteResource ||
-        tensorIsInput(input_tensor_index))
+        tensorIsInput(input_tensor_index) || tensorIsOutput(input_tensor_index))
       continue;
     auto it = tensor_to_last_op_index_.find(input_tensor_index);
     if (it != tensor_to_last_op_index_.end() && it->second == node_index) {

@@ -26,6 +26,8 @@ namespace {
 class RuntimeVerifyPass
     : public mlir::PassWrapper<RuntimeVerifyPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RuntimeVerifyPass)
+
   explicit RuntimeVerifyPass() {}
 
   StringRef getArgument() const final {

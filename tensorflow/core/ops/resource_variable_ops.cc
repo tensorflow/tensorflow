@@ -434,4 +434,8 @@ REGISTER_OP("ConsumeMutexLock")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
+REGISTER_OP("DisableCopyOnRead")
+    .Input("resource: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 }  // namespace tensorflow

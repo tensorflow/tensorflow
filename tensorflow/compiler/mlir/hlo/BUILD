@@ -1608,11 +1608,13 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":lower_index_cast",
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
+        ":shape_simplification",
         ":sink_constants_to_control_flow",
         ":symbolic_shape_optimization",
         ":test_passes",
@@ -1813,6 +1815,50 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lower_index_cast",
+    srcs = [
+        "lib/Transforms/lower_index_cast_pass.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "shape_simplification",
+    srcs = [
+        "lib/Transforms/shape_simplification.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:kernel_gen_passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
 CAPI_HEADERS = [
     "include/mlir-hlo-c/Attributes.h",
     "include/mlir-hlo-c/Dialects.h",
@@ -2007,6 +2053,7 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
     ],

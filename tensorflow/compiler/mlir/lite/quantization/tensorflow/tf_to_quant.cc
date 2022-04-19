@@ -29,6 +29,8 @@ namespace {
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
 struct LegalizeTFToQuant
     : public PassWrapper<LegalizeTFToQuant, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTFToQuant)
+
   explicit LegalizeTFToQuant() = default;
   LegalizeTFToQuant(const LegalizeTFToQuant &) {}
 

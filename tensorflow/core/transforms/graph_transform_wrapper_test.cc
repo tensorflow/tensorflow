@@ -31,6 +31,8 @@ namespace {
 // Testing pass that deletes a single op from the Graph. This assumes the
 // graph created below.
 struct TestPass : public PassWrapper<TestPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestPass)
+
   TestPass() = default;
   StringRef getArgument() const final { return "test"; }
   void runOnOperation() override {

@@ -40,6 +40,8 @@ class DecomposeHybridQuantizationPass
     : public PassWrapper<DecomposeHybridQuantizationPass,
                          OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeHybridQuantizationPass)
+
   DecomposeHybridQuantizationPass() = default;
   DecomposeHybridQuantizationPass(const DecomposeHybridQuantizationPass &) {}
 

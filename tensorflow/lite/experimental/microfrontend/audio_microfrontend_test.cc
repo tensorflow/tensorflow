@@ -135,7 +135,7 @@ class BaseMicroFrontendTest : public ::testing::Test {
     micro_frontend->SetInput(input);
 
     // Call Invoke.
-    ASSERT_EQ(micro_frontend->InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(micro_frontend->Invoke(), kTfLiteOk);
 
     // Mimic padding behaviour with zero_padding = true.
     std::vector<int> output_flattened;

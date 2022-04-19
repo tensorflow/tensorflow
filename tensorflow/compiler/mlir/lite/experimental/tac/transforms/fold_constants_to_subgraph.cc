@@ -60,6 +60,8 @@ class FoldConstantsToSubgraphPass
     : public mlir::PassWrapper<FoldConstantsToSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FoldConstantsToSubgraphPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-fold-constants-to-subgraph";
   }

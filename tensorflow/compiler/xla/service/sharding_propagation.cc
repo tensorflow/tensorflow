@@ -225,6 +225,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:

@@ -39,6 +39,8 @@ namespace {
 class PostQuantizePass
     : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
+
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit PostQuantizePass() {}
 

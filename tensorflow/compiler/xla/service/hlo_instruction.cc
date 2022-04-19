@@ -1038,6 +1038,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCollectivePermuteDone:
@@ -1992,6 +1993,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
@@ -2459,6 +2461,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -2892,6 +2895,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
@@ -3391,6 +3395,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
+    case HloOpcode::kRoundNearestEven:
+      return visitor->HandleRoundNearestEven(this);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kBatchNormInference:
