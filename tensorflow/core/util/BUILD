@@ -484,7 +484,7 @@ cc_library(
 cc_library(
     name = "port",
     srcs = ["port.cc"],
-    hdrs = ["port.h"],
+    hdrs = ["port.h", "onednn_env_vars.h"],
     copts = tf_copts(),
     visibility = [
         "//tensorflow/core:__pkg__",

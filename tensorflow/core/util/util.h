@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 
 namespace tensorflow {
 
@@ -55,9 +56,6 @@ std::string PrintMemory(const char* ptr, size_t n);
 // StrAppend("tensor", s) is a Python indexing expression.  E.g.,
 // "tensor", "tensor[i]", "tensor[i, j]", etc.
 std::string SliceDebugString(const TensorShape& shape, const int64_t flat);
-
-// Check if MKL is enabled in runtime
-bool IsMKLEnabled();
 
 }  // namespace tensorflow
 
