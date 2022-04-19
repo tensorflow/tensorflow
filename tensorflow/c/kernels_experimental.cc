@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
 #include "tensorflow/core/kernels/tensor_list.h"
 #include "tensorflow/core/kernels/tensor_list_util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -414,8 +413,8 @@ static Status ValidateVariantType(const Variant& variant) {
 
 void TF_AddNVariant(TF_OpKernelContext* ctx,
                     void (*binary_add_func)(TF_OpKernelContext* ctx,
-                                            const TF_Tensor* a,
-                                            const TF_Tensor* b, TF_Tensor* out),
+                                            TF_Tensor* a, TF_Tensor* b,
+                                            TF_Tensor* out),
                     TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
 
@@ -433,28 +432,33 @@ void TF_AddNVariant(TF_OpKernelContext* ctx,
     }
 
     Status status;
-
     TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
     TF_RETURN_IF_ERROR(status);
-    auto a_cleanup =
-        tensorflow::gtl::MakeCleanup([a]() { TF_DeleteTensor(a); });
 
     TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
-    TF_RETURN_IF_ERROR(status);
-    auto b_cleanup =
-        tensorflow::gtl::MakeCleanup([b]() { TF_DeleteTensor(b); });
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      return status;
+    }
 
     ::tensorflow::AllocatorAttributes attr;
     if (cc_a.dtype() == TF_VARIANT) {
       attr.set_on_host(true);
     }
-    TF_RETURN_IF_ERROR(
-        cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr));
+
+    status = cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      TF_DeleteTensor(b);
+      return status;
+    }
 
     TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
-    TF_RETURN_IF_ERROR(status);
-    auto out_cleanup =
-        tensorflow::gtl::MakeCleanup([out]() { TF_DeleteTensor(out); });
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      TF_DeleteTensor(b);
+      return status;
+    }
 
     auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
     binary_add_func(ctx, a, b, out);
@@ -508,7 +512,7 @@ void TF_AddNVariant(TF_OpKernelContext* ctx,
 static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
                                const Variant& input, Variant* out,
                                void (*zeros_like_func)(TF_OpKernelContext* ctx,
-                                                       const TF_Tensor* input,
+                                                       TF_Tensor* input,
                                                        TF_Tensor* out)) {
   auto cc_zeros_like_func = [zeros_like_func](
                                 ::tensorflow::OpKernelContext* cc_ctx,
@@ -538,13 +542,12 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
         Status status;
         TF_Tensor* input = TF_TensorFromTensor(cc_input, &status);
         TF_RETURN_IF_ERROR(status);
-        auto input_cleanup =
-            tensorflow::gtl::MakeCleanup([input]() { TF_DeleteTensor(input); });
 
         TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
-        TF_RETURN_IF_ERROR(status);
-        auto out_cleanup =
-            tensorflow::gtl::MakeCleanup([out]() { TF_DeleteTensor(out); });
+        if (!status.ok()) {
+          TF_DeleteTensor(input);
+          return status;
+        }
 
         auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
         zeros_like_func(ctx, input, out);
@@ -585,7 +588,7 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
 
 void TF_ZerosLikeVariant(TF_OpKernelContext* ctx,
                          void (*zeros_like_func)(TF_OpKernelContext* ctx,
-                                                 const TF_Tensor* input,
+                                                 TF_Tensor* input,
                                                  TF_Tensor* out),
                          TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
