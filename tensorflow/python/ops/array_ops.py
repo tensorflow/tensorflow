@@ -2809,7 +2809,7 @@ def tensor_diag_part(
     A Tensor containing diagonals of `input`. Has the same type as `input`, and
     rank `k`.
   """
-  if tf.rank(input)/len(input[0]) != 2:
+  if rank(input)/len(input[0]) != 2:
         raise ValueError("Input should have rank 2k")
   return gen_array_ops.diag_part(input=input, name=name)
 
