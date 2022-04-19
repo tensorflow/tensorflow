@@ -518,12 +518,12 @@ def full_job_name(task_id: Optional[int] = None) -> str:
 
 
 def _task_id(job: str) -> Union[int, str]:
-  """Tries to extract an integer task ID from a Borg job name.
+  """Tries to extract an integer task ID from a job name.
 
-  For example, for `job` = '/bns/.../tpu_worker/0:port_name', return 0.
+  For example, for `job` = '/.../tpu_worker/0:port_name', return 0.
 
   Args:
-    job: A BNS job name to extract task ID from.
+    job: A job name to extract task ID from.
 
   Returns:
     The task ID on success, or the original job name on failure.
@@ -537,7 +537,7 @@ def _task_id(job: str) -> Union[int, str]:
 
 @tf_export("experimental.dtensor.jobs", v1=[])
 def jobs() -> List[str]:
-  """Returns a list of Borg job names of all clients in this DTensor cluster."""
+  """Returns a list of job names of all clients in this DTensor cluster."""
   d_jobs = os.environ.get(_DT_JOBS)
   if d_jobs is None:
     return []
