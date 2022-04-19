@@ -1541,9 +1541,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     either in the specified file or in memory. Subsequent iterations will
     use the cached data.
 
-    Note: For the cache to be finalized, the input dataset must be iterated
-    through in its entirety. Otherwise, subsequent iterations will not use
-    cached data.
+    Note: To guarantee that the cache gets finalized, the input dataset must be
+    iterated through in its entirety, until it raises StopIteration. Otherwise,
+    subsequent iterations may not use cached data.
 
     >>> dataset = tf.data.Dataset.range(5)
     >>> dataset = dataset.map(lambda x: x**2)
