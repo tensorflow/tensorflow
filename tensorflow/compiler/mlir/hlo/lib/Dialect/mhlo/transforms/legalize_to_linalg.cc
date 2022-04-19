@@ -3130,7 +3130,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                 ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass() {
   return std::make_unique<HloLegalizeToLinalgPass>();
 }
 

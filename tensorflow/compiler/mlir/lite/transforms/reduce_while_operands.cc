@@ -53,7 +53,7 @@ namespace TFL {
 namespace {
 
 struct ReduceWhileOperandsPass
-    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceWhileOperandsPass)
 
@@ -298,7 +298,7 @@ void ReduceWhileOperandsPass::runOnOperation() {
 static PassRegistration<ReduceWhileOperandsPass> pass;
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass() {
   return std::make_unique<ReduceWhileOperandsPass>();
 }
 

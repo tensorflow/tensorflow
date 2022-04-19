@@ -10506,8 +10506,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
     // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
   }];
 
@@ -20839,7 +20839,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 
   let extraClassDeclaration = [{
-    FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+    func::FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
   }];
 
   let hasVerifier = 1;

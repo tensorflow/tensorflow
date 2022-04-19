@@ -149,7 +149,7 @@ void ReplicateInvariantOpHoistingPass::runOnOperation() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicateInvariantOpHoistingPass() {
   return std::make_unique<ReplicateInvariantOpHoistingPass>();
 }

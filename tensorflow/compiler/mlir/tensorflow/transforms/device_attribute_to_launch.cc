@@ -67,7 +67,8 @@ void DeviceAttributeToLaunch::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceAttributeToLaunchPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDeviceAttributeToLaunchPass() {
   return std::make_unique<DeviceAttributeToLaunch>();
 }
 

@@ -78,7 +78,7 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createChloLegalizeToHloPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalize_broadcasts, bool expand_compositions) {
   return std::make_unique<ChloLegalizeToHloPass>(legalize_broadcasts,
                                                  expand_compositions);

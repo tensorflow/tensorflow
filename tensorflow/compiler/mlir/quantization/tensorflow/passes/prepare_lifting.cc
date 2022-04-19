@@ -28,7 +28,7 @@ namespace quant {
 namespace {
 
 class PrepareLiftingPass
-    : public PassWrapper<PrepareLiftingPass, OperationPass<FuncOp>> {
+    : public PassWrapper<PrepareLiftingPass, OperationPass<func::FuncOp>> {
  public:
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -63,7 +63,7 @@ void PrepareLiftingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareLiftingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass() {
   return std::make_unique<PrepareLiftingPass>();
 }
 

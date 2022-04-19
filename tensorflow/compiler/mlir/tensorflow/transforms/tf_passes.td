@@ -2111,7 +2111,7 @@ def TPUDynamicLayoutPass : Pass<"tf-tpu-dynamic-layout-pass", "ModuleOp"> {
   }];
 }
 
-def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "FuncOp"> {
+def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "mlir::func::FuncOp"> {
   let summary = "Fold tf.DeviceIndex to constant.";
   let constructor = "TF::CreateDeviceIndexSelectorPass()";
 }

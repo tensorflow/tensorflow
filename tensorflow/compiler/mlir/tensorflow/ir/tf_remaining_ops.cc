@@ -98,7 +98,7 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
            << status.error_message();
   }
 
-  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+  func::FuncOp func = module_for_func->lookupSymbol<func::FuncOp>("host_func");
   if (!func)
     return op.emitError()
            << "serialized module in attribute 'host_mlir_module' does not "
@@ -120,13 +120,13 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+func::FuncOp _XlaHostComputeMlirOp::GetHostFunc(
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
-  return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+  return (*mlir_module)->lookupSymbol<func::FuncOp>("host_func");
 }
 
 //===----------------------------------------------------------------------===//

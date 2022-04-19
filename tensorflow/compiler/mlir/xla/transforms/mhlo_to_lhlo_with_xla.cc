@@ -1494,8 +1494,8 @@ Status LhloDialectEmitter::Initialize() {
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.
-  auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
-                                builder_.getFunctionType({}, {}));
+  auto func_op = func::FuncOp::create(builder_.getUnknownLoc(), function_name,
+                                      builder_.getFunctionType({}, {}));
 
   {
     // This is an optional attribute used by the XLA backend. If the resulting

@@ -104,7 +104,8 @@ struct TestInferShapedTypeMethodsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 

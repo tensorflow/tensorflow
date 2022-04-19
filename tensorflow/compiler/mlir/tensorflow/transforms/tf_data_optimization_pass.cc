@@ -38,7 +38,7 @@ struct TFDataOptimization
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFDataOptimizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFDataOptimizationPass() {
   return std::make_unique<TFDataOptimization>();
 }
 

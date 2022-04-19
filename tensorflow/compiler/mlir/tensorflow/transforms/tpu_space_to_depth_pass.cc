@@ -69,14 +69,14 @@ struct TPUSpaceToDepthPass
 };
 
 // Updates func argument type to have the updated input shape.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   auto arg_types = func.front().getArgumentTypes();
   auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(func.getContext(), arg_types, result_types));
 }
 
 void HandleFuncOp(Operation* op) {
-  auto func = llvm::cast<FuncOp>(op);
+  auto func = llvm::cast<func::FuncOp>(op);
   UpdateFuncType(func);
 }
 

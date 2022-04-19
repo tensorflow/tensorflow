@@ -84,11 +84,11 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
-  llvm::SmallVector<FuncOp, 4> referenced({entry_func});
+  llvm::SmallVector<func::FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -105,7 +105,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<func::FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -113,7 +113,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+      func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
           use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
@@ -355,8 +355,9 @@ Operation* BuildCompileOp(
   }
 
   FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
-  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-      func_attr.getValue());
+  func::FuncOp func =
+      cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
+          func_attr.getValue());
 
   std::string txt_module;
   if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;

@@ -552,7 +552,7 @@ class ConvertToHloModule {
       return module_.emitError(
           "conversion requires module with `main` function");
 
-    for (auto func : module_.getOps<FuncOp>()) {
+    for (auto func : module_.getOps<func::FuncOp>()) {
       if (func.empty()) continue;
       if (failed(RunOnFunction(func))) return failure();
     }
@@ -595,12 +595,12 @@ class ConvertToHloModule {
 
   // Look up a symbol with the specified name, returning null if no such name
   // exists.
-  FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
+  func::FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
     return module_.lookupSymbol<mlir::func::FuncOp>(symbol);
   }
 
   // Get Reference to lowered XLA computation for a function.
-  xla::XlaComputation& GetLoweredComputation(FuncOp func) {
+  xla::XlaComputation& GetLoweredComputation(func::FuncOp func) {
     return lowered_computation_[func];
   }
 

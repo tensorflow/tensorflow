@@ -348,7 +348,7 @@ struct LegalizeControlFlowPass
     : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
   void runOnOperation() override {
-    FuncOp f = getOperation();
+    func::FuncOp f = getOperation();
     MLIRContext* ctx = f.getContext();
 
     RewritePatternSet patterns(&getContext());

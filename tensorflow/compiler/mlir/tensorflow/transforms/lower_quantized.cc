@@ -37,7 +37,7 @@ class LowerQuantizedPass : public LowerQuantizedPassBase<LowerQuantizedPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerQuantizedPass() {
   return std::make_unique<LowerQuantizedPass>();
 }
 

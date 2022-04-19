@@ -89,9 +89,9 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   }
 
   // Copy all functions used by this signature to the final MLIR module.
-  for (FuncOp func : module_ref->getOps<FuncOp>()) {
+  for (func::FuncOp func : module_ref->getOps<func::FuncOp>()) {
     // Set the function to private.
-    FuncOp new_func = func.clone();
+    func::FuncOp new_func = func.clone();
     new_func.setPrivate();
     // The insert here is a NO-OP if the function already exists.
     symbol_table.insert(new_func);

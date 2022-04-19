@@ -92,7 +92,8 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-class OptimizePass : public PassWrapper<OptimizePass, OperationPass<FuncOp>> {
+class OptimizePass
+    : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
 
@@ -1697,7 +1698,7 @@ void OptimizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
     bool enable_canonicalization) {
   return std::make_unique<OptimizePass>(enable_canonicalization);
 }

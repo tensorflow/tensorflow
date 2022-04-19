@@ -133,7 +133,7 @@ void TPUReorderReplicateAndPartitionedInputsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUReorderReplicateAndPartitionedInputsPass() {
   return std::make_unique<TPUReorderReplicateAndPartitionedInputsPass>();
 }

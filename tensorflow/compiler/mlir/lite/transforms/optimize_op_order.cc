@@ -103,7 +103,7 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 // This transformation pass optimizes the op execution order of the ops in the
 // model.
 struct OptimizeOpOrderPass
-    : public PassWrapper<OptimizeOpOrderPass, OperationPass<FuncOp>> {
+    : public PassWrapper<OptimizeOpOrderPass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeOpOrderPass)
 
   void runOnOperation() override;
@@ -131,7 +131,7 @@ void OptimizeOpOrderPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite optimize op order pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeOpOrderPass() {
   return std::make_unique<OptimizeOpOrderPass>();
 }
 

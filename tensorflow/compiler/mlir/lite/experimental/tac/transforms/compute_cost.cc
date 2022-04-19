@@ -85,7 +85,7 @@ class ComputeCostPass
 void ComputeCostPass::runOnOperation() {
   auto module = getOperation();
 
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     // We only care about those functions annotated with "tac.interface_name".
     auto interface_name = GetInterFaceName(func);
     if (!interface_name.hasValue()) continue;

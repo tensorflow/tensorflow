@@ -145,8 +145,8 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
     // will be the operations inside the function body rather than representing
     // them in the function signature.
     FunctionType func_type = rewriter.getFunctionType({}, {});
-    FuncOp func = rewriter.create<FuncOp>(loc, kImportModelDefaultGraphFuncName,
-                                          func_type);
+    func::FuncOp func = rewriter.create<func::FuncOp>(
+        loc, kImportModelDefaultGraphFuncName, func_type);
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     auto executor_graph =
         rewriter.create<tf_executor::GraphOp>(loc, func_type.getResults());
@@ -178,7 +178,7 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     Location loc = graph_func.getLoc();
     FunctionType ftype = graph_func.getFunctionType();
 
-    FuncOp func = rewriter.create<FuncOp>(
+    func::FuncOp func = rewriter.create<func::FuncOp>(
         graph_func.getLoc(),
         graph_func->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
             .getValue(),
@@ -502,7 +502,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalDialect<tf_executor::TensorFlowExecutorDialect>();
   target.addLegalOp<ModuleOp>();
-  target.addLegalOp<FuncOp>();
+  target.addLegalOp<func::FuncOp>();
   target.addLegalOp<func::ReturnOp>();
 
   RewritePatternSet patterns(&context);

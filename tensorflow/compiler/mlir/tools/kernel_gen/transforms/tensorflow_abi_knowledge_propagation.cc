@@ -45,7 +45,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     : public PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
   void runOnOperation() override {
-    FuncOp function = getOperation();
+    func::FuncOp function = getOperation();
     llvm::SmallVector<Value, 4> worklist;
     // We currently only handle entry functions and do not propagate across
     // functions.
@@ -210,7 +210,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateTfAbiKnowledgeToKernels() {
   return std::make_unique<PropagateTfAbiKnowledgeToKernelsPass>();
 }

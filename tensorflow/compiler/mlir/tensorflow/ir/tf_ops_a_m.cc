@@ -830,7 +830,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()

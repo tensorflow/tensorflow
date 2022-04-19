@@ -135,7 +135,7 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
   };
 
   // Insert while_cond function.
-  rewriter.setInsertionPoint(while_op->getParentOfType<FuncOp>());
+  rewriter.setInsertionPoint(while_op->getParentOfType<func::FuncOp>());
   auto cond_func_type = rewriter.getFunctionType(argument_types, i1_type);
   auto cond_func = rewriter.create<func::FuncOp>(while_op.cond().getLoc(),
                                                  "while_cond", cond_func_type);

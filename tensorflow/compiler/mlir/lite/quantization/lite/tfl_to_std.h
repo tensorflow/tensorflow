@@ -23,20 +23,21 @@ namespace TFL {
 
 // Converts all the tfl.quantize/tfl.dequantize ops to the ops in the mlir.quant
 // dialect ones in the function.
-void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func);
+void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func);
 
 // Converts all the mlir.quant dialect ops to the tfl.quantize/tfl.dequantize
 // ops in the function.
-void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func);
+void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func);
 
 // A helper class to convert target function to another representation using
 // `ConvertForward` function during construction and convert target function
 // back to the original representation using `ConvertBackward` function during
 // deconstruction.
-template <void (*ConvertForward)(FuncOp), void (*ConvertBackward)(FuncOp)>
+template <void (*ConvertForward)(func::FuncOp),
+          void (*ConvertBackward)(func::FuncOp)>
 class ScopedOpsConverter {
  public:
-  explicit ScopedOpsConverter(FuncOp func) : func_(func) {
+  explicit ScopedOpsConverter(func::FuncOp func) : func_(func) {
     ConvertForward(func_);
   }
 
@@ -48,7 +49,7 @@ class ScopedOpsConverter {
   ~ScopedOpsConverter() { ConvertBackward(func_); }
 
  private:
-  FuncOp func_;
+  func::FuncOp func_;
 };
 
 using ScopedTFLQuantOpsToMlirQuantOpsConverter =

@@ -2352,7 +2352,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
 }
 
 // Creates an instance of the TensorFlow dialect LegalizeTF pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass() {
   return std::make_unique<LegalizeTF>();
 }
 
