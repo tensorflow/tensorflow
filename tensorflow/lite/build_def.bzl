@@ -23,6 +23,9 @@ def tflite_copts():
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
+        clean_dep("//tensorflow:linux_x86_64"): [
+            "-msse4.2",
+        ],
         clean_dep("//tensorflow:windows"): [
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
