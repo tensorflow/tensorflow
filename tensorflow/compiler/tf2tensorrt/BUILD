@@ -612,6 +612,7 @@ tf_cuda_library(
         "convert/ops/data_format_vec_permute.cc",
         "convert/ops/einsum.cc",
         "convert/ops/fill_ops.cc",
+        "convert/ops/like_ops.cc",
         "convert/ops/quantization_ops.cc",
         "convert/ops/slice_ops.cc",
         "convert/ops/tile.cc",

@@ -3551,6 +3551,60 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
   }
 }
 
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
+  auto get_node = [&](int value) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+    if (value == 0) {
+      auto zeros_like = ops::ZerosLike(s.WithOpName("Zeros"), input);
+      return zeros_like.operation.node()->def();
+    }
+    auto ones_like = ops::OnesLike(s.WithOpName("Ones"), input);
+    return ones_like.operation.node()->def();
+  };
+
+  for (int value : {0, 1}) {
+    Reset();
+    const NodeDef& node_def = get_node(value);
+    const std::string name = value ? "Ones" : "Zeros";
+
+    if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+      std::vector<float> input_data(8, 42.0f);
+      AddTestTensor("input", {8}, tf_type_, input_data);
+      RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                                "Conversion for " + name + "Like is not "
+                                + "implemented in implicit batch mode");
+      continue;
+    }
+
+    std::vector<std::vector<int>> output_dims_params = {
+      {8},
+      {8, 2, 4},
+      {32, 32, 3200}};
+
+    float val = 42.0;
+    Status status = Status::OK();
+    for (bool input_is_tensor : {true, false}) {
+      for (auto output_dims : output_dims_params) {
+        Reset();
+        size_t nb_el = 1;
+        for (auto d : output_dims) {
+          nb_el *= d;
+        }
+        std::vector<float> input_data(nb_el, val);
+        if (input_is_tensor) {
+          AddTestTensor("input", output_dims, tf_type_, input_data);
+        } else {
+          AddTestWeights("input", output_dims, input_data, tf_type_);
+        }
+        std::vector<float> expected_output(nb_el, value);
+        TestOpConverter(name, node_def, output_dims, status,
+                status, ElementsAreArray(expected_output));
+      }
+    }
+  }
+}
+
 #endif  // IS_TRT_VERSION_GE(8, 2, 0, 0)
 
 #if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
