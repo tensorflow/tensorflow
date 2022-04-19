@@ -733,6 +733,12 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
                   context);
     return kTfLiteOk;
   }
+  if (num_axis == 0) {
+    reference_ops::ReduceIsCopy(GetTensorData<T>(input), input->dims->data,
+                                input->dims->size,
+                                GetTensorData<T>(op_context->output));
+    return kTfLiteOk;
+  }
   TF_LITE_ENSURE(
       context,
       reference_ops::ReduceGeneric<T>(
