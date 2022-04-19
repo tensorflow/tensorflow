@@ -674,8 +674,13 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::SPLIT: {
+      std::vector<int> channels;
+      channels.reserve(outputs.size());
+      for (const auto& output : outputs) {
+        channels.push_back(output->tensor.shape.c);
+      }
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
-      SelectSplit(attr, op_def, gpu_op);
+      SelectSplit(attr, channels, op_def, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::TILE: {
