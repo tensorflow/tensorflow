@@ -543,7 +543,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTransformEinsumPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTransformEinsumPass() {
   return std::make_unique<TransformEinsumPass>();
 }
 

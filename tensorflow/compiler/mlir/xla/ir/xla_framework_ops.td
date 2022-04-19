@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_XLA_FRAMEWORK_OPS_TD_
 #define TENSORFLOW_COMPILER_MLIR_XLA_XLA_FRAMEWORK_OPS_TD_
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
 def XLAFramework_Dialect : Dialect {

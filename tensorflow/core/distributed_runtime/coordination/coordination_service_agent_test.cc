@@ -45,13 +45,15 @@ class TestCoordinationClient : public CoordinationClient {
   // instead.
   MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
                                       GetKeyValueResponse*, StatusCallback));
-
-  void RegisterWorkerAsync(CallOptions* opts,
-                           const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done) override {
-    done(errors::Unimplemented("RegisterWorkerAsync"));
-  }
+  MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
+                                       RegisterTaskResponse*, StatusCallback));
+  MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
+                                       ShutdownTaskResponse*, StatusCallback));
+  MOCK_METHOD3(ResetTaskAsync, void(const ResetTaskRequest*, ResetTaskResponse*,
+                                    StatusCallback));
+  MOCK_METHOD3(ReportErrorToServiceAsync,
+               void(const ReportErrorToServiceRequest*,
+                    ReportErrorToServiceResponse*, StatusCallback));
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -60,99 +62,121 @@ class TestCoordinationClient : public CoordinationClient {
     done(errors::Unimplemented(#method "Async"));                     \
   }
 
-  UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(ReportErrorToAgent);
-  UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
+                      HeartbeatResponse* response,
+                      StatusCallback done) override {
+    done(errors::Unimplemented("HeartbeatAsync"));
+  }
+  void ReportErrorToTaskAsync(CallOptions* call_opts,
+                              const ReportErrorToTaskRequest* request,
+                              ReportErrorToTaskResponse* response,
+                              StatusCallback done) override {
+    done(errors::Unimplemented("ReportErrorToTaskAsync"));
+  }
 };
 
-TEST(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
+class CoordinationServiceAgentTest : public ::testing::Test {
+ public:
+  void SetUp() override {
+    ON_CALL(*client_, RegisterTaskAsync(_, _, _, _))
+        .WillByDefault(InvokeArgument<3>(Status::OK()));
+    ON_CALL(*client_, ShutdownTaskAsync(_, _, _, _))
+        .WillByDefault(InvokeArgument<3>(Status::OK()));
+    ON_CALL(*client_, ReportErrorToServiceAsync(_, _, _))
+        .WillByDefault(InvokeArgument<2>(Status::OK()));
+    ON_CALL(*GetClient(), ResetTaskAsync(_, _, _))
+        .WillByDefault(InvokeArgument<2>(Status::OK()));
+  }
+
+  // Should be called after mocking service responses, before testing the agent.
+  void InitializeAgent() {
+    CoordinationServiceConfig config;
+    config.set_service_leader("test_leader");
+    TF_EXPECT_OK(agent_->Initialize(
+        Env::Default(), /*job_name=*/"test_job",
+        /*task_id=*/0, config, std::move(client_),
+        /*error_fn=*/[](Status s) {
+          LOG(ERROR) << "Coordination agent is set to error: " << s;
+        }));
+  }
+
+  TestCoordinationClient* GetClient() {
+    // InitializeAgent() transfers ownership of the coordination client.
+    CHECK(client_ != nullptr)
+        << "GetClient() was called after InitializeAgent()";
+    return client_.get();
+  }
+
+ protected:
+  std::unique_ptr<CoordinationServiceAgent> agent_ =
+      CreateCoordinationServiceAgent();
+  std::unique_ptr<TestCoordinationClient> client_ =
+      std::make_unique<TestCoordinationClient>();
+};
+
+TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   const std::string& test_key = "test_key";
   const std::string& test_value = "test_value";
-  auto client = std::make_unique<TestCoordinationClient>();
   // Mock server response: set key-value pair and invoke done callback.
   GetKeyValueResponse mocked_response;
   auto kv = mocked_response.mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  ON_CALL(*client, GetKeyValueAsync(_, _, _))
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
                            InvokeArgument<2>(Status::OK())));
   // Initialize coordination agent.
-  auto agent = CreateCoordinationServiceAgent();
-  CoordinationServiceConfig config;
-  config.set_service_leader("test_leader");
-  TF_EXPECT_OK(agent->Initialize(
-      /*env=*/nullptr, "test_job", 0, config, std::move(client),
-      /*error_fn=*/[](Status s) {
-        LOG(ERROR) << "Coordination agent is set to error: " << s;
-      }));
+  InitializeAgent();
 
-  auto result = agent->GetKeyValue(test_key);
+  auto result = agent_->GetKeyValue(test_key);
 
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
 }
 
-TEST(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
+TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   const std::string& test_key = "test_key";
   const std::string& test_value = "test_value";
-  auto client = std::make_unique<TestCoordinationClient>();
   // Mock server response: set key-value pair and invoke done callback.
   GetKeyValueResponse mocked_response;
   auto kv = mocked_response.mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  ON_CALL(*client, GetKeyValueAsync(_, _, _))
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
                            InvokeArgument<2>(Status::OK())));
   // Initialize coordination agent.
-  auto agent = CreateCoordinationServiceAgent();
-  CoordinationServiceConfig config;
-  config.set_service_leader("test_leader");
-  TF_EXPECT_OK(agent->Initialize(
-      /*env=*/nullptr, "test_job", 0, config, std::move(client),
-      /*error_fn=*/[](Status s) {
-        LOG(ERROR) << "Coordination agent is set to error: " << s;
-      }));
+  InitializeAgent();
 
-  auto result = agent->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
 }
 
-TEST(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
+TEST_F(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
   const std::string& test_key = "test_key";
-  // Initialize coordination service agent.
-  auto client = std::make_unique<TestCoordinationClient>();
-  auto agent = CreateCoordinationServiceAgent();
-  CoordinationServiceConfig config;
-  config.set_service_leader("test_leader");
-  TF_EXPECT_OK(agent->Initialize(
-      /*env=*/nullptr, "test_job", 0, config, std::move(client),
-      /*error_fn=*/[](Status s) {
-        LOG(ERROR) << "Coordination agent is set to error: " << s;
-      }));
+  InitializeAgent();
 
-  auto result = agent->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
 
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
 }
 
-TEST(CoordinationServiceAgentTest,
-     GetKeyValue_DelayedResponse_TimeoutWithoutMemoryError) {
+TEST_F(CoordinationServiceAgentTest,
+       GetKeyValue_DelayedResponse_TimeoutWithoutMemoryError) {
   const std::string& test_key = "test_key";
   const std::string& test_value = "test_value";
   auto client = std::make_unique<TestCoordinationClient>();
   GetKeyValueResponse* owned_response;
   StatusCallback owned_done;
-  ON_CALL(*client, GetKeyValueAsync(_, _, _))
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
       .WillByDefault(WithArgs<1, 2>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
             // Copy method arguments to prevent de-allocation before mocking the
@@ -161,16 +185,9 @@ TEST(CoordinationServiceAgentTest,
             owned_done = done;
           }));
   // Initialize coordination service agent.
-  auto agent = CreateCoordinationServiceAgent();
-  CoordinationServiceConfig config;
-  config.set_service_leader("test_leader");
-  TF_EXPECT_OK(agent->Initialize(
-      /*env=*/nullptr, "test_job", 0, config, std::move(client),
-      /*error_fn=*/[](Status s) {
-        LOG(ERROR) << "Coordination agent is set to error: " << s;
-      }));
+  InitializeAgent();
 
-  auto result = agent->GetKeyValue(test_key, /*timeout=*/absl::Seconds(3));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(3));
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
 
   // Delayed server response: set key-value response, and invoke done callback.
@@ -182,8 +199,8 @@ TEST(CoordinationServiceAgentTest,
   // or other memory-related errors.
 }
 
-TEST(CoordinationServiceAgentTest,
-     GetKeyValue_DelayedResponseBeforeTimeout_Success) {
+TEST_F(CoordinationServiceAgentTest,
+       GetKeyValue_DelayedResponseBeforeTimeout_Success) {
   const std::string& test_key = "test_key";
   const std::string& test_value = "test_value";
   // Mock delayed server response before timeout: set key-value pair and invoke
@@ -192,7 +209,7 @@ TEST(CoordinationServiceAgentTest,
   std::unique_ptr<Thread> async_thread;
   GetKeyValueResponse* owned_response;
   StatusCallback owned_done;
-  ON_CALL(*client, GetKeyValueAsync(_, _, _))
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
       // Setup async callback to insert key-value after a brief delay (5s)
       // before timeout (10s).
       .WillByDefault(WithArgs<1, 2>(
@@ -212,19 +229,78 @@ TEST(CoordinationServiceAgentTest,
                   owned_done(Status::OK());
                 }));
           }));
-  auto agent = CreateCoordinationServiceAgent();
-  CoordinationServiceConfig config;
-  config.set_service_leader("test_leader");
-  TF_EXPECT_OK(agent->Initialize(
-      /*env=*/nullptr, "test_job", 0, config, std::move(client),
-      /*error_fn=*/[](Status s) {
-        LOG(ERROR) << "Coordination agent is set to error: " << s;
-      }));
+  InitializeAgent();
 
-  auto result = agent->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+
+  TF_EXPECT_OK(agent_->Shutdown());
+  Status status = agent_->Connect();
+
+  // Not allowed to connect after shutting down.
+  EXPECT_TRUE(errors::IsFailedPrecondition(status));
+}
+
+TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
+  // Connect coordination agent and set it to error.
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+
+  // Shutdown should return error.
+  Status s = agent_->Shutdown();
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+}
+
+TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {
+  // Connect agent.
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+
+  auto status = agent_->Reset();
+
+  // Fails because agent is not in ERROR state.
+  EXPECT_TRUE(errors::IsFailedPrecondition(status));
+}
+
+TEST_F(CoordinationServiceAgentTest, ConnectAfterResetError) {
+  // Connect coordination agent and set it to error.
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+
+  // Reset error.
+  TF_EXPECT_OK(agent_->Reset());
+  // Agent should be able to reconnect to the service after resetting.
+  TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
+  // Mock reset error failing for the first time.
+  EXPECT_CALL(*GetClient(), ResetTaskAsync(_, _, _))
+      .WillOnce(InvokeArgument<2>(errors::Internal("Reset error")))
+      .WillOnce(InvokeArgument<2>(Status::OK()));
+  // Connect coordination agent and set it to error.
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+
+  // Reset error fails for the first time.
+  Status reset_status = agent_->Reset();
+  EXPECT_TRUE(errors::IsInternal(reset_status));
+
+  // Agent should be able to attempt resetting again.
+  TF_EXPECT_OK(agent_->Reset());
+  // Agent should be able to reconnect to the service after resetting.
+  TF_EXPECT_OK(agent_->Connect());
 }
 }  // namespace
 }  // namespace tensorflow

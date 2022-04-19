@@ -84,6 +84,10 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
+// Returns true if the given types are the same, but while ignoring
+// any sparsity properties of tensor types.
+bool isSameTypesWithoutSparseEncoding(Type tp1, Type tp2);
+
 // Shape derivation function that computes the shape of the result based on an
 // operand. For a 2-dimensional input tensor, this produces IR of the form
 //

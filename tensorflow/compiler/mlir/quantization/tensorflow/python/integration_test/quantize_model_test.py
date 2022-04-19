@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -32,7 +33,6 @@ from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training.tracking import tracking
 
 
 def _contains_quantized_function_call(meta_graphdef):
@@ -43,118 +43,17 @@ def _contains_quantized_function_call(meta_graphdef):
   return False
 
 
-class QuantizationTest(test.TestCase, parameterized.TestCase):
-
-  def test_qat_model(self):
-
-    class QATModelWithAdd(tracking.AutoTrackable):
-      """Basic model with Fake quant + add."""
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='x'),
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='y')
-      ])
-      def add(self, x, y):
-        float_res = math_ops.add(x, y)
-        x = array_ops.fake_quant_with_min_max_args(
-            x, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
-        y = array_ops.fake_quant_with_min_max_args(
-            y, min=-0.3, max=0.4, num_bits=8, narrow_range=False)
-        res = math_ops.add(x, y)
-        res = array_ops.fake_quant_with_min_max_args(
-            res, min=-0.4, max=0.6, num_bits=8, narrow_range=False)
-        return {'output': res, 'float_output': float_res}
-
-    root = QATModelWithAdd()
-
-    temp_path = self.create_tempdir().full_path
-    saved_model_save.save(
-        root, temp_path, signatures=root.add.get_concrete_function())
-
-    output_directory = self.create_tempdir().full_path
-    tags = [tag_constants.SERVING]
-    model = quantize_model.quantize(temp_path, ['serving_default'],
-                                    [tag_constants.SERVING], output_directory)
-    self.assertIsNotNone(model)
-    self.assertEqual(
-        list(model.signatures._signatures.keys()), ['serving_default'])
-    func = model.signatures['serving_default']
-    func_res = func(
-        x=array_ops.constant(0.1, shape=[10]),
-        y=array_ops.constant(0.1, shape=[10]))
-    self.assertAllClose(
-        func_res['output'], array_ops.constant(0.2, shape=[10]), atol=0.01)
-    self.assertAllClose(
-        func_res['float_output'],
-        array_ops.constant(0.2, shape=[10]),
-        atol=1e-3)
-
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
-
-  def test_ptq_model(self):
-
-    class PTQModelWithAdd(tracking.AutoTrackable):
-      """Basic model with addition."""
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='x'),
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='y')
-      ])
-      def add(self, x, y):
-        res = math_ops.add(x, y)
-        return {'output': res, 'x': x, 'y': y}
-
-    def data_gen():
-      for _ in range(255):
-        yield {
-            'x':
-                ops.convert_to_tensor(
-                    np.random.uniform(size=(10)).astype('f4')),
-            'y':
-                ops.convert_to_tensor(
-                    np.random.uniform(size=(10)).astype('f4'))
-        }
-
-    root = PTQModelWithAdd()
-
-    temp_path = self.create_tempdir().full_path
-    saved_model_save.save(
-        root, temp_path, signatures=root.add.get_concrete_function())
-
-    output_directory = self.create_tempdir().full_path
-    tags = [tag_constants.SERVING]
-    model = quantize_model.quantize(
-        temp_path, ['serving_default'],
-        tags,
-        output_directory,
-        representative_dataset=data_gen)
-    self.assertIsNotNone(model)
-    self.assertEqual(
-        list(model.signatures._signatures.keys()), ['serving_default'])
-    func = model.signatures['serving_default']
-    func_res = func(
-        x=array_ops.constant(0.1, shape=[10]),
-        y=array_ops.constant(0.1, shape=[10]))
-    self.assertAllClose(
-        func_res['output'], array_ops.constant(0.2, shape=[10]), atol=0.01)
-    xy_atol = 1e-6
-    self.assertAllClose(
-        func_res['x'], array_ops.constant(0.1, shape=[10]), atol=xy_atol)
-    self.assertAllClose(
-        func_res['y'], array_ops.constant(0.1, shape=[10]), atol=xy_atol)
-
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ('none', None),
-      ('relu', nn_ops.relu),
-      ('relu6', nn_ops.relu6),
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
   )
-  def test_qat_conv_model(self, activation_fn):
+  def test_qat_conv_model(self, activation_fn, has_bias):
 
     class ConvModel(module.Module):
 
@@ -177,7 +76,8 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias, data_format='NHWC')
         if activation_fn is not None:
           out = activation_fn(out)
         q_out = array_ops.fake_quant_with_min_max_args(
@@ -194,6 +94,8 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
     converted_model = quantize_model.quantize(
         input_saved_model_path, [signature_key],
         tags,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
         output_directory=output_directory)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -214,6 +116,247 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @parameterized.named_parameters(
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
+  )
+  def test_conv_ptq_model(self, activation_fn, has_bias):
+
+    class ConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+        out = nn_ops.conv2d(
+            input_tensor,
+            filters,
+            strides=[1, 1, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    model = ConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=150,
+                                      size=(1, 3, 4, 3)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
+        representative_dataset=data_gen)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @parameterized.named_parameters(
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
+  )
+  def test_depthwise_conv_ptq_model(self, activation_fn, has_bias):
+
+    class DepthwiseConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 1)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(3)).astype('f4')
+        out = nn_ops.depthwise_conv2d_native(
+            input_tensor,
+            filters,
+            strides=[1, 2, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    model = DepthwiseConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=150,
+                                      size=(1, 3, 4, 3)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
+        representative_dataset=data_gen)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @parameterized.named_parameters(
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
+  )
+  def test_matmul_ptq_model(self, activation_fn, has_bias):
+
+    class MatmulModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      ])
+      def matmul(self, input_tensor):
+        filters = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
+        out = math_ops.matmul(input_tensor, filters)
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    model = MatmulModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=5, size=(1, 4)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
+        representative_dataset=data_gen)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  def test_model_with_uncalibrated_subgraph(self):
+
+    class IfModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      ])
+      def model_fn(self, x):
+        if math_ops.reduce_sum(x) > 10.0:
+          filters = np.random.uniform(
+              low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+          bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
+          out = math_ops.matmul(x, filters)
+          out = nn_ops.bias_add(out, bias)
+          return {'output': out}
+
+        filters = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
+        out = math_ops.matmul(x, filters)
+        out = nn_ops.bias_add(out, bias)
+        return {'output': out}
+
+    model = IfModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(10):
+        yield {
+            'x':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0.0, high=1.0,
+                                      size=(1, 4)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    with warnings.catch_warnings(record=True) as w:
+      converted_model = quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          optimization_method=quantize_model.OptimizationMethod
+          .STATIC_RANGE_QUANT,
+          representative_dataset=data_gen)
+      self.assertGreaterEqual(len(w), 1)
+      self.assertIn('does not have min/max values', str(w[0]))
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+
+class AutomaticQuantizationTest(test.TestCase, parameterized.TestCase):
 
   def test_conv_ptq_model(self):
 
@@ -252,19 +395,52 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
 
     tags = [tag_constants.SERVING]
     output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
-        tags,
-        output_directory,
-        representative_dataset=data_gen)
-    self.assertIsNotNone(converted_model)
-    self.assertEqual(
-        list(converted_model.signatures._signatures.keys()),
-        ['serving_default'])
+    with self.assertRaises(NotImplementedError):
+      quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          optimization_method=quantize_model.OptimizationMethod.AUTOMATIC_QUANT,
+          representative_dataset=data_gen)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
+
+  def test_conv_ptq_model(self):
+
+    class ConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+        out = nn_ops.conv2d(
+            input_tensor,
+            filters,
+            strides=[1, 1, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        out = nn_ops.relu6(out)
+        return {'output': out}
+
+    model = ConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    with self.assertRaises(NotImplementedError):
+      quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          optimization_method=quantize_model.OptimizationMethod
+          .DYNAMIC_RANGE_QUANT)
 
 
 if __name__ == '__main__':

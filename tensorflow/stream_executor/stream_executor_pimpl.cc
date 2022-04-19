@@ -255,6 +255,10 @@ int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
 }
 
+bool StreamExecutor::SupportsBlasPlans() const {
+  return implementation_->SupportsBlasPlans();
+}
+
 bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
@@ -798,6 +802,14 @@ bool StreamExecutor::AllocateStream(Stream* stream) {
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
+  dnn::DnnSupport* dnn;
+  {
+    absl::MutexLock lock(&mu_);
+    dnn = dnn_.get();
+  }
+  if (dnn) {
+    dnn->NotifyStreamDestroyed(stream);
+  }
   implementation_->DeallocateStream(stream);
   CHECK_GE(live_stream_count_.fetch_sub(1), 0)
       << "live stream count should not dip below zero";

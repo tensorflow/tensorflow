@@ -692,6 +692,7 @@ cc_library(
     hdrs = ["tf2xla_util.h"],
     visibility = [":friends"],
     deps = [
+        ":frontend_attributes_util",
         ":sharding_util",
         ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
@@ -952,25 +953,19 @@ cc_library(
 
 cc_library(
     name = "mlir_bridge_pass_registration",
-    srcs = if_libtpu(
-        if_false = [
-            "mlir_bridge_pass_registration.cc",
-        ],
-        if_true = [],
-    ),
+    srcs = [
+        "mlir_bridge_pass_registration.cc",
+    ],
     visibility = [
         # We define a new TPU device in TFRT to enable TFRT TPU Runtime.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
         ":internal",
     ],
-    deps = if_libtpu(
-        if_false = [
-            ":mlir_bridge_pass",
-            "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
-            "//tensorflow/core:core_cpu",
-        ],
-        if_true = [],
-    ),
+    deps = [
+        ":mlir_bridge_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
+        "//tensorflow/core:core_cpu",
+    ],
     alwayslink = 1,
 )
 
@@ -1041,6 +1036,7 @@ tf_cc_test(
     deps = [
         ":functionalize_control_flow",
         ":test_util",
+        ":tf2xla_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

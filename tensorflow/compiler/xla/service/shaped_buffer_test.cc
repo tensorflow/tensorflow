@@ -141,14 +141,15 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
     }
     EXPECT_TRUE(buffers.find(orig_index)->second.IsSameAs(buffer));
   });
-  sb.buffers().ForEachElement(
-      [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
-        if (ShapeIndexView(index).StartsWith(subtree_index)) {
-          EXPECT_TRUE(buffer.is_null());
-        } else {
-          EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
-        }
-      });
+  sb.buffers().ForEachElement([&](const xla::ShapeIndex& index,
+                                  const se::DeviceMemoryBase& buffer) {
+    if ((index.size() >= subtree_index.size()) &&
+        ShapeIndexView(index).first(subtree_index.size()) == subtree_index) {
+      EXPECT_TRUE(buffer.is_null());
+    } else {
+      EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
+    }
+  });
 }
 
 TEST(ScopedShapedBufferTest, TestSubShapeTree) {

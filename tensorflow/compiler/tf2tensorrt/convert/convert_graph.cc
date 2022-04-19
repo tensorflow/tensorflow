@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
@@ -677,7 +678,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(
       LOG_WARNING_WITH_PREFIX << msg;
     }
     AllocatorAttributes alloc_attr;
-    cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
+    cuda_device_id = devices[0]->tensorflow_accelerator_device_info()->gpu_id;
     dev_allocator = devices[0]->GetAllocator(alloc_attr);
     VLOG(1) << "Using allocator " << dev_allocator->Name()
             << " and cuda_device_id " << cuda_device_id;
@@ -804,11 +805,13 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
   segment::SegmentVector converted_segments;
   converted_segments.reserve(initial_segments.size());
   string engine_name_prefix =
-      StrCat("TRTEngineOp_", GetNextGraphSequenceNumber(), "_");
+      StrCat("TRTEngineOp_",
+             absl::StrFormat("%0*d", 3, GetNextGraphSequenceNumber()), "_");
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
-    curr_engine.engine_name = StrCat(engine_name_prefix, t);
+    curr_engine.engine_name =
+        StrCat(engine_name_prefix, absl::StrFormat("%0*d", 3, t));
 
     bool int8_no_calib = (!params.use_calibration &&
                           params.precision_mode == TrtPrecisionMode::INT8);

@@ -70,7 +70,8 @@ Value GetBias(lmhlo_gpu::GEMM_BiasOpAdaptor op) { return op.bias(); }
 // Match GEMM auto-tuning, see ComputationTypeFromPrimitive()
 Type MlirComputationType(Type element_type,
                          ConversionPatternRewriter& rewriter) {
-  if (element_type.isF16()) return rewriter.getF32Type();
+  if (element_type.isF16() || element_type.isBF16())
+    return rewriter.getF32Type();
 
 #if !TENSORFLOW_USE_ROCM
   if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>())
@@ -83,22 +84,14 @@ Type MlirComputationType(Type element_type,
 // Gets the platform specific Gemm algorithm value.
 template <class GemmOp>
 tfrt::gpu::wrapper::BlasGemmAlgo GetBlasGemmAlgoOrDefault(GemmOp op) {
-#if TENSORFLOW_USE_ROCM
-  rocblas_gemm_algo default_value = rocblas_gemm_algo_standard;
-#else
-  cublasGemmAlgo_t default_value = CUBLAS_GEMM_DEFAULT;
-#endif
-  return static_cast<decltype(default_value)>(
-      op.algorithm().getValueOr(default_value));
+  if (!op.algorithm().hasValue()) return kBlasGemmDefaultAlgo;
+  return {static_cast<int>(op.algorithm().getValue()), kGpuTargetPlatform};
 }
 
+// Returns the platform specific matrix transpose operation value.
 tfrt::gpu::wrapper::BlasOperation MatrixTransposeToBlasOperation(
     bool transpose) {
-#if TENSORFLOW_USE_ROCM
-  return transpose ? rocblas_operation_transpose : rocblas_operation_none;
-#else
-  return transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
-#endif
+  return transpose ? kBlasOperationTranspose : kBlasOperationNone;
 }
 
 // Create all the Ops necessary for the GEMM operation, including the GEMM
@@ -337,10 +330,11 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
 }
 
 template <class GemmOpType>
-struct GemmRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      GemmOpType>::GpuAsyncOpConversionPattern;
+struct GemmRewritePattern
+    : tfrt::gpu::StreamifyOpConversionPattern<GemmOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<GemmOpType>::OpAdaptor;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      GemmOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       GemmOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

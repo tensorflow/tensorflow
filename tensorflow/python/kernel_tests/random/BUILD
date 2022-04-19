@@ -229,6 +229,23 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "stateful_random_ops_test",
+    size = "medium",
+    srcs = ["stateful_random_ops_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/framework:config",
+    ],
+)
+
 tf_py_test(
     name = "random_index_shuffle_test",
     srcs = ["random_index_shuffle_test.py"],

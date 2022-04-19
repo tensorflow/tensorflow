@@ -1,17 +1,17 @@
 // RUN: mlir-hlo-opt --mhlo-legalize-trigonometric-to-approximation --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @tanh_f64
-func @tanh_f64(%arg0 : f64) -> f64 {
+func.func @tanh_f64(%arg0 : f64) -> f64 {
   // CHECK: tanh
   %res = math.tanh %arg0 : f64
-  return %res : f64
+  func.return %res : f64
 }
 
 // -----
 
 // CHECK-LABEL: @tanh_f32
 // CHECK-SAME: (%[[ARG:.*]]: f32) -> f32
-func @tanh_f32(%arg0 : f32) -> f32 {
+func.func @tanh_f32(%arg0 : f32) -> f32 {
   // CHECK-DAG: %[[C:.*]] = arith.constant -2.76076837E-16 : f32
   // CHECK-DAG: %[[C0:.*]] = arith.constant 2.00018794E-13 : f32
   // CHECK-DAG: %[[C1:.*]] = arith.constant -8.60467184E-11 : f32
@@ -60,35 +60,35 @@ func @tanh_f32(%arg0 : f32) -> f32 {
   // CHECK-DAG: %[[RESULT:.*]] = arith.select %[[IS_NAN]], %[[ARG]], %[[TMP27]] : f32
   // CHECK: return %[[RESULT]] : f32
   %res = math.tanh %arg0 : f32
-  return %res : f32
+  func.return %res : f32
 }
 
 // -----
 
-func @tanh_f16(%arg0 : f16) -> f16 {
+func.func @tanh_f16(%arg0 : f16) -> f16 {
   // CHECK-LABEL: func @tanh_f16
   // CHECK-SAME: (%[[ARG:.*]]: f16) -> f16
   // CHECK: %{{.*}} = arith.extf %[[ARG]] : f16 to f32
   // CHECK: %[[RES:.*]] = arith.truncf %{{.*}} : f32 to f16
   // CHECK: return %[[RES]] : f16
   %res = math.tanh %arg0 : f16
-  return %res : f16
+  func.return %res : f16
 }
 
 // -----
 
 // CHECK-LABEL: @atan2_f64
-func @atan2_f64(%arg0 : f64, %arg1 : f64) -> f64 {
+func.func @atan2_f64(%arg0 : f64, %arg1 : f64) -> f64 {
   // CHECK: atan2
   %res = math.atan2 %arg0, %arg1 : f64
-  return %res : f64
+  func.return %res : f64
 }
 
 // -----
 
 // CHECK-LABEL: @atan_f64
-func @atan_f64(%arg : f64) -> f64 {
+func.func @atan_f64(%arg : f64) -> f64 {
   // CHECK: atan
   %res = math.atan %arg : f64
-  return %res : f64
+  func.return %res : f64
 }

@@ -873,17 +873,25 @@ bool AssertSameStructureHelper(
     }
 
     // Two composite tensors are considered to have the same structure if
-    // there is some type spec that is compatible with both of them.  Thus,
-    // we use most_specific_compatible_type(), and check if it raises an
-    // exception.  We do *not* use is_compatible_with, since that would
-    // prevent us from e.g. using a cond statement where the two sides have
-    // different shapes.
-    static char compatible_type[] = "most_specific_compatible_type";
-    static char argspec[] = "(O)";
-    Safe_PyObjectPtr struct_compatible(PyObject_CallMethod(
-        type_spec_1, compatible_type, argspec, type_spec_2));
-    if (PyErr_Occurred() || struct_compatible == nullptr) {
-      PyErr_Clear();
+    // they share a type spec that is a supertype of both of them. We do *not*
+    // use is_subtype_of, since that would prevent us from e.g. using a
+    // cond statement where the two sides have different shapes.
+
+    // TODO(b/206014848): We have to explicitly remove the names.
+    Safe_PyObjectPtr owned_nameless_type_spec_1(
+        PyObject_CallMethod(type_spec_1, "_without_tensor_names", nullptr));
+    Safe_PyObjectPtr owned_nameless_type_spec_2(
+        PyObject_CallMethod(type_spec_2, "_without_tensor_names", nullptr));
+    // TODO(b/222123181): Reconsider most_specific_common_supertype usage.
+    static char compatible_type[] = "most_specific_common_supertype";
+    static char argspec[] = "([O])";
+    Safe_PyObjectPtr struct_compatible(
+        PyObject_CallMethod(owned_nameless_type_spec_1.get(), compatible_type,
+                            argspec, owned_nameless_type_spec_2.get()));
+    if (PyErr_Occurred()) {
+      return false;
+    }
+    if (struct_compatible.get() == Py_None) {
       *is_type_error = false;
       *error_msg = tensorflow::strings::StrCat(
           "Incompatible CompositeTensor TypeSpecs: ",

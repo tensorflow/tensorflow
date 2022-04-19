@@ -94,7 +94,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
       info.segment_graph_def.CopyFrom(graph_def);
       info.precision_mode = TrtPrecisionMode::FP32;
       info.max_workspace_size_bytes = 1 << 20;
-      info.engine_name = "TRTEngineOP_0_0";
+      info.engine_name = "TRTEngineOP_000_000";
       params.use_implicit_batch = use_implicit_batch;
       params.trt_logger_name = "DefaultLogger";
 

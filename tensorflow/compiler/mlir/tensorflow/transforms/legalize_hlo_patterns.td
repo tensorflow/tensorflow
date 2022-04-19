@@ -49,32 +49,32 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
-                         [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
-                         [HLO_ShiftLeftOp, HLOClient_BroadcastShiftLeftOp, TF_LeftShiftOp],
-                         [HLO_MaxOp, HLOClient_BroadcastMaxOp, TF_MaximumOp],
-                         [HLO_MinOp, HLOClient_BroadcastMinOp, TF_MinimumOp],
-                         [HLO_MulOp, HLOClient_BroadcastMulOp, TF_MulOp],
-                         [HLO_PowOp, HLOClient_BroadcastPowOp, TF_PowOp],
-                         [HLO_SubOp, HLOClient_BroadcastSubOp, TF_SubOp],
-                         [HLO_Atan2Op, HLOClient_BroadcastAtan2Op, TF_Atan2Op]] in {
+foreach fromToBinPair = [[HLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
+                         [HLO_DivOp, CHLO_BroadcastDivOp, TF_DivOp],
+                         [HLO_ShiftLeftOp, CHLO_BroadcastShiftLeftOp, TF_LeftShiftOp],
+                         [HLO_MaxOp, CHLO_BroadcastMaxOp, TF_MaximumOp],
+                         [HLO_MinOp, CHLO_BroadcastMinOp, TF_MinimumOp],
+                         [HLO_MulOp, CHLO_BroadcastMulOp, TF_MulOp],
+                         [HLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
+                         [HLO_SubOp, CHLO_BroadcastSubOp, TF_SubOp],
+                         [HLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
-foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_BitwiseAndOp],
-                 [HLO_OrOp, HLOClient_BroadcastOrOp, TF_BitwiseOrOp],
-                 [HLO_XorOp, HLOClient_BroadcastXorOp, TF_BitwiseXorOp]] in {
+foreach pair  = [[HLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],
+                 [HLO_OrOp, CHLO_BroadcastOrOp, TF_BitwiseOrOp],
+                 [HLO_XorOp, CHLO_BroadcastXorOp, TF_BitwiseXorOp]] in {
   def : Pat<(pair[0] TF_IntTensor:$l, TF_IntTensor:$r), (pair[2] $l, $r)>;
   def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
-foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
-                 [HLO_OrOp, HLOClient_BroadcastOrOp, TF_LogicalOrOp]] in {
+foreach pair  = [[HLO_AndOp, CHLO_BroadcastAndOp, TF_LogicalAndOp],
+                 [HLO_OrOp, CHLO_BroadcastOrOp, TF_LogicalOrOp]] in {
   def : Pat<(pair[0] I1Tensor:$l, I1Tensor:$r), (pair[2] $l, $r)>;
   def : Pat<(pair[1] I1Tensor:$l, I1Tensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
@@ -82,18 +82,18 @@ foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
 }
 
 def : Pat<(HLO_ShiftRightArithmeticOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
+def : Pat<(CHLO_BroadcastShiftRightArithmeticOp $l, $r,
                                                      $broadcast_dimensions),
           (TF_RightShiftOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 def : Pat<(HLO_ShiftRightLogicalOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+def : Pat<(CHLO_BroadcastShiftRightLogicalOp $l, $r,
                                                   $broadcast_dimensions),
           (TF_RightShiftOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 def : Pat<(HLO_FloorOp (HLO_DivOp $l, $r)), (TF_FloorDivOp $l, $r)>;
-def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
+def : Pat<(HLO_FloorOp (CHLO_BroadcastDivOp $l, $r,
                                                  $broadcast_dimensions)),
           (TF_FloorDivOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -101,7 +101,7 @@ def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
 def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 
 def : Pat<(HLO_RemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r), (TF_ModOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
+def : Pat<(CHLO_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
           (TF_ModOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
@@ -170,13 +170,15 @@ def : Pat<(HLO_ConcatenateOp $inputs, $dim),
           (TF_ConcatV2Op $inputs, (TF_ConstOp $dim))>;
 
 class HasCompareType<string value> :
-    CPred<"$_self.cast<StringAttr>().getValue() == \"" # value # "\"">;
+    CPred<"$_self.cast<::mlir::mhlo::ComparisonTypeAttr>().getValue() == " # value>;
 
 // Attribute value should be such that it matches the comparison used by
 // TensorFlow, if the attribute is present.
 def IsTFCompareType : AttrConstraint<
-   Or<[CPred<"!$_self">, HasCompareType<"FLOAT">, HasCompareType<"SIGNED">,
-       HasCompareType<"UNSIGNED">]>,
+   Or<[CPred<"!$_self">, HasCompareType<"::mlir::mhlo::ComparisonType::FLOAT">,
+   HasCompareType<"::mlir::mhlo::ComparisonType::SIGNED">,
+   HasCompareType<"::mlir::mhlo::ComparisonType::UNSIGNED">,
+   HasCompareType<"::mlir::mhlo::ComparisonType::NOTYPE">]>,
    "compare type supported by TensorFlow">;
 
 //===----------------------------------------------------------------------===//
@@ -186,9 +188,12 @@ def IsTFCompareType : AttrConstraint<
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-foreach p = [[TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ],
-             [TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
+class HLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+
+foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
+             [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
+  def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
                                           IsTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -196,11 +201,11 @@ foreach p = [[TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ],
             (p[0] $l, $r, ConstBoolAttrTrue)>;
 }
 
-foreach pair = [[TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE],
-                [TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT],
-                [TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE],
-                [TF_LessOp, HLO_COMPARISON_DIRECTION_LT]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions,
+foreach pair = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
+                [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
+                [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
+                [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
+  def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions,
                                           pair[1], IsTFCompareType:$type),
             (pair[0] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -243,7 +248,7 @@ def FloatValueIsReciprocal : Constraint<CPred<
 def FloatTensorIsSign : Constraint<CPred<"FloatTensorIsSign($_builder, $0, $1)">>;
 def SameValue : Constraint<CPred<"$0 == $1">>;
 def FloatOrDefaultCompare : Constraint<CPred<
-  "!$0 || $0.getValue() == \"FLOAT\"">>;
+  "!$0 || $0.getValue() == ::mlir::mhlo::ComparisonType::FLOAT">>;
 
 // Converts a dag of HLOs representing banker rounding (round x.5 to nearest
 // even) to tf.round.
@@ -260,13 +265,13 @@ def : Pat<(HLO_SelectOp
                                $input,
                                (HLO_FloorOp:$floor $input)),
                              (HLO_ConstOp $half),
-                             HLO_COMPARISON_DIRECTION_GT,
+                             HLO_ComparisonDirectionValue<"GT">,
                              $compare_type0),
               (HLO_AndOp
                 (HLO_CompareOp
                   $frac1,
                   (HLO_ConstOp $half1),
-                  HLO_COMPARISON_DIRECTION_EQ,
+                  HLO_ComparisonDirectionValue<"EQ">,
                   $compare_type1),
                 (HLO_CompareOp
                   (HLO_SubOp
@@ -275,7 +280,7 @@ def : Pat<(HLO_SelectOp
                       (HLO_FloorOp (HLO_MulOp $input, (HLO_ConstOp $half2))),
                       (HLO_ConstOp $two))),
                   (HLO_ConstOp $one1),
-                  HLO_COMPARISON_DIRECTION_EQ,
+                  HLO_ComparisonDirectionValue<"EQ">,
                   $compare_type2))),
             (HLO_AddOp $floor2, (HLO_ConstOp $one)),
             $floor3),
@@ -309,12 +314,12 @@ def : Pat<
       (HLO_CompareOp:$rltz
         (HLO_RemOp:$rem $arg, $arg1),
         (HLO_ConstOp $cst),
-        HLO_COMPARISON_DIRECTION_LT,
+        HLO_ComparisonDirectionValue<"LT">,
         $compare_type),
-      (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_COMPARISON_DIRECTION_LT, $compare_type1),
-      HLO_COMPARISON_DIRECTION_NE,
+      (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_ComparisonDirectionValue<"LT">, $compare_type1),
+      HLO_ComparisonDirectionValue<"NE">,
       $compare_type2),
-    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_COMPARISON_DIRECTION_NE, $compare_type3)),
+    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
   (HLO_AddOp $rem2, $arg1),
   $rem3),
 (TF_FloorModOp $arg, $arg1),
@@ -343,9 +348,9 @@ def : Pat<
     (HLO_CompareOp:$rltz
       (HLO_RemOp:$rem $arg, (HLO_ConstOp $cst)),
       (HLO_ConstOp $cst1),
-      HLO_COMPARISON_DIRECTION_LT,
+      HLO_ComparisonDirectionValue<"LT">,
       $compare_type),
-    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_COMPARISON_DIRECTION_NE, $compare_type3)),
+    (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
   (HLO_AddOp $rem2, (HLO_ConstOp $cst3)),
   $rem3),
 (TF_FloorModOp $arg, (TF_ConstOp $cst3)),
@@ -392,12 +397,12 @@ def : Pat<
       (HLO_CompareOp
         (HLO_RemOp:$rem $arg0, $arg1),
         (HLO_ConstOp $cst),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type),
       (HLO_CompareOp
         (HLO_SignOp $arg1),
         (HLO_SignOp $rem1),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type1)),
     (HLO_AddOp
       (HLO_DivOp:$div
@@ -449,12 +454,12 @@ def : Pat<
       (HLO_CompareOp
         (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
         (HLO_ConstOp $cst_zero),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type),
       (HLO_CompareOp
         (HLO_ConstOp $cst_sgn),
         (HLO_SignOp $rem1),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type1)),
     (HLO_AddOp
       (HLO_MulOp:$mul
@@ -508,12 +513,12 @@ def : Pat<
       (HLO_CompareOp
         (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
         (HLO_ConstOp $cst_zero),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type),
       (HLO_CompareOp
         (HLO_ConstOp $cst_sgn),
         (HLO_SignOp $rem1),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type1)),
     (HLO_AddOp
       (HLO_DivOp:$div
@@ -574,12 +579,12 @@ def : Pat<
             (HLO_ConstOp $cstv),
             $broadcast_dimension)),
         (HLO_ConstOp $cst_zero),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type),
       (HLO_CompareOp
         (HLO_ConstOp $cst_sgn),
         (HLO_SignOp $rem1),
-        HLO_COMPARISON_DIRECTION_NE,
+        HLO_ComparisonDirectionValue<"NE">,
         $compare_type1)),
     (HLO_AddOp
       (HLO_DivOp:$div

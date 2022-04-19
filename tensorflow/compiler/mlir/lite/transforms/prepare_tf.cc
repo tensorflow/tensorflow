@@ -98,8 +98,11 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
+class PrepareTFPass
+    : public PassWrapper<PrepareTFPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
+
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
@@ -228,15 +231,14 @@ class ConvertTFConvOp : public RewritePattern {
     Value input = tf_op.input();
     RankedTensorType input_type =
         input.getType().template dyn_cast<RankedTensorType>();
-    // Safe guard for skipping grouped convolution legalization.
     // Only rank size four input will be only available by the tf.Conv2D
     // operator verification.
     if (!input_type || input_type.isDynamicDim(3)) {
       return failure();
     }
-    // Check if the given op is based on unsupported grouped convolution.
+    // Check if the given op is based on grouped convolution.
     // Dim size zero will be verified by the tf.Conv2D operator verification.
-    if (input_type.getDimSize(3) / filter_type.getDimSize(2) != 1) {
+    if (input_type.getDimSize(3) % filter_type.getDimSize(2) != 0) {
       return failure();
     }
 
@@ -1223,13 +1225,13 @@ LogicalResult ValidateOp(Operation *op) {
 
 // Converts a set of TF2XLA ops into pure TF ops for future legalizations as
 // TF2XLA ops aren't supported by later stages.
-LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
+LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithmeticDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
-  target.addLegalOp<FuncOp>();
+  target.addLegalOp<func::FuncOp>();
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
@@ -1432,7 +1434,7 @@ void PrepareTFPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
     bool use_fake_quant_num_bits) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul,

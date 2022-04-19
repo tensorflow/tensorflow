@@ -23,9 +23,11 @@ TARGET="$2"
 case "${VERSION}" in
 devtoolset-7)
   LIBSTDCXX_VERSION="6.0.24"
+  LIBSTDCXX_ABI="gcc4-compatible"
   ;;
 devtoolset-9)
   LIBSTDCXX_VERSION="6.0.28"
+  LIBSTDCXX_ABI="new"
   ;;
 *)
   echo "Usage: $0 {devtoolset-7|devtoolset-9} <target-directory>"
@@ -145,7 +147,7 @@ cd "${TARGET}-build"
       --enable-plugin \
       --enable-shared \
       --enable-threads=posix \
-      --with-default-libstdcxx-abi="gcc4-compatible" \
+      --with-default-libstdcxx-abi=${LIBSTDCXX_ABI} \
       --with-gcc-major-version-only \
       --with-linker-hash-style="gnu" \
       --with-tune="generic" \
@@ -169,24 +171,13 @@ devtoolset-9)
 # Note that the installation path for libstdc++ here is /${TARGET}/usr/lib64/
 mv "/${TARGET}/usr/lib64/libstdc++.so.${LIBSTDCXX_VERSION}" \
    "/${TARGET}/usr/lib64/libstdc++.so.${LIBSTDCXX_VERSION}.backup"
-# Move the shared library to /${TARGET}/usr/lib/
-mv "/${TARGET}/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.18" \
-   "/${TARGET}/usr/lib/"
-echo -e "OUTPUT_FORMAT(elf64-x86-64)\nINPUT ( libstdc++.so.6.0.18 -lstdc++_nonshared48 )" \
-   > "/${TARGET}/usr/lib/libstdc++.so.${LIBSTDCXX_VERSION}"
-cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared48.a" \
-   "/${TARGET}/usr/lib"
-cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared48.a" \
+echo -e "OUTPUT_FORMAT(elf64-x86-64)\nINPUT ( libstdc++.so.6.0.18 -lstdc++_nonshared44 )" \
+   > "/${TARGET}/usr/lib64/libstdc++.so.${LIBSTDCXX_VERSION}"
+cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44.a" \
    "/${TARGET}/usr/lib64"
-
-# Fix the libstdc++ symlink by pointing to the correct location. By default, these point to
-# /${TARGET}/usr/lib64/ but the library actually exists in /${TARGET}/usr/lib (b/214411967)
-rm "/${TARGET}/usr/lib64/libstdc++.so"
-ln -s "/${TARGET}/usr/lib/libstdc++.so.${LIBSTDCXX_VERSION}" "/${TARGET}/usr/lib64/libstdc++.so"
-rm "/${TARGET}/usr/lib64/libstdc++.so.6"
-ln -s "/${TARGET}/usr/lib/libstdc++.so.${LIBSTDCXX_VERSION}" "/${TARGET}/usr/lib64/libstdc++.so.6"
-  ;;
+;;
 esac
+
 
 # Link in architecture specific includes from the system; note that we cannot
 # link in the whole x86_64-linux-gnu folder, as otherwise we're overlaying
@@ -198,4 +189,3 @@ PYTHON_VERSIONS=("python3.7m" "python3.8" "python3.9" "python3.10")
 for v in "${PYTHON_VERSIONS[@]}"; do
   ln -s "/usr/local/include/${v}" "/${TARGET}/usr/include/x86_64-linux-gnu/${v}"
 done
-

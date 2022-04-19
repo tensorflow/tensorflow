@@ -28,7 +28,6 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import executor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -74,23 +73,8 @@ _END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
 _CHECKPOINT_V1 = "checkpoint_v1"
 _CHECKPOINT_V2 = "checkpoint_v2"
 
-# Async eager executor used for asynchronous checkpoint.
-_ASYNC_SAVE_EXECUTOR = None
-
-
-def _get_async_save_executor():
-  """Return the async executor used for running checkpoint save op."""
-  global _ASYNC_SAVE_EXECUTOR
-  if _ASYNC_SAVE_EXECUTOR is None:
-    _ASYNC_SAVE_EXECUTOR = executor.new_executor(enable_async=True)
-  return _ASYNC_SAVE_EXECUTOR
-
-
-def _wait_for_async_save_executor():
-  """Wait for the async executor to finish ongoing checkpoint save."""
-  global _ASYNC_SAVE_EXECUTOR
-  if _ASYNC_SAVE_EXECUTOR is not None:
-    _ASYNC_SAVE_EXECUTOR.wait()
+# Async thread used for asynchronous checkpoint.
+_ASYNC_CHECKPOINT_THREAD = None
 
 
 def _get_duration_microseconds(start_time_seconds, end_time_seconds):
@@ -309,15 +293,6 @@ class _CheckpointRestoreCoordinator(object):
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
-    # Dictionary of tensor_saveables for slot_restorations that were not shifted
-    # over to deferred_slot_restorations when the variable is created/tracked.
-    #
-    # These saveables are restored, along with other (non-slot) variables, in a
-    # batch after collecting all child CheckpointPositions. Doing slot variable
-    # restorations in a batch results in more efficient (fewer) file operations.
-    # This efficiency is particularly significant when restoring from
-    # network-based file systems.
-    self.slot_restoration_tensor_saveables = {}
 
     self._deleter = _CheckpointRestoreCoordinatorDeleter(
         self.expect_partial_attr,
@@ -1142,7 +1117,6 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
-@tf_export("__internal__.tracking.TrackableSaver", v1=[])
 class TrackableSaver(object):
   """Saves and restores a `Trackable` object and its dependencies.
 
@@ -1230,6 +1204,7 @@ class TrackableSaver(object):
          object_graph_tensor=object_graph_tensor)
 
     def _run_save():
+      """Create and execute the SaveOp for the checkpoint."""
       if (self._last_save_object_graph != graph_proto
           # When executing eagerly, we need to re-create SaveableObjects each
           # time save() is called so they pick up new Tensors passed to their
@@ -1246,13 +1221,31 @@ class TrackableSaver(object):
       return self._cached_save_operation, feed_additions
 
     def _copy_tensors():
+      """Copy the tensors to the host CPU device."""
       for saveable in named_saveable_objects:
-        for spec in saveable.specs:
-          tensor = spec.tensor
-          device = spec.device
-          if tensor is not None:
-            with ops.device(saveable_object_util.set_cpu0(device)):
-              spec._tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
+        # Pin the device according to the SaveableObject's device location to
+        # avoid unnecessary data copies when reading the variables. This is
+        # aligned with the behavior in MultiDeviceSaver.save().
+        original_device = saveable.device
+        with ops.device(original_device):
+          for spec in saveable.specs:
+            tensor = spec.tensor
+            device = spec.device
+            if tensor is not None:
+              with ops.device(saveable_object_util.set_cpu0(device)):
+                spec._tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
+                # Modify the device info accordingly now that the tensors are
+                # copied to the host CPU device.
+                spec.device = saveable_object_util.set_cpu0(device)
+
+    def _async_save_fn():
+      """The thread function for executing async checkpoint save."""
+      _run_save()
+      # Update the internal checkpoint state if the checkpoint event is
+      # triggered from Checkpoint.save().
+      if update_ckpt_state:
+        _update_checkpoint_state_internal(
+            _convert_file_name_tensor_to_string(file_prefix))
 
     if options.experimental_enable_async_checkpoint:
       # Execute async-checkpoint.
@@ -1262,21 +1255,19 @@ class TrackableSaver(object):
 
       # Step-2: Execute the rest of the checkpoint operations on the host device
       #         using an async executor.
-      file_path = _convert_file_name_tensor_to_string(file_prefix)
-      with context.executor_scope(_get_async_save_executor()):
-        _run_save()
-        # Update the internal checkpoint state if the checkpoint event is
-        # triggered from Checkpoint.save().
-        if update_ckpt_state:
-          _update_checkpoint_state_internal(file_path)
+      global _ASYNC_CHECKPOINT_THREAD
+      if _ASYNC_CHECKPOINT_THREAD is not None:
+        _ASYNC_CHECKPOINT_THREAD.join()
+      _ASYNC_CHECKPOINT_THREAD = threading.Thread(target=_async_save_fn)
+      _ASYNC_CHECKPOINT_THREAD.start()
 
       # Step-3: Return the expected checkpoint file path though the save op may
       #         not have finished.
       self._cached_save_operation = file_prefix
       return self._cached_save_operation, feed_additions
-    else:
-      # Execute the normal checkpoint, i.e., synchronous.
-      return _run_save()
+
+    # Execute the normal checkpoint, i.e., synchronous.
+    return _run_save()
 
   def save(self, file_prefix, checkpoint_number=None, session=None,
            options=None, update_ckpt_state=False):
@@ -1424,7 +1415,9 @@ class TrackableSaver(object):
     #                   are still ongiing. Need to add timeout mechanism along
     #                   with conditional variables to notify when the checkpoint
     #                   file is ready.
-    _wait_for_async_save_executor()
+    global _ASYNC_CHECKPOINT_THREAD
+    if _ASYNC_CHECKPOINT_THREAD is not None:
+      _ASYNC_CHECKPOINT_THREAD.join()
 
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
@@ -2084,9 +2077,11 @@ class Checkpoint(tracking.AutoTrackable):
     """Creates a training checkpoint for a single or group of objects.
 
     Args:
-      root: The root object to checkpoint.
+      root: The root object to checkpoint. `root` may be a trackable object or
+        `WeakRef` of a trackable object.
       **kwargs: Keyword arguments are set as attributes of this object, and are
-        saved with the checkpoint. Values must be trackable objects.
+        saved with the checkpoint. All `kwargs` must be trackable objects, or a
+        nested structure of trackable objects (`list`, `dict`, or `tuple`).
 
     Raises:
       ValueError: If `root` or the objects in `kwargs` are not trackable. A
@@ -2102,24 +2097,22 @@ class Checkpoint(tracking.AutoTrackable):
       if _END_TIME_OF_LAST_WRITE is None:
         _END_TIME_OF_LAST_WRITE = time.time()
 
-    saver_root = self
     attached_dependencies = None
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
 
     if root:
-      _assert_trackable(root, "root")
-      saver_root = root
+      trackable_root = root() if isinstance(root, weakref.ref) else root
+      _assert_trackable(trackable_root, "root")
       attached_dependencies = []
 
       # All keyword arguments (including root itself) are set as children
       # of root.
       kwargs["root"] = root
-      root._maybe_initialize_trackable()
+      trackable_root._maybe_initialize_trackable()
 
       self._save_counter = data_structures.NoDependency(
-          root._lookup_dependency("save_counter"))
-      self._root = data_structures.NoDependency(root)
+          trackable_root._lookup_dependency("save_counter"))
 
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       setattr(self, k, v)
@@ -2127,11 +2120,13 @@ class Checkpoint(tracking.AutoTrackable):
       # Call getattr instead of directly using v because setattr converts
       # v to a Trackable data structure when v is a list/dict/tuple.
       converted_v = getattr(self, k)
+      if isinstance(converted_v, weakref.ref):
+        converted_v = converted_v()
       _assert_trackable(converted_v, k)
 
       if root:
         # Make sure that root doesn't already have dependencies with these names
-        child = root._lookup_dependency(k)
+        child = trackable_root._lookup_dependency(k)
         if child is None:
           attached_dependencies.append(
               base.WeakTrackableReference(k, converted_v))
@@ -2140,7 +2135,8 @@ class Checkpoint(tracking.AutoTrackable):
               f"Cannot create a Checkpoint with keyword argument {k} if "
               f"root.{k} already exists.")
 
-    self._saver = saver_with_op_caching(saver_root, attached_dependencies)
+    self._saver = saver_with_op_caching(root if root else self,
+                                        attached_dependencies)
     self._attached_dependencies = data_structures.NoDependency(
         attached_dependencies)
 
@@ -2168,7 +2164,11 @@ class Checkpoint(tracking.AutoTrackable):
           # When loading a checkpoint, the save counter is created after
           # the checkpoint has been loaded, so it must be handled in a deferred
           # manner.
-          restore = self.root._deferred_dependencies.pop("save_counter", ())  # pylint: disable=protected-access
+          if isinstance(self.root, weakref.ref):
+            root = self.root()
+          else:
+            root = self.root
+          restore = root._deferred_dependencies.pop("save_counter", ())  # pylint: disable=protected-access
           if restore:
             restore[0].restore(self._save_counter)
 
@@ -2213,6 +2213,8 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    if isinstance(file_prefix, os.PathLike):
+      file_prefix = os.fspath(file_prefix)
     return self._write(file_prefix, options)
 
   def _write(self, file_prefix, options=None, update_ckpt_state=False):
@@ -2273,6 +2275,7 @@ class Checkpoint(tracking.AutoTrackable):
     return self._save_counter
 
   def save(self, file_prefix, options=None):
+    # pylint:disable=line-too-long
     """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
@@ -2288,19 +2291,19 @@ class Checkpoint(tracking.AutoTrackable):
 
     ```
     step = tf.Variable(0, name="step")
-    checkpoint = tf.Checkpoint(step=step)
+    checkpoint = tf.train.Checkpoint(step=step)
     checkpoint.save("/tmp/ckpt")
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt")
+    checkpoint.restore("/tmp/ckpt-1")
 
     # You can also pass options to save() and restore(). For example this
     # runs the IO ops on the localhost:
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    options = tf.train.CheckpointOptions(experimental_io_device="/job:localhost")
     checkpoint.save("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt", options=options)
+    checkpoint.restore("/tmp/ckpt-1", options=options)
     ```
 
     Args:
@@ -2312,6 +2315,9 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint.
     """
+    if isinstance(file_prefix, os.PathLike):
+      file_prefix = os.fspath(file_prefix)
+    # pylint:enable=line-too-long
     options = options or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
     if graph_building:
@@ -2410,6 +2416,8 @@ class Checkpoint(tracking.AutoTrackable):
       status of a checkpoint restoration.  See `restore` for details.
     """
     start_time = time.time()
+    if isinstance(save_path, os.PathLike):
+      save_path = os.fspath(save_path)
     options = options or checkpoint_options.CheckpointOptions()
     result = self._saver.restore(save_path=save_path, options=options)
     metrics.AddCheckpointReadDuration(
@@ -2524,6 +2532,8 @@ class Checkpoint(tracking.AutoTrackable):
         `save_path`.
     """
     orig_save_path = save_path
+    if isinstance(save_path, os.PathLike):
+      save_path = os.fspath(save_path)
 
     if save_path is not None and gfile.IsDirectory(save_path) and (
         (gfile.Exists(utils_impl.get_saved_model_pb_path(save_path)) or

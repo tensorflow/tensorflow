@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -134,7 +134,7 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
 
   // Parse a kernel source code into the MLIR Module.
   mlir::OwningOpRef<mlir::ModuleOp> module(
-      mlir::parseSourceFile(source_mgr, &context));
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &context));
   CHECK(module) << "failed to parse mlir module";
 
   // Collect all diagnostics emitted while lowering parsed kernel module.

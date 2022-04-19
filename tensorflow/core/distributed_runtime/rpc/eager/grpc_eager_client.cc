@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <string>
+
 #include "grpcpp/generic/generic_stub.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -225,6 +231,23 @@ class GrpcEagerClient : public EagerClient {
     return [this, done = std::move(done)](const Status& status) {
       done(status);
       this->Unref();
+      if (TF_PREDICT_FALSE(!status.ok())) {
+        // Retrieve the location where the error was produced.
+        auto error_source_payload = status.GetPayload(kErrorSource);
+
+        if (error_source_payload.has_value()) {
+          tensorflow::core::platform::ErrorSourceProto error_source_proto;
+          error_source_proto.ParseFromString(
+              std::string(*error_source_payload));  // NOLINT
+          metrics::UpdateEagerClientErrorCounter(
+              error_source_proto.ErrorSource_Name(
+                  error_source_proto.error_source()),
+              error_name(status.code()));
+        } else {
+          metrics::UpdateEagerClientErrorCounter("unknown",
+                                                 error_name(status.code()));
+        }
+      }
     };
   }
 };

@@ -38,9 +38,10 @@ class MetalExecutionEnvironment : public TestExecutionEnvironment {
   ~MetalExecutionEnvironment() = default;
 
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const override;
-  std::vector<TensorStorageType> GetSupportedStorages() const override;
-  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
-      const override;
+  std::vector<TensorStorageType> GetSupportedStorages(
+      DataType data_type) const override;
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport(
+      DataType data_type) const override;
 
   const GpuInfo& GetGpuInfo() const { return device_.GetInfo(); }
 

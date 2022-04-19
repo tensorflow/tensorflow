@@ -925,7 +925,7 @@ class ShapePatternSubshapeImpl {
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "with subshape at index " << index_.ToString() << " which is";
+    *os << "with subshape at index " << ShapeIndex(index_) << " which is";
     Indent(os, indent + kIndentInc);
     subshape_.DescribeTo(os, indent + kIndentInc);
   }
@@ -941,11 +941,11 @@ class ShapePatternSubshapeImpl {
   template <typename ShapeType>
   bool MatchImpl(ShapeType* shape, MatchOption option) const {
     if (!ShapeUtil::IndexIsValid(*shape, index_)) {
-      EXPLAIN << "No subshape at " << index_.ToString();
+      EXPLAIN << "No subshape at " << ShapeIndex(index_);
       return false;
     }
     if (!subshape_.Match(GetSubshape(shape), option)) {
-      EXPLAIN << "\nin subshape at " << index_.ToString();
+      EXPLAIN << "\nin subshape at " << ShapeIndex(index_);
       return false;
     }
     return true;

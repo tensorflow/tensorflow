@@ -34,13 +34,13 @@ namespace TFL {
 namespace {
 
 template <int NInput, int NOutput>
-FuncOp createMaxUnpoolingFunc(
+func::FuncOp createMaxUnpoolingFunc(
     mlir::Builder* builder, const SmallVector<mlir::Type, NInput>& input_types,
     const SmallVector<mlir::Type, NOutput>& output_types) {
   auto func_type = builder->getFunctionType(input_types, output_types);
-  auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getStringAttr("fused_func")),
-                     "fused_func", func_type, {});
+  auto func = func::FuncOp::create(
+      mlir::NameLoc::get(builder->getStringAttr("fused_func")), "fused_func",
+      func_type, {});
 
   func.addEntryBlock();
   mlir::StringAttr attr_value = builder->getStringAttr("MaxUnpooling2D");
@@ -48,9 +48,9 @@ FuncOp createMaxUnpoolingFunc(
   return func;
 }
 
-FuncOp createMaxUnpoolingFunc(mlir::Builder* builder,
-                              const SmallVector<int64_t, 4>& input_shape,
-                              const SmallVector<int64_t, 4>& output_shape) {
+func::FuncOp createMaxUnpoolingFunc(
+    mlir::Builder* builder, const SmallVector<int64_t, 4>& input_shape,
+    const SmallVector<int64_t, 4>& output_shape) {
   auto input_type = RankedTensorType::get(input_shape, builder->getF32Type());
   auto indices_type = RankedTensorType::get(input_shape, builder->getI64Type());
   auto output_type = RankedTensorType::get(output_shape, builder->getF32Type());
@@ -125,7 +125,7 @@ class PerceptionUtilsTest : public ::testing::Test {
     builder_.reset();
   }
 
-  FuncOp fused_max_unpooling_func_;
+  func::FuncOp fused_max_unpooling_func_;
   mlir::TF::FuncAttr func_attr_;
   std::unique_ptr<mlir::MLIRContext> context_;
   std::unique_ptr<mlir::Builder> builder_;

@@ -70,4 +70,9 @@ absl::optional<int> HloOpcodeArity(HloOpcode opcode) {
   }
 }
 
+bool HloOpcodeIsAsync(HloOpcode opcode) {
+  return opcode == HloOpcode::kAsyncStart ||
+         opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone;
+}
+
 }  // namespace xla

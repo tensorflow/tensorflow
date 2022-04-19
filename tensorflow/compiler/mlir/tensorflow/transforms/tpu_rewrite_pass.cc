@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -53,17 +55,12 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
 namespace TFTPU {
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> tpu_compile_metadata_debug(
-    "tpu_compile_metadata_debug",
-    llvm::cl::desc("Serialize TPUCompileMetadataProto metadata in "
-                   "'tf._TPUCompileMlir' op as a proto debug string"));
 
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
 constexpr char kDevicesAttr[] = "devices";
@@ -87,11 +84,11 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
-  llvm::SmallVector<FuncOp, 4> referenced({entry_func});
+  llvm::SmallVector<func::FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -108,7 +105,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<func::FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -116,7 +113,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+      func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
           use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
@@ -328,7 +325,7 @@ Operation* BuildCompileOp(
     tf_device::ClusterFuncOp cluster_func, int num_replicas,
     int num_cores_per_replica, llvm::StringRef compilation_device,
     llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
-    OpBuilder* builder) {
+    OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   if (failed(SetMetadataProtoFromClusterFuncOp(
@@ -358,8 +355,9 @@ Operation* BuildCompileOp(
   }
 
   FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
-  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-      func_attr.getValue());
+  func::FuncOp func =
+      cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
+          func_attr.getValue());
 
   std::string txt_module;
   if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
@@ -374,10 +372,13 @@ Operation* BuildCompileOp(
   metadata.set_mlir_fingerprint(mlir_fingerprint);
 
   std::string txt_metadata;
-  if (tpu_compile_metadata_debug)
-    txt_metadata = metadata.DebugString();
-  else
+  if (tpu_compile_metadata_debug) {
+    ::tensorflow::protobuf::TextFormat::Printer printer;
+    printer.SetExpandAny(true);
+    printer.PrintToString(metadata, &txt_metadata);
+  } else {
     metadata.SerializeToString(&txt_metadata);
+  }
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),
@@ -553,8 +554,8 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 LogicalResult Rewrite(
     tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
-    ArrayRef<TF::TPUCompilationResultOp> compilation_result,
-    OpBuilder* builder) {
+    ArrayRef<TF::TPUCompilationResultOp> compilation_result, OpBuilder* builder,
+    bool tpu_compile_metadata_debug) {
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
@@ -614,10 +615,11 @@ LogicalResult Rewrite(
     builder->setInsertionPoint(cluster_func->getParentOp());
   }
 
-  Operation* compile_op = BuildCompileOp(
-      cluster_func, num_replicas, num_cores_per_replica,
-      tpu_device_assignment.compilation_device,
-      std::move(tpu_device_assignment.xla_device_assignment), builder);
+  Operation* compile_op =
+      BuildCompileOp(cluster_func, num_replicas, num_cores_per_replica,
+                     tpu_device_assignment.compilation_device,
+                     std::move(tpu_device_assignment.xla_device_assignment),
+                     builder, tpu_compile_metadata_debug);
   if (!compile_op) return failure();
 
   // This replaces _TPUCompileMlir placeholder ops that are required
@@ -753,16 +755,18 @@ void TPURewritePass::runOnOperation() {
     return WalkResult::advance();
   });
   if (result_init.wasInterrupted()) return signalPassFailure();
-
   llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
+    if (failed(TF::HasValidCompilationAndReplicationAttributes(*op)))
+      return WalkResult::interrupt();
     // Skip non-tpu device cluster_func.
-    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    auto cluster_id = op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
     if (failed(Rewrite(op, devices.device_names(),
-                       compilation_results[cluster_id], &builder)))
+                       compilation_results[cluster_id], &builder,
+                       tpu_compile_metadata_debug_)))
       return WalkResult::interrupt();
 
     to_be_erased.push_back(op);

@@ -77,9 +77,9 @@ def libiomp5_cc_binary(name, cppsources, srcdeps, common_includes):
                        ":openmp_asm",
                    ],
                ),
-        copts = select_os_specific_2(
-            LM = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
-            W = ["/Domp_EXPORTS /D_M_AMD64 /DOMPT_SUPPORT=0 /D_WINDOWS /D_WINNT /D_USRDLL"],
+        defines = select_os_specific_2(
+            LM = ["omp_EXPORTS", "_GNU_SOURCE", "_REENTRANT"],
+            W = ["omp_EXPORTS", "_M_AMD64", "OMPT_SUPPORT=0", "_WINDOWS", "_WINNT", "_USRDLL"],
         ),
         includes = common_includes,
         linkopts = select_os_specific_2(

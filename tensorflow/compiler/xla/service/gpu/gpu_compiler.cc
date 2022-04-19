@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -95,7 +96,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -135,6 +135,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
+#include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
@@ -144,9 +145,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
+#include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -204,14 +207,31 @@ class GpuBfloat16Support : public BFloat16Support {
  private:
   bool IsSupported(const HloInstruction& hlo) const {
     switch (hlo.opcode()) {
+      // Collective ops.
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllReduceDone:
-      case HloOpcode::kReduceScatter:
       case HloOpcode::kAllToAll:
-      case HloOpcode::kBitcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
+      // Data movement only ops.
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kGather:
+      case HloOpcode::kPad:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kScatter:
+      case HloOpcode::kSelect:
+      case HloOpcode::kSelectAndScatter:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+      // Other special ops.
+      case HloOpcode::kBitcast:
         return true;
       case HloOpcode::kConvolution:
         return IsConvBF16Supported();
@@ -336,7 +356,7 @@ Status GpuCompiler::OptimizeHloModule(
       spmd_simplify.AddPass<HloDCE>();
 
       spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
-      spmd_pipeline.AddPass<GpuSpmdPartitioner>(
+      spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
           num_partitions, hlo_module->config().replica_count());
     } else {
       // Remove redundant sharding ops when partition_count == 1.
@@ -401,6 +421,10 @@ Status GpuCompiler::OptimizeHloModule(
     GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
                             stream_exec);
     pipeline.AddPass<BFloat16Normalization>(&bf16);
+
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_gpu_simplify_all_fp_conversions())
+      pipeline.AddPass<SimplifyFPConversions>();
 
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -470,14 +494,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
-
-      pipeline.AddPass<TransposeFolding>(
-          [](const HloInstruction& dot,
-             const TransposeFolding::OperandIndices& candidate_operands) {
-            return IsMatrixMultiplication(dot)
-                       ? candidate_operands
-                       : TransposeFolding::OperandIndices{};
-          });
+      pipeline.AddPass<TransposeFolding>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -617,6 +634,8 @@ Status GpuCompiler::OptimizeHloModule(
     options.set_minmax_propagate_nan(
         !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<OptimizationBarrierExpander>();
+    pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -657,6 +676,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
@@ -710,6 +731,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
                           stream_exec);
   pipeline.AddPass<BFloat16Normalization>(&bf16);
+
+  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+  if (debug_options.xla_gpu_simplify_all_fp_conversions())
+    pipeline.AddPass<SimplifyFPConversions>();
 
   // Choose the fastest algorithm for each conv.
   //
@@ -804,17 +829,18 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if XLA_ENABLE_XLIR
-static StatusOr<OwnedBefBuffer> LowerToBef(
-    mlir::ModuleOp mlir_module, absl::string_view entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
+                                           llvm::StringRef entry_function_name,
+                                           llvm::ArrayRef<int64_t> buffer_sizes,
+                                           HloModule* hlo_module) {
   // Forward collective permute attributes for use by the lowering pipeline.
   mlir::OpBuilder builder(mlir_module.getContext());
   mlir::IntegerAttr replica_count_attr =
       builder.getI64IntegerAttr(hlo_module->config().replica_count());
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(hlo_module->config().num_partitions());
-  mlir::FuncOp func =
-      mlir_module.lookupSymbol<mlir::FuncOp>(entry_function_name);
+  mlir::func::FuncOp func =
+      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
@@ -847,7 +873,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(
 
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -894,6 +920,7 @@ static Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results) {
   results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
@@ -922,7 +949,7 @@ static Status CompileModuleToLlvmIrImpl(
           /*colorer=*/BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, can_share_buffer_function));
 
-  VLOG(1) << "Buffer Assignment Stats "
+  VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
@@ -946,7 +973,7 @@ static Status CompileModuleToLlvmIrImpl(
     DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
   }
 
-  auto entry_function = mlir::cast<mlir::FuncOp>(
+  auto entry_function = mlir::cast<mlir::func::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
@@ -955,8 +982,8 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, &mlir_context,
-      results->llvm_module.get());
+      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
+      &mlir_context, results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
@@ -967,11 +994,10 @@ static Status CompileModuleToLlvmIrImpl(
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
     bool supports_runtime_managed_constants =
-        // TODO(b/218527186): Implement this feature for BEF as well.
-        !IsBefEnabled(hlo_module->config()) &&
+        !IsBefThunkEnabled(hlo_module->config()) &&
         // TODO(b/218907125): Implement this feature for ROCm as well.
         platform_id != se::rocm::kROCmPlatformId &&
         hlo_module->config().debug_options().xla_gpu_enable_shared_constants();
@@ -997,7 +1023,7 @@ static Status CompileModuleToLlvmIrImpl(
         results->allocations, std::back_inserter(buffer_sizes),
         [](const BufferAllocation& allocation) { return allocation.size(); });
     TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
-                        LowerToBef(*mlir_module, entry_function.getName().str(),
+                        LowerToBef(*mlir_module, entry_function.getName(),
                                    buffer_sizes, hlo_module));
     return Status::OK();
   }
@@ -1221,6 +1247,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  VLOG(1) << "Starting to compile HLO module " << module->name();
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
   std::string slow_compilation_msg =
       absl::StrCat("Compiling module ", module->name());
@@ -1252,6 +1279,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->platform()->Name(), stream_exec->platform()->id(),
       gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
+      stream_exec->GetDeviceDescription().rocm_compute_capability(),
       GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
   if (user_pre_optimization_hook_) {
@@ -1404,7 +1432,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           stream_exec->GetDeviceDescription().memory_bandwidth());
       GpuHloCostAnalysis cost_analysis(options);
       TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-      VLOG(1) << "HLO memory read+written: "
+      VLOG(1) << "HLO memory read+written for " << module->name() << " "
               << tensorflow::strings::HumanReadableNumBytes(
                      cost_analysis.bytes_accessed());
       if (module->config().hlo_profiling_enabled()) {
@@ -1418,6 +1446,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         stream_exec->platform()->Name(), stream_exec->platform()->id(),
         gpu_device_info,
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
+        stream_exec->GetDeviceDescription().rocm_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
     if (!absl::holds_alternative<OwnedBefBuffer>(
@@ -1451,12 +1480,14 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size) {
+    se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
       platform_id, gpu_device_info, cuda_compute_capability,
-      DummyCanShareBufferFunction, pointer_size, &results));
+      rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
+      &results));
   return std::move(results.llvm_module);
 }
 
@@ -1465,7 +1496,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doens't exist yet.
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -1541,8 +1572,9 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
     absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
     std::unique_ptr<llvm::Module> llvm_module,
     IrEmitterContext* ir_emitter_context) {
-  mlir::FuncOp entry_function = mlir::cast<mlir::FuncOp>(module.lookupSymbol(
-      llvm::StringRef(entry_function_name.data(), entry_function_name.size())));
+  mlir::func::FuncOp entry_function =
+      mlir::cast<mlir::func::FuncOp>(module.lookupSymbol(llvm::StringRef(
+          entry_function_name.data(), entry_function_name.size())));
 
   std::vector<BufferAllocation> allocations;
   OutputInfoMap output_info;
@@ -1558,11 +1590,10 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
 
   TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
                                            module_config, ir_emitter_context));
-  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
   bool supports_runtime_managed_constants =
-      // TODO(b/218527186): Implement this feature for BEF as well.
-      !IsBefEnabled(module_config) &&
+      !IsBefThunkEnabled(module_config) &&
       // TODO(b/218907125): Implement this feature for ROCm as well.
       compiler->PlatformId() != se::rocm::kROCmPlatformId;
   if (supports_runtime_managed_constants) {

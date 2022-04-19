@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -53,7 +53,8 @@ class CompatibilityAnalysis {
 
 void CompatibilityAnalysis::AnalyzeOperation(mlir::Operation* op) {
   // Skip the standard ops that are allowed in tf dialect.
-  if (llvm::isa<mlir::func::ReturnOp, mlir::FuncOp, mlir::ModuleOp>(op)) return;
+  if (llvm::isa<mlir::func::ReturnOp, mlir::func::FuncOp, mlir::ModuleOp>(op))
+    return;
 
   auto op_name = op->getName();
 

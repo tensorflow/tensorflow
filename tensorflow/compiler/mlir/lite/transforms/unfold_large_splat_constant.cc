@@ -44,6 +44,8 @@ constexpr int64_t kConstantSizeThresholdInBits = 1e+6;
 class UnfoldLargeSplatConstant
     : public PassWrapper<UnfoldLargeSplatConstant, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfoldLargeSplatConstant)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
@@ -61,7 +63,7 @@ class UnfoldLargeSplatConstant
   void runOnOperation() override {
     auto module = getOperation();
 
-    mlir::OpBuilder op_builder(&module.body());
+    mlir::OpBuilder op_builder(&module.getBodyRegion());
     module.walk([&](mlir::arith::ConstantOp const_op) {
       MaybeUnfoldLargeSplatConstant(&op_builder, const_op);
     });

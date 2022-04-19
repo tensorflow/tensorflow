@@ -105,7 +105,9 @@ class SessionMgr {
 
   void ClearLogs();
 
-  void TeardownCoordinationServiceAndAgent();
+  // Agent should be torn down before service as it needs to disconnect first.
+  void TeardownCoordinationServiceAgent();
+  void TeardownCoordinationService();
 
  private:
   WorkerEnv* const worker_env_;  // Not owned.

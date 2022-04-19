@@ -56,10 +56,10 @@ struct RngGetAndUpdateStatePattern
     auto num_elements = result_type.getNumElements();
 
     // Get or define the global variable
-    auto global_op =
+    auto* global_op =
         mlir::SymbolTable::lookupNearestSymbolFrom(op, global_name);
     if (!global_op) {
-      auto parent = mlir::SymbolTable::getNearestSymbolTable(op);
+      auto* parent = mlir::SymbolTable::getNearestSymbolTable(op);
       OpBuilder::InsertionGuard g(rewriter);
       rewriter.setInsertionPointToStart(&parent->getRegions().front().front());
 

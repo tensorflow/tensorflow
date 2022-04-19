@@ -47,9 +47,12 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
   if instructions:
     main_text.append('Instructions for updating:')
   return decorator_utils.add_notice_to_docstring(
-      doc, instructions,
+      doc,
+      instructions,
       'DEPRECATED FUNCTION',
-      '(deprecated)', main_text)
+      '(deprecated)',
+      main_text,
+      notice_type='Deprecated')
 
 
 def _add_deprecated_arg_notice_to_docstring(doc, date, instructions,
@@ -59,13 +62,16 @@ def _add_deprecated_arg_notice_to_docstring(doc, date, instructions,
   deprecation_string = ', '.join(sorted(deprecated_names))
 
   return decorator_utils.add_notice_to_docstring(
-      doc, instructions, 'DEPRECATED FUNCTION ARGUMENTS',
+      doc,
+      instructions,
+      'DEPRECATED FUNCTION ARGUMENTS',
       '(deprecated arguments)', [
           'SOME ARGUMENTS ARE DEPRECATED: `(%s)`. '
           'They will be removed %s.' %
           (deprecation_string, 'in a future version' if date is None else
            ('after %s' % date)), 'Instructions for updating:'
-      ])
+      ],
+      notice_type='Deprecated')
 
 
 def _add_deprecated_arg_value_notice_to_docstring(doc, date, instructions,
@@ -79,12 +85,15 @@ def _add_deprecated_arg_value_notice_to_docstring(doc, date, instructions,
   when = 'in a future version' if date is None else ('after %s' % date)
 
   return decorator_utils.add_notice_to_docstring(
-      doc, instructions, 'DEPRECATED FUNCTION ARGUMENT VALUES',
+      doc,
+      instructions,
+      'DEPRECATED FUNCTION ARGUMENT VALUES',
       '(deprecated argument values)', [
           'SOME ARGUMENT VALUES ARE DEPRECATED: `(%s)`. '
-          'They will be removed %s.' % (deprecation_string, when),
-          'Instructions for updating:'
-      ])
+          'They will be removed %s.' %
+          (deprecation_string, when), 'Instructions for updating:'
+      ],
+      notice_type='Deprecated')
 
 
 def _validate_deprecation_args(date, instructions):
@@ -195,10 +204,14 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
     # Make a new class with __init__ wrapped in a warning.
     class _NewClass(func_or_class):  # pylint: disable=missing-docstring
       __doc__ = decorator_utils.add_notice_to_docstring(
-          func_or_class.__doc__, 'Please use %s instead.' % name,
+          func_or_class.__doc__,
+          'Please use %s instead.' % name,
           'DEPRECATED CLASS',
-          '(deprecated)', ['THIS CLASS IS DEPRECATED. '
-                           'It will be removed in a future version. '])
+          '(deprecated)', [
+              ('THIS CLASS IS DEPRECATED. '
+               'It will be removed in a future version. ')
+          ],
+          notice_type='Deprecated')
       __name__ = func_or_class.__name__
       __module__ = _call_location(outer=True)
 

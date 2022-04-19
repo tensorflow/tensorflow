@@ -16,6 +16,7 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
@@ -104,6 +105,10 @@ def IsSameOrValid : AttrConstraint<
     CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
           "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
     "'SAME' or 'VALID' paddings">;
+
+def TFL_GetMirrorPaddingType : NativeCodeCall<
+    "mlir::TFL::MirrorPaddingTypeAttr::get($_builder.getContext(), " #
+        "GetTFLMirrorPaddingFromString($0));">;
 
 def LegalizeAbs : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
 def LegalizeAddN : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
@@ -403,8 +408,8 @@ def LegalizeResizeNearestNeighbor : Pat<
   (TFL_ResizeNearestNeighborOp $images, $size, $align_corners,
     $half_pixel_centers)>;
 
-def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst),
-                            (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
+def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $mode),
+                            (TFL_MirrorPadOp $arg0, $arg1, (TFL_GetMirrorPaddingType $mode))>;
 
 def LegalizeSparseToDense : Pat<
   (TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values,

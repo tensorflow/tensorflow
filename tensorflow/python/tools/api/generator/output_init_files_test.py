@@ -19,6 +19,7 @@ import sys
 # available in sys.modules
 # pylint: disable=unused-import
 from tensorflow import python as _tf_for_api_traversal
+from tensorflow.dtensor import python as _dtensor_for_api_traversal
 from tensorflow.lite.python import lite as _tflite_for_api_traversal
 from tensorflow.lite.python.authoring import authoring
 from tensorflow.python import modules_with_exports

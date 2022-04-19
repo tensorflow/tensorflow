@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -83,14 +84,14 @@ LogicalResult SessionInitializerOp::verify() {
       session_initializer->getParentOfType<ModuleOp>());
 
   for (auto sym_ref : session_initializer.initializers()) {
-    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
     if (!init_func_op)
       return session_initializer.emitOpError()
              << "the initializer function does not exist";
 
-    if (!init_func_op.getType().getResults().empty())
+    if (!init_func_op.getFunctionType().getResults().empty())
       return session_initializer.emitOpError()
              << "the initializer function should have no output";
 
@@ -202,7 +203,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
-    auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
+    auto arg_type = cast<func::FuncOp>(op).getArgument(arg_index).getType();
     return VerifyBoundInputArgType(op, arg_type, symbol_op);
   }
   if (named_attr.getName() == "tf_saved_model.index_path") {
@@ -224,7 +225,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
                          << named_attr.getName().getValue() << "'";
 }
 
-static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
+static bool HasAnyTfSavedModelArgAttr(func::FuncOp func) {
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
     if (func.getArgAttr(i, "tf_saved_model.index_path") ||
         func.getArgAttr(i, "tf_saved_model.bound_input")) {
@@ -267,7 +268,7 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     const bool is_exported = IsExported(func);
 
     if (is_exported && !func.isPublic()) {
@@ -279,7 +280,6 @@ static LogicalResult VerifySavedModelModule(
       return func.emitError() << "non-exported function @" << func.getName()
                               << " should be private";
     }
-
     if (!is_exported && HasAnyTfSavedModelArgAttr(func)) {
       return func.emitError() << "can only apply 'tf_saved_model' argument "
                                  "attributes to exported functions";
@@ -293,7 +293,7 @@ static LogicalResult VerifySavedModelModule(
            << "there must be no more than one session_initializer op";
   }
 
-  auto is_init = [&session_initializers](mlir::FuncOp func) {
+  auto is_init = [&session_initializers](mlir::func::FuncOp func) {
     if (session_initializers.empty()) return false;
     auto init_syms = (*session_initializers.begin()).initializers();
     return std::any_of(
@@ -309,7 +309,7 @@ static LogicalResult VerifySavedModelModule(
                                  "have analyzable symbol uses";
   }
   for (auto symbol_use : *symbol_uses) {
-    auto func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         symbol_use.getUser(), symbol_use.getSymbolRef());
     if (func && IsExported(func)) {
       // If it is an init function, then it can be used by the unique
@@ -327,7 +327,7 @@ static LogicalResult VerifySavedModelModule(
   return success();
 }
 
-LogicalResult VerifyExportedFunc(FuncOp func) {
+LogicalResult VerifyExportedFunc(func::FuncOp func) {
   bool reached_bound_inputs = false;
   auto module = func->getParentOfType<ModuleOp>();
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
@@ -377,7 +377,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.getName() == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp, GlobalTensorOp>(op)) {
+    if (!isa<func::FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
@@ -391,7 +391,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                 "whose immediate parent has attribute "
                 "'tf_saved_model.semantics'";
     }
-    if (auto func = dyn_cast<FuncOp>(op)) {
+    if (auto func = dyn_cast<func::FuncOp>(op)) {
       if (failed(VerifyExportedFunc(func))) {
         return failure();
       }
@@ -436,7 +436,7 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module->getAttr("tf_saved_model.semantics") != nullptr;
 }
 
-Operation *LookupBoundInput(FuncOp func, int arg_index,
+Operation *LookupBoundInput(func::FuncOp func, int arg_index,
                             const SymbolTable &symbol_table) {
   auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
       arg_index, "tf_saved_model.bound_input");
@@ -459,10 +459,10 @@ class OptimizeSessionInitializerPattern
                                 PatternRewriter &rewriter) const override {
     SymbolTable symbol_table(op->getParentOfType<ModuleOp>());
 
-    SmallVector<FuncOp, 2> to_remove;
+    SmallVector<func::FuncOp, 2> to_remove;
     SmallVector<mlir::Attribute, 2> to_keep;
     for (auto sym_ref : op.initializers()) {
-      auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+      auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
           sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
       // The init function can only be referenced from the SessionInitializerOp.
@@ -505,7 +505,7 @@ SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
 
   SmallVector<StringRef, 2> results;
   for (auto sym_ref : session_initializer_op.initializers()) {
-    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
     auto exported_names = GetExportedNames(init_func_op);
     assert(exported_names.size() == 1);

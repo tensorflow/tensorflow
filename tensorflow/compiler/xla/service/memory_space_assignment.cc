@@ -65,6 +65,21 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
         break;
       case HloOpcode::kBitcast:
         return LooksLikeAnActivation(user);
+      case HloOpcode::kDynamicSlice:
+        if (std::find(user->operands().begin() + 1, user->operands().end(),
+                      inst) != user->operands().end()) {
+          return true;
+        }
+        // TODO(b/222538192): This workaround is needed when the embedding table
+        // is further spliced and reduced and used elsewhere in the program.
+        // Remove this workaround once we better understand what's causing it
+        // and fix it on the model side.
+        if (absl::c_all_of(user->users(), [](const HloInstruction* ds_user) {
+              return ds_user->opcode() == HloOpcode::kReduce;
+            })) {
+          continue;
+        }
+        return LooksLikeAnActivation(user);
       default:
         return true;
     }
@@ -81,9 +96,9 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
           value.shape().layout().memory_space() !=
               options.alternate_memory_space) &&
          value.index().size() <= 1 && value.shape().IsArray() &&
-         !value.uses().empty() &&
+         !value.GetUses().empty() &&
          options.size_fn(value) <= options.max_size_in_bytes &&
-         absl::c_all_of(value.uses(), [&](const HloUse& use) {
+         absl::c_all_of(value.GetUses(), [&](const HloUse& use) {
            const HloInstruction* inst =
                use.instruction->operand(use.operand_number);
 
@@ -134,7 +149,7 @@ FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
       auto get_use_size =
           [](const MemorySpaceAssignment::BufferInterval& bi) -> int64_t {
         int64_t use_size = 0;
-        for (const auto& use : bi.buffer->uses()) {
+        for (const auto& use : bi.buffer->GetUses()) {
           use_size += ShapeUtil::ElementsInRecursive(use.instruction->shape());
         }
         return use_size;
@@ -261,7 +276,7 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
            interval.buffer->defining_position().instruction,
            interval.buffer->defining_position().index)) {
     for (const HloValue* value : buffer->values()) {
-      for (const HloUse& use : value->uses()) {
+      for (const HloUse& use : value->GetUses()) {
         // We look inside the called computations of while and conditional, so
         // don't use the benefit of while and conditional directly.
         if (use.instruction->opcode() == HloOpcode::kWhile ||
@@ -316,10 +331,10 @@ int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
   int nest_level = 0;
   const HloComputation* computation = instruction->parent();
   while (!computation->IsEntryComputation()) {
-    auto node = call_graph_->GetNode(computation);
+    auto& node = call_graph_->GetNode(computation);
     auto callsites = node.caller_callsites();
     CHECK_EQ(callsites.size(), 1) << "The module is not flattened!";
-    auto callsite = callsites[0];
+    auto& callsite = callsites[0];
     if (!while_only || callsite.instruction()->opcode() == HloOpcode::kWhile) {
       ++nest_level;
     }
@@ -1000,7 +1015,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
     allocation_values.emplace_back(value, position, buffer_interval.size);
   }
 
-  std::vector<HloUse> uses(value->uses());
+  std::vector<HloUse> uses(value->GetUses().begin(), value->GetUses().end());
   absl::c_stable_sort(uses, [&](const HloUse& use1, const HloUse& use2) {
     return instruction_schedule.at(use1.instruction) <
            instruction_schedule.at(use2.instruction);
@@ -1144,7 +1159,7 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
         instruction_schedule.at(while_body->parameter_instruction(0));
     int64_t root_time = instruction_schedule.at(while_body->root_instruction());
     int64_t min_use_time = root_time;
-    for (const HloUse& parameter_use : parameter_value->uses()) {
+    for (const HloUse& parameter_use : parameter_value->GetUses()) {
       int64_t use_time = instruction_schedule.at(parameter_use.instruction);
       if (parameter_use.instruction->opcode() != HloOpcode::kGetTupleElement &&
           parameter_use.instruction->opcode() != HloOpcode::kTuple &&
@@ -1201,7 +1216,7 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
               parameter_instruction, other_use.hlo_use.operand_index);
       int64_t parameter_time = instruction_schedule.at(parameter_instruction);
       int64_t min_use_time = conditional_time;
-      for (const HloUse& parameter_use : parameter_value->uses()) {
+      for (const HloUse& parameter_use : parameter_value->GetUses()) {
         if (parameter_use.instruction->parent() == called_computation &&
             parameter_use.instruction->opcode() !=
                 HloOpcode::kGetTupleElement &&
@@ -1262,7 +1277,7 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
       instruction_schedule.at(interval.buffer->defining_position().instruction);
   std::vector<std::pair<int64_t, std::string>> uses;
   for (const HloValue* value : buffer.values()) {
-    for (const HloUse& use : value->uses()) {
+    for (const HloUse& use : value->GetUses()) {
       uses.push_back(
           {instruction_schedule.at(use.instruction), use.ToString()});
     }
@@ -2044,7 +2059,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = buffer->uses();
+  auto uses = buffer->GetUses();
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <
            instruction_schedule.at(rhs.instruction);
@@ -2057,11 +2072,12 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   int64_t last_use_time = instruction_schedule.at(
       absl::c_max_element(uses, use_schedule_compare)->instruction);
   for (const HloValue* colocation : prefetch_candidate->colocations) {
-    last_use_time = std::max(
-        last_use_time,
-        instruction_schedule.at(
-            absl::c_max_element(colocation->uses(), use_schedule_compare)
-                ->instruction));
+    auto colocation_uses = colocation->GetUses();
+    last_use_time =
+        std::max(last_use_time,
+                 instruction_schedule.at(
+                     absl::c_max_element(colocation_uses, use_schedule_compare)
+                         ->instruction));
   }
 
   int64_t end_of_program_prefetch_end_time = instruction_schedule.size();
@@ -3236,21 +3252,19 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     // Find a chunk that's as long living as possible.
     absl::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
-    std::lower_bound(earliest_use_it, std::next(use_time_it), -1,
-                     [&](int64_t use, int64_t) {
-                       alternate_mem_interval->end = use;
-                       Chunk chunk_candidate =
-                           FindChunkCandidate(*alternate_mem_interval);
-                       if (chunk_candidate.chunk_end() <=
-                           available_heap_size()) {
-                         if (use > latest_matching_use) {
-                           last_chunk_candidate = chunk_candidate;
-                           latest_matching_use = use;
-                         }
-                         return true;
-                       }
-                       return false;
-                     });
+    std::lower_bound(
+        earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
+          alternate_mem_interval->end = use;
+          Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);
+          if (chunk_candidate.chunk_end() <= available_heap_size()) {
+            if (use > latest_matching_use) {
+              last_chunk_candidate = chunk_candidate;
+              latest_matching_use = use;
+            }
+            return true;
+          }
+          return false;
+        });
     if (last_chunk_candidate.has_value()) {
       VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
               << ", latest contiguous use = " << latest_contiguous_use_time
@@ -3900,14 +3914,23 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
 
 void MemorySpaceAssignment::RemoveAssignmentForInstruction(
     const HloInstruction* instruction) {
-  for (auto& position_and_chunk : alternate_memory_assignments_) {
-    const HloPosition& position = position_and_chunk.first;
+  auto it = alternate_memory_assignments_.begin();
+  auto end = alternate_memory_assignments_.end();
+  while (it != end) {
+    const HloPosition& position = it->first;
     if (position.instruction == instruction) {
       VLOG(3) << "Removing instruction from alternate memory assignments.";
-      // Swap the removed position and chunk with the back and pop back.
-      position_and_chunk = alternate_memory_assignments_.back();
-      alternate_memory_assignments_.pop_back();
-      break;
+      if (std::next(it) == end) {
+        alternate_memory_assignments_.pop_back();
+        break;
+      } else {
+        // Swap the removed position and chunk with the back and pop back.
+        *it = alternate_memory_assignments_.back();
+        alternate_memory_assignments_.pop_back();
+        end = alternate_memory_assignments_.end();
+      }
+    } else {
+      ++it;
     }
   }
 }
@@ -3943,8 +3966,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
       for (HloInstruction* instruction :
            computation->MakeInstructionPostOrder()) {
         if (computation->IsSafelyRemovable(instruction) &&
-            instruction->user_count() == 0 && !instruction->HasSideEffect() &&
-            instruction != computation->root_instruction() &&
+            instruction->IsDead() && !instruction->HasSideEffect() &&
             instruction->opcode() != HloOpcode::kCopyStart &&
             instruction->opcode() != HloOpcode::kCopyDone) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
@@ -4219,7 +4241,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
           hlo_live_range->buffer_live_ranges().at(value);
       const HloInstruction* last_use_instruction = nullptr;
       int64_t last_use_time = time_bound.start;
-      for (const HloUse& use : value->uses()) {
+      for (const HloUse& use : value->GetUses()) {
         int64_t use_time =
             hlo_live_range->instruction_schedule().at(use.instruction);
         if (use_time > last_use_time) {
@@ -4261,7 +4283,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
               break;
             }
           }
-          for (const HloUse& use : value->uses()) {
+          for (const HloUse& use : value->GetUses()) {
             int64_t use_time =
                 hlo_live_range->instruction_schedule().at(use.instruction);
             if (use.instruction->parent() == called_computation &&
@@ -4301,7 +4323,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
           last_use_instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(split_conditional_buffer(
             last_use_instruction, time_bound.start, time_bound.end, " "));
-      } else if (!value->uses().empty()) {
+      } else if (!value->GetUses().empty()) {
         last_use_time = std::min(last_use_time, time_bound.end);
         VLOG(3) << " buffer: " << buffer.ToString()
                 << " value: " << value->ToShortString() << ": ("

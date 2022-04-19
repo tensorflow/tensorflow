@@ -1283,6 +1283,8 @@ def save(obj, export_dir, signatures=None, options=None):
   May not be called from within a function body.
   @end_compatibility
   """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
   # pylint: enable=line-too-long
   metrics.IncrementWriteApi(_SAVE_V2_LABEL)
   save_and_return_nodes(obj, export_dir, signatures, options)
@@ -1483,6 +1485,8 @@ def _build_meta_graph(obj,
     exported_graph: `tf.Graph` object generated from `obj`.
     object_saver: `util.TrackableSaver` of the `obj` and its dependencies.
     asset_info: `_AssetInfo` tuple containing external assets in the `obj`.
+    saveable_view.nodes: _SaveableView nodes.
+    saveable_view.node_paths: _SaveableView paths.
   """
 
   with save_context.save_context(options):

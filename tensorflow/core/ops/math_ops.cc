@@ -187,6 +187,8 @@ REGISTER_OP("Cast")
     .Attr("SrcT: type")
     .Attr("DstT: type")
     .Attr("Truncate: bool = false")
+    .SetTypeConstructor(full_type::NoOp())
+    .SetForwardTypeFn(full_type::KeepExisting())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_HostCast")
@@ -195,6 +197,8 @@ REGISTER_OP("_HostCast")
     .Attr("SrcT: type")
     .Attr("DstT: type")
     .Attr("Truncate: bool = false")
+    .SetTypeConstructor(full_type::NoOp())
+    .SetForwardTypeFn(full_type::KeepExisting())
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Cast x of type SrcT to y of DstT.

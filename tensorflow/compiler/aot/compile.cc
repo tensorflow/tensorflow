@@ -161,6 +161,12 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
   aot_opts.set_use_mlir_hlo_lowering(use_mlir_hlo_lowering);
 
+  if (flags.sanitize_dataflow) {
+    aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
+    aot_opts.set_sanitize_abilists_dataflow(absl::StrSplit(
+        flags.sanitize_abilists_dataflow, ',', absl::SkipEmpty()));
+  }
+
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 

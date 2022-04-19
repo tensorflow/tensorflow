@@ -155,13 +155,13 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
       [request_id = request_info->tfrt_request_context->id(), signature_name,
-       options] {
+       &options] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
              {"id", request_id},
              {"signature", signature_name},
-             {"model_id", absl::StrCat(options.model_metadata.name(),
+             {"model_id", absl::StrCat(options.model_metadata.name(), ":",
                                        options.model_metadata.version())}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
@@ -291,10 +291,16 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   if (options.runtime == nullptr) {
     return errors::InvalidArgument("options.runtime must be non-null ");
   }
-  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
-                      TfrtGraphExecutionState::Create(
-                          std::move(graph_def), fallback_state,
-                          options.run_placer_grappler_on_functions));
+
+  TfrtGraphExecutionState::Options graph_execution_state_options;
+  graph_execution_state_options.run_placer_grappler_on_functions =
+      options.run_placer_grappler_on_functions;
+  graph_execution_state_options.enable_tfrt_gpu = options.enable_tfrt_gpu;
+
+  TF_ASSIGN_OR_RETURN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graph_execution_state_options,
+                                      std::move(graph_def), fallback_state));
   return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
                                          tpu_model_resource,
                                          std::move(graph_execution_state));

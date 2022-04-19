@@ -705,18 +705,18 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
   });
 }
 
-void EmitInputsConstraintsRemarks(FuncOp func,
+void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
     if (auto arg = value.dyn_cast<BlockArgument>())
-      if (arg.getOwner() == &func.body().front())
+      if (arg.getOwner() == &func.getBody().front())
         func.emitRemark(llvm::formatv("input #{0} constrained to: {1}",
                                       arg.getArgNumber(), constraint));
   });
 }
 
 LogicalResult InferFunctionBodyValuesConstraints(
-    FuncOp func, ValuesConstraintSet &constraints) {
+    func::FuncOp func, ValuesConstraintSet &constraints) {
   for (unsigned i = 0; i < func.getNumResults(); ++i) {
     auto str = func.getResultAttrOfType<StringAttr>(i, "tf.constraint");
     if (!str) continue;
@@ -727,7 +727,7 @@ LogicalResult InferFunctionBodyValuesConstraints(
                                      .Case("value", ValueConstraint::kValue);
 
     // Propagate constraints through function return operations.
-    for (Block &block : func.body()) {
+    for (Block &block : func.getBody()) {
       func::ReturnOp ret = dyn_cast<func::ReturnOp>(block.back());
       if (ret) constraints.Insert(ret.getOperand(i), constraint);
     }

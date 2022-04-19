@@ -370,7 +370,7 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
 // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
 // -1.
 TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
-    TF_OpKernelContext* context, int* candidate_input_indices,
+    TF_OpKernelContext* context, const int* candidate_input_indices,
     int num_candidate_input_indices, int output_index,
     const int64_t* output_dims, int output_num_dims, int* forwarded_input,
     TF_Status* status);

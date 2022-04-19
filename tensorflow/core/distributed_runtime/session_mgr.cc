@@ -407,8 +407,11 @@ void SessionMgr::ClearLogs() {
   }
 }
 
-void SessionMgr::TeardownCoordinationServiceAndAgent() {
+void SessionMgr::TeardownCoordinationService() {
   coordination_service_ = nullptr;
+}
+
+void SessionMgr::TeardownCoordinationServiceAgent() {
   coordination_service_agent_ = nullptr;
 }
 }  // namespace tensorflow

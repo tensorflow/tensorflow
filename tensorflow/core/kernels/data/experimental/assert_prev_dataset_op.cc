@@ -45,9 +45,12 @@ namespace {
 // `transformation`.
 StatusOr<NameAttrList> GetAssertions(const tstring& transformation) {
   NameAttrList assertions;
-  bool success =
-      protobuf::TextFormat::ParseFromString(transformation, &assertions);
-  if (!success) {
+  if (!std::is_base_of<protobuf::Message, NameAttrList>()) {
+    return errors::InvalidArgument(
+        "Portable proto implementations are not supported.");
+  }
+  if (!protobuf::TextFormat::ParseFromString(
+          transformation, reinterpret_cast<protobuf::Message*>(&assertions))) {
     return errors::InvalidArgument("Couldn't parse transformation '",
                                    transformation, "'.");
   }
@@ -95,8 +98,13 @@ Status CheckAttributes(const DatasetBase& dataset,
   for (const auto& attr : assertions.attr()) {
     auto it = node.attr().find(attr.first);
     if (it != node.attr().end()) {
-      if (!protobuf::util::MessageDifferencer::Equivalent(it->second,
-                                                          attr.second)) {
+      if (!std::is_base_of<protobuf::Message, AttrValue>()) {
+        return errors::InvalidArgument(
+            "Portable proto implementations are not supported.");
+      }
+      if (!protobuf::util::MessageDifferencer::Equivalent(
+              *reinterpret_cast<const protobuf::Message*>(&it->second),
+              *reinterpret_cast<const protobuf::Message*>(&attr.second))) {
         return errors::InvalidArgument(
             "Asserted attribute '", attr.first, "' having a value of '",
             attr.second.DebugString(), "', but found value of '",

@@ -37,6 +37,13 @@ message RewriterConfig {
     // may break. For example, assume the shape of a placeholder matches its
     // actual feed.
     AGGRESSIVE = 3;
+    // Run MLIR pass if there's one implemented in TFG, do nothing otherwise.
+    // I.e., if there's no corresponding TFG pass, it's an OFF. This is supposed
+    // to be mapped with `ON` and there's no `AGGRESSIVE` in MLIR pass now.
+    EXPERIMENTAL_MLIR = 4;
+    // Run both MLIR and Grappler passes consecutively and MLIR pass will come
+    // first.
+    EXPERIMENTAL_BOTH = 5;
   }
 
   // Enum for layout conversion between NCHW and NHWC on CPU. Default is OFF.

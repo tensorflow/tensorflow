@@ -84,6 +84,8 @@ std::string ToString(enum OperationType op) {
       return "batch_to_space";
     case OperationType::BATCHED_MATMUL:
       return "batched_matmul";
+    case OperationType::CAST:
+      return "cast";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONSTANT:
@@ -220,6 +222,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"batched_matmul", OperationType::BATCHED_MATMUL},
+          {"cast", OperationType::CAST},
           {"concat", OperationType::CONCAT},
           {"const", OperationType::CONSTANT},
           {"convolution_2d", OperationType::CONVOLUTION_2D},

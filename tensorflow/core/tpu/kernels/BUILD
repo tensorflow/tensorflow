@@ -19,6 +19,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -72,6 +73,7 @@ cc_library(
         ":tpu_fingerprint_lookup",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         ":tpu_util_hdrs",

@@ -56,6 +56,9 @@ bool HasTPUDevice(mlir::ModuleOp module) {
 
 bool HasTPUOp(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
+    // TODO(jiancai): we should check "_replication_info" attribute here instead
+    // once the migration to unified compilation and replication markers is
+    // done. See b/220150965 for more details.
     auto replicate_attr =
         op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);
     if (replicate_attr) return mlir::WalkResult::interrupt();
@@ -78,6 +81,60 @@ bool HasTPUDevice(const DeviceSet& device_set) {
   }
   return false;
 }
+
+// Check if the `graph` has parameter serverjobs and resource variable arguments
+// that are on parameter servers
+bool HasPsWithResourceVariable(const Graph& graph) {
+  // Check parameter serverjobs and resource variable arguments that are
+  // on parameter servers.
+  const std::string jobType = "ps";
+  const std::string nodeType = "_Arg";
+  const std::string attrKey = "T";
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == nodeType) {
+      auto device_name = node->assigned_device_name();
+      DeviceNameUtils::ParsedName device;
+      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
+          device.has_job && device.job == jobType) {
+        for (const auto& attr : node->attrs()) {
+          auto attr_key = attr.first;
+          auto attr_value = attr.second;
+          if (attr_key == attrKey &&
+              attr_value.value_case() == AttrValue::kType &&
+              attr_value.type() == DT_RESOURCE) {
+            return true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
+bool HasQualifiedNonTPUOp(const Graph& graph) {
+  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
+  const std::string kXlaMustCompile = "_XlaMustCompile";
+  for (const Node* node : graph.nodes()) {
+    auto node_op = node->type_string();
+    if (node_op == kStatefulPartitionedCallOp) {
+      auto attr = node->attrs().FindByString(kXlaMustCompile);
+      if (attr != nullptr && attr->b() == true) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Check if non TPU pipeline should be used
+bool EnableNonTpuBridge(const Graph& graph) {
+  // Remark that this is staging change. It will be expanded later for further
+  // check based on the requirement.
+  return HasPsWithResourceVariable(graph) && HasQualifiedNonTPUOp(graph);
+}
+
 }  // namespace
 
 // Analyzes the user requested policy as well as the contents of the graph and
@@ -94,9 +151,11 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
     const Graph& graph,
     const FunctionLibraryDefinition& function_library) const {
-  // Skip MLIR TPU Bridge if no TPU devices found.
+  // Skip MLIR TF XLA Bridge if no TPU devices found and the non TPU graph is
+  // not qualified.
   if (device_set && !HasTPUDevice(*device_set)) {
-    return MlirOptimizationPassState::Disabled;
+    return EnableNonTpuBridge(graph) ? MlirOptimizationPassState::Enabled
+                                     : MlirOptimizationPassState::Disabled;
   }
 
   // We set `uses_uninitialized_resource_args` to false here because the first
@@ -138,12 +197,22 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
-  // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
+  // Check if there are TPU devices or TPU ops. If not, then check if the
+  // non TPU graph is qualified to run TF XLA Bridge.
   // This check needs to precede GetPassState for instrumentation purposes.
   if (!HasTPUDevicesAndOps(module)) {
-    VLOG(1) << "Skipping MLIR TPU Bridge, no TPU devices or TPU ops found";
-    return Status::OK();
+    if (EnableNonTpuBridge(graph)) {
+      VLOG(1) << "No TPU devices or TPU ops found, "
+              << "this non TPU graph is qualified to run MLIR TF XLA Bridge";
+      return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1));
+    } else {
+      VLOG(1) << " Skipping MLIR TF XLA Bridge,"
+              << " no TPU devices or TPU ops found, and this non TPU graph"
+              << " is not qualified to run MLIR TF XLA Bridge.";
+      return Status::OK();
+    }
   }
+
   // Set device_set to nullptr here as the device specific checks are performed
   // based on the devices in the module.
   auto pass_state = GetPassState(/*device_set=*/nullptr, config_proto, graph,

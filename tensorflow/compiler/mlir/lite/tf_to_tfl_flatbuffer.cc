@@ -20,10 +20,11 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -120,7 +121,8 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningOpRef<ModuleOp>(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   // Register extra TF ops passed as OpDef.

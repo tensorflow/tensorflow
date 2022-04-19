@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -126,13 +127,38 @@ constexpr llvm::StringRef kTiledId = "tiled";
 struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
   void runOnOperation() override {
     auto get_tile_size = [&](mlir::OpBuilder b, Operation *op) {
-      auto num_loops = llvm::cast<GenericOp>(op).getNumLoops();
+      auto generic_op = llvm::cast<GenericOp>(op);
+      unsigned num_loops = generic_op.getNumLoops();
+      assert(num_loops >= 2 && "Expect two or more dimension in transpose op");
+
+      // Compute the tile sizes for the 2-D vectorization of the transpose. We
+      // pick eight as default vectorization factor for both dimensions since
+      // it's the most performant AVX2 pattern for now. We pick the contiguous
+      // dimension of the input as first vector dimension and the contiguous
+      // dimension of the output as second vector dimension. This will maximize
+      // contiguous vector loads/stores and minimize insert/extract/gather/
+      // scatter operations.
       SmallVector<Value> tiles(num_loops,
                                b.create<ConstantIndexOp>(op->getLoc(), 1));
-      if (tiles.size() >= 2) {
-        tiles[tiles.size() - 1] = b.create<ConstantIndexOp>(op->getLoc(), 8);
-        tiles[tiles.size() - 2] = b.create<ConstantIndexOp>(op->getLoc(), 8);
+      auto indexing_maps = generic_op.getIndexingMaps();
+      unsigned last_dim = num_loops - 1;
+      unsigned vec_factor0 = 8, vec_factor1 = 8;
+      unsigned vec_dim0 = indexing_maps[0].getDimPosition(last_dim);
+      unsigned vec_dim1 = indexing_maps[1].getDimPosition(last_dim);
+
+      // If the contiguous dimensions of both input and output are not
+      // transposed (i.e, they are the same), we vectorize only that dimension.
+      // That transpose case doesn't require intra-register transposition but
+      // just copying a set of contiguous sub-buffers from the input to the
+      // output tensor. Vectorizing a second dimension would increase too much
+      // the memory pressure for no reason.
+      if (vec_dim0 == vec_dim1) {
+        tiles[vec_dim0] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor0);
+      } else {
+        tiles[vec_dim0] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor0);
+        tiles[vec_dim1] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor1);
       }
+
       return tiles;
     };
 
@@ -162,7 +188,8 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileTransposePass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileTransposePass() {
   return std::make_unique<TileTransposePass>();
 }
 

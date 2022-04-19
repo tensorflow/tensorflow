@@ -79,6 +79,7 @@ limitations under the License.
   LLVM_DEBUG(OP->print(llvm::dbgs() << MSG << " "); llvm::dbgs() << "\n")
 
 using ::int64_t;
+using mlir::func::FuncOp;
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
@@ -631,7 +632,7 @@ class ShapeInference {
   // reached convergence, false otherwise.
   FailureOr<bool> PropagateShapeToFunctions(ModuleOp module,
                                             TypeRange input_types,
-                                            ArrayRef<FuncOp> functions,
+                                            ArrayRef<func::FuncOp> functions,
                                             int64_t max_iterations);
 
   // Propagates shapes to regions given the shapes of the inputs of the regions.
@@ -687,10 +688,10 @@ class ShapeInference {
   bool InferShapeForNonTFDialectOperation(Operation* op);
 
   // Infers shape for function return type and returns whether changed.
-  LogicalResult InferShapeForFunctionReturnType(FuncOp func);
+  LogicalResult InferShapeForFunctionReturnType(func::FuncOp func);
 
   // Enqueues function for processing.
-  void enqueue(FuncOp fn) {
+  void enqueue(func::FuncOp fn) {
     LLVM_DEBUG(llvm::dbgs()
                << "enqueue " << fn.getName() << " ("
                << (queue_set_.count(fn) ? "already inserted" : "newly inserted")
@@ -699,24 +700,26 @@ class ShapeInference {
   }
 
   // Enqueues callers on functions.
-  void EnqueueCallers(FuncOp fn);
+  void EnqueueCallers(func::FuncOp fn);
 
   // Returns the function at the front of the queue.
-  FuncOp front() { return queue_.front(); }
+  func::FuncOp front() { return queue_.front(); }
 
   // Returns whether work queue is empty.
   bool EmptyQueue() const { return queue_.empty(); }
 
   // Returns function from the front of the work queue.
-  FuncOp pop_front() {
-    FuncOp ret = queue_.front();
+  func::FuncOp pop_front() {
+    func::FuncOp ret = queue_.front();
     queue_.pop();
     queue_set_.erase(ret);
     return ret;
   }
 
   // Returns the current size of the queue.
-  std::queue<FuncOp>::size_type QueueSize() const { return queue_.size(); }
+  std::queue<func::FuncOp>::size_type QueueSize() const {
+    return queue_.size();
+  }
 
   Dialect* const tf_dialect_;
 
@@ -796,7 +799,7 @@ class ShapeInference {
   // with insertions to the callers map. This could occur if GetCallers is
   // called with two separate functions, the 2nd one incurs a resize and then
   // both first and 2nd stored callers are used.
-  ArrayRef<Operation*> GetCallers(FuncOp fn);
+  ArrayRef<Operation*> GetCallers(func::FuncOp fn);
 
   // Mapping between ValuePort (which corresponds to an OpResult or smaller,
   // e.g., first element of OpResult produced) to an Attribute if the ValuePort
@@ -808,8 +811,8 @@ class ShapeInference {
   SymbolUserMap symbol_users_;
 
   // Queue of functions being processed.
-  llvm::DenseSet<FuncOp> queue_set_;
-  std::queue<FuncOp> queue_;
+  llvm::DenseSet<func::FuncOp> queue_set_;
+  std::queue<func::FuncOp> queue_;
 
   int64_t graph_version_;
 
@@ -828,12 +831,13 @@ ShapeInference::ShapeInference(int64_t graph_version, ModuleOp module,
   symbol_table_.getSymbolTable(module);
 }
 
-ArrayRef<Operation*> ShapeInference::GetCallers(FuncOp fn) {
+ArrayRef<Operation*> ShapeInference::GetCallers(func::FuncOp fn) {
   return symbol_users_.getUsers(fn);
 }
 
-void ShapeInference::EnqueueCallers(FuncOp fn) {
-  for (auto user : GetCallers(fn)) enqueue(user->getParentOfType<FuncOp>());
+void ShapeInference::EnqueueCallers(func::FuncOp fn) {
+  for (auto user : GetCallers(fn))
+    enqueue(user->getParentOfType<func::FuncOp>());
 }
 
 bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
@@ -862,7 +866,7 @@ bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
 
   result.setType(new_type);
   if (enqueue_callers)
-    EnqueueCallers(result.getDefiningOp()->getParentOfType<FuncOp>());
+    EnqueueCallers(result.getDefiningOp()->getParentOfType<func::FuncOp>());
   return true;
 }
 
@@ -878,8 +882,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
 // called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  FuncOp func =
-      dyn_cast_or_null<FuncOp>(call_op.resolveCallable(&symbol_table_));
+  func::FuncOp func =
+      dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable(&symbol_table_));
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
@@ -887,7 +891,8 @@ bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
   bool changed = false;
   // Map each of the results of the call to the returned type of the
   // function.
-  for (auto result : zip(op->getResults(), func.getType().getResults())) {
+  for (auto result :
+       zip(op->getResults(), func.getFunctionType().getResults())) {
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
   }
@@ -927,9 +932,9 @@ bool ShapeInference::InferShapeForIf(IfOp op) {
   DCOMMENT_OP(op.getOperation(), "Infer shape for if ");
   bool changed = false;
   auto then_results =
-      op.ResolveThenFunction(&symbol_table_).getType().getResults();
+      op.ResolveThenFunction(&symbol_table_).getFunctionType().getResults();
   auto else_results =
-      op.ResolveElseFunction(&symbol_table_).getType().getResults();
+      op.ResolveElseFunction(&symbol_table_).getFunctionType().getResults();
   for (auto it : llvm::zip(op.getResults(), then_results, else_results)) {
     // If then and else types do not match, skip refinement for that result.
     if (std::get<1>(it) != std::get<2>(it)) continue;
@@ -964,10 +969,10 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   if (host_module.getValue().empty()) return false;
 
   mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
-  FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
+  func::FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
 
   // Update/use input shapes for function.
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   func.setType(FunctionType::get(func.getContext(),
                                  host_compute_op.getOperandTypes(),
                                  func_type.getResults()));
@@ -981,7 +986,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   bool changed = false;
   // Use refined function return shape for XlaHostComputeMlirOp.
   for (auto result :
-       zip(host_compute_op.getResults(), func.getType().getResults())) {
+       zip(host_compute_op.getResults(), func.getFunctionType().getResults())) {
     changed = RefineResultType(host_compute_op, std::get<0>(result),
                                std::get<1>(result)) ||
               changed;
@@ -1029,12 +1034,20 @@ struct DatasetInput {
 };
 
 // Returns the input elements shapes and types for Dataset ops.
-DatasetInput GetDatasetInput(Operation* op) {
+DatasetInput GetDatasetInput(Value value) {
   // TODO(haoliang): add an interface for DatasetOp to avoid the following
   // enumeration.
+  // Iteratively tracing upwards if parent op is `IdentityOp` or `IdentityNOp`.
+  while (
+      llvm::isa_and_nonnull<IdentityOp, IdentityNOp>(value.getDefiningOp())) {
+    value = value.getDefiningOp()->getOperand(
+        value.cast<OpResult>().getResultNumber());
+  }
+
+  Operation* op = value.getDefiningOp();
   if (!llvm::isa_and_nonnull<BatchDatasetV2Op, MapDatasetOp, RepeatDatasetOp,
                              ParallelMapDatasetOp, ParallelMapDatasetV2Op,
-                             TakeDatasetOp>(op))
+                             TakeDatasetOp, TakeWhileDatasetOp>(op))
     return DatasetInput{nullptr, nullptr};
 
   return DatasetInput{op->getAttrOfType<ArrayAttr>("output_shapes"),
@@ -1051,8 +1064,7 @@ bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
   auto input_types = llvm::to_vector<1>(
       cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
-  DatasetInput input_elements =
-      GetDatasetInput(op->getOperand(0).getDefiningOp());
+  DatasetInput input_elements = GetDatasetInput(op->getOperand(0));
   if (!input_elements) {
     op->emitWarning("unexpected dataset input; skipping function refinement");
     return false;
@@ -1093,7 +1105,7 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
   // op. The MapDataset op always has N+1 inputs.
   // TODO(jpienaar): Avoid this lookup.
   auto module = op->getParentOfType<ModuleOp>();
-  auto f = module.lookupSymbol<FuncOp>(op.f());
+  auto f = module.lookupSymbol<func::FuncOp>(op.f());
   // Skip if function is not found or more than one caller.
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
   return InferShapeForDatasetOpCommon(op, f, max_iterations);
@@ -1107,7 +1119,7 @@ bool ShapeInference::InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
   // TakeWhileDataset op. The TakeWhileDataset op always has N+1 inputs.
   // TODO(jpienaar): Avoid this lookup.
   auto module = op->getParentOfType<ModuleOp>();
-  auto f = module.lookupSymbol<FuncOp>(op.predicate());
+  auto f = module.lookupSymbol<func::FuncOp>(op.predicate());
   // Skip if function is not found or more than one caller.
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
   return InferShapeForDatasetOpCommon(op, f, max_iterations);
@@ -1125,13 +1137,12 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
 
   // TODO(jpienaar): Avoid this lookup.
   auto module = op->getParentOfType<ModuleOp>();
-  auto f = module.lookupSymbol<FuncOp>(op.f());
+  auto f = module.lookupSymbol<func::FuncOp>(op.f());
 
   // Skip if function is not found or it has more than one caller.
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
 
-  DatasetInput input_elements =
-      GetDatasetInput(op.input_dataset().getDefiningOp());
+  DatasetInput input_elements = GetDatasetInput(op.input_dataset());
   if (!input_elements) {
     op.emitWarning("unexpected dataset input; skipping function refinement");
     return false;
@@ -2038,8 +2049,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForIfRegion(if_region);
 
   if (auto while_op = dyn_cast<WhileOp>(op))
-    return InferShapeForWhile(while_op,
-                              while_op.body_function().getType().getResults());
+    return InferShapeForWhile(
+        while_op, while_op.body_function().getFunctionType().getResults());
 
   if (auto while_region = dyn_cast<WhileRegionOp>(op))
     return InferShapeForWhile(
@@ -2138,14 +2149,14 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 }
 
 FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
-    ModuleOp module, TypeRange input_types, ArrayRef<FuncOp> functions,
+    ModuleOp module, TypeRange input_types, ArrayRef<func::FuncOp> functions,
     int64_t max_iterations) {
   bool any_failure = false;
   bool any_nonconvergence = false;
   // If shape propagation fails for one function, return failure, but do not
   // early exit and attempt to propagate shapes for all provided functions to
   // have a best-effort propagation.
-  for (FuncOp func : functions) {
+  for (func::FuncOp func : functions) {
     DCOMMENT("Propating shape to " << func.getName());
     ArrayRef<Operation*> callers = GetCallers(func);
     if (!llvm::hasSingleElement(callers) &&
@@ -2168,7 +2179,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
 
       continue;
     }
-    FunctionType func_type = func.getType();
+    FunctionType func_type = func.getFunctionType();
     func.setType(FunctionType::get(func.getContext(), input_types,
                                    func_type.getResults()));
 
@@ -2216,7 +2227,8 @@ FailureOr<bool> ShapeInference::PropagateShapeToRegions(
 }
 
 void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
-                                               FuncOp func, ModuleOp module) {
+                                               func::FuncOp func,
+                                               ModuleOp module) {
   auto callers = GetCallers(func);
   if (!llvm::hasSingleElement(callers)) return;
 
@@ -2244,7 +2256,8 @@ void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
 }
 
 void ShapeInference::PropagateConstantFromCallee(CallOpInterface call_op,
-                                                 FuncOp func, ModuleOp module) {
+                                                 func::FuncOp func,
+                                                 ModuleOp module) {
   // If the return value is a constant, use the constant as the value of
   // the call return.
   Operation* op = call_op.getOperation();
@@ -2338,7 +2351,7 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
          if_op.ResolveElseFunction(&symbol_table_)},
         max_iterations);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
-    SmallVector<FuncOp, 4> branches;
+    SmallVector<func::FuncOp, 4> branches;
     case_op.get_branch_functions(branches);
     return PropagateShapeToFunctions(module, case_op.input().getTypes(),
                                      branches, max_iterations);
@@ -2350,7 +2363,9 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     if (while_op.shape_invariant()) {
       auto compatible_types = GetWhileCompatibleTypes(
           while_op.input().getTypes(), while_op.output().getTypes(),
-          while_op.ResolveBodyFunction(&symbol_table_).getType().getInputs());
+          while_op.ResolveBodyFunction(&symbol_table_)
+              .getFunctionType()
+              .getInputs());
       return PropagateShapeToFunctions(
           module, compatible_types,
           {while_op.ResolveCondFunction(&symbol_table_),
@@ -2363,7 +2378,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
          while_op.ResolveBodyFunction(&symbol_table_)},
         max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable(&symbol_table_))) {
+    if (auto func =
+            dyn_cast<func::FuncOp>(call_op.resolveCallable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
           module, call_op.getArgOperands().getTypes(), {func}, max_iterations);
@@ -2376,10 +2392,10 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
              isa<TF::XlaVariadicReduceV2Op>(op) ||
              isa<TF::XlaVariadicSortOp>(op)) {
     auto propagate_shape_to = [&](mlir::SymbolRefAttr func_sym) {
-      auto func = llvm::cast<mlir::FuncOp>(
+      auto func = llvm::cast<mlir::func::FuncOp>(
           mlir::SymbolTable::lookupSymbolIn(module, func_sym));
       mlir::SmallVector<mlir::Type, 2> types;
-      for (auto type : func.getType().getInputs()) {
+      for (auto type : func.getFunctionType().getInputs()) {
         types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
       }
       return PropagateShapeToFunctions(module, types, {func}, max_iterations);
@@ -2494,7 +2510,8 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
   return success();
 }
 
-LogicalResult ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
+LogicalResult ShapeInference::InferShapeForFunctionReturnType(
+    func::FuncOp func) {
   LLVM_DEBUG(llvm::dbgs() << "Inferring return type for: " << func.getName()
                           << "\n");
 
@@ -2622,7 +2639,7 @@ FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(
 }
 
 static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
-                                             FuncOp func,
+                                             func::FuncOp func,
                                              int64_t max_iterations) {
   FailureOr<bool> failure_or_converged =
       context.InferShapeUntilFixPoint(&func.getBody(), max_iterations);
@@ -2634,7 +2651,7 @@ static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
   return true;
 }
 
-FailureOr<bool> InferShapeForFunction(FuncOp func,
+FailureOr<bool> InferShapeForFunction(func::FuncOp func,
                                       ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                       int64_t graph_version,
                                       int64_t max_iterations) {
@@ -2644,7 +2661,7 @@ FailureOr<bool> InferShapeForFunction(FuncOp func,
     return InferShapeForFunction(context, func, max_iterations);
   }
 
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   bool needs_refinement = false;
   SmallVector<Type, 4> new_arg_types;
   new_arg_types.reserve(func_type.getNumInputs());
@@ -2684,7 +2701,7 @@ FailureOr<bool> InferShapeForFunction(FuncOp func,
 
   if (failed(context.InferShapeForFunctionReturnType(func))) return failure();
   func.setType(FunctionType::get(func.getContext(), new_arg_types,
-                                 func.getType().getResults()));
+                                 func.getFunctionType().getResults()));
 
   return true;
 }
@@ -2703,14 +2720,14 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
   // it is no longer needed.
   ShapeInference context(producer, module,
                          /*propagate_caller_callee_constants=*/false);
-  if (auto main = module.lookupSymbol<mlir::FuncOp>("main"))
+  if (auto main = module.lookupSymbol<mlir::func::FuncOp>("main"))
     context.enqueue(main);
-  for (auto func : module.getOps<FuncOp>()) context.enqueue(func);
+  for (auto func : module.getOps<func::FuncOp>()) context.enqueue(func);
   // Arbitrarily upper bound the maximum number of functions that get processed
   // just to avoid pathological cases.
   auto max_iteration = context.QueueSize() * 4;
   while (!context.EmptyQueue()) {
-    FuncOp func = context.front();
+    func::FuncOp func = context.front();
     FailureOr<bool> failure_or_converged =
         InferShapeForFunction(context, func, max_iterations);
     if (failed(failure_or_converged) || !failure_or_converged.getValue())

@@ -199,30 +199,32 @@ static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
   // to run inside a blocking task.
   return tfrt::RunBlockingWork(
       exec_ctx.host(),
-      [=, participants = std::move(participants),
-       context = context.ValueRef()]() mutable
-      -> llvm::Expected<tfrt::gpu::GpuCclHandle> {
-        auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
-        if (!current) return current.takeError();
+      tfrt::gpu::DestroyCapturesOnInvoke(
+          [=, participants = std::move(participants),
+           context = context.ValueRef()]() mutable
+          -> llvm::Expected<tfrt::gpu::GpuCclHandle> {
+            auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
+            if (!current) return current.takeError();
 
-        StatusOr<NcclComm::Lock> comm_or = AcquireNcclComm(
-            xla_gpu_params->run_id, op_id, std::move(participants),
-            num_local_participants, *unique_id_callback, rank);
-        if (!comm_or.ok())
-          return tfrt::MakeStringError(comm_or.status().error_message());
+            StatusOr<NcclComm::Lock> comm_or = AcquireNcclComm(
+                xla_gpu_params->run_id, op_id, std::move(participants),
+                num_local_participants, *unique_id_callback, rank);
+            if (!comm_or.ok())
+              return tfrt::MakeStringError(comm_or.status().error_message());
 
-        auto* comm_ptr = comm_or->get();
-        auto comm_deleter =
-            [comm = std::move(comm_or.ValueOrDie())](
-                tfrt::gpu::wrapper::CclComm /*ccl_comm*/) mutable {
-              comm.reset();
-            };
+            auto* comm_ptr = comm_or->get();
+            auto comm_deleter =
+                [comm = std::move(comm_or.ValueOrDie())](
+                    tfrt::gpu::wrapper::CclComm /*ccl_comm*/) mutable {
+                  comm.reset();
+                };
 
-        return tfrt::gpu::GpuCclHandle(
-            std::move(context),
-            tfrt::gpu::wrapper::OwningCclComm({*comm_ptr, current->platform()}),
-            std::move(comm_deleter));
-      });
+            return tfrt::gpu::GpuCclHandle(
+                std::move(context),
+                tfrt::gpu::wrapper::OwningCclComm(
+                    {*comm_ptr, current->platform()}),
+                std::move(comm_deleter));
+          }));
 }
 
 static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(

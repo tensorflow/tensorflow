@@ -53,12 +53,12 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -79,13 +79,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
@@ -155,6 +155,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
+#include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -162,9 +163,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
+#include "tensorflow/compiler/xla/service/sharding_remover.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
@@ -404,7 +408,31 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool /*is_aot_compile*/,
-    LLVMTargetMachineFeatures* target_machine_features) {
+    LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
+  if (module->config().use_spmd_partitioning()) {
+    HloPassPipeline spmd_pipeline("spmd-partitioner");
+    const int64_t num_partitions = module->config().num_partitions();
+    if (num_partitions > 1) {
+      // Run some IR cleanup passes before running the SPMD partitioning
+      // passes.
+      spmd_pipeline.AddInvariantChecker<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
+      spmd_pipeline.AddPass<CallInliner>();
+      spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+      spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
+          num_partitions, module->config().replica_count());
+    } else {
+      // Remove redundant sharding ops when partition_count == 1.
+      spmd_pipeline.AddPass<ShardingRemover>();
+      spmd_pipeline.AddPass<HloDCE>();
+    }
+    TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
+  }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
@@ -519,9 +547,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
 
-  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
-    return sort->operand(0)->shape().element_type() == F32;
-  });
+  // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
+  // support libcalls. Disable this for now.
+  if (!is_mlir_compile) {
+    pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
+      return sort->operand(0)->shape().element_type() == F32;
+    });
+  }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
@@ -534,11 +566,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 
+  pipeline.AddPass<OptimizationBarrierExpander>();
+  pipeline.AddPass<TupleSimplifier>();
+
   // Layout assignment uses alias analysis, which requires the call graph to be
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
+  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features);
+      module->mutable_entry_computation_layout(), target_machine_features,
+      &layout_constraints);
 
   return pipeline.Run(module).status();
 }
@@ -620,8 +657,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   }
 
   LLVMTargetMachineFeatures target_machine_features(target_machine);
-  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
-                                                   &target_machine_features));
+  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
+      module, is_aot_compile, &target_machine_features, is_mlir_compile));
 
   return RunHloPassesAfterLayoutAssn(
       module, is_aot_compile, &target_machine_features,
@@ -820,38 +857,43 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
+  pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::mhlo::CreateExpandHloTuplesPass("main"));
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeGeneralDotPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeGeneralDotPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to Linalg.
   pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateLowerIndexCastPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateShapeSimplification());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createShapeToShapeLowering());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateShapeSimplification());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createConvertShapeConstraintsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createConvertShapeConstraintsPass());
 
   // Fuse Linalg on tensors operations.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createLinalgElementwiseOpFusionPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createConvertLinalgToLoopsPass());
-  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLinalgBufferizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
 
   // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before
@@ -861,7 +903,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // signature.
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
@@ -875,38 +917,40 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
   pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
+  pm.addPass(mlir::createInlinerPass());
 
   // Deallocate all temporary buffers.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
 
   // Specilize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.
-  // pm.addNestedPass<mlir::FuncOp>(CreateLinalgMatmulSpecializationPass());
+  // pm.addNestedPass<mlir::func::FuncOp>(CreateLinalgMatmulSpecializationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
-  // pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
+  // pm.addNestedPass<mlir::func::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::memref::createExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLowerAffinePass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerAffinePass());
   pm.addPass(mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass());
   pm.addPass(mlir::createMemRefToLLVMPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createConvertMathToLLVMPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertMathToLLVMPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::arith::createConvertArithmeticToLLVMPass());
-  pm.addPass(mlir::createLowerToLLVMPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();
@@ -956,8 +1000,8 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
 
   auto result_mapping = builder.getI32IntegerAttr(
       static_cast<int32_t>(output_allocation->index()));
-  mlir_module->walk([&](mlir::FuncOp f) {
-    if (f.sym_name() == "main") {
+  mlir_module->walk([&](mlir::func::FuncOp f) {
+    if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value());
       }
@@ -1014,6 +1058,7 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
       agenda.emplace(c, true);
       for (auto* instruction : c.computation->instructions()) {
         bool allow_reassociation =
+            instruction->opcode() == HloOpcode::kAllReduce ||
             instruction->opcode() == HloOpcode::kReduce ||
             instruction->opcode() == HloOpcode::kReduceWindow;
         for (auto it = instruction->called_computations().rbegin();
@@ -1437,12 +1482,15 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                       absl::string_view(obj_file.getData().data(),
                                         obj_file.getData().size()));
     };
+
     CompilerFunctor compiler_functor(
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
         llvm_ir::GetCpuFastMathFlags(module->config()),
-        pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
+        pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook,
+        aot_options.sanitize_dataflow(),
+        aot_options.sanitize_abilists_dataflow());
     std::unique_ptr<llvm::MemoryBuffer> object_file =
         cantFail(compiler_functor(*llvm_module));
     ObjectFileData object_file_data(object_file->getBufferStart(),

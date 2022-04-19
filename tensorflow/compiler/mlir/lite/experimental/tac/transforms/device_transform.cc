@@ -55,7 +55,7 @@ bool IsSupported(Operation* op, const std::string& hardware) {
 // ================== Convert Quantized Op ============================
 
 // Walk through the func and convert the quantize ops to their float version.
-void ConvertQuantizedOpToFloat(mlir::FuncOp func, OpBuilder* builder) {
+void ConvertQuantizedOpToFloat(mlir::func::FuncOp func, OpBuilder* builder) {
   func.walk([&](Operation* op) {
     // TODO(renjieliu): Find a generic way to deal with const ops.
     if (op->hasTrait<OpTrait::IsTerminator>() ||
@@ -115,7 +115,7 @@ void ConvertQuantizedOpToFloat(mlir::FuncOp func, OpBuilder* builder) {
     state.attributes = op->getAttrs();
     state.successors = op->getSuccessors();
     builder->setInsertionPoint(op);
-    Operation* new_op = builder->createOperation(state);
+    Operation* new_op = builder->create(state);
 
     // Insert quantize ops for every outputs and rewrite.
     for (int i = 0; i < op->getNumResults(); ++i) {
@@ -205,7 +205,7 @@ struct RemoveUnusedQuant : public OpRewritePattern<TFL::QuantizeOp> {
   }
 };
 
-void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context) {
+void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context) {
   RewritePatternSet patterns(func.getContext());
   patterns
       .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(

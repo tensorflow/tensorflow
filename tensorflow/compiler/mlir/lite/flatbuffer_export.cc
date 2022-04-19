@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
@@ -94,7 +94,6 @@ using llvm::StringRef;
 using llvm::Twine;
 using mlir::Dialect;
 using mlir::ElementsAttr;
-using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
@@ -106,6 +105,7 @@ using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
 using mlir::WalkResult;
+using mlir::func::FuncOp;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
@@ -219,6 +219,11 @@ static bool IsTFResourceOp(Operation* op) {
     }
   }
   return false;
+}
+
+// Returns whether the current op is not supported by the TF Lite runtime.
+static bool IsUnsupportedFlexOp(const std::string& op_name) {
+  return op_name == "PartitionedCall" || op_name == "StatefulPartitionedCall";
 }
 
 // Create description of operation that could not be converted.
@@ -1219,10 +1224,13 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     const bool is_allowed_flex_op =
-        IsAllowlistedFlexOp(node_def->op()) ||
-        (((select_user_tf_ops_.count(node_def->op()) != 0) ||
-          allow_all_select_tf_ops_) &&
-         (tensorflow::OpRegistry::Global()->LookUp(node_def->op()) != nullptr));
+        !IsUnsupportedFlexOp(node_def->op()) &&
+        (IsAllowlistedFlexOp(node_def->op()) ||
+         (((select_user_tf_ops_.count(node_def->op()) != 0) ||
+           allow_all_select_tf_ops_) &&
+          (tensorflow::OpRegistry::Global()->LookUp(node_def->op()) !=
+           nullptr)));
+
     // Flex op case
     // Eventually, the allowlist will go away and we will rely on some TF op
     // trait (e.g. No side effect) to determine if it is a supported "Flex"
@@ -2028,7 +2036,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
   for (int i = 0; i < dim_size; i++) {
     const auto dim_metadata =
         s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
-    if (dim_metadata.format().getValue() == "DENSE") {
+    if (dim_metadata.format().getValue() == mlir::TFL::DimensionType::DENSE) {
       fb_dim_metadata[i] =
           tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
                                           dim_metadata.dense_size().getInt());

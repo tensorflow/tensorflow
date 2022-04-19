@@ -236,7 +236,8 @@ class HloTestBase : public ManifestCheckingTest {
   ::testing::AssertionResult Run(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
-      std::string backend_config = "") ABSL_MUST_USE_RESULT;
+      const tensorflow::protobuf::Message* backend_config = nullptr)
+      ABSL_MUST_USE_RESULT;
 
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
@@ -260,13 +261,15 @@ class HloTestBase : public ManifestCheckingTest {
   ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
-      std::string backend_config = "") ABSL_MUST_USE_RESULT;
+      const tensorflow::protobuf::Message* backend_config = nullptr)
+      ABSL_MUST_USE_RESULT;
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles, std::string backend_config = "",
+      std::vector<ExecutionProfile>* profiles,
+      const tensorflow::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false) ABSL_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const std::string& filename, const absl::optional<ErrorSpec>& error,
@@ -342,6 +345,10 @@ class HloTestBase : public ManifestCheckingTest {
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};
+
+  HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
+      HloModule*, std::unique_ptr<HloComputation> computation);
+  void UpdateEntryComputationLayout(HloModule* module);
 
  protected:
   // Helper functions to get test and reference platforms.

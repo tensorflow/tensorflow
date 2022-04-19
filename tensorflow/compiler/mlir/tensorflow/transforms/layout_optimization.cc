@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -100,7 +101,7 @@ class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
 using Permutation = SmallVector<int64_t, 4>;
 
 void LayoutAssignmentPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
@@ -432,7 +433,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
 }
 
 void MoveTransposesPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   SmallVector<Operation*, 8> work_list;
 
@@ -486,7 +487,7 @@ void CreateLayoutOptimizationPipeline(
       MoveTransposeDirection::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLayoutAssignmentPass() {
   // This static is kind of hack, it hooks the pipeline registration for the
   // command line and piggy-back to the TableGen generated registration code.
   static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
@@ -497,7 +498,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass() {
   return std::make_unique<LayoutAssignmentPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateMoveTransposesPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateMoveTransposesPass() {
   return std::make_unique<MoveTransposesPass>();
 }
 

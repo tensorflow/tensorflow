@@ -74,6 +74,10 @@ class GPUNanResetAllocator : public Allocator {
   absl::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return base_allocator_->GetMemoryType();
+  }
+
  private:
   Allocator* base_allocator_ = nullptr;  // owned
 

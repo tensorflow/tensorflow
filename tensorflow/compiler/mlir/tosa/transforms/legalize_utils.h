@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -127,7 +128,7 @@ bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 // means patterns can performed shape inference while not altering immutable
 // types.
 LogicalResult ApplyPatternsWithShapeResolution(
-    FuncOp func, const FrozenRewritePatternSet& patterns);
+    func::FuncOp func, const FrozenRewritePatternSet& patterns);
 
 // Creates a TOSA operation and performs shape inference on the individual
 // op. This allows shape inference during the TFLite to TOSA lowering.

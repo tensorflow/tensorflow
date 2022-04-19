@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -52,7 +54,12 @@ class QuantizeCompositeFunctionsPass
     : public mlir::PassWrapper<QuantizeCompositeFunctionsPass,
                                OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeCompositeFunctionsPass)
+
   explicit QuantizeCompositeFunctionsPass() {}
+  explicit QuantizeCompositeFunctionsPass(
+      QuantizationMethod quantization_method)
+      : quantization_method_(quantization_method) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -71,6 +78,9 @@ class QuantizeCompositeFunctionsPass
 
  private:
   void runOnOperation() override;
+
+  QuantizationMethod quantization_method_ =
+      QuantizationMethod::kQuantizationAwareTraining;
 };
 
 LogicalResult CreateUniformQuantizedTypeParams(UniformQuantizedType qtype,
@@ -239,10 +249,11 @@ bool IsQuantizedCall(TF::PartitionedCallOp call_op) {
 // attr_name_1 is the name of the of the attribute needs to be set in the
 // quantized function, attr_name_2 is the name of the attribute corresponding to
 // the attribute identifier in the float function.
-LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
+LogicalResult TransferAttributes(func::FuncOp float_func,
+                                 func::FuncOp quantized_func) {
   // A map to find an attribute from its identifier.
   llvm::StringMap<Attribute> identifier_to_attr;
-  for (Operation& inner_op : float_func.body().front().getOperations()) {
+  for (Operation& inner_op : float_func.getBody().front().getOperations()) {
     if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
     std::string attr_map_str =
         inner_op.getAttrOfType<StringAttr>(kAttrMapAttribute).str();
@@ -261,7 +272,7 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
   }
 
   // Set the attributes for ops with the attr_map attribute.
-  for (Operation& inner_op : quantized_func.body().front().getOperations()) {
+  for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
     if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
 
     std::string attr_map_str =
@@ -407,12 +418,13 @@ class QuantizeFunctionPattern
     // Make a copy of the quantized function.
     auto module = call_op->getParentOfType<ModuleOp>();
     SymbolTable symbol_table(module);
-    FuncOp float_func =
-        dyn_cast<FuncOp>(symbol_table.lookup(f_attr.getValue()));
-    FuncOp quantized_func =
-        dyn_cast<FuncOp>(symbol_table.lookup(quantized_function_name.str()));
+    func::FuncOp float_func =
+        dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
+    func::FuncOp quantized_func = dyn_cast<func::FuncOp>(
+        symbol_table.lookup(quantized_function_name.str()));
     rewriter.setInsertionPointAfter(float_func);
-    FuncOp new_quantized_func = dyn_cast<FuncOp>(quantized_func->clone());
+    func::FuncOp new_quantized_func =
+        dyn_cast<func::FuncOp>(quantized_func->clone());
     if (new_quantized_func == nullptr) {
       return failure();
     }
@@ -482,9 +494,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // This can be removed when the composite call supports quantized types.
   pm.enableVerifier(false);
 
-  pm.addNestedPass<FuncOp>(CreatePrepareQuantizePass());
-  pm.addNestedPass<FuncOp>(CreateQuantizePass());
-  pm.addNestedPass<FuncOp>(CreatePostQuantizePass());
+  pm.addNestedPass<func::FuncOp>(
+      CreatePrepareQuantizePass(quantization_method_));
+  pm.addNestedPass<func::FuncOp>(CreateQuantizePass());
+  pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   if (failed(pm.run(module))) {
     signalPassFailure();
   }
@@ -509,9 +522,9 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateQuantizeCompositeFunctionsPass() {
-  return std::make_unique<QuantizeCompositeFunctionsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
+    QuantizationMethod quantization_method) {
+  return std::make_unique<QuantizeCompositeFunctionsPass>(quantization_method);
 }
 
 }  // namespace quant

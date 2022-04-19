@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
 
+#include <cstdint>
+
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -231,8 +233,10 @@ Offset<HexagonSettings> ConvertHexagonSettings(
 
 Offset<XNNPackSettings> ConvertXNNPackSettings(
     const proto::XNNPackSettings& settings, FlatBufferBuilder* builder) {
-  return CreateXNNPackSettings(*builder,
-                               /*num_threads=*/settings.num_threads());
+  return CreateXNNPackSettings(
+      *builder,
+      /*num_threads=*/settings.num_threads(),
+      /*flags=*/tflite::XNNPackFlags(settings.flags()));
 }
 
 Offset<CoreMLSettings> ConvertCoreMLSettings(

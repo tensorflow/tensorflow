@@ -19,7 +19,7 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-bool HasQuantizedTensors(Operation *op) {
+bool HasQuantizedTensors(Operation* op) {
   if (IsOpNotQuantizable(op)) return false;
   for (Type operand_type : op->getOperandTypes()) {
     auto tensor_type = operand_type.dyn_cast<TensorType>();

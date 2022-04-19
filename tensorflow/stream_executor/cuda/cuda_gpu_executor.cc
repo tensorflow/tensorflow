@@ -31,8 +31,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/Support/SHA256.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -365,6 +363,13 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+namespace {
+absl::uint128 Fingerprint128(const absl::string_view s) {
+  auto fp = tensorflow::Fingerprint128(s);
+  return absl::MakeUint128(fp.high64, fp.low64);
+}
+}  // namespace
+
 port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
@@ -373,10 +378,11 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
   // (highly unlikely) event of a hash collision, the program will likely crash
   // (because the cached constant that will be returned by mistake is unlikely
   // to have the correct size).
-  SHA256Digest digest = llvm::SHA256::hash(content);
+  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
+      reinterpret_cast<const char*>(content.data()), content.size()));
   // Must insert nullptr first to get an iterator to the insertion point.
-  auto insert_result =
-      shared_constants_.insert({digest, std::weak_ptr<DeviceMemoryBase>()});
+  auto insert_result = shared_constants_.insert(
+      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
   auto it = insert_result.first;
   bool was_already_in_cache = !insert_result.second;
   std::shared_ptr<DeviceMemoryBase> shared_constant;
@@ -890,6 +896,14 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   block_dim_limit->y = y;
   block_dim_limit->z = z;
   return true;
+}
+
+bool GpuExecutor::SupportsBlasPlans() const {
+#if CUDA_VERSION >= 11000
+  return true;
+#else
+  return false;
+#endif
 }
 
 bool GpuExecutor::SupportsBlas() const { return true; }

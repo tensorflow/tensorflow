@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +19,9 @@ from os import path
 import keras_preprocessing
 import tensorboard
 import tensorflow as tf
+from tensorflow_docs.api_generator import public_api
 import tensorflow_estimator
+
 
 try:
   import keras  # pylint: disable=g-import-not-at-top
@@ -92,3 +93,27 @@ def get_base_dirs_and_prefixes(code_url_prefix):
     )
 
   return base_dirs, code_url_prefixes
+
+
+def explicit_filter_keep_keras(parent_path, parent, children):
+  """Like explicit_package_contents_filter, but keeps keras."""
+  new_children = public_api.explicit_package_contents_filter(
+      parent_path, parent, children)
+
+  if parent_path[-1] not in ["tf", "v1", "v2"]:
+    return new_children
+
+  had_keras = any(name == "keras" for name, child in children)
+  has_keras = any(name == "keras" for name, child in new_children)
+
+  if had_keras and not has_keras:
+    new_children.append(("keras", parent.keras))
+
+  return sorted(new_children, key=lambda x: x[0])
+
+
+def get_callbacks():
+  if distutils.version.LooseVersion(tf.__version__) >= "2.9":
+    return [explicit_filter_keep_keras]
+  else:
+    return []

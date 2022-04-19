@@ -350,6 +350,9 @@ class SingleOpModel {
 
       // Add compressed data as a Buffer to buffers list.
       buffer_id = buffers_.size();
+      // When the quantization parameter is set for the added tensor, we
+      // quantize the given data.
+      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
       if (symmetric_quantize) {
         const int length = sparse_data.size();
         std::vector<int8_t> q(length);
@@ -358,6 +361,16 @@ class SingleOpModel {
             sparse_data.data(), length, q.data(), &min, &max, &scaling_factor);
         q_params = CreateQuantizationParameters(
             builder_, 0, 0, builder_.CreateVector<float>({scaling_factor}),
+            builder_.CreateVector<int64_t>({0}));
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      } else if (is_quantized) {
+        CHECK_EQ(t.type, TensorType_INT8)
+            << "The INT8 quantization is only supported for sparsified tensor";
+        auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
+        q_params = CreateQuantizationParameters(
+            builder_, t.min, t.max, builder_.CreateVector<float>({t.scale}),
             builder_.CreateVector<int64_t>({0}));
         auto data_buffer = builder_.CreateVector(
             reinterpret_cast<const uint8_t*>(q.data()), q.size());
@@ -502,11 +515,8 @@ class SingleOpModel {
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
-  // Executes inference, asserting success.
-  void Invoke();
-
-  // Executes inference *without* asserting success.
-  TfLiteStatus InvokeUnchecked();
+  // Executes inference and return status code.
+  TfLiteStatus Invoke();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
     auto tensor = interpreter_->tensor(index);
@@ -691,6 +701,7 @@ class SingleOpModel {
         buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
       }
 
+      builder_.ForceVectorAlignment(data.size(), sizeof(T), 16);
       // Add data as a Buffer to buffers list.
       buffer_id = buffers_.size();
       auto data_buffer =

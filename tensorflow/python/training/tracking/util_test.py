@@ -14,6 +14,8 @@
 # ==============================================================================
 import copy
 import os
+import pathlib
+import sys
 import weakref
 
 from absl.testing import parameterized
@@ -1071,6 +1073,57 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(root2.w.numpy(), 2)
     self.assertEqual(v2.numpy(), 1)
     self.assertEqual(z.numpy(), 6)
+
+  def test_weakref_root(self):
+    root = tracking.AutoTrackable()
+    root.v = variables_lib.Variable(1)
+    ref = root.v.ref()
+
+    ckpt = trackable_utils.Checkpoint(root=weakref.ref(root))
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+    root.v.assign(2)
+    ckpt.restore(save_path)
+    self.assertEqual(root.v.numpy(), 1)
+
+    del root
+
+    # Verifying if the variable is only referenced from `ref`.
+    # We expect the reference counter to be 1, but `sys.getrefcount` reports
+    # one higher reference counter because a temporary is created when we call
+    # sys.getrefcount().  Hence check if the number returned is 2.
+    # https://docs.python.org/3/library/sys.html#sys.getrefcount
+    self.assertEqual(sys.getrefcount(ref.deref()), 2)
+
+  def test_restore_incompatible_shape(self):
+    v = variables_lib.Variable([1.0, 1.0])
+    w = variables_lib.Variable([1.0])
+    ckpt = trackable_utils.Checkpoint(v=v)
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+
+    with self.assertRaisesRegex(ValueError, "incompatible tensor with shape"):
+      trackable_utils.Checkpoint(v=w).restore(save_path)
+
+  def test_save_restore_fspath(self):
+    v = variables_lib.Variable(1.0)
+    w = variables_lib.Variable(0.0)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
+    save_path = ckpt.save(prefix)
+    save_path = pathlib.Path(save_path)
+    ckpt2 = trackable_utils.Checkpoint(v=w)
+    ckpt2.restore(save_path)
+    self.assertEqual(ckpt.v.numpy(), 1.0)
+
+  def test_read_write_fspath(self):
+    v = variables_lib.Variable(1.0)
+    w = variables_lib.Variable(0.0)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
+    save_path = ckpt.write(prefix)
+    save_path = pathlib.Path(save_path)
+    ckpt2 = trackable_utils.Checkpoint(v=w)
+    ckpt2.read(save_path)
+    self.assertEqual(ckpt.v.numpy(), 1.0)
 
 
 class TemplateTests(parameterized.TestCase, test.TestCase):

@@ -56,8 +56,6 @@ void CombinePerCoreStepInfo(
     hlo_metrics_db_complete_steps_only_combiner->Combine(src.hlo_metrics_db());
   }
   hlo_metrics_db_per_step_combiner->Combine(src.hlo_metrics_db());
-  CombineCoreIdMap(src_host_id, src.flow_db_per_core(),
-                   dst->mutable_flow_db_per_core());
   CombineCoreIdMap(src_host_id, src.all_reduce_db_per_core(),
                    dst->mutable_all_reduce_db_per_core());
   CombineCoreIdMap(src_host_id, src.core_id_to_replica_id_map(),

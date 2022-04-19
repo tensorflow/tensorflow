@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
@@ -29,8 +30,8 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h.inc"
 
-using mlir::FuncOp;
 using mlir::OperationPass;
+using mlir::func::FuncOp;
 using mlir::TFDevice::Cluster;
 using mlir::TFDevice::ClusteringPolicySet;
 using mlir::TFDevice::CreateClusterOp;
@@ -77,7 +78,7 @@ struct TestClusteringPolicyPass
 
     // Propagate constraints though the function body.
     auto result =
-        PropagateValuesConstraints(func.body(), policies, constraints,
+        PropagateValuesConstraints(func.getBody(), policies, constraints,
                                    /*resolve=*/false, /*emit_remarks=*/true);
     (void)result;
 
@@ -88,12 +89,12 @@ struct TestClusteringPolicyPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTestTfJitRtClusteringPass() {
   return std::make_unique<TestClusteringPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTestTfJitRtClusteringPolicyPass() {
   return std::make_unique<TestClusteringPolicyPass>();
 }

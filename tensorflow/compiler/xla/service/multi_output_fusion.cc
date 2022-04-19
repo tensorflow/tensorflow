@@ -306,7 +306,7 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
 
   // Fusing nodes with 0 users makes no sense and the rest of the implementation
   // doesn't support it either.
-  if (instr1->user_count() == 0 || instr2->user_count() == 0) {
+  if (instr1->IsDead() || instr2->IsDead()) {
     return false;
   }
 

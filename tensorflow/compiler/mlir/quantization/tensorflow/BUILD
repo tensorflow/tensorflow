@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -17,7 +16,7 @@ package(
     licenses = ["notice"],
 )
 
-pytype_strict_binary(
+py_binary(
     name = "gen_quantized_function_library",
     srcs = ["gen_quantized_function_library.py"],
     deps = [
@@ -46,9 +45,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
     ],
 )
 
@@ -56,16 +53,31 @@ td_library(
     name = "ptq_td_files",
     srcs = [
         "passes/lift_quantizable_spots_as_functions.td",
+        "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
         "passes/utils.td",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithmeticOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
+)
+
+gentbl_cc_library(
+    name = "prepare_lifting_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/prepare_lifting.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/prepare_lifting.td",
+    deps = [":ptq_td_files"],
 )
 
 gentbl_cc_library(
@@ -119,6 +131,8 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions.inc",
         "passes/post_quantize.cc",
+        "passes/prepare_lifting.cc",
+        "passes/prepare_lifting.inc",
         "passes/prepare_quantize.cc",
         "passes/prepare_quantize.inc",
         "passes/quantize.cc",
@@ -136,7 +150,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:quant_spec",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
@@ -154,6 +170,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )

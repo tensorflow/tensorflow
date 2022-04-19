@@ -217,7 +217,6 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
         case StatType::kGroupId:
           group_id = stat.IntValue();
           break;
-        case StatType::kLevel0:  // old way to carry tf_op
         case StatType::kTfOp:
           tf_op_full_name = stat.StrOrRefValue();
           break;

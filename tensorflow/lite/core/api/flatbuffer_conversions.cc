@@ -2370,6 +2370,31 @@ TfLiteStatus ParseVarHandle(const Operator* op, ErrorReporter* error_reporter,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteWhileParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteWhileParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const WhileOptions* schema_params = op->builtin_options_as_WhileOptions();
+
+  if (schema_params != nullptr) {
+    params->cond_subgraph_index = schema_params->cond_subgraph_index();
+    params->body_subgraph_index = schema_params->body_subgraph_index();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.

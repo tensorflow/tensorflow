@@ -147,7 +147,7 @@ void PopulateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
   patterns->add<GatherIsTorchIndexSelect>(context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeGatherToTorchIndexSelectPass() {
   return std::make_unique<LegalizeGatherToTorchIndexSelectPass>();
 }

@@ -124,7 +124,7 @@ float GetQuantizationStep(float min, float max) {
 TEST(ElementWise, Sin) {
   ElementWiseOpFloatModel m(BuiltinOperator_SIN, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 0, 0, 0.84147})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
@@ -133,7 +133,7 @@ TEST(ElementWise, Sin) {
 TEST(ElementWise, Cos) {
   ElementWiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, -1, -1, 0.54030})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
@@ -142,7 +142,7 @@ TEST(ElementWise, Cos) {
 TEST(ElementWise, Log) {
   ElementWiseOpFloatModel m(BuiltinOperator_LOG, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 3.1415926, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 1.14473, 0, 0})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
@@ -154,7 +154,7 @@ TEST(ElementWise, Abs) {
                                          0.f, -6.2f, 2.f, 4.f,  //
                                          3.f, -2.f, 10.f, 1.f,  //
                                      });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()), ElementsAreArray({
                                                       0.f, 6.2f, 2.f, 4.f,  //
                                                       3.f, 2.f, 10.f, 1.f,  //
@@ -186,7 +186,7 @@ TEST(ElementWise, AbsInt8) {
        {input_zero_point}},
       {TensorType_INT8, {1, 8}, 0, abs_max, kOutputScale, output_zero_point});
   m.AsymmetricQuantizeAndPopulate<int8_t>(m.input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
               ElementsAreArray(ArrayFloatNear(abs_data, kInputScale)));
 }
@@ -214,7 +214,7 @@ TEST(ElementWise, AbsSameScaleInt8) {
        {input_zero_point}},
       {TensorType_INT8, {1, 8}, 0, abs_max, kInputScale, input_zero_point});
   m.AsymmetricQuantizeAndPopulate<int8_t>(m.input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
               ElementsAreArray(ArrayFloatNear(abs_data, kInputScale)));
 }
@@ -230,7 +230,7 @@ TEST(ElementWise, AbsInt16) {
                                 {TensorType_INT16, {1, 8}, -142, 142},
                                 {TensorType_INT16, {1, 8}, -150, 150});
   m.QuantizeAndPopulate<int16_t>(m.input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractDequantVector<int16_t>(m.output()),
               ElementsAreArray(ArrayFloatNear(abs_data, kQuantizedTolerance)));
 }
@@ -238,7 +238,7 @@ TEST(ElementWise, AbsInt16) {
 TEST(ElementWise, Sqrt) {
   ElementWiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 1, 2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 1, 1.41421, 2})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
@@ -247,7 +247,7 @@ TEST(ElementWise, Sqrt) {
 TEST(ElementWise, Rsqrt) {
   ElementWiseOpFloatModel m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 4, 9});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, 0.7071, 0.5, 0.33333})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
@@ -282,7 +282,7 @@ TEST(ElementWise, RsqrtInt8) {
                                  {kOutputScale},
                                  {zero_point}});
   m.QuantizeAndPopulate<int8_t>(m.input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
               ElementsAreArray(ArrayFloatNear(rsqrt_data, kInputScale)));
 }
@@ -316,7 +316,7 @@ TEST(ElementWise, RsqrtCloseTo0Int8) {
                                  {kOutputScale},
                                  {zero_point}});
   m.QuantizeAndPopulate<int8_t>(m.input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
               ElementsAreArray(ArrayFloatNear(rsqrt_data, kInputScale)));
 }
@@ -351,13 +351,13 @@ TEST(ElementWise, RsqrtNanInt8) {
                                  {kOutputScale},
                                  {output_zero_point}});
   m.QuantizeAndPopulate<int8_t>(m.input(), data);
-  EXPECT_THAT(m.InvokeUnchecked(), kTfLiteError);
+  EXPECT_THAT(m.Invoke(), kTfLiteError);
 }
 
 TEST(ElementWise, Square) {
   ElementWiseOpFloatModel m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -3.0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, 4.0, 0.25, 9.0})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
@@ -366,7 +366,7 @@ TEST(ElementWise, Square) {
 TEST(ElementWise, LogicalNot) {
   ElementWiseOpBoolModel m(BuiltinOperator_LOGICAL_NOT, {1, 1, 4, 1});
   m.PopulateTensor<bool>(m.input(), {true, false, true, false});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<bool>(m.output()),
               ElementsAreArray({false, true, false, true}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));

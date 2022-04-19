@@ -1,5 +1,4 @@
-# Lint as: python2, python3
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -501,6 +500,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
                            disable_infer_tensor_range=False,
                            use_fake_quant_num_bits=False,
                            enable_dynamic_update_slice=False,
+                           preserve_assert_op=False,
+                           guarantee_all_funcs_one_use=False,
                            **_):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -579,7 +580,12 @@ def build_conversion_flags(inference_type=dtypes.float32,
     use_fake_quant_num_bits: Allow quantization parameters to be calculated from
       num_bits attribute.
     enable_dynamic_update_slice: Enable to convert to DynamicUpdateSlice op.
-      (default: False)
+      (default: False).
+    preserve_assert_op: Whether to preserve `TF::AssertOp` (default: False).
+    guarantee_all_funcs_one_use: Whether to clone functions so that each
+      function only has a single use. This option will be helpful if the
+      conversion fails when the `PartitionedCall` or `StatefulPartitionedCall`
+      can't be properly inlined (default: False).
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -636,6 +642,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
   conversion_flags.enable_mlir_dynamic_range_quantizer = (
       enable_mlir_dynamic_range_quantizer)
   conversion_flags.enable_dynamic_update_slice = enable_dynamic_update_slice
+  conversion_flags.preserve_assert_op = preserve_assert_op
+  conversion_flags.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use
   if tf_quantization_mode:
     conversion_flags.tf_quantization_mode = tf_quantization_mode
   conversion_flags.disable_infer_tensor_range = disable_infer_tensor_range

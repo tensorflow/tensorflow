@@ -61,7 +61,7 @@ void LegalizeTFNoFallback::runOnOperation() {
 
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<chlo::HloClientDialect>();
+  target.addLegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
@@ -72,7 +72,7 @@ void LegalizeTFNoFallback::runOnOperation() {
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
   if (!allow_partial_conversion_) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::func::ReturnOp>();
+    target.addLegalOp<ModuleOp, func::FuncOp, ::mlir::func::ReturnOp>();
     llvm::DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -88,7 +88,7 @@ void LegalizeTFNoFallback::runOnOperation() {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFNoFallbackPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
     bool allow_partial_conversion) {
   return std::make_unique<LegalizeTFNoFallback>(allow_partial_conversion);
 }

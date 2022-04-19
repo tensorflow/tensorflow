@@ -49,8 +49,8 @@ class ExpandHloTuplesPass
 
   // Expands the mhlo.tuple used in return op. Also updates function
   // signature accordingly.
-  void ExpandTupledTensorInReturnOp(FuncOp func) {
-    FunctionType old_func_type = func.getType();
+  void ExpandTupledTensorInReturnOp(func::FuncOp func) {
+    FunctionType old_func_type = func.getFunctionType();
     // Update input signatures.
     // We will flatten the tuples for the function inputs as well.
     // So if an input is tuple, will be flattened and packed as following:
@@ -76,7 +76,7 @@ class ExpandHloTuplesPass
         int argument_index = original_argument_index;
         SmallVector<Value, 4> flattened_operands;
         // insert the flattened tuples after the original tuple.
-        Location loc = func.body().getLoc();
+        Location loc = func.getBody().getLoc();
         for (auto flattened_type : tuple_type.getTypes()) {
           expanded_input_types.push_back(flattened_type);
           func.insertArgument(++argument_index, flattened_type, {}, loc);
@@ -84,8 +84,8 @@ class ExpandHloTuplesPass
         }
 
         // Construct a new tuple and rewire it.
-        OpBuilder builder(func.body());
-        builder.setInsertionPointToStart(&func.body().front());
+        OpBuilder builder(func.getBody());
+        builder.setInsertionPointToStart(&func.getBody().front());
         auto new_tuple =
             builder.create<mhlo::TupleOp>(loc, tuple_type, flattened_operands);
         func.getArgument(original_argument_index).replaceAllUsesWith(new_tuple);
@@ -131,7 +131,8 @@ class ExpandHloTuplesPass
   void runOnOperation() override {
     auto module = getOperation();
     // Find `main` function.
-    auto entry_function = module.lookupSymbol<FuncOp>(entry_function_name_);
+    auto entry_function =
+        module.lookupSymbol<func::FuncOp>(entry_function_name_);
     if (!entry_function) {
       return;
     }

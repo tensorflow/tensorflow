@@ -8,7 +8,6 @@ package(
         "//tensorflow:internal",
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
-        "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -29,7 +28,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":distribute_coordinator_utils",
-        ":sidecar_evaluator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -52,14 +50,6 @@ py_library(
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
-    ],
-)
-
-py_library(
-    name = "distribute_test_lib_pip",
-    srcs_version = "PY3",
-    deps = [
-        ":multi_worker_testing_utils",
     ],
 )
 
@@ -95,35 +85,6 @@ py_library(
 )
 
 py_library(
-    name = "multi_worker_testing_utils",
-    srcs = [
-        "multi_worker_testing_utils.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras/optimizer_v2",
-    ],
-)
-
-py_library(
-    name = "tpu_strategy_test_utils",
-    srcs = ["tpu_strategy_test_utils.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
-        "//tensorflow/python/eager:remote",
-        "//tensorflow/python/tpu:tpu_strategy_util",
-    ],
-)
-
-py_library(
     name = "distributed_file_utils",
     srcs = [
         "distributed_file_utils.py",
@@ -132,31 +93,6 @@ py_library(
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python/distribute:distribute_lib",
-    ],
-)
-
-py_library(
-    name = "sidecar_evaluator",
-    srcs = ["sidecar_evaluator.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/training/tracking:util",
-        "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
-    name = "strategy_combinations",
-    srcs = ["strategy_combinations.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/distribute:strategy_combinations",
     ],
 )
 

@@ -46,7 +46,7 @@ void OptimizeMhloPass::runOnOperation() {
 }  // namespace mhlo
 }  // namespace mlir
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 mlir::mhlo::createOptimizeMhloPass() {
   return std::make_unique<mlir::mhlo::OptimizeMhloPass>();
 }

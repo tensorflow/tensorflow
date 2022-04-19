@@ -166,15 +166,15 @@ cc_library(
 tf_cuda_library(
     name = "profiler_backends",
     cuda_deps = [
-        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+        "//tensorflow/core/profiler/backends/gpu:device_tracer",
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+        "//tensorflow/core/profiler/backends/cpu:host_tracer",
     ] + if_libtpu([
-        "//tensorflow/core/profiler/internal/tpu:tpu_tracer",
+        "//tensorflow/core/profiler/backends/tpu:tpu_tracer",
     ]) + if_xla_available([
-        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
+        "//tensorflow/core/profiler/backends/cpu:metadata_collector",
     ]),
     alwayslink = True,
 )
@@ -195,7 +195,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder",
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
     ]),
 )
@@ -240,12 +240,26 @@ cc_library(
     hdrs = ["connected_traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "context_types_hdrs",
+    hdrs = ["context_types.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "context_types",
+    srcs = ["context_types.cc"],
+    hdrs = ["context_types.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -266,7 +280,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
     ] + if_not_android([
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
 )
 
@@ -280,7 +294,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -335,6 +349,7 @@ filegroup(
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
+        "context_types.h",
         "device_profiler_session.h",
         "profiler_interface.h",
     ],

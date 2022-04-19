@@ -44,6 +44,9 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 
+# Function
+from tensorflow.core.function.trace_type import *
+
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
 

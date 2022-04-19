@@ -100,6 +100,9 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandlePad(HloInstruction* pad) override;
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+  Status HandleAsyncUpdate(HloInstruction* async_update) override;
+  Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleCopyStart(HloInstruction* copy_start) override;
   Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleSend(HloInstruction* send) override;
@@ -294,7 +297,7 @@ class HloVerifier : public HloModulePass {
       : target_metadata_(std::move(target_metadata)), context_(context) {}
 
   ~HloVerifier() override = default;
-  absl::string_view name() const override { return "verifier"; }
+  absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
   StatusOr<bool> Run(HloModule* module) override;

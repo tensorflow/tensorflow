@@ -28,6 +28,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/event.h"
@@ -254,6 +255,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   static port::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
+  bool SupportsBlasPlans() const override;
+
   bool SupportsBlas() const override;
 
   blas::BlasSupport* CreateBlas() override;
@@ -368,8 +371,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // On-device constants that can be shared between multiple executables. A
   // pointer for a given constant will expire when no executables require use
   // of that constant anymore.
-  using SHA256Digest = std::array<uint8_t, 32>;
-  std::map<const SHA256Digest, std::weak_ptr<DeviceMemoryBase>>
+  std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.

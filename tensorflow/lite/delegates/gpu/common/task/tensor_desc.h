@@ -44,6 +44,13 @@ enum class TensorStorageType {
   SINGLE_TEXTURE_2D
 };
 
+struct ZeroClampSupport {
+  bool image_buffer = true;
+  bool image2d = true;
+  bool image3d = true;
+  bool image2d_array = true;
+};
+
 struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor() = default;
   TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
@@ -60,6 +67,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   }
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
+
+  absl::Status PerformConstExpr(const GpuInfo& gpu_info,
+                                const std::string& const_expr,
+                                std::string* result) const override;
 
   absl::Status PerformSelector(const GpuInfo& gpu_info,
                                const std::string& selector,
@@ -116,6 +127,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   Layout layout =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
 
+  void SetZeroClampSupport(const ZeroClampSupport& new_state) {
+    zero_clamp_support = new_state;
+  }
+
   void SetBHWCShape(const BHWC& new_shape) {
     shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
   }
@@ -151,6 +166,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformReadBilinearSelector(const GpuInfo& gpu_info,
                                            const std::vector<std::string>& args,
                                            std::string* result) const;
+  absl::Status PerformReadPerChannelSelector(
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
@@ -169,29 +187,30 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   std::string StorageTypeToAddressType() const;
 
-  absl::Status PerformWriteSelector(const GpuInfo& gpu_info,
-                                    const std::vector<std::string>& args,
-                                    std::string* result) const;
+  absl::Status PerformWriteSelector(
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 
-  absl::Status PerformWriteLinearSelector(const GpuInfo& gpu_info,
-                                          const std::vector<std::string>& args,
-                                          std::string* result) const;
+  absl::Status PerformWriteLinearSelector(
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 
-  absl::Status PerformWrite2DSelector(const GpuInfo& gpu_info,
-                                      const std::vector<std::string>& args,
-                                      std::string* result) const;
+  absl::Status PerformWrite2DSelector(
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 
   std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
                    const std::vector<std::string>& coords) const;
-  std::string Write(const GpuInfo& gpu_info, const std::string& var_name,
+  std::string Write(const GpuInfo& gpu_info, DataType write_type,
+                    const std::string& var_name,
                     const std::vector<std::string>& coords) const;
 
   bool IsBatchedWidth() const;
 
   AddressMode AddressModeFromState() const;
 
-  absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
-                                           DataType* result) const;
+  absl::Status MaybeGetDataTypeFromTemplateArgs(
+      const std::vector<std::string>& template_args, DataType* result) const;
 
   std::string GetGlobalAddressNoDeclaration(const std::string& xc,
                                             const std::string& yc,
@@ -229,6 +248,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const T* src);
   template <typename T>
   void DownloadData(T* dst);
+
+  ZeroClampSupport zero_clamp_support;
 
   // optional
   BHWDC shape;

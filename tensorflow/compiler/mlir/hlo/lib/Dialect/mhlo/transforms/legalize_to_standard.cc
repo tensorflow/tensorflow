@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -54,16 +53,29 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhs_type.getElementType().isSignlessInteger())
       return failure();
 
-    auto comparison_direction = op.comparison_direction();
-    auto compare_predicate =
-        llvm::StringSwitch<Optional<arith::CmpIPredicate>>(comparison_direction)
-            .Case("EQ", arith::CmpIPredicate::eq)
-            .Case("NE", arith::CmpIPredicate::ne)
-            .Case("LT", arith::CmpIPredicate::slt)
-            .Case("LE", arith::CmpIPredicate::sle)
-            .Case("GT", arith::CmpIPredicate::sgt)
-            .Case("GE", arith::CmpIPredicate::sge)
-            .Default(llvm::None);
+    Optional<arith::CmpIPredicate> compare_predicate;
+    switch (op.comparison_direction()) {
+      case ComparisonDirection::EQ:
+        compare_predicate = arith::CmpIPredicate::eq;
+        break;
+      case ComparisonDirection::NE:
+        compare_predicate = arith::CmpIPredicate::ne;
+        break;
+      case ComparisonDirection::LT:
+        compare_predicate = arith::CmpIPredicate::slt;
+        break;
+      case ComparisonDirection::LE:
+        compare_predicate = arith::CmpIPredicate::sle;
+        break;
+      case ComparisonDirection::GT:
+        compare_predicate = arith::CmpIPredicate::sgt;
+        break;
+      case ComparisonDirection::GE:
+        compare_predicate = arith::CmpIPredicate::sge;
+        break;
+      default:
+        compare_predicate = llvm::None;
+    }
 
     if (!compare_predicate.hasValue()) return failure();
 
@@ -91,16 +103,29 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhs_type.getElementType().isa<FloatType>())
       return failure();
 
-    auto comparison_direction = op.comparison_direction();
-    auto compare_predicate =
-        llvm::StringSwitch<Optional<arith::CmpFPredicate>>(comparison_direction)
-            .Case("EQ", arith::CmpFPredicate::OEQ)
-            .Case("NE", arith::CmpFPredicate::UNE)
-            .Case("LT", arith::CmpFPredicate::OLT)
-            .Case("LE", arith::CmpFPredicate::OLE)
-            .Case("GT", arith::CmpFPredicate::OGT)
-            .Case("GE", arith::CmpFPredicate::OGE)
-            .Default(llvm::None);
+    Optional<arith::CmpFPredicate> compare_predicate;
+    switch (op.comparison_direction()) {
+      case ComparisonDirection::EQ:
+        compare_predicate = arith::CmpFPredicate::OEQ;
+        break;
+      case ComparisonDirection::NE:
+        compare_predicate = arith::CmpFPredicate::UNE;
+        break;
+      case ComparisonDirection::LT:
+        compare_predicate = arith::CmpFPredicate::OLT;
+        break;
+      case ComparisonDirection::LE:
+        compare_predicate = arith::CmpFPredicate::OLE;
+        break;
+      case ComparisonDirection::GT:
+        compare_predicate = arith::CmpFPredicate::OGT;
+        break;
+      case ComparisonDirection::GE:
+        compare_predicate = arith::CmpFPredicate::OGE;
+        break;
+      default:
+        compare_predicate = llvm::None;
+    }
 
     if (!compare_predicate.hasValue()) return failure();
 
@@ -193,7 +218,8 @@ struct LegalizeToStandardPass
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandardPass>();
 }
 

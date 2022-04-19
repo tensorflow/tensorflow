@@ -162,7 +162,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     // can have exponential time/memory requirements for emitting certain fusion
     // ops, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once fixed in the emitter.
-    if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
+    if (FusedIrEmitter::IsFusedIrEmitterInefficient(*consumer, *producer)) {
       VLOG(3) << "Fusion of " << producer->name() << " into "
               << consumer->name()
               << " would result in overly large code duplication.";
@@ -174,7 +174,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 }
 
 bool IsSiblingFusionCandidate(const HloInstruction* instr) {
-  if (instr->user_count() == 0) {
+  if (instr->IsDead()) {
     return false;
   }
   if (!IsFusibleAsMultiOutputFusionRoot(*instr)) {

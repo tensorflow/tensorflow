@@ -752,6 +752,20 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   });
 }
 
+static std::string OperandsToString(
+    RepeatedArguments<FallbackTensor> operands) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  int i = 0;
+  os << "{";
+  for (const auto& operand : operands) {
+    os << "[" << i++ << "]: " << operand.tensor().DebugString(/*num_values=*/0);
+    if (i < operands.size()) os << ", ";
+  }
+  os << "}";
+  return out;
+}
+
 // Gets a JitExecutable async value from the cache, and then dispatches it
 // inline or using and-then continuation depending on the async value state.
 static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
@@ -759,6 +773,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         const CompilationUnitAttribute& kernel,
                         const ExecutionContext& exec_ctx, bool debug = false,
                         const Optional<TfJitRtPipelineOpts>& opts = None) {
+  VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
+          << ", operands: " << OperandsToString(operands);
+
   // Compile kernel module into the JitExecutable.
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
       CompileImpl(kernel, exec_ctx, opts);

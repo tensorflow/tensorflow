@@ -52,7 +52,11 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
                                 self)._GetInferGraph(*args, **kwargs)
 
     def get_func_from_saved_model(saved_model_dir):
-      saved_model_loaded = saved_model.load.load(
+      try:  # Necessary for `bazel run ...`
+        saved_model_load_fn = saved_model.load.load
+      except AttributeError:  # All the other cases
+        saved_model_load_fn = saved_model.load
+      saved_model_loaded = saved_model_load_fn(
           saved_model_dir, tags=[tag_constants.SERVING])
       graph_func = saved_model_loaded.signatures[
           signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
@@ -82,7 +86,7 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
 
 if __name__ == "__main__":

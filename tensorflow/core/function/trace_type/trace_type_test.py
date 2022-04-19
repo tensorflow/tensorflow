@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests and benchmarks for the trace_type module."""
 
+import collections
 import timeit
 
 from absl.testing import parameterized
@@ -51,6 +52,10 @@ class TestAttrsClass:
   def __init__(self, a, b):
     self.a = a
     self.b = b
+
+  def __eq__(self, other):
+    return isinstance(
+        other, TestAttrsClass) and self.a == other.a and self.b == other.b
 
 
 class DummyGenericClass:
@@ -247,6 +252,28 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
         TypeError,
         r'could not be represented through the generic tracing type'):
       make_function_signature_with_context(obj)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testGetPlaceholderValue(self):
+    composite_value = [1, 2, (3, [4, 5]), {6: [7]}, TestAttrsClass(8, (10, 11))]
+    composite_type = make_function_signature_with_context(composite_value)
+    placeholder_value = composite_type._placeholder_value()
+    self.assertEqual(composite_value, placeholder_value)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testWrappedNamedTuple(self):
+    ActualType = collections.namedtuple('ActualType', ['a', 'b', 'c'])
+
+    class MockWrapper(tuple):
+      # Generated through trackable data structures:
+      # //tensorflow/python/training/tracking/data_structures.py
+      # With design pattern similar to Python functools:
+      # https://docs.python.org/3/library/functools.html?highlight=__wrapped__#functools.update_wrapper
+      __wrapped__ = ActualType(1, 2, 3)
+
+    self.assertEqual(
+        make_function_signature_with_context(MockWrapper()),
+        make_function_signature_with_context(ActualType(1, 2, 3)))
 
 
 class CacheKeyMemoryTest(test.TestCase):

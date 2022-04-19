@@ -44,9 +44,9 @@ class CastInt32ToFp32Test(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
     if run_params.precision_mode == "FP16":
-      return {"TRTEngineOp_0": ["Cast", "Add", "Mul"]}
+      return {"TRTEngineOp_000": ["Cast", "Add", "Mul"]}
     else:
-      return {"TRTEngineOp_0": ["Add", "Mul"]}
+      return {"TRTEngineOp_000": ["Add", "Mul"]}
 
 if __name__ == "__main__":
   test.main()

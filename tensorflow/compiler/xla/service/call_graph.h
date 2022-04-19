@@ -126,6 +126,11 @@ class CallGraphNode {
 
   std::string ToString() const;
 
+  CallGraphNode(const CallGraphNode&) = delete;
+  CallGraphNode& operator=(const CallGraphNode&) = delete;
+  CallGraphNode(CallGraphNode&&) = default;
+  CallGraphNode& operator=(CallGraphNode&&) = default;
+
  private:
   // Only CallGraph can modify CallGraphNode.
   friend class CallGraph;

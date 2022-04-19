@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -56,7 +57,7 @@ void FreezeAssetsPass::runOnOperation() {
   }
   SymbolTable symbol_table(module);
 
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     llvm::BitVector args_to_erase(func.getNumArguments());
     OpBuilder builder(func.getBody());
 

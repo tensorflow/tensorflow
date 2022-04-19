@@ -34,7 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
@@ -256,11 +255,9 @@ class ShardedVariableMixin(trackable.Trackable):
   """Mixin for ShardedVariable."""
 
   # TODO(b/170877138): Remove this mixin once fixed. This mixin is required
-  # since TPUShardedVariable can't be a CompositeTensor.
+  # since TPUEmbeddingVariable can't be a CompositeTensor.
 
-  def __init__(self,
-               variables,
-               name='ShardedVariable'):
+  def __init__(self, variables, name='ShardedVariable'):
     """Treats `variables` as shards of a larger Variable.
 
 
@@ -334,7 +331,10 @@ class ShardedVariableMixin(trackable.Trackable):
     # be later captured in signatures so that the signatures can treat this
     # ShardedVariable as one single variable.
     self._saving_variable = resource_variable_ops.UninitializedVariable(
-        shape=self._shape, dtype=self._dtype, name=self._name)
+        shape=self._shape, dtype=self._dtype, name=self._name,
+        trainable=self._variables[0].trainable,
+        synchronization=variables_lib.VariableSynchronization.NONE,
+        aggregation=variables_lib.VariableAggregation.NONE)
 
   def __iter__(self):
     """Return an iterable for accessing the underlying sharded variables."""
@@ -749,6 +749,22 @@ class ShardedVariableMixin(trackable.Trackable):
   def _shared_name(self):
     return self._name
 
+  @property
+  def is_sharded_variable(self):
+    return True
+
+  def numpy(self):
+    """Copies the values in this ShardedVariable to a NumPy array.
+
+    First converts to a single Tensor using the registered conversion function,
+    which concatenates the shards, then uses Tensor.numpy() to convert to
+    a NumPy array.
+
+    Returns:
+      A NumPy array of the same shape and dtype.
+    """
+    return _var_to_tensor(self).numpy()
+
 
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])
 class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
@@ -824,6 +840,22 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
 
     setattr(cls, operator, _operator)
 
+  def __tf_experimental_restore_capture__(self, concrete_function,
+                                          internal_capture):
+    # Avoid restoring captures for functions that use ShardedVariable - the
+    # layer will be recreated during Keras model loading
+    # TODO(jmullenbach): support loading models with ShardedVariables using
+    # tf.saved_model.load
+    return None
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+    return True
+
+  def _write_object_proto(self, proto, options):
+    resource_variable_ops.write_object_proto_for_resource_variable(
+        self._saving_variable, proto, options, enforce_naming=False)
+
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   """Converts a `ShardedVariable` to a `Tensor`."""
@@ -874,24 +906,3 @@ def embedding_lookup(params,
   return embedding_ops.embedding_lookup(params.variables, ids,
                                         partition_strategy, name,
                                         validate_indices, max_norm)
-
-
-def _raise_when_load(_):
-  # We don't have serialization and deserialization mechanisms for
-  # `ShardedVariable` in 2.x style save/load yet.
-  raise ValueError(
-      'Loading a saved_model containing ShardedVariable via '
-      '`tf.saved_model.load` is not supported. If the model is built using '
-      'Keras, please use `tf.keras.models.load_model` instead.')
-
-
-revived_types.register_revived_type(
-    '_tf_distribute_sharded_variable',
-    lambda obj: isinstance(obj, ShardedVariable),
-    versions=[
-        revived_types.VersionedTypeRegistration(
-            object_factory=_raise_when_load,
-            version=0,
-            min_producer_version=0,
-            min_consumer_version=0)
-    ])

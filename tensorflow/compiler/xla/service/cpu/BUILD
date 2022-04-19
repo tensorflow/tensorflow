@@ -1,8 +1,5 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
-
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
@@ -16,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -185,7 +183,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AffineToStandardTransforms",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ArithmeticToLLVM",
         "@llvm-project//mlir:ArithmeticTransforms",
@@ -198,6 +195,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "//tensorflow/compiler/mlir/hlo:lower_index_cast",
+        "//tensorflow/compiler/mlir/hlo:shape_simplification",
         "//tensorflow/compiler/mlir/xla:xla_framework",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "@llvm-project//mlir:LLVMDialect",
@@ -220,6 +219,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
+        "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
@@ -230,6 +230,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
+        "//tensorflow/compiler/xla/service:sharding_propagation",
+        "//tensorflow/compiler/xla/service:sharding_remover",
         "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:conditional_canonicalizer",
@@ -240,6 +242,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:operand_upcaster",
+        "//tensorflow/compiler/xla/service:optimization_barrier_expander",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -644,6 +647,7 @@ cc_library(
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",
+        "@llvm-project//llvm:Instrumentation",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:OrcJIT",
@@ -893,7 +897,7 @@ cc_library(
     name = "runtime_single_threaded_matmul_impl",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     linkstatic = 1,
     visibility = ["//visibility:private"],
@@ -906,7 +910,7 @@ cc_library(
 cc_library(
     name = "runtime_single_threaded_matmul",
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -919,7 +923,7 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_nomkl",
-    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -979,6 +983,7 @@ tf_cc_test(
     tags = ["optonly"],
     deps = [
         ":cpu_runtime",
+        ":runtime_custom_call_status",
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
@@ -987,7 +992,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
-        "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
@@ -1234,7 +1238,6 @@ cc_library(
     name = "cpu_options",
     srcs = ["cpu_options.cc"],
     hdrs = ["cpu_options.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib",
@@ -1316,6 +1319,7 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:CFGTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",

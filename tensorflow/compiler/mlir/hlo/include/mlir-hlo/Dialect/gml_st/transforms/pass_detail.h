@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H
 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+namespace func {
+class FuncOp;
+}  // namespace func
 namespace scf {
 class SCFDialect;
 }  // namespace scf

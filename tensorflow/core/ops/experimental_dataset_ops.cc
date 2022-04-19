@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -88,6 +89,8 @@ REGISTER_OP("AutoShardDataset")
     .Attr("num_replicas: int = 0")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::ShardTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalAutoShardDataset")
@@ -328,6 +331,7 @@ REGISTER_OP("DatasetFromGraph")
     .Input("graph_def: string")
     .Output("handle: variant")
     .SetTypeConstructor(full_type::UnaryGeneric(TFT_DATASET))
+    .SetForwardTypeFn(full_type::Decode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
@@ -912,6 +916,8 @@ REGISTER_OP("RebatchDataset")
     .Attr("use_fallback: bool = true")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::BatchTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("RebatchDatasetV2")
@@ -923,6 +929,8 @@ REGISTER_OP("RebatchDatasetV2")
     .Attr("output_shapes: list(shape) >= 1")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::BatchTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")

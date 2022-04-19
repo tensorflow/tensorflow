@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 
 namespace mlir {
@@ -183,7 +184,7 @@ bool IsSequenceStartingWith0(Attribute attr) {
   return true;
 }
 
-int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
+int64_t getArgumentIndex(mlir::func::FuncOp op, Value value) {
   BlockArgument arg = value.dyn_cast<BlockArgument>();
   if (!arg || arg.getOwner() != &op.front()) return -1;
   return arg.getArgNumber();
@@ -202,25 +203,6 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs) {
     allocCounter++;
   }
   return std::make_pair(totalSize, allocCounter);
-}
-
-DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
-  RankedTensorType ty =
-      RankedTensorType::get(static_cast<int64_t>(attr.size()),
-                            IntegerType::get(attr.getContext(), 64));
-  return DenseIntElementsAttr::get(ty, attr.getValue());
-}
-
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        MLIRContext* ctx) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, IntegerType::get(ctx, 64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder* builder) {
-  return GetI64ElementsAttr(values, builder->getContext());
 }
 
 }  // namespace hlo

@@ -32,7 +32,7 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_2d_1d(self):
     mlir_function = """
-      func @test(%arg0: tensor<?x4xf32>,
+      func.func @test(%arg0: tensor<?x4xf32>,
                  %arg1: tensor<4xf32>,
                  %arg2: tensor<4xf32>) -> tensor<?x4xf32> {
         %0 = "tf.Log1p"(%arg0)
@@ -43,7 +43,7 @@ class TfBinaryBcastTest(test.TestCase):
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
         %3 = "tf.Atan2"(%2, %arg2)
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
-        return %3 : tensor<?x4xf32>
+        func.return %3 : tensor<?x4xf32>
       }"""
 
     n = np.random.randint(1, 10)
@@ -62,11 +62,11 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_2d_2d(self):
     mlir_function = """
-      func @test(%arg0: tensor<?x?xf32>,
+      func.func @test(%arg0: tensor<?x?xf32>,
                  %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
         %0 = "tf.Mul"(%arg0, %arg1)
              : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-        return %0 : tensor<?x?xf32>
+        func.return %0 : tensor<?x?xf32>
       }"""
 
     m = np.random.randint(1, 10)
@@ -92,7 +92,7 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_2d_1d_0d(self):
     mlir_function = """
-      func @compute(%arg0: tensor<?x4xf32>,
+      func.func @compute(%arg0: tensor<?x4xf32>,
                     %arg1: tensor<4xf32>,
                     %arg2: tensor<f32>) -> tensor<?x4xf32> {
         %0 = "tf.AddV2"(%arg1, %arg2)
@@ -101,7 +101,7 @@ class TfBinaryBcastTest(test.TestCase):
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
         %2 = "tf.AddV2"(%1, %0)
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
-        return %2 : tensor<?x4xf32>
+        func.return %2 : tensor<?x4xf32>
       }"""
 
     for specialize in specializations:
@@ -122,11 +122,11 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_3d_3d(self):
     mlir_function = """
-      func @test(%arg0: tensor<?x?x12xf32>,
+      func.func @test(%arg0: tensor<?x?x12xf32>,
                  %arg1: tensor<?x?x12xf32>) -> tensor<?x?x12xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<?x?x12xf32>, tensor<?x?x12xf32>) -> tensor<?x?x12xf32>
-        return %0 : tensor<?x?x12xf32>
+        func.return %0 : tensor<?x?x12xf32>
       }"""
 
     d0 = np.random.randint(1, 10)
@@ -144,11 +144,11 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_unranked_0d(self):
     mlir_function = """
-      func @compute(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
+      func.func @compute(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
                     %arg1: tensor<f32>) -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
-        return %0 : tensor<*xf32>
+        func.return %0 : tensor<*xf32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'compute')
@@ -162,12 +162,12 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_unranked_unranked(self):
     mlir_function = """
-      func @compute(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
+      func.func @compute(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
                     %arg1: tensor<*xf32> {jitrt.constraint = "rank"})
           -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-        return %0 : tensor<*xf32>
+        func.return %0 : tensor<*xf32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'compute')
@@ -182,11 +182,11 @@ class TfBinaryBcastTest(test.TestCase):
   # Test that the non-broadcastable shapes error is handled at run time.
   def test_bcast_1d_1d_error(self):
     mlir_function = """
-      func @compute(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>)
+      func.func @compute(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>)
           -> tensor<?xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-        return %0 : tensor<?xf32>
+        func.return %0 : tensor<?xf32>
       }"""
 
     arg0 = np.random.uniform(0, 10.0, size=(2)).astype(np.float32)
@@ -201,12 +201,12 @@ class TfBinaryBcastTest(test.TestCase):
   # Test that 0-ranked operands are correctly specialized.
   def test_bcast_value_rank0(self):
     mlir_function = """
-      func @compute(%arg0: tensor<*xi32>,
+      func.func @compute(%arg0: tensor<*xi32>,
                     %arg1: tensor<i32> {jitrt.constraint = "value"})
           -> tensor<*xi32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-        return %0 : tensor<*xi32>
+        func.return %0 : tensor<*xi32>
       }"""
     compiled = jitrt.compile(mlir_function, 'compute')
     # Test that the same compiled module with two different value-specialized
@@ -222,12 +222,12 @@ class TfBinaryBcastTest(test.TestCase):
   # Test that the function does not compile when value-specializing an f32.
   def test_bcast_value_die_if_unsinkable(self):
     mlir_function = """
-      func @compute(%arg0: tensor<*xf32>,
+      func.func @compute(%arg0: tensor<*xf32>,
                     %arg1: tensor<f32> {jitrt.constraint = "value"})
           -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
-        return %0 : tensor<*xf32>
+        func.return %0 : tensor<*xf32>
       }"""
 
     with self.assertRaisesRegex(Exception,

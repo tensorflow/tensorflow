@@ -193,7 +193,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
   LinalgOp res = op;
   SmallVector<Value, 4> ivs, tensorResults;
   auto tiledLoopBodyBuilder =
-      [&](OpBuilder &builder, Location loc, ValueRange localIvs,
+      [&](OpBuilder & /*builder*/, Location loc, ValueRange localIvs,
           ValueRange operandValuesToUse) -> scf::ValueVector {
     ivs.assign(localIvs.begin(), localIvs.end());
 
@@ -206,7 +206,8 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
     auto sizeBounds =
         applyMapToValues(b, loc, shapeSizesToLoopsMap, allShapeSizes);
     SmallVector<Value, 4> tiledOperands =
-        makeTiledShapes(b, loc, op, valuesToTile, ivs, tileSizes, sizeBounds);
+        makeTiledShapes(b, loc, op, valuesToTile, ivs, tileSizes, sizeBounds,
+                        /*omitPartialTileCheck=*/false);
 
     SmallVector<Type, 4> resultTensorTypes;
     for (OpOperand *opOperand : op.getOutputTensorOperands())

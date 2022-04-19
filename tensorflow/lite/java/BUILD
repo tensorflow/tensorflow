@@ -93,7 +93,6 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
-        "src/main/java/org/tensorflow/lite/XnnpackDelegate.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
         "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
