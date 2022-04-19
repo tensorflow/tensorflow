@@ -788,8 +788,8 @@ class OptimizerV2(trackable.Trackable):
       if (callable(prev_value)
           or isinstance(prev_value,
                         (ops.Tensor, int, float,
-                         learning_rate_schedule.LearningRateSchedule))
-          or isinstance(value, learning_rate_schedule.LearningRateSchedule)):
+                        tensorflow.keras.optimizers.schedules.LearningRateSchedule))
+          or isinstance(value, tensorflow.keras.optimizers.schedules.LearningRateSchedule)):
         self._hyper[name] = value
       else:
         backend.set_value(self._hyper[name], value)
@@ -798,7 +798,7 @@ class OptimizerV2(trackable.Trackable):
     if not self._hypers_created:
       self._create_hypers()
     value = self._hyper[name]
-    if isinstance(value, learning_rate_schedule.LearningRateSchedule):
+    if isinstance(value, tensorflow.keras.optimizers.schedules.LearningRateSchedule):
       return value
     if callable(value):
       value = value()
@@ -1005,7 +1005,7 @@ class OptimizerV2(trackable.Trackable):
   def _decayed_lr(self, var_dtype):
     """Get decayed learning rate as a Tensor with dtype=var_dtype."""
     lr_t = self._get_hyper("learning_rate", var_dtype)
-    if isinstance(lr_t, learning_rate_schedule.LearningRateSchedule):
+    if isinstance(lr_t, tensorflow.keras.optimizers.schedules.LearningRateSchedule):
       local_step = math_ops.cast(self.iterations, var_dtype)
       lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
@@ -1063,7 +1063,7 @@ class OptimizerV2(trackable.Trackable):
   def _serialize_hyperparameter(self, hyperparameter_name):
     """Serialize a hyperparameter that can be a float, callable, or Tensor."""
     value = self._hyper[hyperparameter_name]
-    if isinstance(value, learning_rate_schedule.LearningRateSchedule):
+    if isinstance(value, tensorflow.keras.optimizers.schedules.LearningRateSchedule):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
