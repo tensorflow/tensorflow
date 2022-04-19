@@ -128,7 +128,8 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
 }
 
 namespace {
-class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
+class AdjustLayout
+    : public PassWrapper<AdjustLayout, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }

@@ -102,7 +102,7 @@ using RequantizeStates = SmallVector<RequantizeState>;
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(FuncOp fn, bool is_signed,
+  explicit QuantizationDriver(func::FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
                               OpQuantScaleSpecGetter op_quant_scale_spec_getter,
@@ -341,7 +341,7 @@ class QuantizationDriver {
       }
       if (current_op == op) llvm::dbgs() << "===>>>";
       llvm::dbgs() << op->getName() << " : (";
-      if (llvm::isa<FuncOp>(op)) {
+      if (llvm::isa<func::FuncOp>(op)) {
         for (auto &arg : fn_.getArguments()) {
           if (auto params = GetArgQuantState(arg).params) {
             params.print(llvm::dbgs());
@@ -375,7 +375,7 @@ class QuantizationDriver {
     });
   }
 
-  FuncOp fn_;
+  func::FuncOp fn_;
   OpBuilder builder_;
   bool is_signed_;
   bool disable_per_channel_;

@@ -239,7 +239,7 @@ struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createCopyRemovalPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createCopyRemovalPass() {
   return std::make_unique<CopyRemovalPass>();
 }
 

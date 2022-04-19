@@ -112,7 +112,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // We do support fusion only if the contraction operation is inside one of
     // the expected operations with regions. Other operations can have semantics
     // that is not compatible with fusion (e.g. region compilation).
-    if (!isa<FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
+    if (!isa<func::FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
       return rewriter.notifyMatchFailure(
           contraction,
           "fused operation must be nested inside a function, If or While");
@@ -255,7 +255,7 @@ void FusedKernelMatcherPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
 

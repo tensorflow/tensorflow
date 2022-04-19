@@ -24,7 +24,7 @@ namespace {
 
 // This pass verifies that the TFL ops meet the TFL runtime constraints.
 class RuntimeVerifyPass
-    : public mlir::PassWrapper<RuntimeVerifyPass, OperationPass<FuncOp>> {
+    : public mlir::PassWrapper<RuntimeVerifyPass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RuntimeVerifyPass)
 
@@ -54,7 +54,7 @@ void RuntimeVerifyPass::runOnOperation() {
 }  // namespace
 
 // Verifies TFL runtime constraints.
-std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRuntimeVerifyPass() {
   return std::make_unique<RuntimeVerifyPass>();
 }
 

@@ -38,9 +38,9 @@ message DeviceProto {
   string vendor = 3;
 
   // The following fields are present in the GlobalTopologyProto message
-  // returned by Connect() but not in the LocalTopologyProto messages passed to
-  // Connect(). In other words, the coordinator node determines the global
-  // device IDs during Connect().
+  // returned by EnumerateDevices() but not in the LocalTopologyProto messages
+  // passed to EnumerateDevices(). In other words, the coordinator node
+  // determines the global device IDs during EnumerateDevices().
   int32 global_device_id = 4;  // Globally unique ID number.
 }
 

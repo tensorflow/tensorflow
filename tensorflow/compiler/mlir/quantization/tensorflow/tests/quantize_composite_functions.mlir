@@ -29,12 +29,16 @@ module {
     func.return %6, %7 : tensor<*xf32>, tensor<*xf32>
   }
   func.func private @fused_conv2d_with_bias_and_relu6_fn_2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.fused_function} {
-    %0 = "tf._FusedConv2D"(%arg0, %arg1, %arg2) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu"], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
   }
   func.func private @fused_conv2d_with_bias_and_relu6_fn_1(%arg0: tensor<1x2x2x3xf32>, %arg1: tensor<2x2x3x2xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.fused_function} {
-    %0 = "tf._FusedConv2D"(%arg0, %arg1, %arg2) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu"], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>, tensor<2xf32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x2x2x3xf32>, tensor<2x2x3x2xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
   }
 
 // CHECK-LABEL: func @conv
@@ -49,7 +53,7 @@ module {
 // CHECK-DAG: %[[out_zp:.*]] = "tf.Const"() {value = dense<-1> : tensor<i32>}
 // CHECK-DAG: %[[b_quant:.*]] = "tf.Const"() {value = dense<[-62500, 75000]> : tensor<2xi32>}
 // CHECK-DAG: %[[w_quant:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}40, 20]
-// CHECK-SAME: {{\[\[\[}}-87, -42]
+// CHECK-DAG: {{\[\[\[}}-87, -42]
 
 // CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0, %[[in_scale]], %[[in_zp]])
 // CHECK-SAME: f = @quantize_i8
@@ -66,8 +70,10 @@ module {
 // CHECK: return %[[dequantize]], %[[conv_float]]
 
 // CHECK-LABEL: func private @fused_conv2d_with_bias_and_relu6_fn_1
-// CHECK:      %[[CONV2D_0:.*]] = "tf._FusedConv2D"
-// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu"], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+// CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
+// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+// CHECK:      %[[BIASADD_0:.*]] = "tf.BiasAdd"
+// CHECK:      %[[RELU6_0:.*]] = "tf.Relu6"
 
 // CHECK-LABEL: func private @quantized_conv2d_with_bias_and_relu6_fn_0
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
@@ -90,8 +96,10 @@ module {
     func.return %6 : tensor<*xf32>
   }
   func.func private @fused_conv2d_with_bias_and_relu6_fn_1(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.fused_function} {
-    %0 = "tf._FusedConv2D"(%arg0, %arg1, %arg2) {attr_map = "0:strides,2:padding,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu"], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %arg2) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %2 : tensor<*xf32>
   }
 
 // CHECK-LABEL: func @conv_with_default_attributes
@@ -106,5 +114,5 @@ module {
 
 // CHECK-LABEL: func private @quantized_conv2d_with_bias_and_relu6_fn_0
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
-// CHECK-SAME: {dilations = [1, 1, 1, 1], padding = "VALID", strides = [1, 1, 2, 1]}
+// CHECK-SAME: {dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
 }

@@ -303,6 +303,11 @@ build:windows --copt=/W0
 build:windows --copt=/D_USE_MATH_DEFINES
 build:windows --host_copt=/D_USE_MATH_DEFINES
 
+# Speed Windows compile times. Available in VS 16.4 (we are on 16.11). See
+# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+build:windows --copt=/d2ReducedOptimizeHugeFunctions
+build:windows --host_copt=/d2ReducedOptimizeHugeFunctions
+
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
 build:linux --define=LIBDIR=$(PREFIX)/lib
@@ -517,8 +522,8 @@ build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
 build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_04062022:toolchain"
-build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_04062022:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_04112022:toolchain"
+build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_04112022:cc-toolchain-x64_windows"
 build:rbe_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
@@ -616,9 +621,6 @@ build:release_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2
 build:release_cpu_windows --config=release_base
 build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
-# First available in VS 16.4. Speeds Windows compile times by a lot. See
-# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
-build:release_cpu_windows --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions
 
 build:release_gpu_windows --config=release_cpu_windows
 build:release_gpu_windows --config=release_gpu_base

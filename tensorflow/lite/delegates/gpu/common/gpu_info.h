@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -363,15 +364,16 @@ struct OpenClInfo {
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
 
-  bool supports_r_f16_tex2d = false;
-  bool supports_rg_f16_tex2d = false;
-  bool supports_rgb_f16_tex2d = false;
-  bool supports_rgba_f16_tex2d = false;
+  struct SupportedImage2dTypes {
+    absl::flat_hash_set<DataType> r_layout;
+    absl::flat_hash_set<DataType> rg_layout;
+    absl::flat_hash_set<DataType> rgb_layout;
+    absl::flat_hash_set<DataType> rgba_layout;
 
-  bool supports_r_f32_tex2d = false;
-  bool supports_rg_f32_tex2d = false;
-  bool supports_rgb_f32_tex2d = false;
-  bool supports_rgba_f32_tex2d = false;
+    bool SupportsImage2D(DataType data_type, int channels) const;
+  };
+
+  SupportedImage2dTypes supported_images_2d;
 
   bool IsImage2dFromBufferSupported() const;
 };

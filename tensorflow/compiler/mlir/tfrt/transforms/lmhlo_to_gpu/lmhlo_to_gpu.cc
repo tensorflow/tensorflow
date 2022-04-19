@@ -65,7 +65,6 @@ struct ConvertLmhloToGpuPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::gpu::GPUDialect, tfrt::compiler::TFRTDialect,
                     tfrt::gpu::GpuDialect,
-                    tfrt::gpu::conversion::GpuConversionDialect,
                     xla::gpu::XlirDialect>();
   }
 };
@@ -87,11 +86,12 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   populateTriangularSolveConversionPattern(patterns, converter);
   populateFftConversionPattern(patterns, converter);
 
-  // Set of ops that need to be wrapped in tfrt_gpu_conversion.async.execute
+  // Set of ops that need to be wrapped in tfrt_gpu.streamify
   // before lowering directly to tfrt_gpu ops (and therefore require some chain
   // and stream, which the wrapper op provides as block arguments). On the other
   // hand, ops which lower to the gpu dialect do not need to be wrapped. TFRT
-  // ops are added to 'wrap_target' inside populateGpuAsyncConversionPatterns().
+  // ops are added to 'wrap_target' inside
+  // populateStreamifyConversionPatterns().
   ConversionTarget wrap_target(*context);
   wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
   wrap_target.addLegalOp<
@@ -99,8 +99,8 @@ void ConvertLmhloToGpuPass::runOnOperation() {
       lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
       lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
       lmhlo::InfeedOp, lmhlo::OutfeedOp, lmhlo::FftOp>();
-  tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
-                                                wrap_target);
+  tfrt::gpu::populateStreamifyConversionPatterns(patterns, converter,
+                                                 wrap_target);
 
   ConversionTarget target(*context);
   target.addIllegalOp<memref::ReinterpretCastOp, memref::ViewOp,
@@ -109,10 +109,8 @@ void ConvertLmhloToGpuPass::runOnOperation() {
     return converter.isSignatureLegal(op.getFunctionType()) &&
            converter.isLegal(&op.getBody());
   });
-  target.addDynamicallyLegalOp<tfrt::gpu::conversion::AsyncExecuteOp>(
-      [&](tfrt::gpu::conversion::AsyncExecuteOp op) {
-        return converter.isLegal(&op.body());
-      });
+  target.addDynamicallyLegalOp<tfrt::gpu::StreamifyOp>(
+      [&](tfrt::gpu::StreamifyOp op) { return converter.isLegal(&op.body()); });
   target.addDynamicallyLegalOp<tfrt::compiler::CallOp, tfrt::compiler::ReturnOp,
                                func::CallOp, func::ReturnOp>(
       [&](Operation* op) { return converter.isLegal(op); });

@@ -82,15 +82,15 @@ struct ConvertToSignlessPass
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     });
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType());
     });
 
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertToSignless>(converter, &context);
     // FuncOp is special as it has type encoding via attributes.
-    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                             converter);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
 
     auto module = getOperation();
     if (failed(applyFullConversion(module, target, std::move(patterns)))) {

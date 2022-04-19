@@ -107,6 +107,15 @@ ForwardTypeInferenceFn ContainerMap(
     FullTypeId t, int input_idx,
     std::function<FullTypeDef(const FullTypeDef&)> map);
 
+// Helper for ops with semantics of repacking some element from a container to
+// another `<t> -> <u>`, in a covariant way, that is, `<t>[T] -> <u>[T]`. <t>
+// and <u> are parameterized by this factory. The input type is specified by
+// element_idx.
+ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx);
+
+// Auxiliary constructs to help creation of type inference functions.
+// TODO(mdan): define these as type inference functions as well.
+
 // Mapping function representing the type function for unstacking of
 // Tensor (or Tensor-like) types. Note that this is a helper to use with
 // other type inference functions; it's not a function itself.

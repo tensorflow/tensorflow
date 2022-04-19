@@ -80,21 +80,19 @@ namespace xla {
 namespace gpu {
 
 bool IsBefExecutableEnabled(const HloModuleConfig& config) {
-#if XLA_ENABLE_XLIR
+#if !XLA_ENABLE_XLIR
+  CHECK(!config.debug_options().xla_gpu_bef_executable())
+      << "Failed to enable BEF backend, because it was not compiled.";
+#endif  // !XLA_ENABLE_XLIR
   return config.debug_options().xla_gpu_bef_executable();
-#else   // XLA_ENABLE_XLIR
-  (void)config;
-  return false;
-#endif  // XLA_ENABLE_XLIR
 }
 
 bool IsBefThunkEnabled(const HloModuleConfig& config) {
-#if XLA_ENABLE_XLIR
+#if !XLA_ENABLE_XLIR
+  CHECK(!config.debug_options().xla_gpu_bef_thunk())
+      << "Failed to enable BEF backend, because it was not compiled.";
+#endif  // !XLA_ENABLE_XLIR
   return config.debug_options().xla_gpu_bef_thunk();
-#else   // XLA_ENABLE_XLIR
-  (void)config;
-  return false;
-#endif  // XLA_ENABLE_XLIR
 }
 
 namespace {

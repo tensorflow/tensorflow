@@ -42,7 +42,7 @@ struct LowerTF : public TestTensorFlowLowerTFPassBase<LowerTF> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestTFLowerTFPass() {
   return std::make_unique<LowerTF>();
 }
 

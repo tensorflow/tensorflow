@@ -48,6 +48,7 @@ namespace model {
 constexpr int64_t kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
+constexpr char kCycleLength[] = "cycle_length";
 
 // A key used to identify the input time of the model.
 constexpr char kModelInputTimeKey[] = "model_input_time";
@@ -89,7 +90,8 @@ struct Parameter {
         // computation, if the state value is `kAutotune=-1` (just to indicate
         // the `SharedState` is tunable), we initialize the parameter value to
         // be the minimal value of the state.
-        value(state->value == kAutotune ? min : state->value),
+        value(state == nullptr || state->value == kAutotune ? min
+                                                            : state->value),
         min(min),
         max(max),
         state(std::move(state)) {}
@@ -319,6 +321,17 @@ class Node {
     autotune_.store(autotune);
   }
 
+  // Returns true for asynchronous nodes; false otherwise.
+  virtual bool IsAsync() const { return false; }
+
+  // Returns the ratio of the node, which is defined as the number of elements
+  // per input needed by the node to produce an element, e.g. batch size of a
+  // `Batch`. It can be 0 if the ratio is unknown.
+  virtual double Ratio() const { return 1.0; }
+
+  // Computes the self time in nanoseconds of the node to produce one element.
+  virtual double ComputeSelfTime() const;
+
   // Given the average time between events when the elements in the buffer are
   // produced (`producer_time`), the average time between events when elements
   // in the buffer are consumed (`consumer_time`) and the buffer size, the
@@ -363,7 +376,7 @@ class Node {
   // operate over immutable state while allowing concurrent model updates.
   std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element processing time spent in this node.
+  // Returns the per-element processing time in nanoseconds spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the total number of bytes buffered in all nodes in the subtree for
@@ -375,9 +388,9 @@ class Node {
   // would be used by the subtree nodes if all of their buffers were full.
   double TotalMaximumBufferedBytes() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the per-element CPU time spent in the subtree rooted in this node.
-  // If `processing_times` is not `nullptr`, collects the per-element CPU time
-  // spent in each node of the subtree.
+  // Returns the per-element CPU time in nanoseconds spent in the subtree rooted
+  // in this node. If `processing_times` is not `nullptr`, collects the
+  // per-element CPU time spent in each node of the subtree.
   double TotalProcessingTime(NodeValues* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
@@ -388,6 +401,16 @@ class Node {
   static Status FromProto(ModelProto::Node node_proto,
                           std::shared_ptr<Node> output,
                           std::shared_ptr<Node>* node);
+
+  // Returns a vector of nodes of the subtree rooted in this node. The nodes are
+  // either in breadth-first search or reverse breadth-first search order
+  // depending on the `order` argument. The nodes are collected based on the
+  // results of the `collect_node` predicate: if the predicate returns `false`
+  // for a given node, then the subtree rooted in this node is excluded. The
+  // root node itself is not collected.
+  NodeVector CollectNodes(TraversalOrder order,
+                          bool collect_node(const std::shared_ptr<Node>)) const
+      TF_LOCKS_EXCLUDED(mu_);
 
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
@@ -500,15 +523,10 @@ class Node {
                                          NodeValues* total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  // Returns a vector of nodes of the subtree rooted in this node. The nodes are
-  // either in breadth-first search or reverse breadth-first search order
-  // depending on the `order` argument. The nodes are collected based on the
-  // results of the `collect_node` predicate: if the predicate returns `false`
-  // for a given node, then the subtree rooted in this node is excluded. The
-  // root node itself is not collected.
-  NodeVector CollectNodes(TraversalOrder order,
-                          bool collect_node(const std::shared_ptr<Node>)) const
-      TF_SHARED_LOCKS_REQUIRED(mu_);
+  // This is the locked version of the public `CollectNodes`.
+  NodeVector CollectNodesLocked(TraversalOrder order,
+                                bool collect_node(const std::shared_ptr<Node>))
+      const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Collects tunable parameters in the subtree rooted in this node assuming
   // mutex locked.
@@ -593,7 +611,8 @@ class Node {
 
 // InterleaveMany is used to model datasets whose inputs are used to create
 // datasets whose elements are then interleaved.
-std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args);
+std::shared_ptr<Node> MakeInterleaveManyNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters);
 
 // AsyncInterleaveMany nodes are the asynchronous version of InterleaveMany
 // nodes.
@@ -708,6 +727,10 @@ class Model {
   static Status Load(const string& fname, std::unique_ptr<Model>* model,
                      OptimizationParams* optimization_params);
 
+  Node::NodeVector CollectNodes(std::shared_ptr<Node> root,
+                                TraversalOrder order,
+                                bool collect_node(const std::shared_ptr<Node>));
+
  private:
   // Determines whether optimization should stop given total processing time,
   // estimated output time, and estimated number of buffers bytes.
@@ -804,6 +827,61 @@ class Model {
   // Cached result of the `DebugString()` invocation used to implement rate
   // limitting of the computation.
   std::string cached_debug_string_ = "";
+};
+
+// Class to compute timing information for a model.
+class ModelTiming {
+ public:
+  struct NodeTiming {
+    // Pipeline ratio is the number of elements this node needs to produce in
+    // order to produce an element at the root of the pipeline.
+    double pipeline_ratio = 0.0;
+    // The total time of an interleave node is the sum of its processing time
+    // and the average of the total time of its inputs weighted by inputs'
+    // `num_elements`. This weight is what is stored in this variable.
+    double pipeline_weight = 0.0;
+    // The self time it takes this node to produce the elements needed to
+    // produce one element of the root of the pipeline.
+    double self_time_nsec = 0.0;
+    // The total time it takes this node and the subtree rooted at this node to
+    // produce the elements needed to produce one element at the root of the
+    // pipeline.
+    double total_time_nsec = 0.0;
+  };
+
+  explicit ModelTiming(std::shared_ptr<Model> model);
+
+  // Returns the timing data for `node`.
+  const NodeTiming* GetTiming(Node* node) const;
+
+  // Returns the root nodes of all stages.
+  std::vector<std::shared_ptr<Node>> GetStageRoots() const;
+
+  // Returns all the nodes of a stage given the stage root.
+  std::vector<std::shared_ptr<Node>> GetStageNodes(
+      std::shared_ptr<Node> root) const;
+
+ private:
+  // Computes timing information for the whole model.
+  void ComputeTiming();
+
+  // Computes the pipeline ratio, pipeline weight, self time for all nodes. The
+  // `bfs_nodes` are assumed to be a vector of model nodes in BFS manner.
+  void ComputeTimingComponents(const Node::NodeVector& bfs_nodes);
+
+  // Computes the total time for all nodes. The `reverse_bfs_nodes` are assumed
+  // to be a vector of model nodes in reversed BFS manner.
+  void ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes);
+
+  // Computes the pipeline weight of the node if the node is an input of an
+  // interleave node. If not, it returns the pipeline weight of its output.
+  double ComputeNodePipelineWeight(const NodeTiming& output_timing,
+                                   const Node* node, const Node* output);
+
+  std::shared_ptr<Model> model_;
+
+  // Holds a mapping from node to its timing node.
+  absl::flat_hash_map<const Node*, NodeTiming> timing_nodes_;
 };
 
 }  // namespace model

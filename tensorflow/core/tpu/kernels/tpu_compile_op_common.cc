@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -198,6 +200,15 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
                                  error_name(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
+  // Set payload when status is not ok and ErrorSource payload hasn't been set.
+  if (!compile_status.ok() &&
+      !compile_status.GetPayload(kErrorSource).has_value()) {
+    tensorflow::core::platform::ErrorSourceProto error_source_proto;
+    error_source_proto.set_error_source(
+        tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP);
+    compile_status.SetPayload(kErrorSource,
+                              error_source_proto.SerializeAsString());
+  }
 
   return compile_status;
 }

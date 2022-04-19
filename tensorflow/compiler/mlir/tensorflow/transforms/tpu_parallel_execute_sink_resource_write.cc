@@ -155,7 +155,7 @@ void TPUParallelExecuteSinkResourceWrite::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUParallelExecuteSinkResourceWritePass() {
   return std::make_unique<TPUParallelExecuteSinkResourceWrite>();
 }

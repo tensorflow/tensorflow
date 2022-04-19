@@ -56,7 +56,7 @@ class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
     return "Transform from TF control dialect to TF executor dialect.";
   }
 
-  void runOnFunction(FuncOp func,
+  void runOnFunction(func::FuncOp func,
                      const TF::SideEffectAnalysis::Info& side_effect_analysis);
 
   void BreakUpIsland(tf_executor::IslandOp island_op,
@@ -66,7 +66,8 @@ class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
 };
 
 void BreakUpIslands::runOnFunction(
-    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    func::FuncOp func,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   auto graph_op_range = func.front().without_terminator();
   tf_executor::GraphOp graph_op;
 

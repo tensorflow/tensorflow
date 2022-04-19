@@ -2127,7 +2127,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       DynamicDimensionInference::Run(module, options_.custom_call_handler,
                                      options_.shape_check_mode));
 
-  for (HloComputation* computation : module->computations()) {
+  std::vector<HloComputation*> computations =
+      module->MakeComputationPostOrder();
+
+  for (HloComputation* computation : computations) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       OpDynamismSupport has_dynamism_support = OpDynamismSupport::kNoSupport;
       if (options_.op_supports_dynamism_handler != nullptr) {
@@ -2256,7 +2259,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   // There are ops that only support dynamic lowering and ops that only support
   // static lowering, add dynamic<->static tensor conversion around the boundary
   // between those ops, as well as the root instruction.
-  auto computations = module->MakeComputationPostOrder();
+  computations = module->MakeComputationPostOrder();
   // Reverse postorder so that if caller doesn't support dynamic tensor (while,
   // etc), change their called computation to only take static tensors.
   for (auto it = computations.rbegin(); it != computations.rend(); ++it) {

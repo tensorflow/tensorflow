@@ -70,7 +70,7 @@ struct LowerIndexCastPass : public LowerIndexCastPassBase<LowerIndexCastPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLowerIndexCastPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass() {
   return std::make_unique<LowerIndexCastPass>();
 }
 

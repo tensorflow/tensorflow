@@ -249,7 +249,8 @@ bool IsQuantizedCall(TF::PartitionedCallOp call_op) {
 // attr_name_1 is the name of the of the attribute needs to be set in the
 // quantized function, attr_name_2 is the name of the attribute corresponding to
 // the attribute identifier in the float function.
-LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
+LogicalResult TransferAttributes(func::FuncOp float_func,
+                                 func::FuncOp quantized_func) {
   // A map to find an attribute from its identifier.
   llvm::StringMap<Attribute> identifier_to_attr;
   for (Operation& inner_op : float_func.getBody().front().getOperations()) {
@@ -417,12 +418,13 @@ class QuantizeFunctionPattern
     // Make a copy of the quantized function.
     auto module = call_op->getParentOfType<ModuleOp>();
     SymbolTable symbol_table(module);
-    FuncOp float_func =
-        dyn_cast<FuncOp>(symbol_table.lookup(f_attr.getValue()));
-    FuncOp quantized_func =
-        dyn_cast<FuncOp>(symbol_table.lookup(quantized_function_name.str()));
+    func::FuncOp float_func =
+        dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
+    func::FuncOp quantized_func = dyn_cast<func::FuncOp>(
+        symbol_table.lookup(quantized_function_name.str()));
     rewriter.setInsertionPointAfter(float_func);
-    FuncOp new_quantized_func = dyn_cast<FuncOp>(quantized_func->clone());
+    func::FuncOp new_quantized_func =
+        dyn_cast<func::FuncOp>(quantized_func->clone());
     if (new_quantized_func == nullptr) {
       return failure();
     }
@@ -492,9 +494,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // This can be removed when the composite call supports quantized types.
   pm.enableVerifier(false);
 
-  pm.addNestedPass<FuncOp>(CreatePrepareQuantizePass(quantization_method_));
-  pm.addNestedPass<FuncOp>(CreateQuantizePass());
-  pm.addNestedPass<FuncOp>(CreatePostQuantizePass());
+  pm.addNestedPass<func::FuncOp>(
+      CreatePrepareQuantizePass(quantization_method_));
+  pm.addNestedPass<func::FuncOp>(CreateQuantizePass());
+  pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   if (failed(pm.run(module))) {
     signalPassFailure();
   }

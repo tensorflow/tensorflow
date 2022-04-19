@@ -254,7 +254,7 @@ Status HloFunctionImporter::ImportAsRegion(
   return importer.ImportAsRegion(computation, region, flatten_region_arg_tuple);
 }
 
-StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
+StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation) {
   auto& imported = (*function_map_)[&computation];
   if (imported) return imported;
@@ -270,8 +270,8 @@ StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
 
   // Construct the MLIR function and map arguments.
   llvm::ArrayRef<mlir::NamedAttribute> attrs;
-  auto function = mlir::func::FuncOp::create(
-      mlir::UnknownLoc::get(context_), computation_name, func_type, attrs);
+  auto function = FuncOp::create(mlir::UnknownLoc::get(context_),
+                                 computation_name, func_type, attrs);
   auto visibility = computation_name == "main" ? FuncOp::Visibility::Public
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);

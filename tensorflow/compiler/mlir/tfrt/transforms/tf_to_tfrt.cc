@@ -486,7 +486,7 @@ class TFDeviceRemoteRunOpConversion
         rewriter.getType<tfrt::dist::RemoteObjectIdType>();
     ModuleOp module = op->getParentOfType<ModuleOp>();
     SymbolTable symtab(module);
-    FuncOp callee = symtab.lookup<FuncOp>(op.callee());
+    func::FuncOp callee = symtab.lookup<func::FuncOp>(op.callee());
     if (!callee) {
       op.emitOpError("callee function ") << op.callee() << " is not found";
       return failure();
@@ -1487,7 +1487,8 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addIllegalDialect<tf_device::TensorFlowDeviceDialect>();
   target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
   target->addDynamicallyLegalOp<mlir::func::FuncOp>([func_type_converter,
-                                                     chain_type](FuncOp op) {
+                                                     chain_type](
+                                                        func::FuncOp op) {
     auto func_type = op.getFunctionType();
     if (func_type.getNumInputs() == 0 || func_type.getInput(0) != chain_type)
       return false;
@@ -1967,7 +1968,7 @@ class OutlineJitRtClustersPass
  private:
   struct CompiledModule {
     ModuleOp module;
-    FuncOp entrypoint;
+    func::FuncOp entrypoint;
     llvm::SetVector<Value> operands;
   };
 
@@ -1990,7 +1991,7 @@ class OutlineJitRtClustersPass
   // Mapping from the outlined module string representation to the module itself
   // and an entrypoint function. Used to deduplicate identical modules during
   // the `tf_device.cluster` outlining.
-  llvm::StringMap<std::pair<ModuleOp, FuncOp>> outlined_;
+  llvm::StringMap<std::pair<ModuleOp, func::FuncOp>> outlined_;
 };
 
 OutlineJitRtClustersPass::CompiledModule
@@ -2021,7 +2022,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // Create a function in the compiled module.
   auto compiled_func_type =
       FunctionType::get(ctx, operand_types, cluster->getResultTypes());
-  auto compiled_func = FuncOp::create(loc, "compute", compiled_func_type);
+  auto compiled_func = func::FuncOp::create(loc, "compute", compiled_func_type);
   compiled_module_symbol_table.insert(compiled_func);
 
   // Replace uses of live-in values within cluster region with block arguments.
@@ -2075,7 +2076,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
 
 LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     CompiledModule &compiled) {
-  FuncOp func = compiled.entrypoint;
+  func::FuncOp func = compiled.entrypoint;
 
   // Functions outlined from jitrt device clusters must have a single block.
   assert(func.getBody().getBlocks().size() == 1 && "expected single block");
@@ -2110,7 +2111,7 @@ LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
 
   CompiledModule compiled_module =
       CreateCompiledModule(cluster, max_arg_size, symbol_table);
-  FuncOp compiled_func = compiled_module.entrypoint;
+  func::FuncOp compiled_func = compiled_module.entrypoint;
 
   // Add constraints to the entrypoint arguments.
   if (failed(SetEntrypointConstraints(compiled_module))) return failure();

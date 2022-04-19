@@ -872,42 +872,48 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
   auto set_common_conv_attributes = [&, this](auto op) -> Operation* {
     const xla::Window& window = custom_call->window();
     // Window size for Cudnn Conv is same as the kernel size.
-    op.window_stridesAttr(
-        GetWindowElements(window, [](const xla::WindowDimension& dim) {
-          return static_cast<int64_t>(dim.stride());
-        }));
+    NamedAttrList attrs(op->getAttrDictionary());
+    DenseIntElementsAttr window_strides;
+    attrs.set(op.window_stridesAttrName(),
+              window_strides = GetWindowElements(
+                  window, [](const xla::WindowDimension& dim) {
+                    return static_cast<int64_t>(dim.stride());
+                  }));
     // Cudnn Conv requires low and high padding to be equal.
-    op.paddingAttr(
-        GetWindowElements(window, [](const xla::WindowDimension& dim) {
-          return static_cast<int64_t>(dim.padding_low());
-        }));
+    attrs.set(op.paddingAttrName(),
+              GetWindowElements(window, [](const xla::WindowDimension& dim) {
+                return static_cast<int64_t>(dim.padding_low());
+              }));
     // LHS dilation is encoded in base_dilation of the backend config.
     // RHS dilation is encoded in window_dilation of the backend config.
-    op.lhs_dilationAttr(
-        GetWindowElements(window, [](const xla::WindowDimension& dim) {
-          return static_cast<int64_t>(dim.base_dilation());
-        }));
-    op.rhs_dilationAttr(
-        GetWindowElements(window, [](const xla::WindowDimension& dim) {
-          return static_cast<int64_t>(dim.window_dilation());
-        }));
+    attrs.set(op.lhs_dilationAttrName(),
+              GetWindowElements(window, [](const xla::WindowDimension& dim) {
+                return static_cast<int64_t>(dim.base_dilation());
+              }));
+    attrs.set(op.rhs_dilationAttrName(),
+              GetWindowElements(window, [](const xla::WindowDimension& dim) {
+                return static_cast<int64_t>(dim.window_dilation());
+              }));
     // Setup window reversal.
     auto window_reversal = llvm::to_vector<4>(llvm::map_range(
         window.dimensions(),
         [](const xla::WindowDimension& dim) { return dim.window_reversal(); }));
-    auto type = RankedTensorType::get(op.window_strides()->getType().getShape(),
+    auto type = RankedTensorType::get(window_strides.getType().getShape(),
                                       builder_.getIntegerType(/*width=*/1));
-    op.window_reversalAttr(DenseElementsAttr::get(type, window_reversal));
+    attrs.set(op.window_reversalAttrName(),
+              DenseElementsAttr::get(type, window_reversal));
 
-    op.dimension_numbersAttr(xla::ConvertConvDimensionNumbers(
-        custom_call->convolution_dimension_numbers(), &builder_));
-    op.feature_group_countAttr(
+    attrs.set(op.dimension_numbersAttrName(),
+              xla::ConvertConvDimensionNumbers(
+                  custom_call->convolution_dimension_numbers(), &builder_));
+    attrs.set(op.feature_group_countAttrName(),
         builder_.getI64IntegerAttr(custom_call->feature_group_count()));
-    op.batch_group_countAttr(
+    attrs.set(op.batch_group_countAttrName(),
         builder_.getI64IntegerAttr(custom_call->batch_group_count()));
-    op.precision_configAttr(xla::ConvertPrecisionConfig(
-        &custom_call->precision_config(), &builder_));
-    op.result_scaleAttr(
+    attrs.set(op.precision_configAttrName(),
+              xla::ConvertPrecisionConfig(&custom_call->precision_config(),
+                                          &builder_));
+    attrs.set(op.result_scaleAttrName(),
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
 
     const auto& algorithm = backend_config.algorithm();
@@ -933,7 +939,8 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
         get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
         builder_.getContext());
-    op.backend_configAttr(config);
+    attrs.set(op.backend_configAttrName(), config);
+    op->setAttrs(attrs.getDictionary(op->getContext()));
 
     return op.getOperation();
   };
@@ -1487,8 +1494,8 @@ Status LhloDialectEmitter::Initialize() {
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.
-  auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
-                                builder_.getFunctionType({}, {}));
+  auto func_op = func::FuncOp::create(builder_.getUnknownLoc(), function_name,
+                                      builder_.getFunctionType({}, {}));
 
   {
     // This is an optional attribute used by the XLA backend. If the resulting

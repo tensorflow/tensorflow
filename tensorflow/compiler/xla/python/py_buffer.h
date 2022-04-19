@@ -80,6 +80,8 @@ class PyBuffer {
 
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
+  std::pair<Status, bool> CopyToRemoteDevice(
+      absl::string_view serialized_descriptor) const;
 
   StatusOr<size_t> OnDeviceSizeInBytes() {
     return buffer_->GetOnDeviceSizeInBytes();

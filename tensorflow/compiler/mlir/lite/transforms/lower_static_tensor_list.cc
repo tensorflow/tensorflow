@@ -184,7 +184,7 @@ Type GetTensorTypeForTensorList(Type element_type, TF::VariantType handle_dtype,
 // Gets the index of tensorlist arguments which size might get changed by the
 // function.
 llvm::SmallSet<int, 4> GetResizedTensorListIndexes(
-    FuncOp func, const llvm::SmallSet<int, 4> &tensor_list_args) {
+    func::FuncOp func, const llvm::SmallSet<int, 4> &tensor_list_args) {
   // `indexes` stores the argument index of tensorlists which size may get
   // updated in the function.
   llvm::SmallSet<int, 4> indexes;
@@ -786,22 +786,24 @@ struct ConvertTensorListResize
     // Create functions in a higher scope before restoring the insertion point.
     // Additionally, create the SymbolTable before further modifying the module.
     auto original_point = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());
+    rewriter.setInsertionPointAfter(op->getParentOfType<func::FuncOp>());
     SymbolTable manager(op->getParentOfType<ModuleOp>());
 
     // Constructs `then_branch`, which is executed when `if_cond` evaluates to
     // true.
-    auto then_branch_op = rewriter.create<FuncOp>(loc, "cond_true", func_type);
+    auto then_branch_op =
+        rewriter.create<func::FuncOp>(loc, "cond_true", func_type);
     CreateCondTrueBranch(op, shape_dtype, result_type, then_branch_op,
                          &rewriter);
-    then_branch_op.setVisibility(FuncOp::Visibility::Private);
+    then_branch_op.setVisibility(func::FuncOp::Visibility::Private);
 
     // Constructs `else_branch`, which is executed when `if_cond` evaluates to
     // false.
-    auto else_branch_op = rewriter.create<FuncOp>(loc, "cond_false", func_type);
+    auto else_branch_op =
+        rewriter.create<func::FuncOp>(loc, "cond_false", func_type);
     CreateCondFalseBranch(loc, shape_dtype, result_type, else_branch_op,
                           &rewriter);
-    else_branch_op.setVisibility(FuncOp::Visibility::Private);
+    else_branch_op.setVisibility(func::FuncOp::Visibility::Private);
 
     // Inserts the two blocks' names into the symbol table held by the module.
     // Using SymbolTable will ensure that the inserted symbol names are
@@ -828,7 +830,7 @@ struct ConvertTensorListResize
   // Create a new tensorlist of size 'size - input_size' and concat it
   // with the input tensorlist.
   void CreateCondTrueBranch(TF::TensorListResizeOp resize_op, Type shape_dtype,
-                            Type result_type, FuncOp branch_func,
+                            Type result_type, func::FuncOp branch_func,
                             ConversionPatternRewriter *rewriter) const {
     auto guard = OpBuilder::InsertionGuard(*rewriter);
     auto inputs = branch_func.getFunctionType().getInputs();
@@ -866,7 +868,7 @@ struct ConvertTensorListResize
   }
 
   void CreateCondFalseBranch(Location loc, Type shape_dtype, Type result_type,
-                             FuncOp branch_func,
+                             func::FuncOp branch_func,
                              ConversionPatternRewriter *rewriter) const {
     // When the input tensorlist's size is larger or equal than the requested
     // size, the else branch is executed.
@@ -1138,7 +1140,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
 
 // Returns a set of integers that correspond to the tensorlist arguments in
 // the function.
-llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(FuncOp func) {
+llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(func::FuncOp func) {
   llvm::SmallSet<int, 4> set;
   for (const auto &arg_and_idx : llvm::enumerate(func.getArguments())) {
     if (IsTensorListType(arg_and_idx.value().getType(), arg_and_idx.value())) {
@@ -1150,7 +1152,7 @@ llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(FuncOp func) {
 
 // Returns a set of integers that correspond to the tensorlist results in the
 // function.
-llvm::SmallSet<int, 4> GetTensorListResultsIndex(FuncOp func) {
+llvm::SmallSet<int, 4> GetTensorListResultsIndex(func::FuncOp func) {
   llvm::SmallSet<int, 4> set;
 
   for (const auto &result_and_idx :
@@ -1210,7 +1212,7 @@ void ChangeVariantToUnrankedTensorType(
 
 // Updates the specified function's type and region signature.
 void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
-                                 FuncOp func,
+                                 func::FuncOp func,
                                  llvm::ArrayRef<Type> updated_argument_types,
                                  llvm::ArrayRef<Type> updated_result_types) {
   // Change `func`'s argument type to `unranked_argument_types`. If its
@@ -1237,7 +1239,7 @@ LogicalResult UpdateFunctionTypesForWhileOp(
     const llvm::SmallSet<int, 4> &tensor_list_args,
     const llvm::SmallSet<int, 4> &resized_tensor_lists) {
   int func_index = 0;
-  for (FuncOp func : {op.cond_function(), op.body_function()}) {
+  for (func::FuncOp func : {op.cond_function(), op.body_function()}) {
     ++func_index;
     if (!func) continue;
 
@@ -1282,7 +1284,7 @@ LogicalResult UpdateFunctionTypesForIfOp(
     const llvm::SmallSet<int, 4> &tensor_list_args,
     const llvm::SmallSet<int, 4> &resized_tensor_lists,
     llvm::ArrayRef<Type> updated_result_types) {
-  for (FuncOp func : {op.else_function(), op.then_function()}) {
+  for (func::FuncOp func : {op.else_function(), op.then_function()}) {
     if (!func) continue;
 
     FunctionType func_type = func.getFunctionType();
@@ -1310,7 +1312,7 @@ LogicalResult UpdateFunctionTypesForIfOp(
 // will let us konw which tensorlist result maps to which tensorlist in the
 // arguments. Once we know this info it will help us decide the types of the
 // result tensorlist based on the operand's of the `If` op.
-llvm::DenseMap<int, int> MapTensorListResultToArgument(FuncOp func) {
+llvm::DenseMap<int, int> MapTensorListResultToArgument(func::FuncOp func) {
   // `map_fn` will trace upwards along the use-def chain of the ssa value. It
   // starts from the last ssa value (returned by the function), and check its
   // parent op iteratively. If the root ssa value appears in the function's
@@ -1532,7 +1534,7 @@ void LowerStaticTensorListPass::runOnOperation() {
                       TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<arith::ConstantOp>();
-  target.addLegalOp<FuncOp>();
+  target.addLegalOp<func::FuncOp>();
   target.addDynamicallyLegalOp<func::ReturnOp>(is_legal);
   target.addDynamicallyLegalOp<TF::YieldOp>(is_legal);
   target.addLegalOp<TFL::CustomOp>();

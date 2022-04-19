@@ -4200,3 +4200,47 @@ func.func @imag_real(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: yield %[[CST]]
   func.return %1 : tensor<?xf32>
 }
+
+// -----
+
+func.func @dot_general(%arg0: tensor<?x?x?xf32>,
+                  %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  func.return %0 : tensor<?x?x?xf32>
+}
+// The iterations are (Batch Dim, LHS Other Dim, RHS Other dim, Contracting Dim)
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d3, d0)>
+// Output is the iterators excluding contracting
+// CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
+// CHECK: func @dot_general(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>)
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
+// Only contracting dims are reductions
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x?xf32>, tensor<?x?x?xf32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xf32>)
+// CHECK-SAME: {someattr}
+// CHECK:   ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
+// CHECK:     %[[MUL:.*]] = arith.mulf %[[ARG2]], %[[ARG3]] : f32
+// CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
+// CHECK:     linalg.yield %[[SUM]] : f32
+// CHECK: } -> tensor<?x?x?xf32>

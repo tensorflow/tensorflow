@@ -229,7 +229,7 @@ enum FullTypeId {
   // is expressed using TFT_PRODUCT.
   //
   //
-  // Parametrization: TFT_ARRAY[<element type>].
+  // Parametrization: TFT_DATASET[<element type>].
   //   * <element type> may be a concrete type or a type symbol. It represents
   //     the data type of the elements produced by the dataset.
   //
@@ -246,6 +246,15 @@ enum FullTypeId {
   //
   // Parametrization: TFT_RAGGED[<element_type>].
   TFT_RAGGED = 10103;
+
+  // Iterators created by tf.data ops and APIs. Very similar to Datasets, except
+  // they are mutable.
+  //
+  //
+  // Parametrization: TFT_ITERATOR[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  TFT_ITERATOR = 10104;
 
   // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
   // Unlike strict execution models, where ownership of a lock is denoted by

@@ -145,6 +145,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
+#include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
@@ -210,14 +211,31 @@ class GpuBfloat16Support : public BFloat16Support {
  private:
   bool IsSupported(const HloInstruction& hlo) const {
     switch (hlo.opcode()) {
+      // Collective ops.
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllReduceDone:
-      case HloOpcode::kReduceScatter:
       case HloOpcode::kAllToAll:
-      case HloOpcode::kBitcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
+      // Data movement only ops.
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kGather:
+      case HloOpcode::kPad:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kScatter:
+      case HloOpcode::kSelect:
+      case HloOpcode::kSelectAndScatter:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+      // Other special ops.
+      case HloOpcode::kBitcast:
         return true;
       case HloOpcode::kConvolution:
         return IsConvBF16Supported();
@@ -413,6 +431,10 @@ Status GpuCompiler::OptimizeHloModule(
     GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
                             stream_exec);
     pipeline.AddPass<BFloat16Normalization>(&bf16);
+
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_gpu_simplify_all_fp_conversions())
+      pipeline.AddPass<SimplifyFPConversions>();
 
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -664,6 +686,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
@@ -717,6 +741,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
                           stream_exec);
   pipeline.AddPass<BFloat16Normalization>(&bf16);
+
+  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+  if (debug_options.xla_gpu_simplify_all_fp_conversions())
+    pipeline.AddPass<SimplifyFPConversions>();
 
   // Choose the fastest algorithm for each conv.
   //

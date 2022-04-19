@@ -113,6 +113,12 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // creates unnecessary constants ops.
   pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorDCE());
 
+  // Canonicalization will merge tf.ConstOp from different DTensorLayout
+  // annotations, causing problem during mesh propagation. Undo the merge
+  // before creating clusters.
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorUndoMergeConstAcrossMesh());
+
   // Propagate mesh cluster config and cluster ops by mesh cluster so that
   // SPMD expansion can be isolated to a single device mesh.
   pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorOpToDeviceClusterPass());
@@ -273,13 +279,13 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
     // Convert compilation and replication attributes to unified attributes
     // expected by TPURewritePass.
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TFTPU::CreateCanonicalizeCompileAndReplicateAttributesPass());
     // Create TPU Compile and TPU Execute ops for each TPU devices.
     pm->addPass(mlir::TFTPU::CreateTPURewritePass());
     // Convert unified compilation and replication attributes back to legacy
     // attributes for subsequent passes.
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TFTPU::CreateConvertToLegacyCompileAndReplicateAttributesPass());
 
     // Add placeholder device attributes to resource arguments of TPU

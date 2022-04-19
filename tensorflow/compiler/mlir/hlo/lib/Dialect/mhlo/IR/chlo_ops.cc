@@ -446,16 +446,15 @@ namespace chlo {
 // chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-Operation* HloClientDialect::materializeConstant(OpBuilder& builder,
-                                                 Attribute value, Type type,
-                                                 Location loc) {
+Operation* ChloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // Mirror MHLO dialect here.
   if (value.isa<ElementsAttr>())
     return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
 }
 
-void HloClientDialect::initialize() {
+void ChloDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"

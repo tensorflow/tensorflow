@@ -43,7 +43,7 @@ namespace {
 
 // Applies all the clean up steps after quantization.
 class PostQuantizePass
-    : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
+    : public PassWrapper<PostQuantizePass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
@@ -83,7 +83,8 @@ class PostQuantizePass
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
 class PostQuantizeRemoveQDQPass
-    : public PassWrapper<PostQuantizeRemoveQDQPass, OperationPass<FuncOp>> {
+    : public PassWrapper<PostQuantizeRemoveQDQPass,
+                         OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizeRemoveQDQPass)
 
@@ -104,7 +105,7 @@ class PostQuantizeRemoveQDQPass
 };
 
 // TODO(fengliuai): migrate to use modify_io_nodes pass.
-void RemoveQuantizationAdaptorOps(FuncOp func) {
+void RemoveQuantizationAdaptorOps(func::FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
   auto loc = func.getLoc();
@@ -293,7 +294,7 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map) {
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops,
                                             custom_op_map);
@@ -301,7 +302,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
 // pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizeRemoveQDQPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizeRemoveQDQPass() {
   return std::make_unique<PostQuantizeRemoveQDQPass>();
 }
 

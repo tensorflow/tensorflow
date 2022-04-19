@@ -3806,7 +3806,7 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if ops.executing_eagerly_outside_functions():
+  if context.executing_eagerly() or ops.inside_function():
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype_numpy(x)))
   else:

@@ -47,7 +47,7 @@ class GreedyTilingPass : public GreedyTilingPassBase<GreedyTilingPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createGreedyTilingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingPass() {
   return std::make_unique<GreedyTilingPass>();
 }
 

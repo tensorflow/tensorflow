@@ -403,7 +403,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
       result.graph.get(),
       const_cast<tensorflow::FunctionLibraryDefinition*>(
           &result.graph->flib_def()),
-      /*restrict_functionalization_to_tpu_nodes=*/false));
+      /*restrict_functionalization_to_compiled_nodes=*/false));
 
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_functionalization", *result.graph);

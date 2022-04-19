@@ -4751,6 +4751,10 @@ ComparisonDirection HloInstruction::comparison_direction() const {
   return Cast<HloCompareInstruction>(this)->direction();
 }
 
+ComparisonOrder HloInstruction::comparison_order() const {
+  return Cast<HloCompareInstruction>(this)->order();
+}
+
 const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
   return Cast<HloTriangularSolveInstruction>(this)->triangular_solve_options();
 }

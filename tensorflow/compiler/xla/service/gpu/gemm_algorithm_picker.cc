@@ -53,6 +53,213 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
 static int64_t cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 static int64_t cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
+GpuGemmConfig GetGpuGemmConfig(const HloInstruction* gemm) {
+  GpuGemmConfig config;
+  config.output_shape = gemm->shape();
+  config.lhs_shape = gemm->operand(0)->shape();
+  config.rhs_shape = gemm->operand(1)->shape();
+  config.backend_config =
+      gemm->backend_config<GemmBackendConfig>().ValueOrDie();
+  config.use_cublaslt =
+      gemm->GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
+  return config;
+}
+
+StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
+    PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return tensorflow::DT_BOOL;
+    case BF16:
+      return tensorflow::DT_BFLOAT16;
+    case F16:
+      return tensorflow::DT_HALF;
+    case F32:
+      return tensorflow::DT_FLOAT;
+    case F64:
+      return tensorflow::DT_DOUBLE;
+    case C64:
+      return tensorflow::DT_COMPLEX64;
+    case C128:
+      return tensorflow::DT_COMPLEX128;
+    case S8:
+      return tensorflow::DT_INT8;
+    case S16:
+      return tensorflow::DT_INT16;
+    case S32:
+      return tensorflow::DT_INT32;
+    case S64:
+      return tensorflow::DT_INT64;
+    case U8:
+      return tensorflow::DT_UINT8;
+    case U16:
+      return tensorflow::DT_UINT16;
+    case U32:
+      return tensorflow::DT_UINT32;
+    case U64:
+      return tensorflow::DT_UINT64;
+    default:
+      return InternalError("Unsupported type in EncodePrimitiveAsDataType.");
+  }
+}
+
+Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
+                           se::DeviceMemoryAllocator* allocator,
+                           const GemmBackendConfig& gemm_config) {
+  GpuGemmConfig config = GetGpuGemmConfig(instr);
+  int64_t batch_size = gemm_config.batch_size();
+
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+  const int32_t cublas_autotune_level =
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level >= 2;
+  const bool reinit_cublas_data = cublas_autotune_level >= 3;
+  const bool check_cublas = cublas_autotune_level >= 4;
+  const bool crash_on_checking_failure =
+      hlo_module_config.debug_options()
+          .xla_gpu_crash_on_verification_failures();
+
+  const int64_t redzone_size =
+      check_cublas ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
+
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator,
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/redzone_size);
+  int64_t rng_state = 0;
+  auto get_initialized_buffer =
+      [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
+                        input_output_allocator.AllocateBytes(
+                            ShapeUtil::ByteSizeOf(op->shape())));
+    if (init_cublas_data) {
+      InitializeBuffer(stream, op->shape().element_type(), &rng_state, buffer);
+    }
+    return buffer;
+  };
+
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
+                      get_initialized_buffer(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
+                      get_initialized_buffer(instr->operand(1)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
+                      get_initialized_buffer(instr));
+
+  const Shape& output_shape = config.output_shape;
+  PrimitiveType element_type = output_shape.element_type();
+
+  se::blas::MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
+  std::tie(lhs_matrix, rhs_matrix, output_matrix) = PopulateInputOutputMatrices(
+      config, lhs_buffer, rhs_buffer, output_buffer);
+
+  if (output_matrix.transpose != se::blas::Transpose::kNoTranspose) {
+    return InternalError("GEMM output matrix must not be transposed.");
+  }
+  TF_ASSIGN_OR_RETURN(tensorflow::DataType dtype,
+                      EncodePrimitiveTypeAsDataType(element_type));
+
+  int device_id = stream->parent()->device_ordinal();
+  bool trans_x = lhs_matrix.transpose == se::blas::Transpose::kTranspose;
+  bool trans_y = rhs_matrix.transpose == se::blas::Transpose::kTranspose;
+
+  int64_t m = output_matrix.num_rows;
+  int64_t n = output_matrix.num_cols;
+  int64_t k = lhs_matrix.reduced_dim();
+
+  bool broadcast = batch_size == 1;
+
+  VLOG(4) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
+          << " adj_x " << false << " adj_y " << false << " m " << m << " n "
+          << n << " k " << k << " batch_size " << batch_size << " broadcast "
+          << broadcast << " broadcast " << broadcast << " dtype " << dtype
+          << " device_id " << device_id;
+
+  se::BatchMatmulParameters matmul_parameters(
+      trans_x, trans_y, false, false, m, n, k, batch_size,
+      /*broadcast_a*/ broadcast, /*broadcast_b*/ broadcast, dtype, dtype,
+      device_id);
+
+  TF_ASSIGN_OR_RETURN(
+      const se::blas::PlanAndAlgorithms* plan_and_algorithms,
+      se::GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, dtype,
+                               lhs_matrix, rhs_matrix, output_matrix));
+
+  const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
+      algorithms = plan_and_algorithms->algorithms;
+
+  // Note that algorithm_config.algorithm() here is used to refer
+  // to the index within the algorithms vector, not the algorithm
+  // itself.
+  se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
+  if (!BlasPlansAutotuneCacheSingleton::GetInstance()->Find(
+          matmul_parameters, &algorithm_config)) {
+    VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
+            << " algorithms.";
+    se::blas::ProfileResult best_result;
+    se::blas::ProfileResult profile_result;
+
+    for (size_t i = 0; i != algorithms.size(); ++i) {
+      // Create a new scratch allocator with every autotuning run so that
+      // scratch space is deallocated between runs.
+      BlasScratchAllocator scratch_allocator(device_id, allocator);
+
+      // Make sure the output buffer always has the same value if we use
+      // the bias parameter.
+      if (reinit_cublas_data && gemm_config.beta() != 0) {
+        int64_t rng_state = 0;
+        InitializeBuffer(stream, instr->shape().element_type(), &rng_state,
+                         output_buffer);
+      }
+
+      TF_RETURN_IF_ERROR(
+          RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
+                  /*scratch allocator=*/&scratch_allocator,
+                  /*algorithm_being_profiled=*/algorithms[i].get(),
+                  /*profile_result=*/&profile_result, absl::nullopt));
+
+      VLOG(4) << "  Autotune algorithm " << i
+              << " result: " << profile_result.elapsed_time_in_ms()
+              << " ms, valid=" << profile_result.is_valid();
+
+      if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
+                                           best_result.elapsed_time_in_ms()) {
+        best_result = profile_result;
+      }
+
+      if (!check_cublas) {
+        continue;
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+          input_output_allocator.CheckRedzones());
+      if (!rz_check_status.ok()) {
+        LOG(ERROR) << "Detected cuBLASLT out-of-bounds write in gemm buffer";
+        CHECK(!crash_on_checking_failure);
+        continue;
+      }
+    }
+
+    if (best_result.is_valid()) {
+      algorithm_config.set_algorithm(best_result.algorithm());
+    }
+    se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
+    CHECK(algorithm_idx >= 0 && algorithm_idx < algorithms.size())
+        << "Missing/invalid BatchMatmul algorithm";
+    // We make sure that each matmul parameter set only gets one pass of
+    // autotune. If no algorithms works, we add kNoAlgorithm to the autotune
+    // map.
+    VLOG(4) << "Inserting algorithm id " << algorithm_config.algorithm()
+            << " for " << trans_x << " " << trans_y << " " << m << " " << n
+            << " " << k << " " << batch_size << " " << broadcast << " "
+            << broadcast << " " << dtype << " " << device_id;
+    BlasPlansAutotuneCacheSingleton::GetInstance()->Insert(matmul_parameters,
+                                                           algorithm_config);
+  }
+  return Status::OK();
+}
+
 // Experimentally tries to pick the best algorithm for the given gemm.
 //
 // This may fail under perfectly normal circumstances.  In particular, it will
@@ -68,7 +275,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
   const int32_t cublas_autotune_level =
-      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
   const bool init_cublas_data = cublas_autotune_level >= 2;
   const bool reinit_cublas_data = cublas_autotune_level >= 3;
   const bool check_cublas = cublas_autotune_level >= 4;
@@ -113,8 +320,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   GemmBackendConfig backend_config =
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
 
-  VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
-
   std::vector<se::blas::AlgorithmType> algorithms;
   CHECK(stream->parent()->GetBlasGemmAlgorithms(&algorithms));
 
@@ -138,8 +343,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
     Status st = RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                        /*implements_whole_instruction=*/true,
-                        /*profile_index=*/-1,
+                        /*scratch allocator=*/nullptr,
+                        /* algorithm_being_profiled=*/nullptr,
                         /*profile_result=*/&profile_result, algorithm);
     CHECK(st.ok()) << st.ToString();
 
@@ -220,49 +425,59 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* instr, const GemmBackendConfig& gemm_config,
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
+  VLOG(3) << "Starting autotune of GemmThunk " << instr->ToString();
   const HloInstruction* lhs = instr->operand(0);
   const HloInstruction* rhs = instr->operand(1);
 
+  GpuGemmConfig config = GetGpuGemmConfig(instr);
+  PrimitiveType element_type = config.output_shape.element_type();
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  GemmCacheKey key =
-      std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                      instr->shape(), gemm_config.SerializeAsString());
+  if (config.use_cublaslt && stream->parent()->SupportsBlasPlans() &&
+      BlasPlansCompatibleType(element_type)) {
+    TF_RETURN_IF_ERROR(
+        DoBlasPlansAutotune(stream, instr, allocator, gemm_config));
+    return {se::blas::kNoAlgorithm};
+  } else {
+    GemmCacheKey key =
+        std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
+                        instr->shape(), gemm_config.SerializeAsString());
 
-  absl::MutexLock cache_lock(&autotune_cache_mu);
-  auto it = autotune_cache.find(key);
-  int64_t autotuning_requests = cache_hits + cache_misses;
-  if (autotuning_requests && autotuning_requests % 10 == 0) {
-    VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
-            << autotuning_requests;
+    absl::MutexLock cache_lock(&autotune_cache_mu);
+    auto it = autotune_cache.find(key);
+    int64_t autotuning_requests = cache_hits + cache_misses;
+    if (autotuning_requests && autotuning_requests % 10 == 0) {
+      VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
+              << autotuning_requests;
+    }
+
+    if (it != autotune_cache.end()) {
+      cache_hits++;
+      VLOG(4) << "Autotuning cache hit, using algorithm: "
+              << (it->second.has_value() ? absl::StrCat(*(it->second))
+                                         : "<generic>");
+      return it->second;
+    }
+    cache_misses++;
+    VLOG(4) << "Autotuning cache miss";
+
+    // Make sure any previous activity on this executor is done. We don't want
+    // other work still running on the GPU to interfere with autotuning.
+    if (!stream->parent()->SynchronizeAllActivity()) {
+      auto options = HloPrintOptions::Canonical();
+      options.set_print_backend_config(true);
+      return InternalError(
+          "Failed to synchronize GPU for autotuning gemm instruction: %s",
+          instr->ToString(options));
+    }
+
+    TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
+                        DoUncachedGemmAutotune(instr, stream, allocator));
+
+    CHECK(autotune_cache.emplace(key, result).second);
+    return result;
   }
-
-  if (it != autotune_cache.end()) {
-    cache_hits++;
-    VLOG(4) << "Autotuning cache hit, using algorithm: "
-            << (it->second.has_value() ? absl::StrCat(*(it->second))
-                                       : "<generic>");
-    return it->second;
-  }
-  cache_misses++;
-  VLOG(4) << "Autotuning cache miss";
-
-  // Make sure any previous activity on this executor is done. We don't want
-  // other work still running on the GPU to interfere with autotuning.
-  if (!stream->parent()->SynchronizeAllActivity()) {
-    auto options = HloPrintOptions::Canonical();
-    options.set_print_backend_config(true);
-    return InternalError(
-        "Failed to synchronize GPU for autotuning gemm instruction: %s",
-        instr->ToString(options));
-  }
-
-  TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
-                      DoUncachedGemmAutotune(instr, stream, allocator));
-
-  CHECK(autotune_cache.emplace(key, result).second);
-  return result;
 }
 
 static StatusOr<bool> RunOnInstruction(HloInstruction* instr,

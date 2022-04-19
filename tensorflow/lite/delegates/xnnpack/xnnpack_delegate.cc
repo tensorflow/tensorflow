@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -597,6 +598,9 @@ class Subgraph {
         }
       }
     }
+    if (context->profiler) {
+      flags |= XNN_FLAG_BASIC_PROFILING;
+    }
     status = xnn_create_runtime_v3(subgraph.get(), delegate.weights_cache(),
                                    delegate.threadpool(), flags, &runtime_ptr);
     if (status != xnn_status_success) {
@@ -647,12 +651,77 @@ class Subgraph {
       }
     }
 
-    const xnn_status status = xnn_invoke_runtime(runtime_.get());
+    xnn_status status = xnn_invoke_runtime(runtime_.get());
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to invoke XNNPACK runtime");
       return kTfLiteError;
     }
 
+    if (context->profiler) {
+      if (AddEventsToProfiler(reinterpret_cast<Profiler*>(context->profiler),
+                              runtime_.get()) != kTfLiteOk) {
+        TF_LITE_KERNEL_LOG(context,
+                           "failed to get XNNPACK profile information.");
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  // Fetch the profile information from XNNPACK and add the events to TfLite's
+  // profiler.
+  static TfLiteStatus AddEventsToProfiler(Profiler* profiler,
+                                          const xnn_runtime_t runtime) {
+    size_t required_size = 0;
+
+    // xnn_get_runtime_profiling_info is called twice. The first time it sets
+    // required_size to the required size of the buffer to store the result and
+    // returns xnn_status_out_of_memory. The second time it writes the result to
+    // the buffer provided that the buffer is large enough and returns
+    // xnn_status_success.
+    xnn_status status = xnn_get_runtime_profiling_info(
+        runtime, xnn_profile_info_operator_name, /*param_value_size*/ 0,
+        /*param_value*/ nullptr, &required_size);
+    std::vector<char> operator_names;
+    if (status == xnn_status_out_of_memory) {
+      operator_names.resize(required_size);
+      status = xnn_get_runtime_profiling_info(
+          runtime, xnn_profile_info_operator_name, operator_names.size(),
+          operator_names.data(), &required_size);
+    }
+    if (status != xnn_status_success) {
+      return kTfLiteError;
+    }
+    size_t num_operators;
+    status = xnn_get_runtime_profiling_info(
+        runtime, xnn_profile_info_num_operators, sizeof(num_operators),
+        &num_operators, &required_size);
+    if (status != xnn_status_success) {
+      return kTfLiteError;
+    }
+    status = xnn_get_runtime_profiling_info(
+        runtime, xnn_profile_info_operator_timing, /*param_value_size*/ 0,
+        /*param_value*/ nullptr, &required_size);
+    std::vector<uint64_t> operator_timings;
+    if (status == xnn_status_out_of_memory) {
+      operator_timings.resize(required_size / sizeof(uint64_t));
+      status = xnn_get_runtime_profiling_info(
+          runtime, xnn_profile_info_operator_timing,
+          operator_timings.size() * sizeof(uint64_t), operator_timings.data(),
+          &required_size);
+    }
+    if (status != xnn_status_success) {
+      return kTfLiteError;
+    }
+    const char* operator_name = nullptr;
+    size_t name_len = 0;
+    for (size_t node_index = 0; node_index < num_operators; ++node_index) {
+      operator_name = &operator_names[name_len];
+      name_len += strlen(operator_name) + 1;
+      profiler->AddEvent(operator_name,
+                         Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT,
+                         operator_timings[node_index], node_index);
+    }
     return kTfLiteOk;
   }
 

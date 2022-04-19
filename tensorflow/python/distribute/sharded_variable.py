@@ -753,6 +753,18 @@ class ShardedVariableMixin(trackable.Trackable):
   def is_sharded_variable(self):
     return True
 
+  def numpy(self):
+    """Copies the values in this ShardedVariable to a NumPy array.
+
+    First converts to a single Tensor using the registered conversion function,
+    which concatenates the shards, then uses Tensor.numpy() to convert to
+    a NumPy array.
+
+    Returns:
+      A NumPy array of the same shape and dtype.
+    """
+    return _var_to_tensor(self).numpy()
+
 
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])
 class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):

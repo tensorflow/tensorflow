@@ -365,8 +365,8 @@ This op is used for outlining a cluster.
 
   let extraClassDeclaration = [{
     // returns the function that this operation will launch.
-    FuncOp getFunc() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, funcAttr());
+    func::FuncOp getFunc() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, funcAttr());
     }
   }];
 }

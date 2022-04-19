@@ -450,9 +450,17 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
                       "Barrier timed out. Barrier_id: ", barrier_id)));
               PassBarrier(barrier_id, error, barrier);
             }
-            // Reset this for the next barrier check.
-            expired_barriers.clear();
           }
+          if (!has_service_to_client_connection &&
+              expired_barriers.contains(shutdown_barrier_id_)) {
+            // Error cannot be propagated since there is no service-to-client
+            // connection, so shut down service instead. Note: we cannot
+            // destroy the thread within its own function. However, this
+            // thread will be destroyed once the function returns.
+            Stop(/*shut_staleness_thread=*/false);
+          }
+          // Reset this for the next barrier check.
+          expired_barriers.clear();
         }
       }));
 }
@@ -718,7 +726,11 @@ void CoordinationServiceStandaloneImpl::PropagateError(
 
     // Don't propagate error if there is no service-to-client connection.
     if (client_cache_ == nullptr) {
-      LOG(ERROR) << error;
+      LOG(ERROR)
+          << "Stopping coordination service as there is no "
+             "service-to-client connection, but we encountered an error: "
+          << error;
+      Stop(/*shut_staleness_thread=*/false);
       return;
     }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));

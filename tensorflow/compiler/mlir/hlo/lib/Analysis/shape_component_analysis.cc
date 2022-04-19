@@ -404,8 +404,8 @@ struct ShapeVisitor {
     //
     // TODO(ezhulenev): Add symbolic shape attribute verifier to the jitrt
     // dialect.
-    if (auto func =
-            dyn_cast_or_null<FuncOp>(argument.getOwner()->getParentOp())) {
+    if (auto func = dyn_cast_or_null<func::FuncOp>(
+            argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
               argument.getArgNumber(), "jitrt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));

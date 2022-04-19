@@ -119,7 +119,7 @@ void FuseBiasTF::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass() {
   return std::make_unique<FuseBiasTF>();
 }
 

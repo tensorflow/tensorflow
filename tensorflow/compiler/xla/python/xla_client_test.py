@@ -422,7 +422,8 @@ def TestFactory(xla_backend,
       p0 = ops.Parameter(c, 0, shape)
       out, keepalive = self.backend.emit_python_callback(
           _Callback, c, [p0], [shape], has_side_effects=True)
-      with self.assertRaisesRegex(RuntimeError, "Value error raised!"):
+      with self.assertRaisesRegex(xla_client.XlaRuntimeError,
+                                  "Value error raised!"):
         self._Execute(c, [arg0])
       del out, keepalive
 
@@ -564,7 +565,7 @@ def TestFactory(xla_backend,
       compiled_c = self.backend.compile(c.build())
       arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.delete()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         compiled_c.execute([arg_buffer])
 
     def testXlaShape(self):
@@ -632,9 +633,9 @@ def TestFactory(xla_backend,
       self.assertIs(buffer, buffer.block_until_ready())
       self.assertTrue(buffer.is_ready())
       buffer.delete()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         buffer.block_until_ready()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         buffer.is_ready()
 
     def testOnDeviceSizeInBytes(self):

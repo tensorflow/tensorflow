@@ -62,15 +62,28 @@ cc_library(
         ":utils",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/lib/core:threadpool",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "op_cat_helper",
+    srcs = ["utils/op_cat_helper.cc"],
+    hdrs = ["utils/op_cat_helper.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/platform:str_util",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -82,6 +95,7 @@ cc_library(
         "//tensorflow/core/transforms/cf_sink:Pass",
         "//tensorflow/core/transforms/consolidate_attrs:Pass",
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
+        "//tensorflow/core/transforms/constant_folding:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
         "//tensorflow/core/transforms/eliminate_passthrough_iter_args:Pass",
         "//tensorflow/core/transforms/functional_to_region:Pass",
@@ -154,6 +168,7 @@ tf_cc_binary(
     deps = [
         ":PassRegistration",
         "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:ops",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:tf_op_registry",

@@ -1441,6 +1441,7 @@ cc_library(
     srcs = ["translate/upgrade_graph.cc"],
     hdrs = ["translate/upgrade_graph.h"],
     deps = [
+        ":attribute_utils",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
