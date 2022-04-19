@@ -163,10 +163,10 @@ absl::Status InferenceContext::InitFromGraph(
   }
   std::map<ValueId, MetalSpatialTensor> temp_external_tensors;
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
-    RETURN_IF_ERROR(
-        CreateTensor(device_id, tensors_descs_[external_tensor.first].shape,
-                     tensors_descs_[external_tensor.first],
-                     &temp_external_tensors[external_tensor.first]));
+    RETURN_IF_ERROR(CreateTensor(
+        device_id, tensors_descs_[external_tensor.first].GetBHWDCShape(),
+        tensors_descs_[external_tensor.first],
+        &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
         &temp_external_tensors[external_tensor.first];
   }
@@ -239,10 +239,10 @@ absl::Status InferenceContext::RestoreDeserialized(
       external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
     }
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
-      RETURN_IF_ERROR(
-          CreateTensor(device_id, tensors_descs_[external_tensor.first].shape,
-                       tensors_descs_[external_tensor.first],
-                       &temp_external_tensors[external_tensor.first]));
+      RETURN_IF_ERROR(CreateTensor(
+          device_id, tensors_descs_[external_tensor.first].GetBHWDCShape(),
+          tensors_descs_[external_tensor.first],
+          &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
           &temp_external_tensors[external_tensor.first];
     }
@@ -379,11 +379,11 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
     std::vector<BHWC> src_shapes;
     std::vector<BHWC> dst_shapes;
     for (const auto& in_id : node.inputs) {
-      const auto& shape = tensors_descs_[in_id].shape;
+      const auto& shape = tensors_descs_[in_id].GetBHWDCShape();
       src_shapes.push_back(BHWC(shape.b, shape.h, shape.w, shape.c));
     }
     for (const auto& out_id : node.outputs) {
-      const auto& shape = tensors_descs_[out_id].shape;
+      const auto& shape = tensors_descs_[out_id].GetBHWDCShape();
       dst_shapes.push_back(BHWC(shape.b, shape.h, shape.w, shape.c));
     }
     RETURN_IF_ERROR(node.task.UpdateParams());
@@ -471,10 +471,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   for (auto& usage : buffer_usages) {
     const auto& t = tensors_descs_[usage.first];
-    const auto& shape = t.shape;
+    const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size =
-        descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
+    const size_t element_size = SizeOf(descriptor.data_type);
     size_t buffer_size;
     size_t row_bytes_alignment = [device->device()
         minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(
@@ -573,11 +572,12 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
             minimumLinearTextureAlignmentForPixelFormat:
                 DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            base_buffer, tensor_dummy.shape, tensor_dummy, row_bytes_alignment,
-            &shared_buffer_tensors_[tensor_index], base_buffer_offset));
+            base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
+            row_bytes_alignment, &shared_buffer_tensors_[tensor_index],
+            base_buffer_offset));
       } else {
         RETURN_IF_ERROR(CreateSharedBufferTensor(
-            base_buffer, tensor_dummy.shape, tensor_dummy,
+            base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
             &shared_buffer_tensors_[tensor_index], base_buffer_offset));
       }
       created_tensors[tensor_index] = true;
@@ -602,7 +602,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       return tensor_desc.data_type == t.tensor_desc.data_type &&
              tensor_desc.storage_type == t.tensor_desc.storage_type &&
              tensor_desc.layout == t.tensor_desc.layout &&
-             tensor_desc.shape == t.tensor_desc.shape;
+             tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };
 
@@ -631,8 +631,9 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       graph_ids_to_strong_shape_tensors_[tensor_id] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(device->device(), tensor_dummy.shape,
-                                     tensor_dummy, &strong_shape_tensors_[id]));
+        RETURN_IF_ERROR(CreateTensor(device->device(),
+                                     tensor_dummy.GetBHWDCShape(), tensor_dummy,
+                                     &strong_shape_tensors_[id]));
       }
     }
   }
@@ -726,6 +727,9 @@ uint64_t InferenceContext::GetConstantTensorsSize() const {
   uint64_t total_size = 0;
   for (const auto& node : nodes_) {
     total_size += node.task.GetGpuOperation().const_args_size_;
+  }
+  for (const auto& t : const_tensors_) {
+    total_size += t.second.GetMemorySizeInBytes();
   }
   return total_size;
 }

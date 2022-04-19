@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -45,8 +45,10 @@ namespace {
 // to what are specified. The task was not just adding cast operations, but,
 // instead, using tfl.quantize and tfl.dequantize ops to scale the tensors.
 struct ModifyIONodesPass
-    : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
+    : public PassWrapper<ModifyIONodesPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
+
   explicit ModifyIONodesPass() {}
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
       : input_type(input_type), output_type(output_type) {}
@@ -70,13 +72,13 @@ struct ModifyIONodesPass
 
   // Modifies the element types of entry block arguments to be user specified
   // and returns  the new argument types.
-  LogicalResult ModifyInputNodes(FuncOp func,
+  LogicalResult ModifyInputNodes(func::FuncOp func,
                                  llvm::SmallVectorImpl<Type>& new_input_types,
                                  OpBuilder builder);
 
   // Modifies the element types of entry block returns to be user specified
   // and returns the new return types.
-  LogicalResult ModifyOutputNodes(FuncOp func,
+  LogicalResult ModifyOutputNodes(func::FuncOp func,
                                   llvm::SmallVectorImpl<Type>& new_output_types,
                                   OpBuilder builder);
 
@@ -106,7 +108,7 @@ LogicalResult ModifyIONodesPass::SetupInputOutputTypesIfNull(
 }
 
 LogicalResult ModifyIONodesPass::ModifyInputNodes(
-    FuncOp func, llvm::SmallVectorImpl<Type>& new_input_types,
+    func::FuncOp func, llvm::SmallVectorImpl<Type>& new_input_types,
     OpBuilder builder) {
   if (input_type.isa<FloatType>()) {
     return success();
@@ -159,7 +161,7 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
 }
 
 LogicalResult ModifyIONodesPass::ModifyOutputNodes(
-    FuncOp func, llvm::SmallVectorImpl<Type>& new_output_types,
+    func::FuncOp func, llvm::SmallVectorImpl<Type>& new_output_types,
     OpBuilder builder) {
   Block& block = func.front();
   auto* terminator = block.getTerminator();
@@ -218,7 +220,7 @@ void ModifyIONodesPass::runOnOperation() {
   }
 
   OpBuilder builder(func);
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),
                                              func_type.getInputs().end());
   llvm::SmallVector<Type, 4> new_output_types(func_type.getResults().begin(),
@@ -243,7 +245,7 @@ void ModifyIONodesPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite modify io nodes pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateModifyIONodesPass(
     Type input_type, Type output_type) {
   return std::make_unique<ModifyIONodesPass>(input_type, output_type);
 }

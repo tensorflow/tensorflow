@@ -89,6 +89,11 @@ inline bool IsIdleOp(const OpMetrics& metrics) {
   return metrics.category() == kIdle;
 }
 
+// Returns the time spent in children (nested) ops.
+inline uint64_t ChildrenTimePs(const OpMetrics& metrics) {
+  return metrics.time_ps() - metrics.self_time_ps();
+}
+
 // Returns the ratio of time spent sending data from the host to the device
 // relative to the total time the host was active.
 absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);

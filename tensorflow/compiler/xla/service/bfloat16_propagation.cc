@@ -96,30 +96,26 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
     }
   }
 
-  auto aliases_changed_root_buffer =
-      [this, &changed_root_buffers](const HloInstruction* inst) {
-        bool aliasing = false;
-        ShapeUtil::ForEachSubshape(
-            inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-              if (aliasing) {
-                // Skip if aliasing is already found.
-                return;
-              }
-              // Only F32 buffers are considered for changing to BF16 in this
-              // pass.
-              if (subshape.element_type() != F32) {
-                return;
-              }
-              for (const HloValue* value :
-                   dataflow_->GetValueSet(inst, index).values()) {
-                if (ContainsKey(changed_root_buffers, value)) {
-                  aliasing = true;
-                  break;
-                }
-              }
-            });
-        return aliasing;
-      };
+  auto aliases_changed_root_buffer = [this, &changed_root_buffers](
+                                         const HloInstruction* inst) {
+    bool aliasing = false;
+    ShapeUtil::ForEachSubshape(inst->shape(), [&](const Shape& subshape,
+                                                  const ShapeIndex& index) {
+      if (aliasing) {
+        // Skip if aliasing is already found.
+        return;
+      }
+      // Only F32 buffers are considered for changing to BF16 in this
+      // pass.
+      if (subshape.element_type() != F32) {
+        return;
+      }
+
+      aliasing = absl::c_any_of(dataflow_->GetValueSet(inst, index).values(),
+                                IsValueIn(changed_root_buffers));
+    });
+    return aliasing;
+  };
 
   for (auto inst :
        fusion->fused_instructions_computation()->MakeInstructionPostOrder()) {
@@ -253,7 +249,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     if (value->shape().element_type() == BF16) {
       continue;
     }
-    for (const HloUse& use : value->uses()) {
+    for (const HloUse& use : value->GetUses()) {
       if (!ContainsKey(instructions_visited_in_backward_pass_,
                        use.instruction)) {
         // We don't know yet whether use.instruction will consume BF16 since it
@@ -463,34 +459,33 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
 
 void BFloat16Propagation::AdjustCalledComputationParameters(
     HloInstruction* hlo) {
-  auto adjust_computation =
-      [this, hlo](HloComputation* computation,
-                  absl::Span<HloInstruction* const> operands) {
-        // Adjust parameters.
-        CHECK_EQ(operands.size(), computation->num_parameters());
-        for (int64_t i = 0; i < operands.size(); ++i) {
-          auto parameter = computation->parameter_instruction(i);
-          ShapeUtil::ForEachSubshape(
-              parameter->shape(),
-              [this, i, hlo, &operands, parameter](const Shape& /* subshape */,
-                                                   const ShapeIndex& index) {
-                if (!ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
-                  return;
-                }
-                PrimitiveType operand_type =
-                    OutputTypeAfterChange(operands[i], index);
-                if (OutputTypeAfterChange(parameter, index) == operand_type) {
-                  return;
-                }
-                AddToOrRemoveFromBF16ChangeSet(parameter, index, operand_type);
-                VLOG(2) << "Called computation parameter "
-                        << parameter->ToString() << " at shape index " << index
-                        << " adjusted to "
-                        << (operand_type == BF16 ? "BF16" : "F32")
-                        << " to match operand in HLO " << hlo->ToString();
-              });
-        }
-      };
+  auto adjust_computation = [this, hlo](
+                                HloComputation* computation,
+                                absl::Span<HloInstruction* const> operands) {
+    // Adjust parameters.
+    CHECK_EQ(operands.size(), computation->num_parameters());
+    for (int64_t i = 0; i < operands.size(); ++i) {
+      auto parameter = computation->parameter_instruction(i);
+      ShapeUtil::ForEachSubshape(
+          parameter->shape(),
+          [this, i, hlo, &operands, parameter](const Shape& /* subshape */,
+                                               const ShapeIndex& index) {
+            if (!ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
+              return;
+            }
+            PrimitiveType operand_type =
+                OutputTypeAfterChange(operands[i], index);
+            if (OutputTypeAfterChange(parameter, index) == operand_type) {
+              return;
+            }
+            AddToOrRemoveFromBF16ChangeSet(parameter, index, operand_type);
+            VLOG(2) << "Called computation parameter " << parameter->ToString()
+                    << " at shape index " << index << " adjusted to "
+                    << (operand_type == BF16 ? "BF16" : "F32")
+                    << " to match operand in HLO " << hlo->ToString();
+          });
+    }
+  };
 
   switch (hlo->opcode()) {
     case HloOpcode::kFusion:
@@ -606,11 +601,12 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo)) {
           if (operand_and_output_index.second == index) {
-            const HloUse& operand = operand_and_output_index.first;
+            const HloOperandIndex& operand_index =
+                operand_and_output_index.first;
             for (const auto* value :
                  dataflow_
-                     ->GetValueSet(hlo->operand(operand.operand_number),
-                                   operand.operand_index)
+                     ->GetValueSet(hlo->operand(operand_index.operand_number),
+                                   operand_index.operand_index)
                      .values()) {
               auto value_type = ValueTypeAfterChange(value);
               if (value_type == BF16) {

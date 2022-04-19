@@ -7,6 +7,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -40,7 +41,10 @@ exports_files([
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
-]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
+]) + [
+    "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
+    "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_impl_src",
+]
 
 # All Java source files.
 filegroup(
@@ -57,6 +61,7 @@ JAVA_API_SRCS = [
     "src/main/java/org/tensorflow/lite/Tensor.java",
     "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
     "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+    "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
 ]
 
 # Java source files for API uses.
@@ -88,7 +93,6 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
-        "src/main/java/org/tensorflow/lite/XnnpackDelegate.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
         "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
@@ -829,7 +833,6 @@ jni_binary_with_tflite(
         # allows bundling of the C lib w/ AAR distribution.
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
 )
 
@@ -862,4 +865,13 @@ tflite_jni_binary(
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],
+)
+
+#-----------------------------------------------------------------------------
+# bzl_library targets.
+
+bzl_library(
+    name = "aar_with_jni_bzl",
+    srcs = ["aar_with_jni.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )

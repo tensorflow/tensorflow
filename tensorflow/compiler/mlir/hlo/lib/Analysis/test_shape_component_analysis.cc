@@ -63,7 +63,8 @@ struct TestShapeComponentAnalysisPass
 
 }  // end anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestShapeComponentAnalysisPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestShapeComponentAnalysisPass() {
   return std::make_unique<TestShapeComponentAnalysisPass>();
 }
 

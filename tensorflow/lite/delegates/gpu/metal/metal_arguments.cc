@@ -351,28 +351,32 @@ std::string MetalArguments::GetArgumentBufferStructDefinition(
   }
   for (auto& t : images2d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     result += absl::StrCat("  texture2d<", data_type, ", ", access, "> ",
                            t.first, "[[id(", index, ")]];\n");
     index++;
   }
   for (auto& t : image2d_arrays_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     result += absl::StrCat("  texture2d_array<", data_type, ", ", access, "> ",
                            t.first, "[[id(", index, ")]];\n");
     index++;
   }
   for (auto& t : images3d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     result += absl::StrCat("  texture3d<", data_type, ", ", access, "> ",
                            t.first, "[[id(", index, ")]];\n");
     index++;
   }
   for (auto& t : image_buffers_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     result += absl::StrCat("  texture_buffer<", data_type, ", ", access, "> ",
                            t.first, "[[id(", index, ")]];\n");
     index++;
@@ -564,7 +568,8 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   }
   for (auto& t : images2d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     if (t.second.desc.normalized) {
       data_type = ToMetalDataType(t.second.desc.normalized_type);
     }
@@ -575,7 +580,8 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   }
   for (auto& t : image2d_arrays_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     AppendArgument(
         absl::StrCat("texture2d_array<", data_type, ", ", access, "> ", t.first,
                      "[[texture(", textures_offset, ")]]"),
@@ -584,7 +590,8 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   }
   for (auto& t : images3d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     AppendArgument(absl::StrCat("texture3d<", data_type, ", ", access, "> ",
                                 t.first, "[[texture(", textures_offset, ")]]"),
                    &result);
@@ -592,7 +599,8 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   }
   for (auto& t : image_buffers_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
-    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    std::string data_type =
+        ToMetalDataType(ToMetalTextureType(t.second.desc.data_type));
     AppendArgument(
         absl::StrCat("texture_buffer<", data_type, ", ", access, "> ", t.first,
                      "[[texture(", textures_offset, ")]]"),

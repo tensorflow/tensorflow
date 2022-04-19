@@ -113,13 +113,13 @@ void FuseBiasTF::runOnOperation() {
   auto func = getOperation();
 
   // Add the generated patterns to the list.
-  patterns.insert<ConvertTFBiasAddOp>(ctx);
+  patterns.add<ConvertTFBiasAddOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass() {
   return std::make_unique<FuseBiasTF>();
 }
 

@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -53,8 +53,10 @@ namespace TFL {
 namespace {
 
 struct ReduceWhileOperandsPass
-    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceWhileOperandsPass)
+
   StringRef getArgument() const final { return "tfl-reduce-while"; }
   StringRef getDescription() const final {
     // TODO(b/200919263): Declare Reduce While Operands Pass in Table-Gen
@@ -296,7 +298,7 @@ void ReduceWhileOperandsPass::runOnOperation() {
 static PassRegistration<ReduceWhileOperandsPass> pass;
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass() {
   return std::make_unique<ReduceWhileOperandsPass>();
 }
 

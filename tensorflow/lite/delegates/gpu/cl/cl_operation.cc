@@ -56,9 +56,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define INIT_INT2v2(v0, v1) (int2)(v0, v1)\n";
   result += "#define INIT_INT4v4(v0, v1, v2, v3) (int4)(v0, v1, v2, v3)\n";
   result += "#define CONVERT_TO_INT4(value) convert_int4(value)\n";
-  result +=
-      "#define SELECT_BY_INDEX_FROM_FLT4(value, index) (FLT[4]){(value).x, "
-      "(value).y, (value).z, (value).w}[index]\n";
   switch (precision) {
     case CalculationsPrecision::F32:
       result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
@@ -161,11 +158,6 @@ absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
   return cl_args_.SetObjectRef(operation_->GetDstTensorsNames()[index], tensor);
 }
 
-void ClOperation::SetWorkGroupSize(const int3& work_group_size) {
-  operation_->work_group_size_ = work_group_size;
-  operation_->RecalculateWorkGroupsCount();
-}
-
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
       GetCommonOpenCLDefines(operation_->GetDefinition().precision) +
@@ -173,6 +165,7 @@ absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       creation_context.context, &operation_->args_, &operation_->code_));
+  operation_->args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,
       *creation_context.context, *creation_context.device, &kernel_,
@@ -181,17 +174,19 @@ absl::Status ClOperation::Compile(const CreationContext& creation_context) {
                                       kernel_.info_);
 }
 
-absl::Status ClOperation::InitFromCache(uint64_t fingerprint,
-                                        const ProgramCache& program_cache) {
+absl::Status ClOperation::RestoreDeserialized(const ProgramCache& program_cache,
+                                              uint64_t fingerprint,
+                                              const GpuInfo& gpu_info,
+                                              const int3& work_group_size,
+                                              CLContext* context) {
   kernel_fingerprint_ = fingerprint;
-  return program_cache.GetKernel(kernel_fingerprint_, "main_function",
-                                 &kernel_);
-}
-
-absl::Status ClOperation::RestoreDeserialized(
-    const CreationContext& creation_context) {
-  return cl_args_.Init(creation_context.GetGpuInfo(), &operation_->args_,
-                       creation_context.context);
+  RETURN_IF_ERROR(
+      program_cache.GetKernel(kernel_fingerprint_, "main_function", &kernel_));
+  operation_->work_group_size_ = work_group_size;
+  operation_->RecalculateWorkGroupsCount();
+  RETURN_IF_ERROR(cl_args_.Init(gpu_info, &operation_->args_, context));
+  operation_->args_.ReleaseCPURepresentation();
+  return absl::OkStatus();
 }
 
 absl::Status ClOperation::Tune(TuningType tuning_type, const GpuInfo& gpu_info,

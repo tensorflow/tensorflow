@@ -52,7 +52,7 @@ class SimpleTFDeviceAssignmentPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device) {
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }

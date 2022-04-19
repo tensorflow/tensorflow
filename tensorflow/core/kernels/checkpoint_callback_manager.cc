@@ -143,7 +143,7 @@ Status CheckpointCallbackManager::RegisterSaveCallback(
   std::string checkpoint_id;
   std::string checkpoint_dir;
   {
-    tf_shared_lock l(mu_);
+    mutex_lock l(mu_);
     if (!save_callbacks_.try_emplace(file_extension, std::move(callback))
              .second) {
       return errors::AlreadyExists("A callback already exists.");
@@ -177,7 +177,7 @@ Status CheckpointCallbackManager::RegisterRestoreCallback(
   std::string checkpoint_id;
   std::string checkpoint_dir;
   {
-    tf_shared_lock l(mu_);
+    mutex_lock l(mu_);
     if (!restore_callbacks_.try_emplace(file_extension, std::move(callback))
              .second) {
       return errors::AlreadyExists("A callback already exists.");

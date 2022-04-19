@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -24,7 +24,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
+void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
@@ -54,7 +54,7 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
   });
 }
 
-void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
+void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);

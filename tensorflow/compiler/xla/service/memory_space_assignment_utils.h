@@ -32,6 +32,10 @@ class MemorySpaceAssignmentUtils {
   // Returns true if the HloValue is allowed to be placed in alternate memory.
   static bool IsValueAllowedInAlternateMemory(const HloValue* value);
 
+  // Modifies the schedule to hoist the entry parameters. This increases the
+  // opportunities to prefetch entry parameters.
+  static void HoistEntryParameters(HloModule& module);
+
   // Modifies the schedules in the given module to hoist (move earlier) constant
   // operations. This increases the opportunities to prefetch constant ops.
   static void HoistConstantOperations(HloModule& module);

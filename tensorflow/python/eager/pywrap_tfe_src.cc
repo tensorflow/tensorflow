@@ -347,8 +347,16 @@ bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
 
 bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
                     unsigned char* value) {
-  *value = PyObject_IsTrue(py_value);
-  return true;
+  if (PyBool_Check(py_value)) {
+    *value = PyObject_IsTrue(py_value);
+    return true;
+  }
+  TF_SetStatus(
+      status, TF_INVALID_ARGUMENT,
+      tensorflow::strings::StrCat("Expecting bool value for attr ", key,
+                                  ", got ", py_value->ob_type->tp_name)
+          .c_str());
+  return false;
 }
 
 // The passed in py_value is expected to be an object of the python type
@@ -826,6 +834,16 @@ PyObject* forward_gradient_function = nullptr;
 
 static std::atomic<int64_t> _uid;
 
+// This struct is responsible for marking thread_local storage as destroyed.
+// Access to the `alive` field in already-destroyed ThreadLocalDestructionMarker
+// is safe because it's a trivial type, so long as nobody creates a new
+// thread_local in the space where now-destroyed marker used to be.
+// Hopefully creating new thread_locals while destructing a thread is rare.
+struct ThreadLocalDestructionMarker {
+  ~ThreadLocalDestructionMarker() { alive = false; }
+  bool alive = true;
+};
+
 }  // namespace
 
 TF_Status* GetStatus() {
@@ -1020,6 +1038,8 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   return result.str();
 }
 
+namespace tensorflow {
+
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (status->status.ok()) return 0;
   const char* msg = TF_Message(status);
@@ -1053,6 +1073,8 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   PyErr_SetString(exception, msg);
   return -1;
 }
+
+}  // namespace tensorflow
 
 int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception) {
@@ -1714,7 +1736,12 @@ static PyTypeObject TFE_Py_VariableWatcher_Type = {
 // stack.
 tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   thread_local std::unique_ptr<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>
-      tape_set = nullptr;
+      tape_set;
+  thread_local ThreadLocalDestructionMarker marker;
+  if (!marker.alive) {
+    // This thread is being destroyed. It is unsafe to access tape_set.
+    return nullptr;
+  }
   if (tape_set == nullptr) {
     tape_set.reset(new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>);
   }
@@ -1725,7 +1752,13 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>*
 GetVariableWatcherSet() {
   thread_local std::unique_ptr<
       tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>>
-      variable_watcher_set = nullptr;
+      variable_watcher_set;
+  thread_local ThreadLocalDestructionMarker marker;
+  if (!marker.alive) {
+    // This thread is being destroyed. It is unsafe to access
+    // variable_watcher_set.
+    return nullptr;
+  }
   if (variable_watcher_set == nullptr) {
     variable_watcher_set.reset(
         new tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>);
@@ -1789,7 +1822,12 @@ class AccumulatorSet {
 };
 
 AccumulatorSet* GetAccumulatorSet() {
-  thread_local std::unique_ptr<AccumulatorSet> accumulator_set{nullptr};
+  thread_local std::unique_ptr<AccumulatorSet> accumulator_set;
+  thread_local ThreadLocalDestructionMarker marker;
+  if (!marker.alive) {
+    // This thread is being destroyed. It is unsafe to access accumulator_set.
+    return nullptr;
+  }
   if (accumulator_set == nullptr) {
     accumulator_set.reset(new AccumulatorSet);
   }
@@ -1914,7 +1952,9 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
   auto* stack = GetTapeSet();
-  stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+  if (stack != nullptr) {
+    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+  }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
   Py_DECREF(tape);
@@ -1998,7 +2038,7 @@ PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors) {
   if (!TensorShapesAndDtypes(tensors, &tensor_ids, &dtypes)) {
     return nullptr;
   }
-  auto tape_set = *GetTapeSet();
+  auto& tape_set = *GetTapeSet();
   for (TFE_Py_Tape* tape : tape_set) {
     if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
       Py_RETURN_TRUE;
@@ -2009,7 +2049,7 @@ PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors) {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorPushState() {
-  auto forward_accumulators = *GetAccumulatorSet();
+  auto& forward_accumulators = *GetAccumulatorSet();
   for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
     accumulator->accumulator->PushState();
   }
@@ -2017,7 +2057,7 @@ PyObject* TFE_Py_ForwardAccumulatorPushState() {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorPopState() {
-  auto forward_accumulators = *GetAccumulatorSet();
+  auto& forward_accumulators = *GetAccumulatorSet();
   for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
     accumulator->accumulator->PopState();
   }
@@ -2039,7 +2079,7 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
   // gradients are possible.
   bool some_tape_watching = false;
   if (CouldBackprop()) {
-    auto tape_set = *GetTapeSet();
+    auto& tape_set = *GetTapeSet();
     for (TFE_Py_Tape* tape : tape_set) {
       if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
         if (tape->tape->IsPersistent() || some_tape_watching) {
@@ -2052,7 +2092,7 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
     }
   }
   if (CouldForwardprop()) {
-    auto forward_accumulators = *GetAccumulatorSet();
+    auto& forward_accumulators = *GetAccumulatorSet();
     for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
       if (accumulator->accumulator->ShouldRecord(tensor_ids, dtypes)) {
         if (some_tape_watching) {
@@ -2290,9 +2330,12 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
 
 PyObject* ForwardAccumulatorDeleteGradient(PyObject* tensor_id,
                                            PyObject* weak_tensor_ref) {
-  int64_t parsed_tensor_id = MakeInt(tensor_id);
-  for (TFE_Py_ForwardAccumulator* accumulator : *GetAccumulatorSet()) {
-    accumulator->accumulator->DeleteGradient(parsed_tensor_id);
+  auto* accumulator_set = GetAccumulatorSet();
+  if (accumulator_set != nullptr) {
+    int64_t parsed_tensor_id = MakeInt(tensor_id);
+    for (TFE_Py_ForwardAccumulator* accumulator : *accumulator_set) {
+      accumulator->accumulator->DeleteGradient(parsed_tensor_id);
+    }
   }
   Py_DECREF(weak_tensor_ref);
   Py_DECREF(tensor_id);
@@ -2723,7 +2766,13 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
 }
 
 void TFE_Py_TapeSetDeleteTrace(int64_t tensor_id) {
-  for (TFE_Py_Tape* tape : *GetTapeSet()) {
+  auto* tape_set = GetTapeSet();
+  if (tape_set == nullptr) {
+    // Current thread is being destructed, and the tape set has already
+    // been cleared.
+    return;
+  }
+  for (TFE_Py_Tape* tape : *tape_set) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }
@@ -2884,8 +2933,11 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
 }
 
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
-  GetAccumulatorSet()->erase(
-      reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
+  auto* accumulator_set = GetAccumulatorSet();
+  if (accumulator_set != nullptr) {
+    accumulator_set->erase(
+        reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
+  }
   Py_DECREF(accumulator);
 }
 
@@ -2915,7 +2967,7 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
     tensorflow::Safe_PyObjectPtr empty_list(PyList_New(0));
     return PyTuple_Pack(2, empty_tuple.get(), empty_list.get());
   }
-  auto accumulators = *GetAccumulatorSet();
+  auto& accumulators = *GetAccumulatorSet();
   tensorflow::Safe_PyObjectPtr tensors_fast(
       PySequence_Fast(tensors, "Expected a sequence of input Tensors."));
   if (tensors_fast == nullptr || PyErr_Occurred()) {
@@ -3337,10 +3389,12 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
 
   TFE_Op* op = TFE_NewOp(parent_op_exec_info.ctx, "ReadVariableOp", status);
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { TFE_DeleteOp(op); });
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   // Set dtype
   DCHECK(PyObject_HasAttrString(input, "_dtype"));
@@ -3355,12 +3409,14 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
   tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(input, "_handle"));
   if (!EagerTensor_CheckExact(handle.get())) return false;
   TFE_OpAddInput(op, EagerTensor_Handle(handle.get()), status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   int num_retvals = 1;
   TFE_TensorHandle* output_handle;
   TFE_Execute(op, &output_handle, &num_retvals, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   // Always create the py object (and correctly DECREF it) from the returned
   // value, else the data will leak.
@@ -3421,7 +3477,7 @@ bool ConvertToTensor(
   TFE_TensorHandle* handle = tensorflow::ConvertToEagerTensor(
       op_exec_info.ctx, input, dtype_hint, op_exec_info.device_name);
   if (handle == nullptr) {
-    return MaybeRaiseExceptionFromTFStatus(status, nullptr);
+    return tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
   output_handle->reset(EagerTensorFromHandle(handle));
@@ -3476,7 +3532,7 @@ bool AddInputToOp(FastPathOpExecInfo* op_exec_info, PyObject* input,
   }
 
   TFE_OpAddInput(op, input_handle, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return false;
   }
 
@@ -3654,7 +3710,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     ReturnOp(ctx, op);
   });
 
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return nullptr;
   }
 
@@ -3820,7 +3876,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
         attr_value[j] = TFE_TensorHandleDataType(input_handle);
 
         TFE_OpAddInput(op, input_handle, status);
-        if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+        if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
           return nullptr;
         }
 
@@ -3886,7 +3942,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
         status->status, tensorflow::strings::StrCat(
                             TF_Message(status), " [Op:",
                             TFE_GetPythonString(op_exec_info.op_name), "]"));
-    MaybeRaiseExceptionFromTFStatus(status, nullptr);
+    tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr);
     return nullptr;
   }
 

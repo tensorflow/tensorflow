@@ -215,7 +215,7 @@ class NcclTestBase : public ::testing::Test {
               << DMAHelper::base(output);
       Tensor actual(DT_FLOAT, TensorShape({output_length}));
       Device* dev = instances_[rank]->device_;
-      auto* dev_info = dev->tensorflow_gpu_device_info();
+      auto* dev_info = dev->tensorflow_accelerator_device_info();
       TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
           output, /*tensor_name=*/"", dev, &actual));
       VLOG(3) << "rank " << rank << " got output tensor "
@@ -278,7 +278,7 @@ class NcclTestBase : public ::testing::Test {
       } else {
         VLOG(2) << "input tensor " << cpu_tensor.DebugString();
       }
-      auto* dev_info = device_->tensorflow_gpu_device_info();
+      auto* dev_info = device_->tensorflow_accelerator_device_info();
       TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
           &cpu_tensor, device_, &input_));
     }
@@ -287,7 +287,7 @@ class NcclTestBase : public ::testing::Test {
       params->step_id = kStepId;
       params->device = device_;
       DeviceContext* dev_ctx = nullptr;
-      auto* dev_info = device_->tensorflow_gpu_device_info();
+      auto* dev_info = device_->tensorflow_accelerator_device_info();
       if (dev_info) {
         dev_ctx = dev_info->default_context;
         dev_ctx->Ref();

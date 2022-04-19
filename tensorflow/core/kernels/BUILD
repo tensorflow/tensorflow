@@ -26,6 +26,10 @@ load(
     "tf_fingerprint_deps",
     "tf_kernel_tests_linkstatic",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -844,6 +848,7 @@ cc_library(
     defines = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -860,6 +865,7 @@ cc_library(
     ] + select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -1858,7 +1864,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/stream_executor/cuda:cudnn_plugin",
-    ],
+    ] + if_mkl(["//tensorflow/core/kernels/mkl:mkl_conv_op"]),
 )
 
 tf_cuda_cc_test(
@@ -2502,6 +2508,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:forward_type_inference",
     ],
 )
 
@@ -3093,6 +3100,7 @@ tf_cc_test(
     srcs = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -4795,6 +4803,39 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "random_index_shuffle",
+    srcs = ["random_index_shuffle.cc"],
+    hdrs = ["random_index_shuffle.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "random_index_shuffle_test",
+    srcs = ["random_index_shuffle_test.cc"],
+    deps = [
+        ":random_index_shuffle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_kernel_library(
+    name = "random_index_shuffle_ops",
+    prefix = "random_index_shuffle_ops",
+    deps = [
+        ":random_index_shuffle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "required",
     deps = [
         ":no_op",
@@ -4955,7 +4996,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_slice_grad_op",
     prefix = "sparse_slice_grad_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+    ]),
 )
 
 tf_kernel_library(
@@ -6308,6 +6351,7 @@ filegroup(
         "ragged_tensor_variant.h",
         "random_op.h",
         "random_poisson_op.h",
+        "random_index_shuffle.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
@@ -6432,6 +6476,7 @@ filegroup(
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_isnan.cc",
+        "cwise_op_leakyrelu_bf16.cc",
         "cwise_op_left_shift.cc",
         "cwise_op_less.cc",
         "cwise_op_less_equal.cc",
@@ -6566,6 +6611,9 @@ filegroup(
         "ragged_tensor_to_tensor_op.cc",
         "ragged_tensor_to_variant_op.cc",
         "ragged_tensor_from_variant_op.cc",
+        "random_index_shuffle.h",
+        "random_index_shuffle.cc",
+        "random_index_shuffle_ops.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_ops_util.h",
@@ -6681,6 +6729,7 @@ filegroup(
         "transpose_op.cc",
         "unicode_ops.cc",
         "unique_op.cc",
+        "unsorted_segment_join_op.cc",
         "where_op.cc",
         "whole_file_read_ops.cc",
         "xent_op.cc",
@@ -7651,6 +7700,7 @@ cc_library(
 tf_cc_shared_library(
     name = "libtfkernel_all_kernels.so",
     static_deps = [
+        # TODO(rostam): Remove Copybara transform.
         # copybara:comment_begin(oss only)
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
@@ -7813,6 +7863,7 @@ exports_files([
     "cwise_op_greater.cc",
     "cwise_op_greater_equal.cc",
     "cwise_op_isinf.cc",
+    "cwise_op_leakyrelu_bf16.cc",
     "cwise_op_less.cc",
     "cwise_op_less_equal.cc",
     "cwise_op_log.cc",

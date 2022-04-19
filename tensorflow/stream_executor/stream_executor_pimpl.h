@@ -121,6 +121,9 @@ class StreamExecutor {
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
 
+  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+      Stream* stream, const std::vector<uint8_t>& content);
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
@@ -343,6 +346,10 @@ class StreamExecutor {
   // The device count reported by this StreamExecutor's platform.
   // Note: on OpenCL we implicitly select platform zero at the moment.
   int PlatformDeviceCount() const;
+
+  // Returns whether the StreamExecutor supports BLAS plans as implemented
+  // for instance in the cuBLASLt API
+  bool SupportsBlasPlans() const;
 
   // Returns whether the StreamExecutor supports BLAS routines for the platform
   // that underlies this interface.

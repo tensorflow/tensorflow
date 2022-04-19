@@ -42,9 +42,8 @@ TEST(CApiSimple, Smoke) {
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);
 
-  // The options/model can be deleted immediately after interpreter creation.
+  // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
 
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterGetInputTensorCount(interpreter), 1);
@@ -100,6 +99,7 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(output[1], 9.f);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, QuantizationParams) {
@@ -109,8 +109,6 @@ TEST(CApiSimple, QuantizationParams) {
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, nullptr);
   ASSERT_NE(interpreter, nullptr);
-
-  TfLiteModelDelete(model);
 
   const std::array<int, 1> input_dims = {2};
   ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
@@ -160,6 +158,7 @@ TEST(CApiSimple, QuantizationParams) {
   EXPECT_EQ(dequantizedOutput1, 0.035298f);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, Delegate) {
@@ -183,9 +182,9 @@ TEST(CApiSimple, Delegate) {
 
   // Subsequent execution should behave properly (the delegate is a no-op).
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, DelegateFails) {
@@ -224,9 +223,8 @@ TEST(CApiSimple, ErrorReporter) {
       &reporter);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
-  // The options/model can be deleted immediately after interpreter creation.
+  // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
 
   // Invoke the interpreter before tensor allocation.
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteError);
@@ -237,6 +235,7 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, ValidModel) {

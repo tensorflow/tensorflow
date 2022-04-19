@@ -612,6 +612,7 @@ typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
   int32_t struct_size;
   void* priv;
 
+  int32_t mode;
   int32_t local_device_ordinal;
   TpuEmbedding_TensorBatchFixedState* fixed_state;
 

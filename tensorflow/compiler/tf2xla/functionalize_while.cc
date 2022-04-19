@@ -436,10 +436,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
   // Add some internal attributes which need to be propagated.
-  // TODO(b/160275126): attributes shouldn't be hard-coded here
-  for (const char* attr_name :
-       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
-        kTpuReplicateAttrName}) {
+  for (absl::string_view attr_name : kAttrsToPropagate) {
     string attr_val;
     if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);

@@ -154,6 +154,9 @@ class DfsHloVisitorBase {
   virtual Status HandleRound(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleRoundNearestEven(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleLogistic(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -268,6 +271,10 @@ class DfsHloVisitorBase {
   virtual Status HandleScatter(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
+
+  virtual Status HandleAsyncStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAsyncUpdate(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAsyncDone(HloInstructionPtr hlo) = 0;
 
   virtual Status HandleCopyStart(HloInstructionPtr copy_start) = 0;
   virtual Status HandleCopyDone(HloInstructionPtr copy_done) = 0;

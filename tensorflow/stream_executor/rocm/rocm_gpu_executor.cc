@@ -115,6 +115,12 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+GpuExecutor::CreateOrShareConstant(Stream* stream,
+                                   const std::vector<uint8_t>& content) {
+  return port::UnimplementedError("Not implemented for ROCm");
+}
+
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   auto module_it = gpu_binary_to_module_.find(gpu_binary);
   if (gpu_binary_to_module_.end() == module_it) {
@@ -763,6 +769,8 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   return true;
 }
 
+bool GpuExecutor::SupportsBlasPlans() const { return false; }
+
 bool GpuExecutor::SupportsBlas() const { return true; }
 
 bool GpuExecutor::SupportsFft() const { return true; }
@@ -799,8 +807,53 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
-  // TODO(ROCm) implement this feature in HIP
-  return 1;
+  VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
+  static const int kUnknownNumaNode = -1;
+
+  if (pci_bus_id.empty()) {
+    LOG(INFO) << "no PCI bus ID for device ordinal: " << device_ordinal;
+    return kUnknownNumaNode;
+  }
+
+  std::string filename =
+      absl::StrFormat("/sys/bus/pci/devices/%s/numa_node", pci_bus_id);
+
+  // We have to use fopen/fread here so that the device properties can be
+  // populated before InitGoogle procedure has been completed (at which point we
+  // could use the file::* utilities).
+  FILE* file = fopen(filename.c_str(), "r");
+  if (file == nullptr) {
+    LOG(INFO) << "could not open file to read NUMA node: " << filename
+              << "\nYour kernel may have been built without NUMA support.";
+    return kUnknownNumaNode;
+  }
+
+  std::string content;
+  char buf[32];
+  size_t did_read = fread(buf, sizeof(buf[0]), sizeof(buf) - 1, file);
+  buf[did_read] = '\0';
+  content = buf;
+
+  int32_t value;
+  if (port::safe_strto32(content, &value)) {
+    if (value < 0) {  // See http://b/18228951 for details on this path.
+      LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
+                << value
+                << "), but there must be at least one NUMA node"
+                   ", so returning NUMA node zero";
+      fclose(file);
+      return 0;
+    }
+    fclose(file);
+    return value;
+  }
+
+  LOG(WARNING)
+      << "could not convert SysFS file contents to integral NUMA node value: "
+      << content;
+
+  fclose(file);
+  return kUnknownNumaNode;
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
@@ -898,8 +951,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_device_address_bits(64);
 
   builder.set_device_vendor("Advanced Micro Devices, Inc");
-  builder.set_rocm_amdgpu_isa_version(version);
-  builder.set_rocm_amdgpu_gcn_arch_name(gcn_arch_name);
+  builder.set_rocm_compute_capability(gcn_arch_name);
 
   builder.set_shared_memory_per_core(
       GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());

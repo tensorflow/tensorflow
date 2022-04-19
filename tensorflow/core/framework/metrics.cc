@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -148,6 +150,13 @@ auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
     "Number of tf.data service client iterators created.", "worker_uid",
     "deployment_mode", "processing_mode", "is_coordinated_read");
 
+auto* tf_data_service_multi_trainer_cache_queries_counter =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/service/multi_trainer_cache_queries",
+        "tf.data service multi-client cache queries counter. The result can be "
+        "hit or miss.",
+        "cache_hit");
+
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -242,6 +251,11 @@ auto* test_counters =
 auto* tpu_op_error_counter = monitoring::Counter<2>::New(
     "/tensorflow/tpu/op_error_count",
     "Count the tpu related errors by op and error_type.", "op", "error_type");
+
+auto* eager_client_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/core/eager_client_error_count",
+    "Count the errors in eager client as a central place.", "error_source",
+    "error_type");
 
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter =
@@ -360,6 +374,12 @@ void RecordTFDataServiceClientIterators(
   tf_data_service_client_iterators_counter
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit) {
+  std::string cache_hit_str = cache_hit ? "true" : "false";
+  tf_data_service_multi_trainer_cache_queries_counter->GetCell(cache_hit_str)
       ->IncrementBy(1);
 }
 
@@ -508,8 +528,27 @@ void UpdateTfMlirGraphOptimizationPassStateCounter(
   metric->GetCell(pass_state, processing_state)->IncrementBy(1);
 }
 
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+                                         const std::string& bridge_version,
+                                         bool fallback_enabled,
+                                         const std::string& result) {
+  static auto* metric = monitoring::Counter<4>::New(
+      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+      "Tracks processing state in first phase of mlir bridge", "device",
+      "version", "fallback", "result");
+  std::string fallback_status =
+      fallback_enabled ? "fallback_enabled" : "fallback_disabled";
+  metric->GetCell(device_type, bridge_version, fallback_status, result)
+      ->IncrementBy(1);
+}
+
 void UpdateTpuErrorCounter(const string& op, const string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
+}
+
+void UpdateEagerClientErrorCounter(const string& source,
+                                   const string& error_type) {
+  eager_client_error_counter->GetCell(source, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

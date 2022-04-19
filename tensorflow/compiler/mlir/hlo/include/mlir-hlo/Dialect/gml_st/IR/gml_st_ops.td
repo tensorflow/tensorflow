@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef GML_ST_OPS
 #define GML_ST_OPS
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -27,8 +28,6 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :
     Op<GmlSt_Dialect, mnemonic, traits> {
-  let printer = [{ return mlir::gml_st::print(p, *this); }];
-  let parser = [{ return mlir::gml_st::parse$cppClass(parser, result); }];
   let hasVerifier = 1;
 }
 
@@ -46,7 +45,7 @@ def GMLST_TileType : GMLST_Subset<"Tile"> {
   let mnemonic = "tile";
   let summary = "Type that represents a tile of an index space.";
   let parameters = (ins ArrayRefParameter<"int64_t">:$shape);
-  let assemblyFormat = "`<` $shape `>`";
+  let assemblyFormat = "`<` custom<ShapeTypeDimensionsList>($shape) `>`";
 }
 
 def GMLST_PointType : GMLST_Subset<"Point"> {
@@ -55,19 +54,33 @@ def GMLST_PointType : GMLST_Subset<"Point"> {
   let assemblyFormat = "";
 }
 
-def GMLST_PointOp : GMLST_Op<"point", []> {
-  let arguments = (ins Variadic<Index>:$offsets,
-                       I64ArrayAttr:$static_offsets);
+def GMLST_SpaceOp : GMLST_Op<"space", []> {
+  let arguments = (ins Variadic<Index>:$shapes,
+                       I64ArrayAttr:$static_shapes);
   let results = (outs AnySubset:$result);
   let assemblyFormat = [{
-    custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
+    custom<OperandsOrIntegersOffsetsOrStridesList>($shapes, $static_shapes)
     attr-dict `:` type($result)
   }];
   let hasVerifier = 0;
 }
 
+def GMLST_PointOp : GMLST_Op<"point", []> {
+  let arguments = (ins AnySubset:$subset,
+                       Variadic<Index>:$indices,
+                       I64ArrayAttr:$static_indices);
+  let results = (outs AnySubset:$result);
+  let assemblyFormat = [{
+    $subset
+    custom<OperandsOrIntegersOffsetsOrStridesList>($indices, $static_indices)
+    attr-dict `:` type($subset) `to` type($result)
+  }];
+  let hasVerifier = 0;
+}
+
 def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
-  let arguments = (ins Variadic<Index>:$offsets,
+  let arguments = (ins AnySubset:$subset,
+                       Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
                        Variadic<Index>:$strides,
                        I64ArrayAttr:$static_offsets,
@@ -75,10 +88,11 @@ def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
                        I64ArrayAttr:$static_strides);
   let results = (outs AnySubset:$result);
   let assemblyFormat = [{
+    $subset
     custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
     custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
-    attr-dict `:` type($result)
+    attr-dict `:` type($subset) `to` type($result)
   }];
   let hasVerifier = 0;
 }
@@ -380,6 +394,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   }];
 
   let hasCanonicalizer = 1;
+  let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
 }
 

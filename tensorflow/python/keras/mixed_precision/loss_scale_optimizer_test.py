@@ -1004,7 +1004,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(opt.inner_optimizer.momentum), 0.5)
     self.assertEqual(self.evaluate(opt.loss_scale), 2.)
     self.assertEqual(opt.dynamic_growth_steps, 3.)
-    self.assertTrue(opt.dynamic, 4.)
+    self.assertTrue(opt.dynamic)
     # Deserializing a LossScaleOptimizer always always results in a V2
     # LossScaleOptimizer, even if serialized with a LossScaleOptimizerV1.
     self.assertAllEqual(type(opt), loss_scale_optimizer.LossScaleOptimizer)

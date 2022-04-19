@@ -44,6 +44,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_INT32;
     case kTfLiteUInt32:
       return NPY_UINT32;
+    case kTfLiteUInt16:
+      return NPY_UINT16;
     case kTfLiteInt16:
       return NPY_INT16;
     case kTfLiteUInt8:

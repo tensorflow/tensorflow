@@ -54,7 +54,7 @@ cc_library(
         ":numpy_lib",
         "//tensorflow/core/platform:logging",
         "//third_party/eigen3",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/strings",
     ],
 )

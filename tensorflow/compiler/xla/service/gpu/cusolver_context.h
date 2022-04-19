@@ -18,13 +18,28 @@ limitations under the License.
 
 #include <complex>
 
+#define TENSORFLOW_USE_HIPSOLVER \
+  (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION >= 40500))
+#define TENSORFLOW_USE_ROCSOLVER \
+  (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION < 40500))
+#define TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER \
+  (!TENSORFLOW_USE_ROCM || TENSORFLOW_USE_HIPSOLVER)
+
 #if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 using gpusolverHandle_t = cusolverDnHandle_t;
 #else
+#include "rocm/rocm_config.h"
+// Macros to ease the transition from rocsolver to hipsolver.
+#if TENSORFLOW_USE_HIPSOLVER
+#include "tensorflow/stream_executor/rocm/hipsolver_wrapper.h"
+using gpusolverHandle_t = hipsolverHandle_t;
+#else  // TENSORFLOW_USE_ROCSOLVER
+#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
 #include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
 using gpusolverHandle_t = rocblas_handle;
-#endif
+#endif  // TF_ROCM_VERSION >= 40500
+#endif  // TENSORFLOW_USE_ROCM
 
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -50,11 +65,7 @@ class GpuSolverContext {
   GpuSolverContext& operator=(GpuSolverContext&&);
 
   bool SupportsPotrfBatched() const {
-#if defined(TENSORFLOW_USE_ROCM)
-    return false;
-#else
     return true;
-#endif
   }
 
   // Computes the Cholesky factorization A = L * L^T for a single matrix.

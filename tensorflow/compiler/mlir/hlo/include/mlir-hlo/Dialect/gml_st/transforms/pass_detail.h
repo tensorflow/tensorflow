@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H_
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H
 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+namespace func {
+class FuncOp;
+}  // namespace func
 namespace scf {
 class SCFDialect;
 }  // namespace scf
@@ -27,4 +32,4 @@ class SCFDialect;
 #define GEN_PASS_CLASSES
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H_
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASS_DETAIL_H

@@ -46,6 +46,8 @@ class ServerDef;
 //
 // Possible service errors:
 //    - errors::Internal: Coordination service is not enabled.
+//                        If it was previously accessible, coordination service
+//                        has been shut down.
 //    - errors::Aborted: Incarnation mismatch during heartbeat (either remote
 //                       task or coordination service has restarted).
 //    - errors::Unavailable: Heartbeat timeout from remote task (failed,
@@ -80,19 +82,19 @@ class CoordinationServiceAgent {
 
   // Connect to coordination service with the following steps:
   //   - connect to service address specified in the config of `server_def`
-  //   - register itself as a worker to the service
+  //   - register itself as a task to the service
   //   - start a thread to periodically send heartbeat message with the service
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
-  //   - InvalidArgument: Unexpected worker registration
-  //   - Aborted: Duplicate worker registration
+  //   - InvalidArgument: Unexpected task registration
+  //   - Aborted: Duplicate task registration
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in RUNNING state.
-  //   - InvalidArgument: Unexpected worker request
+  //   - InvalidArgument: Unexpected task request
   virtual Status WaitForAllTasks(
       const CoordinationServiceDeviceInfo& local_devices) = 0;
 
@@ -121,10 +123,26 @@ class CoordinationServiceAgent {
   // distinguish user-specified errors from internal service or RPC failures.
   // Possible service errors:
   //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
-  //   - InvalidArgument: Unexpected worker request
+  //   - InvalidArgument: Unexpected task request
   virtual Status ReportError(const Status& error) = 0;
 
+  // Shuts down by disconnecting from the service. Should only be called if
+  // agent is connected and no further agent calls (except the destructor) are
+  // expected. If `shutdown_barrier_timeout_in_ms` is specified in the config,
+  // blocks until all tasks reach the barrier before shutting down together. If
+  // the barrier times out, this agent will still disconnect, while an error is
+  // reported to other agents that did not reach the barrier on time.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: Task was in error state (note: agent is still
+  //                         shut down forcefully).
+  virtual Status Shutdown() = 0;
+
   // Disconnect from the service, and clean up the internal error status.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task is not in error state/has already
+  //       disconnected.
   virtual Status Reset() = 0;
 
   // Get config key-value from the service.
@@ -154,6 +172,56 @@ class CoordinationServiceAgent {
   virtual Status StartWatchKey(const std::string& key,
                                ChangedKeyValuesCallback on_change) = 0;
   virtual Status StopWatchKey(const std::string& key) = 0;
+
+  // Blocks until all (or a subset of) tasks are at the barrier or the barrier
+  // fails.
+  //
+  // `barrier_id` should be unique across barriers. Once the barrier has passed
+  // or failed, subsequent calls will not block, and immediately respond with
+  // the previous response.
+  //
+  // The first WaitAtBarrier() call received by the service for a particular
+  // barrier_id is special in that it determines the barrier deadline based on
+  // timeout duration.
+  // However, if subsequent calls by different agents specify a different set of
+  // `tasks` for the same `barrier_id`, the barrier will fail instantly.
+  // For example,
+  //   agent_1->WaitAtBarrier(“barrier”, 10min, <<”worker”, 1>, <”worker”, 2>>);
+  //   agent_2->WaitAtBarrier(“barrier”, 10min, <<”worker”, 2>, <”worker”, 3>>);
+  // Barrier fails after agent_2’s call because it specifies a different set of
+  // participating tasks.
+  //
+  // If no tasks are specified (default), the barrier will block for all the
+  // connected tasks.
+  //
+  // Possible service errors:
+  //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.
+  //      Deadline is determined by the server timestamp when it receives the
+  //      first WaitAtBarrier() + timeout duration.
+  //   - Cancelled: One of the tasks called CancelBarrier().
+  //   - Aborted: Service is shutting down.
+  //   - Internal: Any participating task is in ERROR state.
+  //   - InvalidArgument: (1) Conflicting tasks specified by different agents
+  //       for the same barrier, (2) one of the participating tasks is not in
+  //       the cluster, or (3) task making the request is not included in the
+  //       list of participating tasks.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  virtual Status WaitAtBarrier(const std::string& barrier_id,
+                               absl::Duration timeout,
+                               const std::vector<CoordinatedTask>& tasks) = 0;
+
+  virtual void WaitAtBarrierAsync(const std::string& barrier_id,
+                                  absl::Duration timeout,
+                                  const std::vector<CoordinatedTask>& tasks,
+                                  StatusCallback done) = 0;
+
+  // Aborts the barrier if it is ongoing.
+  // Current and future WaitAtBarrier() calls with the same id will return a
+  // CANCELLED error status.
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
+  virtual Status CancelBarrier(const std::string& barrier_id) = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

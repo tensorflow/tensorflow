@@ -20,10 +20,52 @@ limitations under the License.
 
 namespace tensorflow {
 
+using Labels = gtl::InlinedVector<int, 8>;
+using OperandLabels = gtl::InlinedVector<Labels, 2>;
+using LabelCounts = gtl::InlinedVector<int, 8>;
+using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
+
+// Dummy axis label used to denote an ellipsis in an input or output subscript.
+constexpr int kEllipsisLabel = -1;
+
+// Each dimension is categorized into exactly one of five types based on
+// whether its corresponding label is present in the input and/or the output
+// subscripts.
+enum EinsumDimensionType {
+  // Batch dimensions are those present in two inputs as well as the output.
+  // They are part of the batch dimensions during Tensor contraction. Such
+  // dimensions may be broadcasting dimensions (those mapping to ellipsis)
+  // or explicit batch dimensions corresponding to named axis labels.
+  kBroadcasting = 0,
+  kBatch = 1,
+  // Free dimensions are present in exactly one of the inputs, and also the
+  // output. These are non-contracted axes in the Tensor contraction.
+  kFree = 2,
+  // Contract dimensions are present in two inputs, but not the output. These
+  // dimensions are contracted in Tensor contraction.
+  kContract = 3,
+  // Reduce dimensions are present in exactly one input; and not in the output
+  // and are summed over prior to Tensor contraction.
+  kReduce = 4,
+};
+
 // Parses and validates an einsum equation in explicit form.
-Status ParseEinsumEquation(const string& equation,
-                           gtl::InlinedVector<string, 2>* input_subscripts,
-                           string* output_subscript);
+Status ValidateEinsumEquation(const string& equation,
+                              gtl::InlinedVector<string, 2>* input_subscripts,
+                              string* output_subscript);
+
+// Parses and validates the equation and the input shapes. Single character
+// labels are integerized and we populate input and output label subscripts
+// and corresponding counts. Also create the mapping from (named) labels to
+// their EinsumDimensionType.
+Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
+                           Labels* output_labels,
+                           std::vector<EinsumDimensionType>* label_types,
+                           OperandLabelCounts* input_label_counts,
+                           LabelCounts* output_label_counts,
+                           gtl::InlinedVector<bool, 2>* input_has_ellipsis,
+                           bool* output_has_ellipsis);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_EINSUM_OP_UTIL_H_

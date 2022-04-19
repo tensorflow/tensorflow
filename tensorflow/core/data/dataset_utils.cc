@@ -89,6 +89,7 @@ constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
+constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -152,6 +153,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kMapParallelizationOpt);
     } else {
       optimization_disabled->insert(kMapParallelizationOpt);
+    }
+  }
+  if (optimization_options.optional_filter_parallelization_case() ==
+      OptimizationOptions::kFilterParallelization) {
+    if (optimization_options.filter_parallelization()) {
+      optimization_enabled->insert(kFilterParallelizationOpt);
+    } else {
+      optimization_disabled->insert(kFilterParallelizationOpt);
     }
   }
   if (optimization_options.optional_map_fusion_case() ==
@@ -811,6 +820,7 @@ absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
+      kFilterParallelizationOpt,
       kMapParallelizationOpt,
       kInjectPrefetchOpt,
       kInjectPrefetchEligibleOpt};
@@ -889,7 +899,8 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
-REGISTER_DATASET_EXPERIMENT("initial_parallelism_value", 50);
+REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 0);
+REGISTER_DATASET_EXPERIMENT("initial_parallelism_value", 100);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 }  // namespace

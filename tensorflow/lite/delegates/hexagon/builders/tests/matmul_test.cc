@@ -126,7 +126,7 @@ TEST_P(QuantizedFullyConnectedOpTest, TestQuantizedInt8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -154,7 +154,7 @@ TEST_P(QuantizedFullyConnectedOpTest, TestQuantizedUint8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -181,7 +181,7 @@ TEST_P(QuantizedFullyConnectedOpTest, TestQuantizedUint8_NoBias) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -208,7 +208,7 @@ TEST_P(QuantizedFullyConnectedOpTest, TestQuantizedInt8_NoBias) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -236,7 +236,7 @@ TEST_P(QuantizedFullyConnectedOpTest, TestQuantizedInt8_NonConstWeights) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -264,7 +264,7 @@ TEST_P(QuantizedFullyConnectedOpTest, TestQuantizedUint8_NonConstWeights) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -300,7 +300,7 @@ TEST(QuantizedFullyConnected, TestQuantizedUint8_NonConstWeights_Relu6) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();

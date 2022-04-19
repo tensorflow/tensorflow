@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -79,7 +79,8 @@ class SinkConstantsToControlFlowPass
 
 // TODO(hinsu): Rename this pass and move to a different file along with the
 // generalization to make all ops isolated from above.
-std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSinkConstantsToControlFlowPass() {
   return std::make_unique<SinkConstantsToControlFlowPass>();
 }
 

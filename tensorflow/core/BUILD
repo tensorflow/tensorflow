@@ -535,6 +535,13 @@ cc_library(
 )
 
 cc_library(
+    name = "framework_types_hdr",
+    hdrs = ["//tensorflow/core/framework:types.h"],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "framework_lite",
     hdrs = [
         "//tensorflow/core/framework:numeric_types.h",
@@ -654,6 +661,7 @@ cc_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:ragged_ops",
+        "//tensorflow/core/kernels:random_index_shuffle_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
         "//tensorflow/core/kernels:random_binomial_op",
@@ -696,6 +704,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_swish_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_mish_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
@@ -998,6 +1007,7 @@ filegroup(
         "ragged_ops",
         "composite_tensor_ops_op_lib",
         "random_grad_op_lib",
+        "random_index_shuffle_ops_op_lib",
         "random_ops_op_lib",
         "resource_variable_ops_op_lib",
         "risc_ops_op_lib",
@@ -1314,7 +1324,7 @@ cc_library(
             "-lpthread",
         ],
     }),
-    visibility = ["//tensorflow/python:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
@@ -1895,6 +1905,18 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "cell_reader_test",
+    size = "small",
+    srcs = ["//tensorflow/core/lib/monitoring:cell_reader_test.cc"],
+    deps = [
+        ":test",
+        ":test_main",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:counter",
     ],
 )
 

@@ -119,6 +119,11 @@ class BufferBase : public TensorBuffer {
     }
   }
 
+  // Returns the type of the underlying memory.
+  AllocatorMemoryType GetMemoryType() const override {
+    return alloc_->GetMemoryType();
+  }
+
  protected:
   void RecordDeallocation() {
     LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data()),

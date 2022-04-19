@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -57,7 +57,7 @@ void Optimize::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow.js dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

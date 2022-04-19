@@ -159,8 +159,6 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      # TODO(b/143910018) Remove graph_parents in V3.
-      self._set_graph_parents([self._reflection_axis])
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""

@@ -24,6 +24,9 @@ include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 
+class HLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
@@ -35,12 +38,12 @@ include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 // TODO(hinsu): Support operands with complex element types separately using
 // the following formula.
 //   acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
-def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
+def : Pat<(CHLO_AcosOp NonComplexElementType:$input),
   (HLO_SelectOp
     (HLO_CompareOp
       $input,
       (HLO_ConstantLike<"-1"> $input),
-      HLO_COMPARISON_DIRECTION_NE,
+      HLO_ComparisonDirectionValue<"NE">,
       (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_MulOp
@@ -69,12 +72,12 @@ def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
 // If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
 // log(2*x) = log(2) + log(x).  (Note this works because negative x never
 // overflows; x < -1 simply yields nan.
-def : Pat<(HLOClient_AcoshOp NonComplexElementType:$input),
+def : Pat<(CHLO_AcoshOp NonComplexElementType:$input),
   (HLO_SelectOp
     (HLO_CompareOp
       $input,
       (HLO_ConstantLike<"-1"> $input),
-      HLO_COMPARISON_DIRECTION_LT,
+      HLO_ComparisonDirectionValue<"LT">,
       (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_ConstantLike<"NAN"> $input),
@@ -84,7 +87,7 @@ def : Pat<(HLOClient_AcoshOp NonComplexElementType:$input),
         (HLO_SqrtOp
           (HLO_ConstantLikeMaxFiniteValue $input)
         ),
-        HLO_COMPARISON_DIRECTION_GE,
+        HLO_ComparisonDirectionValue<"GE">,
         (HLO_DEFAULT_COMPARISON_TYPE)
       ),
       (HLO_AddOp
@@ -115,7 +118,7 @@ def : Pat<(HLOClient_AcoshOp NonComplexElementType:$input),
 
 // Expand asin to MHLO dialect as follows:
 //   asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
-def : Pat<(HLOClient_AsinOp NonComplexElementType:$input),
+def : Pat<(CHLO_AsinOp NonComplexElementType:$input),
   (HLO_MulOp
     (HLO_ConstantLike<"2"> $input),
     (HLO_Atan2Op
@@ -152,7 +155,7 @@ def : Pat<(HLOClient_AsinOp NonComplexElementType:$input),
 // If x is negative, the above would give us some trouble; we can't approximate
 // the result as x + abs(x) = 0 but we are saved by the fact that asinh(-x) =
 // -asinh(x).
-def : Pat<(HLOClient_AsinhOp NonComplexElementType:$input),
+def : Pat<(CHLO_AsinhOp NonComplexElementType:$input),
   (HLO_MulOp
     (HLO_SignOp $input),
     (HLO_SelectOp
@@ -161,7 +164,7 @@ def : Pat<(HLOClient_AsinhOp NonComplexElementType:$input),
         (HLO_SqrtOp
           (HLO_ConstantLikeMaxFiniteValue $input)
         ),
-        HLO_COMPARISON_DIRECTION_GE,
+        HLO_ComparisonDirectionValue<"GE">,
         (HLO_DEFAULT_COMPARISON_TYPE)
       ),
       (HLO_AddOp
@@ -176,7 +179,7 @@ def : Pat<(HLOClient_AsinhOp NonComplexElementType:$input),
         (HLO_CompareOp
           (HLO_AbsOp $input),
           (HLO_ConstantLike<"1"> $input),
-          HLO_COMPARISON_DIRECTION_LE,
+          HLO_ComparisonDirectionValue<"LE">,
           (HLO_DEFAULT_COMPARISON_TYPE)
         ),
         (HLO_Log1pOp
@@ -222,7 +225,7 @@ def : Pat<(HLOClient_AsinhOp NonComplexElementType:$input),
 
 // Express `atan` as
 //   atan(x) = atan2(x, 1)
-def : Pat<(HLOClient_AtanOp $input),
+def : Pat<(CHLO_AtanOp $input),
   (HLO_Atan2Op
     $input,
     (HLO_ConstantLike<"1"> $input)
@@ -231,12 +234,12 @@ def : Pat<(HLOClient_AtanOp $input),
 // Express `atanh` as follows:
 //   atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
 //   atanh(x) = nan                          otherwise
-def : Pat<(HLOClient_AtanhOp NonComplexElementType:$input),
+def : Pat<(CHLO_AtanhOp NonComplexElementType:$input),
   (HLO_SelectOp
     (HLO_CompareOp
       (HLO_AbsOp $input),
       (HLO_ConstantLike<"1"> $input),
-      HLO_COMPARISON_DIRECTION_GT,
+      HLO_ComparisonDirectionValue<"GT">,
       (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_ConstantLike<"NAN"> $input),
@@ -253,39 +256,39 @@ def : Pat<(HLOClient_AtanhOp NonComplexElementType:$input),
 
 // Express `conj` as
 //   conj(x) = (re(x), -im(x)).
-def : Pat<(HLOClient_ConjOp $v),
+def : Pat<(CHLO_ConjOp $v),
           (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
 
 // Express `is_inf` as
 //   is_inf(x) = is_pos_inf(|x|)
-def : Pat<(HLOClient_IsInfOp NonComplexElementType:$input),
-  (HLOClient_IsPosInfOp
+def : Pat<(CHLO_IsInfOp NonComplexElementType:$input),
+  (CHLO_IsPosInfOp
     (HLO_AbsOp $input)
   )>;
 
 // Express `is_pos_inf` as
 //   is_pos_inf(x) = (x == +inf)
-def : Pat<(HLOClient_IsPosInfOp NonComplexElementType:$input),
+def : Pat<(CHLO_IsPosInfOp NonComplexElementType:$input),
   (HLO_CompareOp
     $input,
     (HLO_ConstantLikePosInfValue $input),
-    HLO_COMPARISON_DIRECTION_EQ,
+    HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
 
 // Express `is_neg_inf` as
 //   is_neg_inf(x) = (x == -inf)
-def : Pat<(HLOClient_IsNegInfOp NonComplexElementType:$input),
+def : Pat<(CHLO_IsNegInfOp NonComplexElementType:$input),
   (HLO_CompareOp
     $input,
     (HLO_ConstantLikeNegInfValue $input),
-    HLO_COMPARISON_DIRECTION_EQ,
+    HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
 
 // Express tan in MHLO dialect as
 //   tan(x) = sin(x) / cos(x).
-def : Pat<(HLOClient_TanOp NonComplexElementType:$input),
+def : Pat<(CHLO_TanOp NonComplexElementType:$input),
   (HLO_DivOp
     (HLO_SinOp $input),
     (HLO_CosOp $input)

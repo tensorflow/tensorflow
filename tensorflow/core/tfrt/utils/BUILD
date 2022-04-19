@@ -33,6 +33,7 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        ":error_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",
@@ -169,6 +170,7 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
@@ -187,7 +189,9 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
         "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/cc:while_loop",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",
@@ -223,7 +227,7 @@ cc_library(
     name = "bridge_graph_analysis",
     hdrs = ["bridge_graph_analysis.h"],
     visibility = [
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
     ],
     deps = if_google([
         "//learning/brain/mlir/bridge:graph_analysis",

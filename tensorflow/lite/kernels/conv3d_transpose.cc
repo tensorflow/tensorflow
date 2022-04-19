@@ -171,7 +171,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   const TfLiteTensor* bias = GetInput(context, node, 3);
   if (bias) {
     TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input->type);
-    TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 4));
+    TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 3));
   }
 
   // GenericOptimized kernel currently doesn't support dilation.

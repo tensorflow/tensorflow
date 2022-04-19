@@ -154,14 +154,23 @@ StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
     }
     return result;
   }
-  int64_t split_provider_index = 0;
+  int64_t num_sources = 0;
   for (size_t i = 0; i < inputs.size(); ++i) {
-    IteratorContext::Params params(ctx);
     if (inputs[i]->num_sources() < 0) {
       return errors::FailedPrecondition(
           "Failed to determine the number of sources for dataset of type ",
           inputs[i]->type_string());
     }
+    num_sources += inputs[i]->num_sources();
+  }
+  if (num_sources != ctx->split_providers().size()) {
+    return errors::FailedPrecondition(
+        "Attempted to feed ", ctx->split_providers().size(),
+        " split providers into a dataset with ", num_sources, " sources");
+  }
+  int64_t split_provider_index = 0;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    IteratorContext::Params params(ctx);
     params.split_providers.clear();
     for (int j = 0; j < inputs[i]->num_sources(); ++j) {
       params.split_providers.push_back(
@@ -169,12 +178,6 @@ StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
     }
     split_provider_index += inputs[i]->num_sources();
     result.emplace_back(std::move(params));
-  }
-  if (split_provider_index != ctx->split_providers().size()) {
-    return errors::FailedPrecondition("Attempted to feed ",
-                                      ctx->split_providers().size(),
-                                      " split providers into a dataset with ",
-                                      split_provider_index, " sources");
   }
   return result;
 }

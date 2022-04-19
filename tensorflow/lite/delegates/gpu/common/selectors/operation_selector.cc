@@ -213,7 +213,7 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
     for (int i = 0; i < 4; ++i) {
       gpu_subgraph->new_tensors.push_back(
           {BHWC(1, tex_size.y, tex_size.x, 4),
-           TensorDescriptor(op_def.GetDataType(), TensorStorageType::TEXTURE_2D,
+           TensorDescriptor(weights_desc.type, TensorStorageType::TEXTURE_2D,
                             Layout::HWC)});
     }
   } else {
@@ -222,7 +222,7 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
     gpu_subgraph->new_tensors.push_back(
         {BHWC(1, 1, 1,
               GetTotalElementsCountForLayout(weights_desc, weights_shape)),
-         TensorDescriptor(op_def.GetDataType(), TensorStorageType::BUFFER,
+         TensorDescriptor(weights_desc.type, TensorStorageType::BUFFER,
                           Layout::HWC)});
   }
   OperationDef conv_def = conv_op.operation->GetDefinition();
@@ -241,12 +241,79 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
+void AddConvSharedWeights(
+    const Convolution2DAttributes& attr, const WeightsDescription& weights_desc,
+    std::vector<SharedWeightsConvDesc>* shared_conv_weights,
+    GPUOperationsSubgraph* gpu_subgraph) {
+  SharedWeightsConvDesc shared_weights_desc;
+  shared_weights_desc.weights_id = attr.weights.id;
+  shared_weights_desc.desc = weights_desc;
+  int index = -1;
+  for (int i = 0; i < shared_conv_weights->size(); ++i) {
+    if ((*shared_conv_weights)[i] == shared_weights_desc) {
+      index = i;
+      break;
+    }
+  }
+  if (index != -1) {
+    const auto& new_ids = (*shared_conv_weights)[index].global_const_ids;
+    for (int i = 0; i < new_ids.size(); ++i) {
+      gpu_subgraph->operations[0].input_ids.push_back(new_ids[i]);
+    }
+  } else {
+    shared_conv_weights->push_back(shared_weights_desc);
+    if (weights_desc.layout ==
+            WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
+        weights_desc.layout ==
+            WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
+      // weights are 4x textures 2d
+      uint2 tex_size = Get2dResourceSize(weights_desc, attr.weights.shape);
+      const int flt_count =
+          GetTotalElementsCountForLayout(weights_desc, attr.weights.shape);
+
+      std::vector<uint8_t> weights_data(flt_count * SizeOf(weights_desc.type));
+      RearrangeWeights(attr.weights, weights_desc,
+                       absl::MakeSpan(weights_data));
+      int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
+      for (int i = 0; i < 4; ++i) {
+        TensorDescriptor weights_tensor = TensorDescriptor(
+            weights_desc.type, TensorStorageType::TEXTURE_2D, Layout::HWC);
+        weights_tensor.SetBHWCShape(BHWC(1, tex_size.y, tex_size.x, 4));
+        weights_tensor.SetData(std::vector<uint8_t>(
+            weights_data.data() + sub_size * i,
+            weights_data.data() + sub_size * i + sub_size));
+        gpu_subgraph->new_tensors.push_back(
+            {weights_tensor.GetBHWCShape(), std::move(weights_tensor)});
+        gpu_subgraph->operations[0].input_ids.push_back(-1 - i);
+        shared_conv_weights->back().global_const_ids.push_back(-1 - i);
+      }
+    } else {
+      // weights are single buffer
+      TensorDescriptor weights_tensor = TensorDescriptor(
+          weights_desc.type, TensorStorageType::BUFFER, Layout::HWC);
+      const int flt_count =
+          GetTotalElementsCountForLayout(weights_desc, attr.weights.shape);
+      weights_tensor.SetBHWCShape(BHWC(1, 1, 1, flt_count));
+      std::vector<uint8_t> weights_data =
+          std::vector<uint8_t>(flt_count * SizeOf(weights_desc.type));
+      RearrangeWeights(attr.weights, weights_desc,
+                       absl::MakeSpan(weights_data));
+      weights_tensor.SetData(std::move(weights_data));
+      gpu_subgraph->new_tensors.push_back(
+          {weights_tensor.GetBHWCShape(), std::move(weights_tensor)});
+      gpu_subgraph->operations[0].input_ids.push_back(-1);
+      shared_conv_weights->back().global_const_ids.push_back(-1);
+    }
+  }
+}
+
 }  // namespace
 
 absl::Status GPUOperationFromNodePart0(
     const GpuInfo& gpu_info, const OperationDef& op_def, ModelHints hints,
     const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
-    const Node& node, GPUOperationsSubgraph* gpu_subgraph) {
+    const Node& node, std::vector<SharedWeightsConvDesc>* shared_conv_weights,
+    GPUOperationsSubgraph* gpu_subgraph) {
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
   auto op_type = OperationTypeFromString(node.operation.type);
@@ -334,6 +401,9 @@ absl::Status GPUOperationFromNodePart0(
                             inputs[0]->id, -1, outputs[0]->id, gpu_subgraph,
                             &attr);
     }
+    case OperationType::CAST:
+      SelectCast(op_def, gpu_info, gpu_op);
+      return absl::OkStatus();
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
       const int max_inputs = gpu_info.GetMaxImageArguments() - 8;
@@ -395,14 +465,6 @@ absl::Status GPUOperationFromNodePart0(
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (attr.groups != 1) {
-          const int src_group_size = attr.weights.shape.i;
-          const int dst_group_size = attr.weights.shape.o / attr.groups;
-          if (src_group_size % 4 != 0 || dst_group_size % 4 != 0) {
-            return absl::UnimplementedError(
-                "No support of grouped convolution for this channels sizes.");
-          }
-        }
         if (!hints.Check(ModelHints::kNoWinogradOptimizations) &&
             WinogradFromNode(gpu_info, inputs, outputs, op_def, hints,
                              input_shape, output_shape, attr, gpu_subgraph)
@@ -410,8 +472,28 @@ absl::Status GPUOperationFromNodePart0(
           return absl::OkStatus();
         } else {
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-          *gpu_op =
-              SelectConvolution(attr, output_shape, gpu_info, op_def, hints);
+          if (attr.groups != 1) {
+            gpu_subgraph->operations[0].name = "convolution_2d_grouped";
+          }
+          if (!shared_conv_weights || attr.weights.id == -1) {
+            *gpu_op =
+                SelectConvolution(attr, output_shape, gpu_info, op_def, hints);
+          } else {
+            // Using convolutions with shared weights
+            WeightsDescription weights_desc;
+            const BHWC weights_shape_bhwc(
+                attr.weights.shape.o, attr.weights.shape.h,
+                attr.weights.shape.w, attr.weights.shape.i);
+            OperationDef conv_temp_def = op_def;
+            conv_temp_def.src_tensors.push_back(
+                {op_def.src_tensors[0].data_type, TensorStorageType::BUFFER,
+                 Layout::HWC});
+            *gpu_op = SelectConvolutionWithDynamicWeights(
+                attr, weights_shape_bhwc, output_shape, gpu_info, conv_temp_def,
+                hints, &weights_desc);
+            AddConvSharedWeights(attr, weights_desc, shared_conv_weights,
+                                 gpu_subgraph);
+          }
           (*gpu_op)->flops_ =
               GetConvolutionFlops(output_shape, attr.weights.shape);
           return absl::OkStatus();
@@ -587,8 +669,13 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::SPLIT: {
+      std::vector<int> channels;
+      channels.reserve(outputs.size());
+      for (const auto& output : outputs) {
+        channels.push_back(output->tensor.shape.c);
+      }
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
-      SelectSplit(attr, op_def, gpu_op);
+      SelectSplit(attr, channels, op_def, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::TILE: {
@@ -664,14 +751,14 @@ absl::Status GPUOperationFromNodePart0(
   }
 }
 
-absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
-                                  const OperationDef& op_def, ModelHints hints,
-                                  const std::vector<Value*>& inputs,
-                                  const std::vector<Value*>& outputs,
-                                  const Node& node,
-                                  GPUOperationsSubgraph* gpu_subgraph) {
+absl::Status GPUOperationFromNode(
+    const GpuInfo& gpu_info, const OperationDef& op_def, ModelHints hints,
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
+    const Node& node, std::vector<SharedWeightsConvDesc>* shared_conv_weights,
+    GPUOperationsSubgraph* gpu_subgraph) {
   RETURN_IF_ERROR(GPUOperationFromNodePart0(gpu_info, op_def, hints, inputs,
-                                            outputs, node, gpu_subgraph));
+                                            outputs, node, shared_conv_weights,
+                                            gpu_subgraph));
   for (auto& gpu_op : gpu_subgraph->operations) {
     if (gpu_op.name.empty()) {
       gpu_op.name = node.operation.type + " " + std::to_string(node.id);

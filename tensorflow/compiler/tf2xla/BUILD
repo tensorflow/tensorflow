@@ -47,6 +47,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
+        "//waymo/ml/deploy/benchmark/...",
     ],
 )
 
@@ -180,9 +181,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -691,6 +692,7 @@ cc_library(
     hdrs = ["tf2xla_util.h"],
     visibility = [":friends"],
     deps = [
+        ":frontend_attributes_util",
         ":sharding_util",
         ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
@@ -943,6 +945,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
@@ -950,25 +953,19 @@ cc_library(
 
 cc_library(
     name = "mlir_bridge_pass_registration",
-    srcs = if_libtpu(
-        if_false = [
-            "mlir_bridge_pass_registration.cc",
-        ],
-        if_true = [],
-    ),
+    srcs = [
+        "mlir_bridge_pass_registration.cc",
+    ],
     visibility = [
         # We define a new TPU device in TFRT to enable TFRT TPU Runtime.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
         ":internal",
     ],
-    deps = if_libtpu(
-        if_false = [
-            ":mlir_bridge_pass",
-            "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
-            "//tensorflow/core:core_cpu",
-        ],
-        if_true = [],
-    ),
+    deps = [
+        ":mlir_bridge_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
+        "//tensorflow/core:core_cpu",
+    ],
     alwayslink = 1,
 )
 
@@ -1039,6 +1036,7 @@ tf_cc_test(
     deps = [
         ":functionalize_control_flow",
         ":test_util",
+        ":tf2xla_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

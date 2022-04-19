@@ -16,13 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_DISTRIBUTED_MANAGER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_DISTRIBUTED_MANAGER_H_
 
+#include <string>
+
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -35,30 +36,27 @@ class EagerContextDistributedManager
     : public ImmediateExecutionDistributedManager {
  public:
   explicit EagerContextDistributedManager(EagerContext* context)
-      : context_(context),
-        coordination_service_agent_(CreateCoordinationServiceAgent()) {}
+      : context_(context) {}
 
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
                               int keep_alive_secs) override;
 
   Status EnableCollectiveOps(const ServerDef& server_def) override;
 
-  Status EnableCoordinationService(const std::string& service_type,
-                                   const WorkerEnv* worker_env,
-                                   const ServerDef& server_def,
-                                   WorkerCacheInterface* worker_cache) override;
-
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 
   CoordinationServiceAgent* GetCoordinationServiceAgent() override {
-    return coordination_service_agent_.get();
+    return coordination_service_agent_;
+  }
+  void SetCoordinationServiceAgent(CoordinationServiceAgent* agent) {
+    coordination_service_agent_ = agent;
   }
 
  private:
   EagerContext* context_;
-  std::unique_ptr<CoordinationServiceInterface> coordination_service_;
-  std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
+  // Owned by context_->GetServer()->worker_env()->session_mgr.
+  CoordinationServiceAgent* coordination_service_agent_ = nullptr;
 };
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

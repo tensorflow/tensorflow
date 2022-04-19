@@ -84,6 +84,16 @@ def ApproxTopK(
     recall_target: Optional[float],
     aggregate_to_topk: Optional[bool],
     reduction_input_size_override: Optional[int]) -> XlaOp: ...
+def ApproxTopKFallback(
+    builder: XlaBuilder,
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
+    top_k: int,
+    reduction_dim: int,
+    comparator: XlaComputation,
+    recall_target: Optional[float],
+    aggregate_to_topk: Optional[bool],
+    reduction_input_size_override: Optional[int]) -> XlaOp: ...
 def ApproxTopKReductionOutputSize(
     input_size: int,
     rank: int,

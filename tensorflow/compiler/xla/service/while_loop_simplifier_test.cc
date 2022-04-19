@@ -879,5 +879,81 @@ TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
       new_while_shape));
 }
 
+// A group of elements are inter-dependent, but unused as by the output.
+TEST_F(WhileLoopSimplifierTest, LoopWithUnusedGroupSimplified) {
+  const std::string hlo_string = R"(
+  HloModule LoopWithUnusedGroupSimplified
+  LoopWithUnusedGroupSimplified.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    constant.1 = s32[] constant(1)
+    gte0 = s32[] get-tuple-element(loop_var), index=1
+    gte1 = s32[] get-tuple-element(loop_var), index=2
+    add = s32[] add(gte0, gte1)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(constant.1, add, add)
+  }
+  LoopWithUnusedGroupSimplified.cond {
+    param = (s32[], s32[], s32[]) parameter(0)
+    gte.cond = s32[] get-tuple-element(param), index=0
+    constant.3 = s32[] constant(1)
+    ROOT lt = pred[] compare(gte.cond, constant.3), direction=LT
+  }
+  ENTRY  LoopWithUnusedGroupSimplified {
+    constant.2 = s32[] constant(0)
+    tuple.1 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+    while = (s32[], s32[], s32[]) while(tuple.1),
+      condition=LoopWithUnusedGroupSimplified.cond,
+      body=LoopWithUnusedGroupSimplified.body
+    ROOT gte = s32[] get-tuple-element(while), index=0
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+  EXPECT_TRUE(HloDCE().Run(m.get()).ok());
+  auto m_while = AllOf(op::While(), op::Shape("(s32[])"));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              op::GetTupleElement(m_while));
+}
+
+// An element is not a passthrough, but it's not used by other elements.
+TEST_F(WhileLoopSimplifierTest, LoopWithUnusedNonPassthroughElementSimplified) {
+  const std::string hlo_string = R"(
+  HloModule LoopWithUnusedNonPassthroughElementSimplified
+  LoopWithUnusedNonPassthroughElementSimplified.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    constant.1 = s32[] constant(1)
+    gte0 = s32[] get-tuple-element(loop_var), index=1
+    gte1 = s32[] get-tuple-element(loop_var), index=2
+    add = s32[] add(gte0, gte1)
+    add2 = s32[] add(gte0, gte0)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(constant.1, add2, add)
+  }
+  LoopWithUnusedNonPassthroughElementSimplified.cond {
+    param = (s32[], s32[], s32[]) parameter(0)
+    gte.cond = s32[] get-tuple-element(param), index=0
+    constant.3 = s32[] constant(1)
+    ROOT lt = pred[] compare(gte.cond, constant.3), direction=LT
+  }
+  ENTRY  LoopWithUnusedNonPassthroughElementSimplified {
+    constant.2 = s32[] constant(0)
+    tuple.1 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+    while = (s32[], s32[], s32[]) while(tuple.1),
+      condition=LoopWithUnusedNonPassthroughElementSimplified.cond,
+      body=LoopWithUnusedNonPassthroughElementSimplified.body
+    gte2 = s32[] get-tuple-element(while), index=0
+    gte3 = s32[] get-tuple-element(while), index=1
+    ROOT tuple.2 = (s32[], s32[]) tuple(gte2, gte3)
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+  EXPECT_TRUE(HloDCE().Run(m.get()).ok());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              AllOf(op::While(), op::Shape("(s32[], s32[])")));
+}
+
 }  // namespace
 }  // namespace xla

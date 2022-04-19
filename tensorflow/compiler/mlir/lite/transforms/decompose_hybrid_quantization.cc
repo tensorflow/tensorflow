@@ -38,8 +38,10 @@ namespace {
 
 class DecomposeHybridQuantizationPass
     : public PassWrapper<DecomposeHybridQuantizationPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeHybridQuantizationPass)
+
   DecomposeHybridQuantizationPass() = default;
   DecomposeHybridQuantizationPass(const DecomposeHybridQuantizationPass &) {}
 
@@ -145,17 +147,18 @@ void DecomposeHybridQuantizationPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
   auto func = getOperation();
-  patterns.insert<DequantizeConverter<TFL::Conv2DOp>,
-                  DequantizeConverter<TFL::Conv3DOp>,
-                  DequantizeConverter<TFL::DepthwiseConv2DOp>,
-                  DequantizeConverter<TFL::FullyConnectedOp>,
-                  DequantizeConverter<TFL::TransposeConvOp>>(ctx);
+  patterns.add<DequantizeConverter<TFL::Conv2DOp>,
+               DequantizeConverter<TFL::Conv3DOp>,
+               DequantizeConverter<TFL::DepthwiseConv2DOp>,
+               DequantizeConverter<TFL::FullyConnectedOp>,
+               DequantizeConverter<TFL::TransposeConvOp>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeHybridQuantizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDecomposeHybridQuantizationPass() {
   return std::make_unique<DecomposeHybridQuantizationPass>();
 }
 

@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -43,7 +43,10 @@ namespace tac {
 namespace {
 
 struct DeviceTransformGPUPass
-    : public mlir::PassWrapper<DeviceTransformGPUPass, OperationPass<FuncOp>> {
+    : public mlir::PassWrapper<DeviceTransformGPUPass,
+                               OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DeviceTransformGPUPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-device-transform-gpu";
   }
@@ -70,7 +73,7 @@ RewritePatternSet GetHardwareRewritePatternsGPU(MLIRContext* context) {
   return gpu_hardware.GetTransformations(context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceTransformGPUPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceTransformGPUPass() {
   return std::make_unique<DeviceTransformGPUPass>();
 }
 

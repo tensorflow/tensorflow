@@ -183,9 +183,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TFLiteOperation<kernel_type, int16_t, OpType>(context, node, op_context);
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Maximum.",
-                           op_context.output->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %d is currently not supported by Maximum.",
+                         op_context.output->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

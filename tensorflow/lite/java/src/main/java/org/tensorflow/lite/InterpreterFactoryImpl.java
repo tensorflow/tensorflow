@@ -19,6 +19,8 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.annotations.UsedByReflection;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
+import org.tensorflow.lite.nnapi.NnApiDelegateImpl;
 
 /** Package-private factory class for constructing InterpreterApi instances. */
 @UsedByReflection("InterpreterFactory.java")
@@ -52,4 +54,9 @@ class InterpreterFactoryImpl implements InterpreterFactoryApi {
   private static native String nativeRuntimeVersion();
 
   private static native String nativeSchemaVersion();
+
+  @Override
+  public NnApiDelegate.PrivateInterface createNnApiDelegateImpl(NnApiDelegate.Options options) {
+    return new NnApiDelegateImpl(options);
+  }
 }

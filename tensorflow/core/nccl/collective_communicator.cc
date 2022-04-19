@@ -87,7 +87,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
-  auto* gpu_info = col_ctx->op_ctx->device()->tensorflow_gpu_device_info();
+  auto* gpu_info =
+      col_ctx->op_ctx->device()->tensorflow_accelerator_device_info();
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
       col_ctx->output, col_ctx->col_params->default_rank,

@@ -7,8 +7,8 @@ quantization).
 
 As of TensorFlow 1.7, it is recommended to use a pretrained network from
 TensorFlow Hub, using the new version of this example found in the location
-above, as explained in TensorFlow's revised [image retraining
-tutorial](https://www.tensorflow.org/tutorials/image_retraining).
+above, as explained in TensorFlow's revised
+[image retraining tutorial](https://www.tensorflow.org/hub/tutorials/tf2_image_retraining).
 
 Older versions of this example (using frozen GraphDefs instead of
 TensorFlow Hub modules) are available in the release branches of

@@ -920,6 +920,10 @@ void RecordElementSize(const std::vector<Tensor> element,
 }
 
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
+  VLOG(3) << "IteratorGetNextOp enter. iter_id=" << ctx->frame_iter().iter_id;
+  auto cleanup = gtl::MakeCleanup([ctx] {
+    VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -949,6 +953,12 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
+  VLOG(3) << "IteratorGetNextAsOptionalOp enter. iter_id="
+          << ctx->frame_iter().iter_id;
+  auto cleanup = gtl::MakeCleanup([ctx] {
+    VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
+            << ctx->frame_iter().iter_id;
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(

@@ -414,8 +414,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeAsyncInterleaveManyNode(std::move(args),
-                                                /*parameters=*/{});
+      return model::MakeAsyncInterleaveManyNode(
+          std::move(args),
+          /*parameters=*/{
+              model::MakeParameter(kCycleLength, nullptr,
+                                   /*min=*/dataset()->cycle_length_,
+                                   /*max=*/dataset()->cycle_length_)});
     }
 
     Status SaveInternal(SerializationContext* ctx,

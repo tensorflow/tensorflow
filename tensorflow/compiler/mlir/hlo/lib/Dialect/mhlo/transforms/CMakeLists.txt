@@ -53,6 +53,7 @@ add_mlir_library(ChloPasses
 
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
+  collapse_elementwise_map.cc
   expand_hlo_tuples.cc
   group_reduction_dimensions.cc
   legalize_shape_computations.cc
@@ -66,7 +67,6 @@ add_mlir_library(MhloPasses
   materialize_broadcasts_pass.cc
   merge_assuming_ops.cc
   mhlo_canonicalize_reduction.cc
-  mhlo_fusion.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
@@ -109,11 +109,11 @@ add_mlir_library(MhloToLhloConversion
   LmhloDialect
   MLIRArithmetic
   MLIRArithmeticTransforms
+  MLIRFuncTransforms
   MLIRIR
   MLIRPass
   MLIRMath
   MLIRShapeOpsTransforms
-  MLIRStandardOpsTransforms
   MLIRTransformUtils
   MLIRTransforms
 )
@@ -130,6 +130,26 @@ add_mlir_library(MhloTypeConversion
 
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MhloTypeConversion
+  MLIRIR
+  MLIRPass
+  MLIRMath
+  MLIRTransforms
+  MLIRTransformUtils
+)
+
+add_mlir_library(MhloToArithmeticConversion
+  hlo_legalize_to_arithmetic.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
@@ -217,6 +237,7 @@ target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
   MhloToLhloConversion
+  MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard
   MhloToLinalg

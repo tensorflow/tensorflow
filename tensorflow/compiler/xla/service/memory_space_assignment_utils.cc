@@ -94,6 +94,47 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
          absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
 }
 
+/*static*/ void MemorySpaceAssignmentUtils::HoistEntryParameters(
+    HloModule& module) {
+  CHECK(module.has_schedule());
+  HloSchedule& schedule = module.schedule();
+  const HloComputation* entry = module.entry_computation();
+  CHECK(schedule.is_computation_scheduled(entry));
+  const HloInstructionSequence& sequence = schedule.sequence(entry);
+  bool hoisting_needed = false;
+  int parameters_found = 0;
+  for (HloInstruction* instruction : sequence.instructions()) {
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      ++parameters_found;
+    }
+    if (parameters_found == entry->num_parameters()) {
+      break;
+    }
+    if (instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTuple &&
+        instruction->opcode() != HloOpcode::kConstant &&
+        instruction->opcode() != HloOpcode::kBitcast) {
+      hoisting_needed = true;
+      break;
+    }
+  }
+
+  if (!hoisting_needed) {
+    return;
+  }
+  HloInstructionSequence new_sequence;
+  for (HloInstruction* parameter : entry->parameter_instructions()) {
+    new_sequence.push_back(parameter);
+  }
+  for (HloInstruction* instruction : sequence.instructions()) {
+    if (instruction->opcode() != HloOpcode::kParameter) {
+      new_sequence.push_back(instruction);
+    }
+  }
+  CHECK_EQ(new_sequence.size(), sequence.size());
+  schedule.set_sequence(entry, new_sequence);
+}
+
 /*static*/ void MemorySpaceAssignmentUtils::HoistConstantOperations(
     HloModule& module) {
   CHECK(module.has_schedule());

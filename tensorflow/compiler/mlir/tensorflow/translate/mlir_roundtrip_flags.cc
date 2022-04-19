@@ -55,8 +55,8 @@ std::string GraphImportConfig::str() const {
   ss << "\nconvert_legacy_fed_inputs: " << convert_legacy_fed_inputs;
   ss << "\ngraph_as_function: " << graph_as_function;
   ss << "\nupgrade_legacy: " << upgrade_legacy;
-  ss << "\nrestrict_functionalization_to_tpu_nodes: "
-     << restrict_functionalization_to_tpu_nodes;
+  ss << "\nrestrict_functionalization_to_compiled_nodes: "
+     << restrict_functionalization_to_compiled_nodes;
   ss << "\nenable_shape_inference: " << enable_shape_inference;
   ss << "\nunconditionally_use_set_output_shapes: "
      << unconditionally_use_set_output_shapes;

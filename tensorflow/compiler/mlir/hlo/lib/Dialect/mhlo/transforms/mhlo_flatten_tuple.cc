@@ -211,7 +211,7 @@ struct FlattenWhileOp : public RewritePattern {
 template <typename T>
 void ApplyFlatteningTuplePatterns(T target, MLIRContext *context) {
   RewritePatternSet patterns(context);
-  patterns.insert<FlattenWhileOp>(context);
+  patterns.add<FlattenWhileOp>(context);
   (void)applyPatternsAndFoldGreedily(target, std::move(patterns));
 }
 
@@ -226,7 +226,7 @@ class FlattenTuplePass : public FlattenTuplePassBase<FlattenTuplePass> {
 
 static PassRegistration<FlattenTuplePass> pass;
 
-std::unique_ptr<OperationPass<FuncOp>> createFlattenTuplePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass() {
   return std::make_unique<FlattenTuplePass>();
 }
 

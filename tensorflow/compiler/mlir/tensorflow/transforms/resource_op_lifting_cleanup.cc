@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/resource_op_lifting_cleanup.h"
 
 #include "llvm/ADT/BitVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -116,12 +117,12 @@ void EliminateUnusedResults(
 // Clones a function if it cannot be patched in place. Clone if there are
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
-FuncOp CloneFunctionIfNeeded(FuncOp func) {
+func::FuncOp CloneFunctionIfNeeded(func::FuncOp func) {
   ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
-  FuncOp cloned = func.clone();
+  func::FuncOp cloned = func.clone();
   cloned.setPrivate();
   cloned.setName(
       StringAttr::get(func.getContext(), func.getName().str() + "_lifted"));
@@ -133,12 +134,13 @@ FuncOp CloneFunctionIfNeeded(FuncOp func) {
 // branch functions to (a) drop the ununsed return values, and (b) as a result
 // if some argument becomes unused in all branches, drop that argument and the
 // corresponding if/case input operand.
-void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
+void EliminateUnusedResultsForIfCase(Operation *op,
+                                     ArrayRef<func::FuncOp> branches) {
   // Clone branch functions if needed since we will be mutating them.
-  SmallVector<FuncOp, 2> cloned_branches;
+  SmallVector<func::FuncOp, 2> cloned_branches;
   cloned_branches.reserve(branches.size());
-  for (FuncOp func : branches) {
-    FuncOp cloned = CloneFunctionIfNeeded(func);
+  for (func::FuncOp func : branches) {
+    func::FuncOp cloned = CloneFunctionIfNeeded(func);
     cloned_branches.push_back(cloned);
     if (cloned == func) continue;
     // Patch up the op attribute to point to the new function.
@@ -156,7 +158,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   for (OpResult result : llvm::reverse(op->getResults())) {
     if (!result.use_empty()) continue;
     int result_idx = result.getResultNumber();
-    for (FuncOp func : cloned_branches)
+    for (func::FuncOp func : cloned_branches)
       func.front().getTerminator()->eraseOperand(result_idx);
   }
 
@@ -164,7 +166,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // those as well.
   int num_args = cloned_branches[0].getNumArguments();
   llvm::BitVector used_args(num_args);
-  for (FuncOp func : branches) {
+  for (func::FuncOp func : branches) {
     for (BlockArgument arg : func.getArguments()) {
       if (!arg.use_empty()) used_args.set(arg.getArgNumber());
     }
@@ -176,7 +178,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
     // Traverse arguments backward so that indices to be deleted stay unchanged.
     for (int idx = num_args - 1; idx >= 0; --idx) {
       if (used_args.test(idx)) continue;
-      for (FuncOp func : cloned_branches) func.eraseArgument(idx);
+      for (func::FuncOp func : cloned_branches) func.eraseArgument(idx);
       // For if/case, arg #i of attached function corresponds to operand #i+1
       op->eraseOperand(idx + 1);
     }
@@ -184,7 +186,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
 
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
-  for (FuncOp func : cloned_branches) {
+  for (func::FuncOp func : cloned_branches) {
     func.setType(
         FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
                           func.front().getTerminator()->getOperandTypes()));
@@ -195,8 +197,8 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
 
 // Eliminated unused results from a functional while.
 void EliminateUnusedResultsForWhile(TF::WhileOp op) {
-  FuncOp cond = op.cond_function();
-  FuncOp body = op.body_function();
+  func::FuncOp cond = op.cond_function();
+  func::FuncOp body = op.body_function();
 
   llvm::BitVector can_eliminate(op.getNumResults());
   for (OpResult result : llvm::reverse(op.getResults())) {
@@ -216,8 +218,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   if (can_eliminate.empty()) return;
 
-  FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
-  FuncOp cloned_body = CloneFunctionIfNeeded(body);
+  func::FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
+  func::FuncOp cloned_body = CloneFunctionIfNeeded(body);
   op.condAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
   op.bodyAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
@@ -232,7 +234,7 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
   }
 
   // Patch up branch function types.
-  for (FuncOp func : {cloned_cond, cloned_body}) {
+  for (func::FuncOp func : {cloned_cond, cloned_body}) {
     func.setType(
         FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
                           func.front().getTerminator()->getOperandTypes()));
@@ -243,7 +245,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 // For resource results, replace all uses with the resource input to which the
 // result is tied to. After this, resource outputs of this op are expected to be
 // unused.
-LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
+LogicalResult ForwardCommonArgToOutput(Operation *op,
+                                       ArrayRef<func::FuncOp> branches,
                                        ValueRange branch_args,
                                        bool &has_resource_result) {
   // For while, the branch inputs and outputs need to match.
@@ -257,7 +260,7 @@ LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
     has_resource_result = true;
     int result_idx = result.getResultNumber();
     Optional<int> common_arg_index;
-    for (FuncOp func : branches) {
+    for (func::FuncOp func : branches) {
       auto ret = func.front().getTerminator();
       auto block_arg = ret->getOperand(result_idx).dyn_cast<BlockArgument>();
       if (!block_arg) {
@@ -289,9 +292,9 @@ LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
 // Canonicalizes a function if. Forwards input argument to resource results and
 // then deletes the resource results.
 LogicalResult CanonicalizeFunctionalIfCase(Operation *op,
-                                           ArrayRef<FuncOp> branches,
+                                           ArrayRef<func::FuncOp> branches,
                                            ValueRange branch_args) {
-  for (FuncOp func : branches) {
+  for (func::FuncOp func : branches) {
     if (failed(CleanupAndCanonicalize(func))) return failure();
   }
 
@@ -311,7 +314,7 @@ LogicalResult CanonicalizeFunctionalIfCase(Operation *op,
 // Canonicalizes a functional while. Forwards common argument to results and
 // drop resource results if posible.
 LogicalResult CanonicalizeFunctionalWhile(TF::WhileOp op) {
-  for (FuncOp func : {op.cond_function(), op.body_function()}) {
+  for (func::FuncOp func : {op.cond_function(), op.body_function()}) {
     if (failed(CleanupAndCanonicalize(func))) return failure();
   }
 
@@ -422,7 +425,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
       result = CanonicalizeFunctionalIfCase(
           op, {if_op.then_function(), if_op.else_function()}, if_op.input());
     } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
-      SmallVector<FuncOp, 4> branches;
+      SmallVector<func::FuncOp, 4> branches;
       case_op.get_branch_functions(branches);
       result = CanonicalizeFunctionalIfCase(case_op, branches, case_op.input());
     } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
@@ -438,7 +441,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
       // For while region, the body input and output arg should match.
       result = CanonicalizeWhileRegion(while_region);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      func::FuncOp func = dyn_cast<func::FuncOp>(call.resolveCallable());
       if (!func) return WalkResult::interrupt();
       result = CleanupAndCanonicalize(func);
     }
@@ -452,7 +455,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
 
 namespace TF {
 
-LogicalResult CleanupAndCanonicalizeForResourceOpLifting(FuncOp func) {
+LogicalResult CleanupAndCanonicalizeForResourceOpLifting(func::FuncOp func) {
   return CleanupAndCanonicalize(func);
 }
 

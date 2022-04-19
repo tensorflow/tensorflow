@@ -3,6 +3,7 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":build_defs.bzl", "build_test")
 load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
 
@@ -389,6 +390,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xnnpack_plugin",
+    hdrs = ["c/experimental/acceleration/configuration/xnnpack_plugin.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:xnnpack_plugin",
+    ],
+)
+
 custom_c_library_with_tflite(
     name = "custom_c_api_example",
     testonly = True,
@@ -409,6 +423,7 @@ build_test(
         ":custom_c_api_example",
         ":delegate_plugin",
         ":nnapi_plugin",
+        ":xnnpack_plugin",
     ],
 )
 
@@ -472,6 +487,16 @@ cc_library(
     deps = [
         "//tensorflow/lite/java/jni",
     ],
+)
+
+#------------------------------------------------------------------------------
+# Bazel rules
+
+bzl_library(
+    name = "cc_library_with_tflite_bzl",
+    srcs = ["cc_library_with_tflite.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/lite:build_def_bzl"],
 )
 
 #------------------------------------------------------------------------------

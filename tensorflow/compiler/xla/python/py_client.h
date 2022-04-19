@@ -92,7 +92,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
   explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
-  ~PyClient();
+  virtual ~PyClient();
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
@@ -145,6 +145,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
+
+  StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device);
 
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,

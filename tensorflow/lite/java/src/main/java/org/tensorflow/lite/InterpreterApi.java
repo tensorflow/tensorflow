@@ -221,7 +221,7 @@ public interface InterpreterApi extends AutoCloseable {
       PREFER_SYSTEM_OVER_APPLICATION,
     };
 
-    /** Method for specifying where to get the TF Lite runtime implementation from. */
+    /** Specify where to get the TF Lite runtime implementation from. */
     public Options setRuntime(TfLiteRuntime runtime) {
       this.runtime = runtime;
       return this;

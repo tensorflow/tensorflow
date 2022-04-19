@@ -762,12 +762,16 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     result = save.save(root, save_dir)
     self.assertIsNone(result)
 
+
+class DependencyTest(test.TestCase):
+  """Tests for deserialization dependencies (saving-related only)."""
+
   def test_validate_dependencies(self):
 
     class Valid(tracking.AutoTrackable):
 
-      def _deserialization_dependencies(self):
-        return {name: ref for name, ref in self._trackable_children().items()}
+      def _deserialization_dependencies(self, children):
+        return children
 
     root = Valid()
     root.f = variables.Variable(1.0)
@@ -779,7 +783,8 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
     class Invalid(tracking.AutoTrackable):
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"untracked": untracked}
     invalid_deps = Invalid()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -793,7 +798,8 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       def __init__(self):
         self.cycle_ref = None
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"cycle_ref": self.cycle_ref}
     cycle1 = Invalid()
     cycle2 = Invalid()

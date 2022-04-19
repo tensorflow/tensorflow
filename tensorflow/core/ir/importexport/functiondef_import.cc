@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
 
+#include <string>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -120,7 +122,7 @@ class ValueMapManager {
                          builder_.getStringAttr(node_name));
       state.types.push_back(placeholder_ty_);
       state.types.push_back(control_ty_);
-      Operation* placeholder = builder_.createOperation(state);
+      Operation* placeholder = builder_.create(state);
       base_operation.push_back(placeholder->getResult(1));
       base_operation.push_back(placeholder->getResult(0));
     }
@@ -162,9 +164,10 @@ Status ImportNodes(ValueMapManager value_manager,
       cast<TFGraphDialect>(context->getLoadedDialect("tfg"));
   StringAttr device_attr = tfgDialect->getDeviceAttrIdentifier();
   StringAttr name_attr = tfgDialect->getNameAttrIdentifier();
+  StringAttr fulltype_attr = tfgDialect->getFullTypeAttrIdentifier();
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
-    DVLOG(0) << "Processing node " << node.name() << "\n";
+    DVLOG(1) << "Processing node " << node.name() << "\n";
     if (node.op().empty()) return InvalidArgument("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
@@ -185,8 +188,14 @@ Status ImportNodes(ValueMapManager value_manager,
     }
     state.addAttribute(device_attr, StringAttr::get(context, node.device()));
     state.addAttribute(name_attr, StringAttr::get(context, node.name()));
+    if (node.has_experimental_type()) {
+      TF_ASSIGN_OR_RETURN(
+          tf_type::FullTypeAttr type,
+          ConvertAttribute(node.experimental_type(), builder, tfgDialect));
+      state.addAttribute(fulltype_attr, type);
+    }
 
-    Operation* op = builder.createOperation(state);
+    Operation* op = builder.create(state);
 
     StringRef node_name = node.name();
     {
@@ -208,7 +217,7 @@ Status ImportNodes(ValueMapManager value_manager,
 }
 
 tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
-    const OpDef::ArgDef& arg, Builder builder) {
+    const OpDef::ArgDef& arg, TFGraphDialect* tfgDialect, Builder builder) {
   NamedAttrList input_attrs;
   StringAttr arg_name = builder.getStringAttr(arg.name());
   input_attrs.set("tfg.name", arg_name);
@@ -235,6 +244,12 @@ tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
     input_attrs.append("tfg.handle_data", handle_data);
   }
   if (arg.is_ref()) input_attrs.append("tfg.is_ref", builder.getUnitAttr());
+  if (arg.has_experimental_full_type()) {
+    TF_ASSIGN_OR_RETURN(
+        tf_type::FullTypeAttr type,
+        ConvertAttribute(arg.experimental_full_type(), builder, tfgDialect));
+    input_attrs.append("tfg.experimental_full_type", type);
+  }
   return input_attrs;
 }
 
@@ -250,9 +265,7 @@ Status ImportGenericFunction(
   Location unknown_loc = builder.getUnknownLoc();
   MLIRContext* context = builder.getContext();
 
-  auto func_op = builder.create<GraphFuncOp>(unknown_loc, signature.name(),
-                                             FunctionType::get(context, {}, {}),
-                                             /*generic=*/true);
+  auto func_op = builder.create<GraphFuncOp>(unknown_loc);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
@@ -277,8 +290,8 @@ Status ImportGenericFunction(
       if (attr.name().empty())
         return InvalidArgument("Missing name for function attribute");
       if (!attr.type().empty())
-        attr_def.append(
-            builder.getNamedAttr("type", builder.getStringAttr(attr.type())));
+        attr_def.append(builder.getNamedAttr(
+            "function_type", builder.getStringAttr(attr.type())));
       if (attr.has_default_value()) {
         TF_ASSIGN_OR_RETURN(
             Attribute attr,
@@ -345,7 +358,7 @@ Status ImportGenericFunction(
   for (const auto& enumerated_input : llvm::enumerate(signature.input_arg())) {
     const OpDef::ArgDef& input = enumerated_input.value();
     TF_ASSIGN_OR_RETURN(NamedAttrList input_attrs,
-                        ConvertArgDefAttributes(input, builder));
+                        ConvertArgDefAttributes(input, tfgDialect, builder));
     auto it = func.arg_attr().find(enumerated_input.index());
     if (it != func.arg_attr().end()) {
       NamedAttrList arg_attr;
@@ -372,7 +385,7 @@ Status ImportGenericFunction(
   int res_num = 0;
   for (const OpDef::ArgDef& output : signature.output_arg()) {
     TF_ASSIGN_OR_RETURN(NamedAttrList output_attrs,
-                        ConvertArgDefAttributes(output, builder));
+                        ConvertArgDefAttributes(output, tfgDialect, builder));
     res_attrs.push_back(output_attrs.getDictionary(context));
     ++res_num;
   }
@@ -484,16 +497,17 @@ Status ImportGenericFunction(
       unknown_loc, operands.slice(0, func.ret_size()),
       operands.slice(func.ret_size()));
 
-  // Now that we have all the types, set the function signature as the "type"
-  // attribute.
+  // Now that we have all the types, set the function signature as the
+  // "function_type" attribute.
   {
     SmallVector<Type> arg_types_with_ctl;
     for (Type type : arg_types) {
       arg_types_with_ctl.push_back(type);
       arg_types_with_ctl.push_back(control_ty);
     }
-    attrs.append("type", TypeAttr::get(builder.getFunctionType(
-                             arg_types_with_ctl, ret_op.getOperandTypes())));
+    attrs.append("function_type",
+                 TypeAttr::get(builder.getFunctionType(
+                     arg_types_with_ctl, ret_op.getOperandTypes())));
   }
   func_op->setAttrs(attrs);
   return Status::OK();

@@ -82,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 18
+// next: 19
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -139,6 +139,10 @@ message OptimizationOptions {
   // Whether to fuse shuffle and repeat transformations.
   oneof optional_shuffle_and_repeat_fusion {
     bool shuffle_and_repeat_fusion = 17;
+  }
+  // Whether to parallelize stateless filter transformations.
+  oneof optional_filter_parallelization {
+    bool filter_parallelization = 18;
   }
 }
 

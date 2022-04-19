@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -45,6 +45,8 @@ class WhileOutlinePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(WhileOutlinePass)
+
   explicit WhileOutlinePass() {}
 
   StringRef getArgument() const final {
@@ -79,7 +81,7 @@ std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
 bool IsAlreadyOutlined(WhileOp while_op) {
   auto just_call = [](Region& region) {
     auto it = region.front().begin();
-    if (!isa<CallOp>(*it)) return false;
+    if (!isa<func::CallOp>(*it)) return false;
     ++it;
     if (!isa<YieldOp>(*it)) return false;
     return true;
@@ -111,10 +113,11 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
   return false;
 }
 
-FuncOp CreateOutlineFunc(StringRef name, Region& region,
-                         bool passthru_extra_args, int num_loop_carried,
-                         const llvm::SetVector<Value>& extern_values,
-                         const SmallVectorImpl<Type>& types, Location loc) {
+func::FuncOp CreateOutlineFunc(StringRef name, Region& region,
+                               bool passthru_extra_args, int num_loop_carried,
+                               const llvm::SetVector<Value>& extern_values,
+                               const SmallVectorImpl<Type>& types,
+                               Location loc) {
   MLIRContext* context = loc.getContext();
   OpBuilder builder(context);
   FunctionType type;
@@ -127,7 +130,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
     type = FunctionType::get(context, types, result_types);
   }
 
-  auto outlined_func = builder.create<FuncOp>(loc, name, type);
+  auto outlined_func = builder.create<func::FuncOp>(loc, name, type);
   outlined_func.getBody().takeBody(region);
   Region& func_region = outlined_func.getBody();
 
@@ -170,7 +173,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
   } else {
     args.append(yield_op->operand_begin(), yield_op->operand_end());
   }
-  b.create<ReturnOp>(yield_op->getLoc(), args);
+  b.create<func::ReturnOp>(yield_op->getLoc(), args);
   yield_op->erase();
   SymbolTable(region.getParentOfType<ModuleOp>()).insert(outlined_func);
   outlined_func.setPrivate();
@@ -192,7 +195,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
     new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
-  auto call = b.create<CallOp>(loc, func, new_operands);
+  auto call = b.create<func::CallOp>(loc, func, new_operands);
   b.create<YieldOp>(loc, call.getResults());
 }
 

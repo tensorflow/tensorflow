@@ -19,6 +19,8 @@
 set -e
 set -x
 
+source tensorflow/tools/ci_build/release/common.sh
+
 function die() {
   echo "$@" 1>&2 ; exit 1;
 }
@@ -51,7 +53,6 @@ function bazel_build_wheel {
   install_macos_pip_deps
 
   # Update .tf_configure.bazelrc with venv python path for bazel
-  # shellcheck disable=SC2155
   export PYTHON_BIN_PATH="$(which python)"
   yes "" | ./configure
 
@@ -78,14 +79,20 @@ function bazel_build_wheel {
   echo "Size of the PIP wheel file built: ${WHL_SIZE}"
   write_to_sponge TF_INFO_WHL_SIZE "${WHL_SIZE}"
 
-  # change 10_15 to 10_14
-  NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
-  mv "${WHL_PATH}" "${NEW_WHL_PATH}"
-  WHL_PATH=${NEW_WHL_PATH}
+  # Build the wheel (with cpu flag)
+  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${PIP_WHL_FLAGS} --cpu
 
+  for WHL_PATH in $(ls "${PIP_WHL_DIR}"/*.whl); do
+    # change 10_15 to 10_14
+    NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+    mv "${WHL_PATH}" "${NEW_WHL_PATH}"
+    WHL_PATH=${NEW_WHL_PATH}
+  done
   # Deactivate Virtual Env
   deactivate || source deactivate
   rm -rf ${VENV_DIR}
+  # Reset Python bin path
+  export PYTHON_BIN_PATH="$(which python)"
 }
 
 function bazel_test_wheel {
@@ -99,7 +106,6 @@ function bazel_test_wheel {
   rm -rf "${VENV_DIR}"
 
   python -m venv ${VENV_DIR} && source ${VENV_DIR}/bin/activate
-  # shellcheck disable=SC2155
   export PYTHON_BIN_PATH="$(which python)"
 
   # Create Temp Dir to run the test
@@ -151,6 +157,8 @@ function bazel_test_wheel {
   # Deactivate Virtual Env
   deactivate || source deactivate
   rm -rf ${VENV_DIR}
+  # Reset Python bin path
+  export PYTHON_BIN_PATH="$(which python)"
 }
 
 function upload_nightly_wheel {

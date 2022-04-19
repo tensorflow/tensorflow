@@ -510,6 +510,38 @@ retained with length 1.
   let hasVerifier = 1;
 }
 
+def TF_ApproxTopKOp : TF_Op<"ApproxTopK", [NoSideEffect]> {
+  let summary = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let description = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Array to search. Must be at least 1-D of the floating type}]>:$input,
+
+    Confined<I64Attr, [IntMinValue<0>]>:$k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_dimension,
+    DefaultValuedAttr<F32Attr, "0.95f">:$recall_target,
+    DefaultValuedAttr<BoolAttr, "true">:$is_max_k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_input_size_override,
+    DefaultValuedAttr<BoolAttr, "true">:$aggregate_to_topk
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{The min/max k values along the `reduction_dimension` of the `input` operand.
+The dimension are the same as the `input` operand except for the
+`reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+dimension is `k`; otherwise, it is greater equals to `k` where the size is
+implementation-defined.}]>:$values,
+    Res<TF_Int32Tensor, [{The indices of `values` along the `reduction_dimension` of the `input` operand.}]>:$indices
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
 
@@ -554,7 +586,7 @@ use dimension = 0.}]>:$dimension
   );
 
   let results = (outs
-    TensorOf<[TF_Int16, TF_Int32, TF_Int64]>:$output
+    TensorOf<[TF_Int16, TF_Int32, TF_Int64, TF_Uint16]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2108,6 +2140,21 @@ as `t`. The maximum value to clip by.}]>:$clip_value_max
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = "Assign group keys based on group assignment.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$group_assignment,
+    TF_Int32Tensor:$device_index,
+    TF_Int32Tensor:$base_key
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key
+  );
+}
+
 def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
   let summary = "Receives a tensor value broadcast from another device.";
 
@@ -2475,7 +2522,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_Conv2DOp : TF_Op<"Conv2D", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_LayoutSensitiveInterface]> {
+def TF_Conv2DOp : TF_Op<"Conv2D", [InferTensorType, NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
   }];
@@ -2617,7 +2664,7 @@ w.r.t. the input of the convolution.}]>:$output
   }];
 }
 
-def TF_Conv3DOp : TF_Op<"Conv3D", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_Conv3DOp : TF_Op<"Conv3D", [InferTensorType, NoSideEffect]> {
   let summary = [{
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
   }];
@@ -3807,6 +3854,59 @@ def TF_DummySeedGeneratorOp : TF_Op<"DummySeedGenerator", []> {
   );
 }
 
+def TF_DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"DynamicEnqueueTPUEmbeddingArbitraryTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
+  let summary = [{
+Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
+  }];
+
+  let description = [{
+embedding_indices[i] and aggregation_weights[i] correspond
+to the ith feature.
+
+The tensors at corresponding positions in the three input lists (sample_indices,
+embedding_indices and aggregation_weights) must have the same shape, i.e. rank 1
+with dim_size() equal to the total number of lookups into the table described by
+the corresponding feature.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 2 Tensors specifying the training example to which the
+corresponding embedding_indices and aggregation_weights values belong.
+If the size of its first dimension is 0, we assume each embedding_indices
+belongs to a different sample. Both int32 and int64 are allowed and will
+be converted to int32 internally.
+
+Or a list of rank 1 Tensors specifying the row splits for splitting
+embedding_indices and aggregation_weights into rows. It corresponds to
+ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
+enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
+the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
+passed to the op Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$sample_indices_or_row_splits,
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 1 Tensors, indices into the embedding
+tables. Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$embedding_indices,
+    Arg<Variadic<TF_F32OrF64Tensor>, [{A list of rank 1 Tensors containing per training
+example aggregation weights. Both float32 and float64 are allowed and will
+be converted to float32 internally.}]>:$aggregation_weights,
+    Arg<TF_StrTensor, [{A string input that overrides the mode specified in the
+TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_override,
+    Arg<TF_Int32Tensor, [{The TPU device to use. Should be >= 0 and less than the number
+of TPU cores in the task on which the node is placed.}]>:$device_ordinal,
+
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T1 = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T2 = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_DynamicStitchOp : TF_Op<"DynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
   let summary = [{
 Interleave the values from the `data` tensors into a single tensor.
@@ -4509,7 +4609,7 @@ dimension of size 1 added.}]>:$output
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Expm1Op : TF_Op<"Expm1", [InferTensorType, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -10406,8 +10506,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
     // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
   }];
 
@@ -14144,10 +14244,10 @@ This op returns an `output` tensor with the `shape` you specify. This op is the
 inverse of the `tf.gather_nd` operator which extracts values or slices from a
 given tensor.
 
-This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
-zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
 is identical to calling
-`tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
+`tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
 
 If `indices` contains duplicates, the duplicate `values` are accumulated
 (summed).
@@ -18261,40 +18361,40 @@ Adds sparse `updates` to an existing tensor according to `indices`.
   let description = [{
 This operation creates a new tensor by adding sparse `updates` to the passed
 in `tensor`.
-This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the updates
-are added onto an existing tensor (as opposed to a variable). If the memory
-for the existing tensor cannot be re-used, a copy is made and updated.
+This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the
+updates are added onto an existing tensor (as opposed to a variable). If the
+memory for the existing tensor cannot be re-used, a copy is made and updated.
 
 `indices` is an integer tensor containing indices into a new tensor of shape
 `tensor.shape`.  The last dimension of `indices` can be at most the rank of
 `tensor.shape`:
 
-    indices.shape[-1] <= tensor.shape.rank
+```
+indices.shape[-1] <= tensor.shape.rank
+```
 
 The last dimension of `indices` corresponds to indices into elements
 (if `indices.shape[-1] = tensor.shape.rank`) or slices
 (if `indices.shape[-1] < tensor.shape.rank`) along dimension
 `indices.shape[-1]` of `tensor.shape`.  `updates` is a tensor with shape
 
-    indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+```
+indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+```
 
-The simplest form of tensor_scatter_add is to add individual elements to a
+The simplest form of `tensor_scatter_nd_add` is to add individual elements to a
 tensor by index. For example, say we want to add 4 elements in a rank-1
 tensor with 8 elements.
 
 In Python, this scatter add operation would look like this:
 
-```python
-    indices = tf.constant([[4], [3], [1], [7]])
-    updates = tf.constant([9, 10, 11, 12])
-    tensor = tf.ones([8], dtype=tf.int32)
-    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
-    print(updated)
-```
-
-The resulting tensor would look like this:
-
-    [1, 12, 1, 11, 10, 1, 1, 13]
+>>> indices = tf.constant([[4], [3], [1], [7]])
+>>> updates = tf.constant([9, 10, 11, 12])
+>>> tensor = tf.ones([8], dtype=tf.int32)
+>>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+>>> updated
+<tf.Tensor: shape=(8,), dtype=int32,
+numpy=array([ 1, 12,  1, 11, 10,  1,  1, 13], dtype=int32)>
 
 We can also, insert entire slices of a higher rank tensor all at once. For
 example, if we wanted to insert two slices in the first dimension of a
@@ -18302,25 +18402,21 @@ rank-3 tensor with two matrices of new values.
 
 In Python, this scatter add operation would look like this:
 
-```python
-    indices = tf.constant([[0], [2]])
-    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
-                            [7, 7, 7, 7], [8, 8, 8, 8]],
-                           [[5, 5, 5, 5], [6, 6, 6, 6],
-                            [7, 7, 7, 7], [8, 8, 8, 8]]])
-    tensor = tf.ones([4, 4, 4],dtype=tf.int32)
-    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
-    print(updated)
-```
+>>> indices = tf.constant([[0], [2]])
+>>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+...                         [7, 7, 7, 7], [8, 8, 8, 8]],
+...                        [[5, 5, 5, 5], [6, 6, 6, 6],
+...                         [7, 7, 7, 7], [8, 8, 8, 8]]])
+>>> tensor = tf.ones([4, 4, 4],dtype=tf.int32)
+>>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+>>> updated
+<tf.Tensor: shape=(4, 4, 4), dtype=int32,
+numpy=array([[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+             [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+             [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+             [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]], dtype=int32)>
 
-The resulting tensor would look like this:
-
-    [[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
-     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
-     [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
-     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]
-
-Note that on CPU, if an out of bound index is found, an error is returned.
+Note: on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, the index is ignored.
   }];
 
@@ -19468,7 +19564,7 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [InferTensorType, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Helper operator for performing XLA-style broadcasts";
 
   let description = [{
@@ -19755,6 +19851,24 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
 
   TF_DerivedOperandTypeAttr K = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_XlaOptimizationBarrierOp : TF_Op<"XlaOptimizationBarrier", [NoSideEffect]> {
+  let summary = "Wraps the XLA OptimizationBarrier operator.";
+
+  let description = [{
+Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A Tuple of Arrays of any type.}]>:$input
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
 def TF_XlaPadOp : TF_Op<"XlaPad", [NoSideEffect, TF_NoConstantFold]> {
@@ -20047,7 +20161,7 @@ key: A unique identifier for this region used to match up host transfers.
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [InferTensorType, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Make a static dimension into a xla bounded dynamic dimension.";
 
   let description = [{
@@ -20725,7 +20839,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 
   let extraClassDeclaration = [{
-    FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+    func::FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
   }];
 
   let hasVerifier = 1;

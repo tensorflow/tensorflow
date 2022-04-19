@@ -50,7 +50,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     OperationState state(op->getLoc(), "mhlo_test.return_type_components",
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
-    auto *new_op = rewriter.createOperation(state);
+    auto *new_op = rewriter.create(state);
     for (const auto &it : llvm::enumerate(components)) {
       if (it.value().hasRank()) {
         new_op->setAttr((StringRef("dims") + Twine(it.index())).str(),
@@ -93,8 +93,8 @@ struct TestInferShapedTypeMethodsPass
   }
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
+    patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
+    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
@@ -104,7 +104,8 @@ struct TestInferShapedTypeMethodsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 

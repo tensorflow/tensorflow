@@ -110,7 +110,7 @@ LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
   if (op->getNumResults() != 1) return failure();
 
   // Find a preceding `assuming` op.
-  auto the_block = op->getBlock();
+  auto *the_block = op->getBlock();
   Operation *prev = op->getPrevNode();
   while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();
@@ -450,7 +450,7 @@ struct MergeAssumingOpsPass
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       EliminateDuplicateCstrBroadcastableOps,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
@@ -474,7 +474,7 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createMergeAssumingOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass() {
   return std::make_unique<MergeAssumingOpsPass>();
 }
 

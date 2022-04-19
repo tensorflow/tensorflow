@@ -417,7 +417,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   }];
 
   let arguments = (ins
-    TypeAttr:$type,
+    TypeAttrOf<FunctionType>:$function_type,
     StrAttr:$sym_name
   );
 
@@ -438,16 +438,16 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let extraClassDeclaration = [{
     /// Returns the type of this function.
     /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getType() {
-      return getTypeAttr().getValue().cast<FunctionType>();
+    FunctionType getFunctionType() {
+      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
     LogicalResult verifyType() { return success(); }
 
     /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     // Get the names of all defined attributes, including both derived and
     // non-derived ones.
@@ -456,7 +456,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
       for (auto& attr : (*this)->getAttrs()) {
         all_attrs.insert(attr.getName().strref());
       }
-      for (const auto& operand : llvm::enumerate(getType().getInputs())) {
+      for (const auto& operand : llvm::enumerate(getArgumentTypes())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(
             operand.index(), kAttrArgumentNameAttr)) {
           all_attrs.insert(attr_name.getValue());
@@ -467,8 +467,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   }];
 
   let hasVerifier = 1;
-  let parser = [{ return ParseFuncOp(parser, &result); }];
-  let printer = [{ PrintFuncOp(p, *this); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,

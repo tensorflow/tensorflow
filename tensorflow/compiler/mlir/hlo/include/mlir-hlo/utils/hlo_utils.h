@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
+#ifndef MLIR_HLO_UTILS_HLO_UTILS_H
+#define MLIR_HLO_UTILS_HLO_UTILS_H
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -96,17 +97,12 @@ std::string LmhloToMhloOpName(llvm::StringRef op_name,
 bool IsSequenceStartingWith0(Attribute attr);
 
 // Returns the argument index for the giving FuncOp and its operand value.
-int64_t getArgumentIndex(mlir::FuncOp op, Value value);
+int64_t getArgumentIndex(func::FuncOp op, Value value);
 
 /// Computes the memory usage of the given allocations.
 std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs);
 
-// Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
-DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr);
-DenseIntElementsAttr GetI64ElementsAttr(llvm::ArrayRef<int64_t> values,
-                                        Builder* builder);
-
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
+#endif  // MLIR_HLO_UTILS_HLO_UTILS_H

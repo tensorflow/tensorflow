@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 
@@ -120,19 +120,18 @@ struct AllocationInfo {
     // The previous gap ending, initially set to 0.
     size_t gapEnd = 0;
 
-    for (auto useRangeIter = userangeIntervals->begin();
+    for (const auto *useRangeIter = userangeIntervals->begin();
          useRangeIter < userangeIntervals->end(); ++useRangeIter) {
       // Add a gap if the end is not equal to the start.
       if (gapEnd < useRangeIter->start)
-        gaps.push_back(std::make_pair(
-            UseInterval(gapEnd, useRangeIter->start - 1), numSegments));
+        gaps.emplace_back(UseInterval(gapEnd, useRangeIter->start - 1),
+                          numSegments);
       gapEnd = useRangeIter->end + 1;
     }
 
     // Add a dummy gap behind the last use of the buffer.
     if (gapEnd < maxUserangeId) {
-      gaps.push_back(
-          std::make_pair(UseInterval(gapEnd, maxUserangeId), numSegments));
+      gaps.emplace_back(UseInterval(gapEnd, maxUserangeId), numSegments);
     }
 
     return gaps;
@@ -474,12 +473,12 @@ struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createBufferPackingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
     unsigned window_size) {
   return std::make_unique<BufferPackingPass>(window_size);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createMemoryCountPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass() {
   return std::make_unique<MemoryCountPass>();
 }
 

@@ -39,7 +39,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -57,7 +57,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -91,7 +91,7 @@ namespace {
 
 void AddOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<AddToAddV2>(context);
+  results.add<AddToAddV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -146,7 +146,7 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
 
 void AddV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+  results.add<AddV2OfNegLeft, AddV2OfNegRight>(context);
 }
 
 OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
@@ -199,7 +199,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
 
 void AssertOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<AssertWithTrue>(context);
+  results.add<AssertWithTrue>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -306,12 +306,12 @@ LogicalResult BatchMatMulV2Op::verify() { return Verify(*this); }
 
 void BatchMatMulOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.insert<BatchMatMulToV2>(context);
+  results.add<BatchMatMulToV2>(context);
 }
 
 void BatchMatMulV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                                   MLIRContext *context) {
-  results.insert<BatchMatMulV2ToMatMul>(context);
+  results.add<BatchMatMulV2ToMatMul>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -460,7 +460,7 @@ LogicalResult BatchToSpaceOp::verify() {
 
 void BatchToSpaceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                  MLIRContext *context) {
-  results.insert<BatchToSpaceToBatchToSpaceND>(context);
+  results.add<BatchToSpaceToBatchToSpaceND>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -586,7 +586,7 @@ LogicalResult BiasAddGradOp::verify() {
 
 void BiasAddV1Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<BiasAddV1ToBiasAdd>(context);
+  results.add<BiasAddV1ToBiasAdd>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -595,7 +595,7 @@ void BiasAddV1Op::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void BitcastOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.insert<BitcastSameType, BitcastNested>(context);
+  results.add<BitcastSameType, BitcastNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -802,7 +802,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
 void CaseOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
+  results.add<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
 }
 
 static LogicalResult VerifyCaseOpBase(Operation *op, Value branch_index) {
@@ -830,14 +830,14 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()
              << "expects " << branch_name(branch.index()) << " ("
              << branch.value() << ") to point to a defined function";
 
-    FunctionType branch_type = branch_func.getType();
+    FunctionType branch_type = branch_func.getFunctionType();
     std::string desc = branch_name(branch.index()) + " input";
     TypeRangeWithDesc branch_input{branch_type.getInputs(), desc};
     if (failed(VerifyTypeRangesAreCompatible(op, branch_input, input)))
@@ -979,7 +979,7 @@ class CaseOrIfRegionEliminatePassThrough
 
 void CaseRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<CaseOrIfRegionEliminatePassThrough<TF::CaseRegionOp>>(context);
+  results.add<CaseOrIfRegionEliminatePassThrough<TF::CaseRegionOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1021,7 +1021,7 @@ LogicalResult ConcatV2Op::verify() { return Verify(*this); }
 
 void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<ConvertToConcatV2>(context);
+  results.add<ConvertToConcatV2>(context);
 }
 
 namespace {
@@ -1079,7 +1079,7 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
                                     concat_unary_operands.getResult(),
                                     op.getResult().getType(),
                                     ArrayRef<NamedAttribute>());
-  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+  Operation *new_unary_op = rewriter.create(new_unary_op_state);
 
   rewriter.replaceOp(op, new_unary_op->getResults());
 
@@ -1233,35 +1233,46 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
   }
 
-  // New lhs and rhs concatenation axis
-  auto axis_type =
-      mlir::RankedTensorType::get({}, mlir::getElementTypeOrSelf(axis_attr));
-  DenseIntElementsAttr lhs_attr, rhs_attr;
-  if (axis_type.getElementType().isInteger(32)) {
-    lhs_attr = DenseIntElementsAttr::get(
-        axis_type, static_cast<int32_t>(hoist_params->lhs_axis));
-    rhs_attr = DenseIntElementsAttr::get(
-        axis_type, static_cast<int32_t>(hoist_params->rhs_axis));
-  } else {
-    assert(axis_type.getElementType().isInteger(64));
-    lhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis);
-    rhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis);
-  }
-  auto lhs_axis = rewriter.create<TF::ConstOp>(loc, lhs_attr);
-  auto rhs_axis = rewriter.create<TF::ConstOp>(loc, rhs_attr);
+  // Concatenates `args` along `axis`.
+  auto pack_or_concat = [&](bool is_scalar, Type result_type, ValueRange args,
+                            int64_t axis) {
+    // Use `PackOp` for scalar concatenation because `ConcatV2Op` doesn't
+    // support scalar concatenation.
+    if (is_scalar) {
+      auto pack = rewriter.create<PackOp>(loc, result_type, args,
+                                          rewriter.getI64IntegerAttr(axis));
+      return pack.getResult();
+    }
+
+    // New concatenation axis.
+    auto axis_type = RankedTensorType::get({}, getElementTypeOrSelf(axis_attr));
+    DenseIntElementsAttr attr;
+    if (axis_type.getElementType().isInteger(32)) {
+      attr = DenseIntElementsAttr::get(axis_type, static_cast<int32_t>(axis));
+    } else {
+      assert(axis_type.getElementType().isInteger(64));
+      attr = DenseIntElementsAttr::get(axis_type, axis);
+    }
+    auto axis_const = rewriter.create<TF::ConstOp>(loc, attr);
+
+    auto concat =
+        rewriter.create<ConcatV2Op>(loc, result_type, args, axis_const);
+    return concat.getResult();
+  };
 
   // Concatenate binary ops operands on the new axis.
-  auto lhs_concat = rewriter.create<ConcatV2Op>(
-      loc, hoist_params->lhs_concat_type, hoist_params->lhs_args, lhs_axis);
-  auto rhs_concat = rewriter.create<ConcatV2Op>(
-      loc, hoist_params->rhs_concat_type, hoist_params->rhs_args, rhs_axis);
+  Value lhs_concat = pack_or_concat(
+      hoist_params->scalar_operand_idx == 0, hoist_params->lhs_concat_type,
+      hoist_params->lhs_args, hoist_params->lhs_axis);
+  Value rhs_concat = pack_or_concat(
+      hoist_params->scalar_operand_idx == 1, hoist_params->rhs_concat_type,
+      hoist_params->rhs_args, hoist_params->rhs_axis);
 
   // Replace original concat with a binary op.
   OperationState new_binary_op_state(
-      loc, first_arg_op->getName().getStringRef(),
-      {lhs_concat.getResult(), rhs_concat.getResult()},
+      loc, first_arg_op->getName().getStringRef(), {lhs_concat, rhs_concat},
       op.getResult().getType(), ArrayRef<NamedAttribute>());
-  Operation *new_binary_op = rewriter.createOperation(new_binary_op_state);
+  Operation *new_binary_op = rewriter.create(new_binary_op_state);
 
   rewriter.replaceOp(op, new_binary_op->getResults());
 
@@ -1351,8 +1362,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
 
 void ConcatV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(
-      context);
+  results.add<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1602,6 +1612,65 @@ static LogicalResult Verify(OpT op) {
   int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
   int num_dims = 2 + num_spatial_dims;
 
+  StringRef data_format = op.data_format();
+  tensorflow::TensorFormat format;
+  auto data_format_is_valid = FormatFromString(data_format.str(), &format);
+  if (!data_format_is_valid) {
+    return emitOptionalError(op.getLoc(), "Invalid data format provided");
+  }
+
+  const StringRef paddings = op.padding();
+  tensorflow::Padding padding;
+  auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
+  if (!padding_is_valid.ok()) {
+    return emitOptionalError(op.getLoc(), "Invalid padding format provided");
+  }
+
+  // Verifies that,
+  // * Ranks of operands and result are valid
+  // * Length of explicit_paddings attribute is valid and has non negative
+  //   elements
+  // * strides and dilations attributes have positive elements
+  if (!IsOfRankOrUnranked(op.input(), num_dims) ||
+      !IsOfRankOrUnranked(op.filter(), num_dims))
+    return emitOptionalError(op.getLoc(), "requires operands to be ", num_dims,
+                             "D tensor");
+
+  if (padding == tensorflow::Padding::EXPLICIT) {
+    ArrayRef<Attribute> explicit_padding;
+    ArrayAttr explicit_pad =
+        op->getAttr("explicit_paddings")
+            .template dyn_cast_or_null<::mlir::ArrayAttr>();
+    if (!explicit_pad) {
+      explicit_pad = ::mlir::Builder(op->getContext()).getI64ArrayAttr({});
+    }
+    explicit_padding = explicit_pad.getValue();
+
+    if (explicit_padding.empty()) {
+      return emitOptionalError(op.getLoc(),
+                               "requires attribute 'explicit_paddings' with "
+                               "'EXPLICIT' padding mode");
+    }
+    if (explicit_padding.size() != num_dims * 2) {
+      return emitOptionalError(
+          op.getLoc(), "requires explicit_paddings attribute length to be ",
+          num_dims * 2);
+    }
+    auto is_negative = [](Attribute val) {
+      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
+    };
+    if (llvm::any_of(explicit_padding, is_negative))
+      return emitOptionalError(op.getLoc(),
+                               "requires non negative explicit paddings");
+  }
+
+  ArrayRef<Attribute> strides = op.strides().getValue();
+  ArrayRef<Attribute> dilations = op.dilations().getValue();
+  if (failed(
+          VerifyConvOpAttributes(num_dims, strides, dilations, op.getLoc()))) {
+    return failure();
+  }
+
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
     absl::string_view data_format(op.data_format().data(),
@@ -1653,17 +1722,16 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
 template <typename OpT,
           typename std::enable_if<llvm::is_one_of<
               OpT, Conv2DOpAdaptor, Conv3DOpAdaptor>::value>::type * = nullptr>
-static LogicalResult inferConvReturnTypes(
-    OpT op, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes,
-    llvm::Optional<mlir::Location> location,
-    ArrayRef<Attribute> explicit_padding) {
+static LogicalResult inferConvReturnTypeComponents(
+    llvm::Optional<mlir::Location> location, OpT op,
+    ArrayRef<Attribute> explicit_padding,
+    llvm::SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   const int64_t num_spatial_dims = std::is_same<OpT, Conv2DOpAdaptor>() ? 2 : 3;
   const int64_t num_dims = 2 + num_spatial_dims;
   const Value input = op.input();
   const Value filter = op.filter();
   const TensorType input_ty = input.getType().template cast<TensorType>();
   const TensorType filter_ty = filter.getType().template cast<TensorType>();
-  const StringRef paddings = op.padding();
 
   ArrayRef<Attribute> strides = op.strides().getValue();
   StringRef data_format = op.data_format();
@@ -1671,51 +1739,18 @@ static LogicalResult inferConvReturnTypes(
 
   tensorflow::TensorFormat format;
   auto data_format_is_valid = FormatFromString(data_format.str(), &format);
-  if (!data_format_is_valid) {
-    return emitOptionalError(location, "Invalid data format provided");
-  }
+  assert(data_format_is_valid);
+  (void)data_format_is_valid;
+
   tensorflow::Padding padding;
+  const StringRef paddings = op.padding();
   auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
-  if (!padding_is_valid.ok()) {
-    return emitOptionalError(location, "Invalid padding format provided");
-  }
+  assert(padding_is_valid.ok());
+  (void)padding_is_valid;
+
   auto get_int = [](Attribute attr) {
     return attr.template cast<IntegerAttr>().getInt();
   };
-
-  // Necessary sanity checks.
-  // Verifies that,
-  // * Ranks of operands and result are valid
-  // * Length of explicit_paddings attribute is valid and has non negative
-  //   elements
-  // * strides and dilations attributes have positive elements
-  if (!IsOfRankOrUnranked(input, num_dims) ||
-      !IsOfRankOrUnranked(filter, num_dims))
-    return emitOptionalError(location, "requires operands to be ", num_dims,
-                             "D tensor");
-
-  if (padding == tensorflow::Padding::EXPLICIT) {
-    if (explicit_padding.empty()) {
-      return emitOptionalError(location,
-                               "requires attribute 'explicit_paddings' with "
-                               "'EXPLICIT' padding mode");
-    }
-    if (explicit_padding.size() != num_dims * 2) {
-      return emitOptionalError(
-          location, "requires explicit_paddings attribute length to be ",
-          num_dims * 2);
-    }
-    auto is_negative = [](Attribute val) {
-      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
-    };
-    if (llvm::any_of(explicit_padding, is_negative))
-      return emitOptionalError(location,
-                               "requires non negative explicit paddings");
-  }
-
-  if (failed(VerifyConvOpAttributes(num_dims, strides, dilations, location))) {
-    return failure();
-  }
 
   // Output always have `num_dims` rank. All dimensions are initialized to
   // dynamic size and can be partially inferred.
@@ -1759,17 +1794,15 @@ static LogicalResult inferConvReturnTypes(
     }
   }
 
-  inferredReturnTypes.assign(
-      {RankedTensorType::get(return_shape, input_ty.getElementType())});
+  inferredReturnShapes.emplace_back(return_shape, input_ty.getElementType());
   return success();
 }
 
-LogicalResult Conv2DOp::inferReturnTypes(
-    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
-    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  Conv2DOpAdaptor op(operands, attributes);
+LogicalResult Conv2DOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Conv2DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
       attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
@@ -1778,8 +1811,8 @@ LogicalResult Conv2DOp::inferReturnTypes(
   }
   explicit_padding = explicit_pad.getValue();
 
-  return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding);
+  return inferConvReturnTypeComponents(location, op, explicit_padding,
+                                       inferredReturnShapes);
 }
 
 StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
@@ -1962,12 +1995,11 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 // Conv3DOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Conv3DOp::inferReturnTypes(
-    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
-    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  Conv3DOpAdaptor op(operands, attributes);
+LogicalResult Conv3DOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Conv3DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
       attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
@@ -1976,8 +2008,8 @@ LogicalResult Conv3DOp::inferReturnTypes(
   }
   explicit_padding = explicit_pad.getValue();
 
-  return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding);
+  return inferConvReturnTypeComponents(location, op, explicit_padding,
+                                       inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2140,8 +2172,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
 
 void DivNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<DivNoNanOrMulNoNanConstantY<TF::DivNoNanOp, TF::DivOp>>(
-      context);
+  results.add<DivNoNanOrMulNoNanConstantY<TF::DivNoNanOp, TF::DivOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2150,7 +2181,7 @@ void DivNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void DivOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<DivWithSqrtDivisor>(context);
+  results.add<DivWithSqrtDivisor>(context);
 }
 
 OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
@@ -2449,12 +2480,12 @@ static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
 
 void EqualOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert(flipComatibleShapeError<EqualOp>);
+  results.add(flipComatibleShapeError<EqualOp>);
 }
 
 void NotEqualOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert(flipComatibleShapeError<NotEqualOp>);
+  results.add(flipComatibleShapeError<NotEqualOp>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2491,18 +2522,15 @@ void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 // Expm1Op
 //===----------------------------------------------------------------------===//
-LogicalResult Expm1Op::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+
+LogicalResult Expm1Op::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  if (operands.empty()) {
-    return emitOptionalError(location, "requires at least one operand.");
-  }
-  auto input_ty = operands[0].getType().dyn_cast<TensorType>();
-  if (!input_ty) {
-    return emitOptionalError(location, "requires input to be of Tensor type");
-  }
-  inferredReturnTypes.assign({input_ty});
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  ShapeAdaptor adaptor = operands.getShape(0);
+  ShapedTypeComponents component(adaptor.getElementType());
+  if (adaptor.hasRank()) adaptor.getDims(component);
+  inferredReturnShapes.push_back(component);
   return success();
 }
 
@@ -2819,7 +2847,7 @@ LogicalResult GatherV2Op::verify() {
 
 void GatherOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<GatherToV2>(context);
+  results.add<GatherToV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2887,14 +2915,14 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
 
 void IfOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                        MLIRContext *context) {
-  results.insert<FoldConstantIfOp, DropAttributes<IfOp>>(context);
+  results.add<FoldConstantIfOp, DropAttributes<IfOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
 // IfRegionOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult IfRegionOp::verify() {
+LogicalResult IfRegionOp::verifyRegions() {
   IfRegionOp op = *this;
   TypeRange then_types =
       op.then_branch().front().getTerminator()->getOperandTypes();
@@ -2964,8 +2992,8 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
 
 void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<FoldConstantIfRegionOp,
-                 CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
+  results.add<FoldConstantIfRegionOp,
+              CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3014,7 +3042,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<LogOfSoftmax, LogToLog1p>(context);
+  results.add<LogOfSoftmax, LogToLog1p>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3023,9 +3051,10 @@ void LogOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<LogicalNotOfEqual, LogicalNotOfNotEqual, LogicalNotOfGreater,
-                 LogicalNotOfGreaterEqual, LogicalNotOfLess,
-                 LogicalNotOfLessEqual>(context);
+  results
+      .add<LogicalNotOfEqual, LogicalNotOfNotEqual, LogicalNotOfGreater,
+           LogicalNotOfGreaterEqual, LogicalNotOfLess, LogicalNotOfLessEqual>(
+          context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3058,7 +3087,7 @@ LogicalResult MatrixBandPartOp::verify() {
 
 void MatrixDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<MatrixDiagToV3>(context);
+  results.add<MatrixDiagToV3>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3067,7 +3096,7 @@ void MatrixDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void MatrixSetDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                   MLIRContext *context) {
-  results.insert<MatrixSetDiagToV3>(context);
+  results.add<MatrixSetDiagToV3>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3076,7 +3105,7 @@ void MatrixSetDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void MatrixSetDiagV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                                     MLIRContext *context) {
-  results.insert<MatrixSetDiagV2ToV3>(context);
+  results.add<MatrixSetDiagV2ToV3>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3182,8 +3211,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
 void MulNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<DivNoNanOrMulNoNanConstantY<TF::MulNoNanOp, TF::MulOp>>(
-      context);
+  results.add<DivNoNanOrMulNoNanConstantY<TF::MulNoNanOp, TF::MulOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3199,9 +3227,9 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 void HashTableOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<HashTableAndInitializeTableToV2>(context);
-  results.insert<HashTableAndLookupTableSizeToV2>(context);
-  results.insert<HashTableAndLookupTableFindToV2>(context);
+  results.add<HashTableAndInitializeTableToV2>(context);
+  results.add<HashTableAndLookupTableSizeToV2>(context);
+  results.add<HashTableAndLookupTableFindToV2>(context);
 }
 
 //===----------------------------------------------------------------------===//

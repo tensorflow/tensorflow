@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -44,7 +44,7 @@ PYBIND11_MODULE(mlir_wrapper, m) {
     mlir::RegisterAllTensorFlowDialects(registry);
     mlir::MLIRContext ctx(registry);
     ctx.loadAllAvailableDialects();
-    auto module = mlir::parseSourceFile(SM, &ctx);
+    auto module = mlir::parseSourceFile<mlir::ModuleOp>(SM, &ctx);
     if (!module) {
       return false;
     }

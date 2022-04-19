@@ -16,7 +16,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -53,8 +53,8 @@ struct TPUBridgeExecutorIslandOutlining
 // Move FuncOp referenced by `symbol_ref` from one symbol table to another.
 void MoveFuncOp(FlatSymbolRefAttr &symbol_ref, SymbolTable &from,
                 SymbolTable &to) {
-  if (to.lookup<FuncOp>(symbol_ref.getValue())) return;
-  FuncOp callee = from.lookup<FuncOp>(symbol_ref.getValue());
+  if (to.lookup<func::FuncOp>(symbol_ref.getValue())) return;
+  func::FuncOp callee = from.lookup<func::FuncOp>(symbol_ref.getValue());
   callee.getOperation()->getBlock()->getOperations().remove(
       callee.getOperation());
   to.insert(callee);
@@ -106,8 +106,8 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;
     name += llvm::Twine(prefix_id++).str();
-    auto outlined_func =
-        OpBuilder(ctx).create<FuncOp>(island_op.getLoc(), name, func_type);
+    auto outlined_func = OpBuilder(ctx).create<func::FuncOp>(island_op.getLoc(),
+                                                             name, func_type);
     outlined_symbol_table.insert(outlined_func);
     outlined_func.setNested();
 
@@ -120,7 +120,8 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
       // Replace the yield with a return
       OpBuilder replacer(yield_op);
       island_op.body().push_back(new Block);
-      replacer.create<ReturnOp>(yield_op.getLoc(), yield_op.getOperands());
+      replacer.create<mlir::func::ReturnOp>(yield_op.getLoc(),
+                                            yield_op.getOperands());
       yield_op.erase();
     }
 
@@ -152,7 +153,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
 
   // Outlined all the transitively called functions by moving them in the
   // outlined module.
-  for (FuncOp func : outlined_module.getOps<FuncOp>()) {
+  for (func::FuncOp func : outlined_module.getOps<func::FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
         if (auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {

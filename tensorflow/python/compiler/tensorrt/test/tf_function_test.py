@@ -136,7 +136,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]

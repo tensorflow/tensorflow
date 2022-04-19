@@ -910,6 +910,33 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
   EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
 }
 
+TEST_F(GpuFusibleTest, ProducerConsumerFusionInPlaceOperation) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    %fusion {
+      %param_0 = s32[4,4]{1,0} parameter(0)
+      %copy = s32[4,4]{0,1} copy(%param_0)
+      ROOT %transpose = s32[4,4]{1,0} transpose(%copy), dimensions={1,0}
+    }
+
+    ENTRY %main {
+      %param_0 = s32[4,4]{1,0} parameter(0)
+      %constant_0 = s32[] constant(0)
+      %constant_1 = s32[] constant(1)
+      %constant_1x1_1 = s32[1,1] constant({ {1} })
+      %updated = s32[4,4]{1,0} dynamic-update-slice(%param_0, %constant_1x1_1, %constant_1, %constant_0)
+      %transpose = s32[4,4]{0,1} fusion(%updated), kind=kLoop, calls=fusion
+      ROOT %tuple = tuple(%updated, %transpose)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  const HloInstruction* dus = tuple->operand(0);
+  EXPECT_EQ(dus->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* transpose = tuple->operand(1);
+  EXPECT_EQ(transpose->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*dus, *transpose));
+}
+
 TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module

@@ -56,10 +56,11 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
       absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
-    HloCostAnalysis hlo_cost_analysis(ShapeSize);
-    hlo_cost_analysis.set_flops_per_second(kFlopsPerSecond);
-    hlo_cost_analysis.set_bytes_per_second(kBytesPerSecond);
-    hlo_cost_analysis.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    HloCostAnalysis::Options cost_options{ShapeSize};
+    cost_options.set_flops_per_second(kFlopsPerSecond);
+    cost_options.set_bytes_per_second(kBytesPerSecond);
+    cost_options.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    HloCostAnalysis hlo_cost_analysis(cost_options);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
@@ -1898,6 +1899,34 @@ TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
     while = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
     ROOT gte = f32[3]{0} get-tuple-element(while), index=2
   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, b228599972) {
+  absl::string_view hlo_string = R"(
+HloModule entry, is_scheduled=true
+
+fused_computation {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %result0 = f32[2,3]{1,0} copy(%p0)
+  %result1 = f32[2,3]{1,0} copy(%p0)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(%result0, %result1)
+}
+
+ENTRY entry {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  %unused = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(%p0), kind=kLoop, calls=%fused_computation
+  %unused.0 = f32[2,3]{1,0} get-tuple-element(%unused), index=0
+  %unused.1 = f32[2,3]{1,0} get-tuple-element(%unused), index=1
+  %negate.0 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.0)
+  %negate.1 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.1)
+
+  ROOT %result = f32[2,3]{1,0} negate(%p1)
+}
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -6530,14 +6559,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             1);
   // Also verify that the copy-done for the end-of-program prefetch is the last
@@ -6609,14 +6638,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             1);
   // Also verify that the copy-done for the end-of-program prefetch is the last
@@ -6688,14 +6717,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             0);
 }
@@ -6748,14 +6777,14 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_cross_program_prefetch),
             1);
   auto is_end_of_program_prefetch = [](const HloUse& use) {
     return use.instruction->opcode() == HloOpcode::kCopyStart &&
            !use.instruction->is_cross_program_prefetch();
   };
-  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             0);
 }

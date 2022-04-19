@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -64,9 +64,9 @@ struct TPUExtractOutsideCompilation
 // Build a function containing `ops` with `inputs` and `outputs` using
 // `builder`.  The `ops` are cloned and modified to use the function arguments
 // as inputs.
-FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
-                     llvm::ArrayRef<Value> inputs,
-                     llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
+func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
+                           llvm::ArrayRef<Value> inputs,
+                           llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(inputs.size());
   for (Value v : inputs) operand_types.emplace_back(v.getType());
@@ -76,8 +76,8 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
 
   auto func_type = builder->getFunctionType(operand_types, output_types);
 
-  FuncOp outlined_func =
-      FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
+  func::FuncOp outlined_func =
+      func::FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();
@@ -96,13 +96,13 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
     results_after_mapping.push_back(mapping.lookupOrDefault(result));
   }
 
-  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  builder->create<func::ReturnOp>(ops.front()->getLoc(), results_after_mapping);
   return outlined_func;
 }
 
 // Encapsulates `func` in a module and serializes that module.
 // `serialized_func_module` is set to the serialized module.
-void EncapsulateFuncAndSerialize(FuncOp func,
+void EncapsulateFuncAndSerialize(func::FuncOp func,
                                  std::string* serialized_func_module) {
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -529,9 +529,9 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 
   std::string serialized_func_module;
   if (HasDynamicOutputs(external_outputs.getArrayRef())) {
-    FuncOp shape_op = BuildFunction(clustered_ops.getArrayRef(),
-                                    external_operands.getArrayRef(),
-                                    external_outputs.getArrayRef(), &builder);
+    func::FuncOp shape_op = BuildFunction(
+        clustered_ops.getArrayRef(), external_operands.getArrayRef(),
+        external_outputs.getArrayRef(), &builder);
     EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
   }
 

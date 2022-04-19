@@ -542,7 +542,7 @@ bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
 }
 
 LogicalResult ApplyPatternsWithShapeResolution(
-    FuncOp func, const FrozenRewritePatternSet& patterns) {
+    func::FuncOp func, const FrozenRewritePatternSet& patterns) {
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
@@ -566,12 +566,12 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
   // the FuncOp type.
   IRRewriter rewriter(func.getContext());
-  func.walk([&](ReturnOp op) {
-    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+  func.walk([&](func::ReturnOp op) {
+    func::FuncOp parent = dyn_cast<func::FuncOp>(op->getParentOp());
     if (parent != func) return;
 
     rewriter.setInsertionPoint(op);
-    FunctionType func_ty = func.getType();
+    FunctionType func_ty = func.getFunctionType();
     auto result_tys = func_ty.getResults();
 
     bool cast_added = false;
@@ -593,7 +593,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
     }
 
     if (cast_added) {
-      rewriter.replaceOpWithNewOp<ReturnOp>(op, return_values);
+      rewriter.replaceOpWithNewOp<func::ReturnOp>(op, return_values);
     }
   });
 

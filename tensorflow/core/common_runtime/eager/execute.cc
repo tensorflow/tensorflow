@@ -974,14 +974,20 @@ Status GetOrCreateKernelAndDevice(
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
     bool run_function_with_flr = false;
     bool function_outputs_on_op_device = false;
+    absl::optional<string> xla_compile_device_type;
     if (op->is_function()) {
       bool compile_with_xla;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       if (compile_with_xla) {
-        // Note that it is not ideal, but currently correct, to set this
-        // attribute after computing the kernel cache key above.
-        // Note: If the attribute is already set to true, this is a noop.
-        op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
+        if (ctx.JitCompileRewrite()) {
+          xla_compile_device_type = op->GetDeviceParsedName().type;
+          run_function_with_flr = true;
+        } else {
+          // Note that it is not ideal, but currently correct, to set this
+          // attribute after computing the kernel cache key above.
+          // Note: If the attribute is already set to true, this is a noop.
+          op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
+        }
       } else {
         run_function_with_flr = true;
       }
@@ -1102,7 +1108,7 @@ Status GetOrCreateKernelAndDevice(
           function_outputs_on_op_device, allow_small_function_optimizations,
           allow_control_flow_sync_execution,
           shape_inference_on_tfe_dialect_import, int_args_and_retvals_on_device,
-          std::move(rendezvous_creator), get_op_id));
+          xla_compile_device_type, std::move(rendezvous_creator), get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();
@@ -1654,9 +1660,11 @@ void CollectGraphs(EagerContext* ctx) {
 
 Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
                     int* num_retvals) {
-  profiler::TraceMe activity(
-      [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
-      profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity([&] {
+    return ::tensorflow::profiler::TraceMeEncode(
+        "EagerExecute",
+        {{"eager_op", op->Name()}, {"is_func", op->is_function()}});
+  });
 
   if (!op->Executor().Async()) {
     VLOG(6) << "op: " << op->Name() << " is not Async.";

@@ -862,10 +862,23 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
   auto average_etype = input_type.getElementType();
   auto average_type = output_type.clone(average_etype);
 
-  Value result = CreateOpAndInfer<tosa::AvgPool2dOp>(
-      rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(), kernel_size,
-      stride, pad);
+  Value result;
+  if (average_etype.isa<quant::UniformQuantizedType>()) {
+    // TensorFlow Lite doesn't use the zero point when calculating
+    // quantized average pool, while TOSA does. Force the TOSA
+    // zero_points to zero to ensure that the calculations match
 
+    auto zero = rewriter.getI32IntegerAttr(0);
+    auto quant_attr = tosa::UnaryOpQuantizationAttr::get(
+        /*input_zp=*/zero, /*output_zp=*/zero, rewriter.getContext());
+    result = CreateOpAndInfer<tosa::AvgPool2dOp>(
+        rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(),
+        kernel_size, stride, pad, quant_attr);
+  } else {
+    result = CreateOpAndInfer<tosa::AvgPool2dOp>(
+        rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(),
+        kernel_size, stride, pad);
+  }
   if (average_type != output_type) {
     result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
                                             result);
@@ -3044,7 +3057,10 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
   auto tfl_gather_op = cast<TFL::GatherOp>(op);
 
   int32_t axis = tfl_gather_op.axisAttr().getInt();
-  int32_t batch_dims = 0;  // Not a parameter in tfl.Gather; default to 0.
+  int32_t batch_dims = 0;
+  if (auto batch_attr = tfl_gather_op.batch_dimsAttr()) {
+    batch_dims = static_cast<int32_t>(batch_attr.getInt());
+  }
 
   llvm::Optional<Value> result = convertGatherOp(
       rewriter, op, tfl_gather_op.getResult(), tfl_gather_op.params(),
@@ -3338,7 +3354,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
     ArrayRef<std::string> disabled_patterns,
     ArrayRef<std::string> enabled_patterns) {
   return std::make_unique<LegalizeTFL>(disabled_patterns, enabled_patterns);

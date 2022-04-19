@@ -7,7 +7,11 @@ glob_lit_tests(
     data = [":test_utilities"],
     default_tags = ["nomsan"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
-    exclude = ["ccl.mlir"],  # b/216062298
+    exclude = [
+        "ccl.mlir",  # b/216062298
+        "fusion.mlir",  # b/215799570
+        "async_conversion.mlir",  # b/229183976
+    ],
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
     test_file_exts = ["mlir"],
 )

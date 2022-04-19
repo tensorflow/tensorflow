@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 #include <algorithm>
+#include <functional>
 #include <list>
 #include <memory>
 #include <numeric>
@@ -109,6 +110,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -143,6 +145,9 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -191,7 +196,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
-    case HloOpcode::kTrace:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
@@ -232,6 +236,7 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
 bool InstructionFusion::CanFuseOnAllPaths(
     HloInstruction* producer, HloInstruction* consumer,
     const HloInstructionSet& do_not_fuse,
+    const HloReachabilityMap& reachability,
     absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>*
         result_cache) {
   if (consumer == producer) {
@@ -249,7 +254,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
     auto* consumer_operand = consumer->mutable_operand(i);
     // If the operand is not on a path to the producer, it doesn't matter
     // whether it's fusible.
-    if (!reachability_->IsReachable(producer, consumer_operand)) {
+    if (!reachability.IsReachable(producer, consumer_operand)) {
       continue;
     }
     if (do_not_fuse.count(consumer_operand) > 0 || !ShouldFuse(consumer, i)) {
@@ -262,7 +267,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
     // Perform the recursive step: make sure producer can be fused into
     // consumer_operand on all paths.
     if (!CanFuseOnAllPaths(producer, consumer_operand, do_not_fuse,
-                           result_cache)) {
+                           reachability, result_cache)) {
       result = false;
       break;
     }
@@ -273,7 +278,8 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
 InstructionFusion::HloInstructionSet
 InstructionFusion::ComputeGloballyUnfusible(
-    absl::Span<HloInstruction* const> post_order) {
+    absl::Span<HloInstruction* const> post_order,
+    const HloReachabilityMap& reachability) {
   // Forbid fusion of producers that:
   // a) Need to be duplicated, unless they can be fused into all consumers
   //    via all paths.
@@ -338,6 +344,7 @@ InstructionFusion::ComputeGloballyUnfusible(
     if (producer->IsFusible() &&
         absl::c_all_of(producer->users(), [&](HloInstruction* consumer) {
           return CanFuseOnAllPaths(producer, consumer, do_not_duplicate,
+                                   reachability,
                                    &can_fuse_on_all_paths_result_cache);
         })) {
       continue;
@@ -489,7 +496,6 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
-  module_ = module;
   int64_t fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
   HloModuleConfig module_config;
@@ -502,19 +508,19 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
-  for (auto* computation : GetFusionComputations(module_)) {
+  for (auto* computation : GetFusionComputations(module)) {
     CHECK(!computation->IsFusionComputation());
-    computation_ = computation;
-    reachability_ = HloReachabilityMap::Build(computation_);
+    std::unique_ptr<HloReachabilityMap> reachability =
+        HloReachabilityMap::Build(computation);
 
     HloInstructionSet do_not_duplicate;
     // If we allow duplications, we need to compute which instructions we do not
     // want to duplicate based on a global analysis of the graph.
     if (may_duplicate_) {
-      do_not_duplicate =
-          ComputeGloballyUnfusible(computation_->MakeInstructionPostOrder());
+      do_not_duplicate = ComputeGloballyUnfusible(
+          computation->MakeInstructionPostOrder(), *reachability);
     }
-    auto fusion_queue = GetFusionQueue(computation_);
+    auto fusion_queue = GetFusionQueue(computation);
 
     // Instruction fusion effectively fuses edges in the computation graph
     // (producer instruction -> consumer instruction) so we iterate over all
@@ -577,7 +583,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
             }
 
             fusion_queue->PreFusion(operand, instruction);
-            fusion_instruction = Fuse(operand, instruction);
+            fusion_instruction = Fuse(operand, instruction, computation);
           }
         }
 
@@ -585,9 +591,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           FusionDecision can_fuse_mof =
               ShouldFuseIntoMultiOutput(instruction, i);
           if (can_fuse_mof) {
-            can_fuse_mof = can_fuse_mof.And(FusionDecision{
-                !MultiOutputFusionCreatesCycle(operand, instruction),
-                "multi-output fusion creates a cycle"});
+            can_fuse_mof = can_fuse_mof.And(
+                FusionDecision{!MultiOutputFusionCreatesCycle(
+                                   operand, instruction, *reachability),
+                               "multi-output fusion creates a cycle"});
           }
           if (can_fuse_mof) {
             if (consume_fuel()) {
@@ -603,7 +610,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
               }
 
               fusion_queue->PreFusion(operand, instruction);
-              fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+              fusion_instruction =
+                  FuseIntoMultiOutput(operand, instruction, computation);
             }
           }
           should_fuse = should_fuse.Or(can_fuse_mof);
@@ -645,7 +653,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
-          TF_RETURN_IF_ERROR(computation_->RemoveInstruction(operand));
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 
         if (dump_fusion) {
@@ -688,15 +696,14 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     module->set_config(module_config);
   }
 
-  reachability_.reset();
-
   VLOG(1) << "Fusion count: " << fuse_count;
 
   return changed;
 }
 
 HloInstruction* InstructionFusion::AddFusionInstruction(
-    HloInstruction* producer, HloInstruction* consumer) {
+    HloInstruction* producer, HloInstruction* consumer,
+    HloComputation* computation) {
   HloInstruction* fusion_instruction;
   auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
@@ -705,9 +712,9 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
       fusion_instruction->set_fusion_kind(kind);
     }
   } else {
-    fusion_instruction = computation_->AddInstruction(
+    fusion_instruction = computation->AddInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
-    TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
+    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   return fusion_instruction;
 }
@@ -717,11 +724,36 @@ HloInstruction* InstructionFusion::FuseInstruction(
   return fusion_instruction->FuseInstruction(producer);
 }
 
+void InstructionFusion::UpdateReusedOperandsForFusion(
+    HloInstruction* producer, HloInstruction* fusion_instruction) {
+  // Find or compute the existing fusion reused operands. Note these reflect the
+  // state *before* the current fusion has taken place, although if we have
+  // replaced the consumer with a new single-element fusion, we will compute
+  // the new single-element fusion's reused operands here.
+  absl::flat_hash_set<const HloInstruction*>& fusion_reused_operands =
+      ReusedOperandsOf(fusion_instruction);
+
+  // If the producer is reused, replace it with its operands.
+  if (fusion_reused_operands.erase(producer)) {
+    fusion_reused_operands.insert(producer->operands().begin(),
+                                  producer->operands().end());
+  } else {
+    const absl::flat_hash_set<const HloInstruction*>& producer_reused_operands =
+        ReusedOperandsOf(producer);
+    // Otherwise add the producer's reused operands to the set.
+    fusion_reused_operands.insert(producer_reused_operands.begin(),
+                                  producer_reused_operands.end());
+  }
+}
+
 HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
-                                        HloInstruction* consumer) {
+                                        HloInstruction* consumer,
+                                        HloComputation* computation) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
-  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  HloInstruction* fusion_instruction =
+      AddFusionInstruction(producer, consumer, computation);
+  UpdateReusedOperandsForFusion(producer, fusion_instruction);
   FuseInstruction(fusion_instruction, producer);
   if (fusion_instruction != producer && fusion_instruction != consumer) {
     VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
@@ -730,16 +762,20 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
 }
 
 HloInstruction* InstructionFusion::FuseIntoMultiOutput(
-    HloInstruction* producer, HloInstruction* consumer) {
+    HloInstruction* producer, HloInstruction* consumer,
+    HloComputation* computation) {
   VLOG(2) << "Multi-output fusing " << producer->ToString() << " into "
           << consumer->ToString();
-  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  HloInstruction* fusion_instruction =
+      AddFusionInstruction(producer, consumer, computation);
+  UpdateReusedOperandsForFusion(producer, fusion_instruction);
   fusion_instruction->FuseInstructionIntoMultiOutput(producer);
   return fusion_instruction;
 }
 
 bool InstructionFusion::MultiOutputFusionCreatesCycle(
-    HloInstruction* producer, HloInstruction* consumer) {
+    HloInstruction* producer, HloInstruction* consumer,
+    const HloReachabilityMap& reachability) {
   absl::flat_hash_set<int> operands;
   for (const HloInstruction* operand : consumer->operands()) {
     if (operand == producer) {
@@ -751,9 +787,8 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
     // sure MultiOutputFusion would create a cycle. If not, we need to do a DFS
     // traversal of the computation to verify that this multioutput fusion would
     // not create a cycle.
-    if (reachability_->IsPresent(producer) &&
-        reachability_->IsPresent(operand) &&
-        reachability_->IsReachable(producer, operand)) {
+    if (reachability.IsPresent(producer) && reachability.IsPresent(operand) &&
+        reachability.IsReachable(producer, operand)) {
       return true;
     }
     operands.insert(operand->unique_id());
@@ -823,11 +858,13 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
   if (producer->IsElementwise()) {
     return {};
   }
-  std::vector<std::pair<HloUse, ShapeIndex>> in_place_input_output_pairs =
-      HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-          const_cast<HloInstruction*>(consumer));
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+      in_place_input_output_pairs =
+          HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+              const_cast<HloInstruction*>(consumer));
   for (auto& pair : in_place_input_output_pairs) {
-    VLOG(4) << "in/out pair: " << pair.first.ToString() << " "
+    VLOG(4) << "in/out pair: " << pair.first.operand_number << " "
+            << pair.first.operand_index.ToString() << " "
             << pair.second.ToString();
     if (absl::c_find(producer->operands(),
                      consumer->operand(pair.first.operand_number)) !=
@@ -929,23 +966,31 @@ HloInstruction::FusionKind InstructionFusion::ChooseKind(
   return HloInstruction::FusionKind::kLoop;
 }
 
+absl::flat_hash_set<const HloInstruction*>& InstructionFusion::ReusedOperandsOf(
+    const HloInstruction* instruction) {
+  std::unique_ptr<absl::flat_hash_set<const HloInstruction*>>& reused_operands =
+      reused_fusion_operands_[instruction];
+  if (reused_operands != nullptr) {
+    return *reused_operands;
+  }
+  reused_operands =
+      std::make_unique<absl::flat_hash_set<const HloInstruction*>>();
+
+  for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+    bool reuses = instruction->ReusesOperandElements(i);
+    if (reuses) {
+      // We cache the operand corresponding to the fusion parameter, because the
+      // parameter numbers would be invalidated after the next fusion.
+      reused_operands->insert(instruction->operand(i));
+    }
+  }
+  return *reused_operands;
+}
+
 bool InstructionFusion::ReusesOperandElements(const HloInstruction* consumer,
                                               int64_t operand_index) {
   auto operand = consumer->operand(operand_index);
-  auto it = reused_fusion_operands_.find(consumer);
-  if (it != reused_fusion_operands_.end() && it->second.contains(operand)) {
-    return true;
-  }
-  bool reuses = consumer->ReusesOperandElements(operand_index);
-  // If a parameter was reused, we can cache this information. Fusion
-  // computations only ever grow, so it becomes more likely that a parameter is
-  // reused, but a reused parameter will never become *not* reused.
-  if (reuses) {
-    // We cache the operand corresponding to the fusion parameter, because the
-    // parameter pointers would be invalidated after the next fusion.
-    reused_fusion_operands_[consumer].insert(operand);
-  }
-  return reuses;
+  return ReusedOperandsOf(consumer).contains(operand);
 }
 
 }  // namespace xla

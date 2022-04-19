@@ -82,7 +82,7 @@ TEST(DenseImageWarpOpTest, SimpleTest) {
   model.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
   model.SetFlow({4, 10, 6,  10, 4, 2, 6, 6,  10, -4, 2,  -2, 6,  8, 6, 0,
                  2, -2, 10, 6,  4, 4, 2, -4, -4, 10, -4, -4, -2, 6, 4, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 0, 0, 0, 3, 3, 0, 3, 2, 0,
@@ -98,7 +98,7 @@ TEST(DenseImageWarpOpTest, RoundTest) {
                   12.8, 13.2, 14.4, 15.5});
   model.SetFlow({4, 10, 6,  10, 4, 2, 6, 6,  10, -4, 2,  -2, 6,  8, 6, 0,
                  2, -2, 10, 6,  4, 4, 2, -4, -4, 10, -4, -4, -2, 6, 4, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
   EXPECT_THAT(model.GetOutput(),
@@ -119,7 +119,7 @@ TEST(DenseImageWarpOpTest, WithBatchandChannelTest) {
                  4, 10, 6,  10, 4, 2, 6, 6,  10, -4, 2,  -2, 6,  8, 6, 0,
                  2, -2, 10, 6,  4, 4, 2, -4, -4, 10, -4, -4, -2, 6, 4, 6,
                  4, 10, 6,  10, 4, 2, 6, 6,  10, -4, 2,  -2, 6,  8, 6, 0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4, 4, 3}));
   EXPECT_THAT(

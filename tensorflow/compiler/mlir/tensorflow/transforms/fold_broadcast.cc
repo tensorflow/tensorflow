@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -190,14 +191,14 @@ void BroadcastFoldPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
 
-  patterns.insert<ConvertResultsBroadcastableShapeOp>(func.getContext());
+  patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBroadcastFoldPass() {
   return absl::make_unique<BroadcastFoldPass>();
 }
 }  // namespace TF

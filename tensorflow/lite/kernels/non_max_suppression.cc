@@ -73,8 +73,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int num_inputs = NumInputs(node);
   const bool is_soft_nms = num_inputs == 6;
   if (num_inputs != 5 && num_inputs != 6) {
-    context->ReportError(context, "Found NMS op with invalid num inputs: %d",
-                         NumInputs(node));
+    TF_LITE_KERNEL_LOG(context, "Found NMS op with invalid num inputs: %d",
+                       NumInputs(node));
     return kTfLiteError;
   }
 
@@ -236,8 +236,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         context, GetInputSafe(context, node, kInputTensorSigma, &input_sigma));
     const float soft_nms_sigma = *GetTensorData<float>(input_sigma);
     if (soft_nms_sigma < 0) {
-      context->ReportError(context, "Invalid sigma value for soft NMS: %f",
-                           soft_nms_sigma);
+      TF_LITE_KERNEL_LOG(context, "Invalid sigma value for soft NMS: %f",
+                         soft_nms_sigma);
       return kTfLiteError;
     }
 

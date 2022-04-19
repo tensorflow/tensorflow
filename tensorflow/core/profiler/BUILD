@@ -90,8 +90,8 @@ cc_library(
     name = "profiler_impl",
     visibility = ["//tensorflow:__pkg__"],
     deps = [
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack_impl",
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack_impl",
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
         "//tensorflow/core/profiler/utils:time_utils_impl",
@@ -106,12 +106,8 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
@@ -128,7 +124,6 @@ cc_library(
     deps = [
         ":protos_all_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

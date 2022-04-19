@@ -187,6 +187,10 @@ class StreamExecutorInterface {
                                   ModuleHandle* module_handle) {
     return port::UnimplementedError("Not Implemented");
   }
+  virtual port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+  CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
+    return port::UnimplementedError("Not Implemented");
+  }
   virtual port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                               const BlockDim& block_dims, const KernelBase& k,
                               const KernelArgsArrayBase& args) {
@@ -309,6 +313,10 @@ class StreamExecutorInterface {
   virtual bool UnregisterTraceListener(TraceListener* listener) {
     return false;
   }
+
+  // Returns whether the StreamExecutor has support for BLAS plans as
+  // implemented for instance in the cuBLASLt API
+  virtual bool SupportsBlasPlans() const { return false; }
 
   // Returns whether this StreamExecutor has BLAS support for its underlying
   // platform.

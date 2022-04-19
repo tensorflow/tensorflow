@@ -520,6 +520,14 @@ class UnsortedSegmentTest(SegmentReductionHelper):
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
 
+  @test_util.run_deprecated_v1
+  def testAllNegatives(self):
+    with self.session(use_gpu=False):
+      data = np.ones((2, 1), dtype=np.float32)
+      segment_ids = np.array([-1, -1], dtype=np.int32)
+      unsorted = math_ops.unsorted_segment_sum(data, segment_ids, 2)
+      self.assertAllClose(unsorted.eval(), np.zeros((2, 1), dtype=np.float32))
+
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
 

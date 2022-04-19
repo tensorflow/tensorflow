@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 #include <array>
+#include <cmath>
 #include <limits>
 #include <locale>
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
@@ -285,7 +286,7 @@ PyObject* PyBfloat16_New(PyTypeObject* type, PyObject* args, PyObject* kwds) {
     }
   }
   PyErr_Format(PyExc_TypeError, "expected number, got %s",
-               arg->ob_type->tp_name);
+               Py_TYPE(arg)->tp_name);
   return nullptr;
 }
 
@@ -335,11 +336,24 @@ PyObject* PyBfloat16_Str(PyObject* self) {
   return PyUnicode_FromString(v.c_str());
 }
 
-// Hash function for PyBfloat16. We use the identity function, which is a weak
-// hash function.
+// _Py_HashDouble changed its prototype for Python 3.10 so we use an overload to
+// handle the two possibilities.
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+Py_hash_t HashImpl(Py_hash_t (*hash_double)(PyObject*, double), PyObject* self,
+                   double value) {
+  return hash_double(self, value);
+}
+
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+Py_hash_t HashImpl(Py_hash_t (*hash_double)(double), PyObject* self,
+                   double value) {
+  return hash_double(value);
+}
+
+// Hash function for PyBfloat16.
 Py_hash_t PyBfloat16_Hash(PyObject* self) {
-  return Eigen::numext::bit_cast<uint16_t>(
-      reinterpret_cast<PyBfloat16*>(self)->value);
+  bfloat16 x = reinterpret_cast<PyBfloat16*>(self)->value;
+  return HashImpl(&_Py_HashDouble, self, static_cast<double>(x));
 }
 
 // Python type for PyBfloat16 objects.
@@ -440,7 +454,7 @@ int NPyBfloat16_SetItem(PyObject* item, void* data, void* arr) {
   bfloat16 x;
   if (!CastToBfloat16(item, &x)) {
     PyErr_Format(PyExc_TypeError, "expected number, got %s",
-                 item->ob_type->tp_name);
+                 Py_TYPE(item)->tp_name);
     return -1;
   }
   memcpy(data, &x, sizeof(bfloat16));
@@ -969,8 +983,9 @@ struct Ceil {
 };
 struct CopySign {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    return bfloat16(
-        std::copysign(static_cast<float>(a), static_cast<float>(b)));
+    // LLVM is smart enough to turn this into (a & 0x7fff) | (b & 0x8000).
+    bfloat16 abs_a = Eigen::numext::abs(a);
+    return std::signbit(static_cast<float>(b)) ? -abs_a : abs_a;
   }
 };
 struct Exp {

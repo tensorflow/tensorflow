@@ -127,6 +127,14 @@ class Arguments : public ArgumentsBinder {
                        const std::map<std::string, std::string>& linkables,
                        std::string* code);
 
+  absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
+                                    std::string* code) const;
+
+  absl::Status ResolveConstExpr(const GpuInfo& gpu_info,
+                                const std::string& object_name,
+                                const std::string& const_expr,
+                                std::string* result) const;
+
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
       const std::map<std::string, std::string>& linkables,

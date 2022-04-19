@@ -289,7 +289,7 @@ TEST(UnidirectionalRNNOpTest, BlackBoxTest) {
   rnn.SetInput(0, batch_start, batch_end);
   rnn.SetInput(input_sequence_size, batch_start, batch_end);
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   float* golden_start = rnn_golden_output;
   float* golden_end = golden_start + rnn.num_units() * rnn.sequence_len();
@@ -318,7 +318,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestUint8) {
   rnn.SetInput(0, batch_start, batch_end);
   rnn.SetInput(input_sequence_size, batch_start, batch_end);
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   float* golden_start = rnn_golden_output;
   float* golden_end = golden_start + rnn.num_units() * rnn.sequence_len();
@@ -345,7 +345,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestInt8) {
   rnn.SetInput(0, batch_start, batch_end);
   rnn.SetInput(input_sequence_size, batch_start, batch_end);
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   float* golden_start = rnn_golden_output;
   float* golden_end = golden_start + rnn.num_units() * rnn.sequence_len();
@@ -373,7 +373,7 @@ TEST(UnidirectionalRNNOpTest, TimeMajorBlackBoxTest) {
     rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {
@@ -403,7 +403,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestUint8) {
     rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {
@@ -434,7 +434,7 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
     rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {

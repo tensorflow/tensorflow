@@ -227,13 +227,13 @@ void populateHLOShapeOpsToStandardConversionPattern(
     MLIRContext* context, TypeConverter& type_converter,
     RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       ComputeReshapeShapeConversion,
       CstrReshapableConversion>(type_converter, context);
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeHloShapeOpsToStandardPass() {
   return std::make_unique<HloLegalizeShapeOpsToStandardPass>();
 }

@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -1163,10 +1162,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
                      dtypes.float32)
 
-    # MLIR quantizer has different bias index.
-    if enable_mlir_quantizer:
-      bias_idx = 2
-
     # Convert model to quantized version
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
@@ -1189,17 +1184,20 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                           metadata.options.modelOptimizationModes)
       interpreter = Interpreter(model_content=quantized_tflite_model)
       interpreter.allocate_tensors()
-      self.assertEqual(interpreter.get_tensor_details()[bias_idx]['name'],
-                       bias_name)
+
+      # MLIR quantizer has different bias index.
+      bias_tensor = [
+          tensor for tensor in interpreter.get_tensor_details()
+          if tensor['name'] == bias_name
+      ]
+      self.assertLen(bias_tensor, 1)
 
       if is_float16_quantized:
         # Verify that bias constant is float16 type.
-        self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
-                         dtypes.float16)
+        self.assertEqual(bias_tensor[0]['dtype'], dtypes.float16)
       elif is_post_training_quantized:
         # Verify that bias constants is int32 type.
-        self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
-                         dtypes.int32)
+        self.assertEqual(bias_tensor[0]['dtype'], dtypes.int32)
       else:
         raise ValueError('Invalid test options.')
 
@@ -2219,6 +2217,9 @@ class FromSavedModelTest(TestModels):
 
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
+    self.skipTest(
+        'b/221093690: The debug info is not from self._createSavedModel(), '
+        'but from saved_model.loader_impl().')
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     converter.convert()

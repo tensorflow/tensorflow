@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 
+#include <memory>
+#include <string>
+
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -82,7 +85,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   explicit DispatchGrpcDataServer(const experimental::DispatcherConfig& config);
   ~DispatchGrpcDataServer() override;
 
-  // Returns the number of workers registerd with the dispatcher.
+  // Returns the number of workers registered with the dispatcher.
   Status NumWorkers(int* num_workers);
   // Returns the number of active (non-finished) jobs running on the dispatcher.
   size_t NumActiveJobs();

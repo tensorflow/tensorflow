@@ -18,6 +18,7 @@ import collections
 import copy
 import itertools
 import math
+import sys
 from typing import Type
 
 from absl.testing import absltest
@@ -114,10 +115,25 @@ class Bfloat16Test(parameterized.TestCase):
     self.assertEqual("-inf", repr(bfloat16(float("-inf"))))
     self.assertEqual("nan", repr(bfloat16(float("nan"))))
 
-  def testHash(self):
-    self.assertEqual(0, hash(bfloat16(0.0)))
-    self.assertEqual(0x3f80, hash(bfloat16(1.0)))
-    self.assertEqual(0x7fc0, hash(bfloat16(float("nan"))))
+  def testHashZero(self):
+    """Tests that negative zero and zero hash to the same value."""
+    self.assertEqual(hash(bfloat16(-0.0)), hash(bfloat16(0.0)))
+
+  @parameterized.parameters(np.extract(np.isfinite(FLOAT_VALUES), FLOAT_VALUES))
+  def testHashNumbers(self, value):
+    self.assertEqual(hash(value), hash(bfloat16(value)), str(value))
+
+  @parameterized.named_parameters(("PositiveNan", bfloat16(float("nan"))),
+                                  ("NegativeNan", bfloat16(float("-nan"))))
+  def testHashNan(self, nan):
+    nan_hash = hash(nan)
+    nan_object_hash = object.__hash__(nan)
+    # The hash of a NaN is either 0 or a hash of the object pointer.
+    self.assertIn(nan_hash, (sys.hash_info.nan, nan_object_hash), str(nan))
+
+  def testHashInf(self):
+    self.assertEqual(sys.hash_info.inf, hash(bfloat16(float("inf"))), "inf")
+    self.assertEqual(-sys.hash_info.inf, hash(bfloat16(float("-inf"))), "-inf")
 
   # Tests for Python operations
   def testNegate(self):
@@ -488,6 +504,17 @@ class Bfloat16NumPyTest(parameterized.TestCase):
     mant2, exp2 = np.frexp(x.astype(np.float32))
     np.testing.assert_equal(exp1, exp2)
     numpy_assert_allclose(mant1, mant2, rtol=1e-2)
+
+  @parameterized.parameters(list(range(1, 128)))
+  def testCopySign(self, nan_payload):
+    inf_bits = 0x7f80
+    nan_bits = inf_bits | nan_payload
+    little_endian_uint16 = np.dtype(np.uint16).newbyteorder("L")
+    little_endian_bfloat = np.dtype(bfloat16).newbyteorder("L")
+    nan = little_endian_uint16.type(nan_bits).view(little_endian_bfloat)
+    nan_with_sign = np.copysign(nan, bfloat16(-1))
+    nan_with_sign_bits = nan_with_sign.view(little_endian_uint16)
+    np.testing.assert_equal(nan_bits | (1 << 15), nan_with_sign_bits)
 
   def testNextAfter(self):
     one = np.array(1., dtype=bfloat16)

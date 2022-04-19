@@ -34,15 +34,6 @@ namespace {
 
 using ::testing::ElementsAre;
 
-TEST(ShapeUtilTest, ShapeIndexViewTest) {
-  ShapeIndex index = {1, 2, 3, 4};
-  ShapeIndexView index_view(index, 1);
-  EXPECT_EQ(3, index_view.size());
-  EXPECT_EQ(ShapeIndexView({2, 3, 4}), index_view);
-  EXPECT_EQ(ShapeIndexView({3, 4}), index_view.ConsumeFront());
-  EXPECT_EQ(ShapeIndexView({2, 3}), index_view.ConsumeBack());
-}
-
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
   EXPECT_EQ(3, ShapeUtil::GetDimension(matrix, -1));
@@ -622,7 +613,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
   int init = 5;
-  auto set_func = [&](absl::Span<const int64_t> indexes) {
+  auto set_func = [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 

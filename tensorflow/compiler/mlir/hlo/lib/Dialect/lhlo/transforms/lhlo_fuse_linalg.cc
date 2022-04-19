@@ -24,11 +24,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -73,7 +73,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       result_buffers.insert(func_arg);
     }
     for (auto& block : func) {
-      auto returnOp = mlir::dyn_cast<mlir::ReturnOp>(block.getTerminator());
+      auto returnOp =
+          mlir::dyn_cast<mlir::func::ReturnOp>(block.getTerminator());
       if (!returnOp) continue;
       for (auto operand : returnOp.getOperands()) {
         result_buffers.insert(operand);
@@ -211,7 +212,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalgPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLhloFuseLinalgPass(
     bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
   return std::make_unique<LhloFuseLinalgPass>(use_parallel_loops, tile_sizes);
 }

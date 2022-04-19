@@ -22,7 +22,7 @@ Pod::Spec.new do |s|
   swift_dir = tfl_dir + 'swift/'
 
   s.pod_target_xcconfig = {
-    'VALID_ARCHS' => 'x86_64 armv7 arm64',
+    'VALID_ARCHS' => 'x86_64 arm64',
   }
 
   s.default_subspec = 'Core'

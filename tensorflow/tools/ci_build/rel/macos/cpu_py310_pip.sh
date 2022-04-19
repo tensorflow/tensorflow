@@ -31,5 +31,6 @@ setup_python_from_pyenv_macos "${PYENV_VERSION}"
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/pip-whl"
 bazel_build_wheel ${PIP_WHL_DIR}
 
-WHL_PATH=$(ls "${PIP_WHL_DIR}"/*.whl)
-bazel_test_wheel ${WHL_PATH}
+for WHL_PATH in $(ls "${PIP_WHL_DIR}"/tensorflow*.whl); do
+  bazel_test_wheel ${WHL_PATH}
+done
