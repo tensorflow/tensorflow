@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_phi_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -40,6 +39,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+// Identifies one array input of an HloInstruction.
+struct HloOperandIndex {
+  // The operand number in which the array value appears.
+  int64_t operand_number;
+
+  // The shape index within the operand in which the array value appears.
+  ShapeIndex operand_index;
+
+  bool operator==(const HloOperandIndex& other) const {
+    return operand_number == other.operand_number &&
+           operand_index == other.operand_index;
+  }
+
+  bool operator!=(const HloOperandIndex& other) const {
+    return !(*this == other);
+  }
+};
 
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
@@ -185,10 +202,8 @@ class HloDataflowAnalysis {
   //
   // ... the results can include any of the 3 * 3 = 9 possible pairs of
   // input and output arrays.
-  static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
-      HloInstruction* instruction);
-  // Whether this HLO contains any in-place operations.
-  static bool HasInPlaceOperations(const HloInstruction& instruction);
+  static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+  GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);

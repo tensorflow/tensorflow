@@ -19,8 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/ThreadPool.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -31,13 +34,18 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
+#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
+#include "tensorflow/core/transforms/functional_to_region/pass.h"
 #include "tensorflow/core/transforms/pass_registration.h"
+#include "tensorflow/core/transforms/region_to_functional/pass.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
@@ -48,18 +56,38 @@ namespace tfg {
 // The default pipeline is empty.
 void DefaultGrapplerPipeline(PassManager& mgr) {}
 
+// Run the consolidate attributes pass. Convert the whole module to region
+// control-flow and run control-flow sinking. Convert the whole module back to
+// functional control-flow and prepare the attributes for export.
+void DefaultModuleGrapplerPipeline(PassManager& mgr) {
+  mgr.addPass(CreateConsolidateAttributesPass());
+  mgr.addPass(CreateFunctionalToRegionPass());
+  // TODO(b/228618345): Enable control-flow sinking.
+  // mgr.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
+  mgr.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
+  mgr.addPass(CreatePrepareAttributesForExportPass());
+}
+
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.
 class TFGGrapplerOptimizer::Impl {
  public:
-  // Builds the pass pipeline. The context is initialized without threading.
-  // Creating and destroying the threadpool each time Grappler is invoked is
-  // prohibitively expensive.
-  // TODO(jeffniu): Some passes may run in parallel on functions. Find a way to
-  // hold and re-use a threadpool.
-  explicit Impl(TFGPassPipelineBuilder builder)
+  // Builds the pass pipeline. The context is initialized with threading
+  // disabled. If the user specifies to run the optimizer with more than zero
+  // threads, a threadpool is initialized and passed to the MLIR context.
+  explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
       : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
+    DialectRegistry registry;
+    // Register the TFG dialect.
+    registry.insert<TFGraphDialect>();
+    ctx_.appendDialectRegistry(registry);
     builder(mgr_);
+    if (num_tfg_threads) {
+      llvm::ThreadPoolStrategy strategy;
+      strategy.ThreadsRequested = num_tfg_threads;
+      threadpool_ = std::make_unique<llvm::ThreadPool>(strategy);
+      ctx_.setThreadPool(*threadpool_);
+    }
   }
 
   // Runs the pass manager.
@@ -77,14 +105,18 @@ class TFGGrapplerOptimizer::Impl {
   }
 
  private:
+  // An optional threadpool for running MLIR with threading. Use an external
+  // threadpool so the number of threads can be controlled.
+  std::unique_ptr<llvm::ThreadPool> threadpool_;
   // The MLIR context.
   MLIRContext ctx_;
   // The pass manager containing the loaded TFG pass pipeline.
   PassManager mgr_;
 };
 
-TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder)
-    : impl_(std::make_unique<Impl>(std::move(builder))) {}
+TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
+                                           unsigned num_tfg_threads)
+    : impl_(std::make_unique<Impl>(std::move(builder), num_tfg_threads)) {}
 
 TFGGrapplerOptimizer::~TFGGrapplerOptimizer() = default;
 

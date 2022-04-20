@@ -114,15 +114,29 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":shape_util",
         ":status_macros",
         ":statusor",
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "comparison_util_test",
+    srcs = ["comparison_util_test.cc"],
+    deps = [
+        ":comparison_util",
+        ":test",
+        ":xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
     ],
 )
 

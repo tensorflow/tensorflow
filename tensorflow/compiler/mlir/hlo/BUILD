@@ -943,6 +943,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1314,6 +1315,25 @@ cc_library(
 )
 
 cc_library(
+    name = "collapse_elementwise_map",
+    srcs = ["lib/Dialect/mhlo/transforms/collapse_elementwise_map.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "legalize_trigonometric_to_approximation",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_trigonometric_to_approximation.cc"],
     hdrs = [
@@ -1511,6 +1531,7 @@ cc_library(
     ],
     deps = [
         ":MhloPassIncGen",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1585,6 +1606,7 @@ cc_library(
         ":buffer_packing",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
+        ":collapse_elementwise_map",
         ":copy_removal",
         ":expand_hlo_tuples",
         ":gml_st_passes_inc_gen",
@@ -1608,11 +1630,13 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":lower_index_cast",
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
+        ":shape_simplification",
         ":sink_constants_to_control_flow",
         ":symbolic_shape_optimization",
         ":test_passes",
@@ -1688,6 +1712,7 @@ cc_library(
     ],
     deps = [
         ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1810,6 +1835,50 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "lower_index_cast",
+    srcs = [
+        "lib/Transforms/lower_index_cast_pass.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "shape_simplification",
+    srcs = [
+        "lib/Transforms/shape_simplification.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:kernel_gen_passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -2007,6 +2076,7 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
     ],

@@ -49,32 +49,32 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
-                         [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
-                         [HLO_ShiftLeftOp, HLOClient_BroadcastShiftLeftOp, TF_LeftShiftOp],
-                         [HLO_MaxOp, HLOClient_BroadcastMaxOp, TF_MaximumOp],
-                         [HLO_MinOp, HLOClient_BroadcastMinOp, TF_MinimumOp],
-                         [HLO_MulOp, HLOClient_BroadcastMulOp, TF_MulOp],
-                         [HLO_PowOp, HLOClient_BroadcastPowOp, TF_PowOp],
-                         [HLO_SubOp, HLOClient_BroadcastSubOp, TF_SubOp],
-                         [HLO_Atan2Op, HLOClient_BroadcastAtan2Op, TF_Atan2Op]] in {
+foreach fromToBinPair = [[HLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
+                         [HLO_DivOp, CHLO_BroadcastDivOp, TF_DivOp],
+                         [HLO_ShiftLeftOp, CHLO_BroadcastShiftLeftOp, TF_LeftShiftOp],
+                         [HLO_MaxOp, CHLO_BroadcastMaxOp, TF_MaximumOp],
+                         [HLO_MinOp, CHLO_BroadcastMinOp, TF_MinimumOp],
+                         [HLO_MulOp, CHLO_BroadcastMulOp, TF_MulOp],
+                         [HLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
+                         [HLO_SubOp, CHLO_BroadcastSubOp, TF_SubOp],
+                         [HLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
-foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_BitwiseAndOp],
-                 [HLO_OrOp, HLOClient_BroadcastOrOp, TF_BitwiseOrOp],
-                 [HLO_XorOp, HLOClient_BroadcastXorOp, TF_BitwiseXorOp]] in {
+foreach pair  = [[HLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],
+                 [HLO_OrOp, CHLO_BroadcastOrOp, TF_BitwiseOrOp],
+                 [HLO_XorOp, CHLO_BroadcastXorOp, TF_BitwiseXorOp]] in {
   def : Pat<(pair[0] TF_IntTensor:$l, TF_IntTensor:$r), (pair[2] $l, $r)>;
   def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 }
 
-foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
-                 [HLO_OrOp, HLOClient_BroadcastOrOp, TF_LogicalOrOp]] in {
+foreach pair  = [[HLO_AndOp, CHLO_BroadcastAndOp, TF_LogicalAndOp],
+                 [HLO_OrOp, CHLO_BroadcastOrOp, TF_LogicalOrOp]] in {
   def : Pat<(pair[0] I1Tensor:$l, I1Tensor:$r), (pair[2] $l, $r)>;
   def : Pat<(pair[1] I1Tensor:$l, I1Tensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
@@ -82,18 +82,18 @@ foreach pair  = [[HLO_AndOp, HLOClient_BroadcastAndOp, TF_LogicalAndOp],
 }
 
 def : Pat<(HLO_ShiftRightArithmeticOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
+def : Pat<(CHLO_BroadcastShiftRightArithmeticOp $l, $r,
                                                      $broadcast_dimensions),
           (TF_RightShiftOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 def : Pat<(HLO_ShiftRightLogicalOp $l, $r), (TF_RightShiftOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+def : Pat<(CHLO_BroadcastShiftRightLogicalOp $l, $r,
                                                   $broadcast_dimensions),
           (TF_RightShiftOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 def : Pat<(HLO_FloorOp (HLO_DivOp $l, $r)), (TF_FloorDivOp $l, $r)>;
-def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
+def : Pat<(HLO_FloorOp (CHLO_BroadcastDivOp $l, $r,
                                                  $broadcast_dimensions)),
           (TF_FloorDivOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -101,7 +101,7 @@ def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
 def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 
 def : Pat<(HLO_RemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r), (TF_ModOp $l, $r)>;
-def : Pat<(HLOClient_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
+def : Pat<(CHLO_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
           (TF_ModOp $l, $r),
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
@@ -193,7 +193,7 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 
 foreach p = [[TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">],
              [TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
+  def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions, p[1],
                                           IsTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
@@ -205,7 +205,7 @@ foreach pair = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
                 [TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">],
                 [TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">],
                 [TF_LessOp, HLO_ComparisonDirectionValue<"LT">]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $broadcast_dimensions,
+  def : Pat<(CHLO_BroadcastCompareOp $l, $r, $broadcast_dimensions,
                                           pair[1], IsTFCompareType:$type),
             (pair[0] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;

@@ -153,7 +153,7 @@ TEST(Journal, InvalidRecordData) {
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
         DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
-    TF_ASSERT_OK(writer->WriteRecord("not serializd proto"));
+    TF_ASSERT_OK(writer->WriteRecord("not serialized proto"));
   }
 
   FileJournalReader reader(Env::Default(), journal_dir);

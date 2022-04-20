@@ -42,6 +42,7 @@ cc_library(
     hdrs = ["gpu_info.h"],
     deps = [
         ":data_type",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )

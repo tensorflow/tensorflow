@@ -80,7 +80,7 @@ func.func @identity(%arg0: tensor<2xf32>) -> tensor<*xf32> {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<2xf32>) -> tensor<*xf32>
   %1 = "tf.AddV2"(%0, %cst_1) {device = ""} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
   func.return %1 : tensor<*xf32>
-// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<1.000000e-03> : tensor<f32>} : () -> tensor<f32>
+// CHECK: %[[CONST_0:.*]] = "tf.Const"() {device = "", value = dense<1.000000e-03> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[IDENTITY_0:.*]] = "tf.Identity"(%arg0) {device = ""} : (tensor<2xf32>) -> tensor<*xf32>
 // CHECK: %[[ADDV2_0:.*]] = "tfl.custom"(%0, %cst) {custom_code = "FlexAddV2", custom_option = opaque<"tfl", "0x0541646456320016120541646456321A001A002A070A015412023001320000021F191414042801"> : tensor<39xi8>} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
 // CHECK: return %[[ADDV2_0]] : tensor<*xf32>

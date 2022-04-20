@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "llvm/IR/Constants.h"
@@ -176,12 +177,16 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       << " should have a layout.";
 }
 
-IrArray::IrArray(llvm::Value* base_ptr, Shape shape)
-    : base_ptr_(base_ptr), shape_(std::move(shape)) {
+IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
+    : base_ptr_(base_ptr),
+      pointee_type_(pointee_type),
+      shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
+  CHECK(llvm::cast<llvm::PointerType>(base_ptr_->getType())
+            ->isOpaqueOrPointeeTypeMatches(pointee_type));
   int depth = 0;
-  element_type_ = base_ptr_->getType()->getPointerElementType();
+  element_type_ = pointee_type;
   while (llvm::ArrayType* array_type =
              llvm::dyn_cast<llvm::ArrayType>(element_type_)) {
     element_type_ = array_type->getElementType();
@@ -506,8 +511,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
-  return b->CreateInBoundsGEP(base_ptr_->getType()->getPointerElementType(),
-                              base_ptr_, gep_indices,
+  return b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
                               llvm_ir::AsStringRef(name));
 }
 
@@ -530,8 +534,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* element_address =
       EmitArrayElementAddress(index, b, name, use_linear_index);
   llvm::LoadInst* load =
-      b->CreateLoad(element_address->getType()->getPointerElementType(),
-                    element_address, llvm_ir::AsStringRef(name));
+      b->CreateLoad(element_type_, element_address, llvm_ir::AsStringRef(name));
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
@@ -550,7 +553,8 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   IrArray new_irarray(
-      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_shape);
+      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_ir_type,
+      new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
 }

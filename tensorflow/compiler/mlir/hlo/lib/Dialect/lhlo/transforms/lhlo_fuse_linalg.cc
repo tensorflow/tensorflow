@@ -212,7 +212,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalgPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLhloFuseLinalgPass(
     bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
   return std::make_unique<LhloFuseLinalgPass>(use_parallel_loops, tile_sizes);
 }

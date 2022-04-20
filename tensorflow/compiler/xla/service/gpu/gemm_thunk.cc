@@ -67,14 +67,12 @@ StatusOr<se::DeviceMemory<uint8_t>> BlasScratchAllocator::AllocateBytes(
 GemmThunk::GemmThunk(ThunkInfo thunk_info, GpuGemmConfig config,
                      const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
-                     const BufferAllocation::Slice &output_buffer,
-                     bool implements_whole_instruction)
+                     const BufferAllocation::Slice &output_buffer)
     : Thunk(Kind::kGemm, thunk_info),
       config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
-      output_buffer_(output_buffer),
-      implements_whole_instruction_(implements_whole_instruction) {}
+      output_buffer_(output_buffer) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   auto get_device_address = [&](const BufferAllocation::Slice &slice) {
@@ -91,7 +89,6 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
 
   VLOG(3) << "Running GEMM thunk";
   return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
-                 implements_whole_instruction_, profile_index(),
                  &scratch_allocator, nullptr);
 }
 
@@ -202,6 +199,7 @@ static Status DoGemm(int64_t batch_size, const se::blas::MatrixDescriptor &lhs,
         /*leading dim of output=*/output_matrix.num_rows, output_matrix.stride,
         batch_size);
   }
+
   return stream->ThenBlasGemm(lhs.transpose, rhs.transpose,
                               output_matrix.num_rows, output_matrix.num_cols,
                               /*size of reduce dim=*/lhs.reduced_dim(),
@@ -410,8 +408,6 @@ MatrixDescs PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
 Status RunGemm(const GpuGemmConfig &gemm_config,
                se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
-               bool implements_whole_instruction,
-               absl::optional<int64_t> profile_index,
                BlasScratchAllocator *scratch_allocator,
                se::blas::IBlasLtMatmulAlgorithm *const algorithm_being_profiled,
                se::blas::ProfileResult *profile_result,

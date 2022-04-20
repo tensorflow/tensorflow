@@ -1594,6 +1594,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
+        "//tensorflow/core/framework:ref_var.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
         "//tensorflow/core/framework:run_handler.h",
@@ -1905,6 +1906,28 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_tests(
+    name = "cell_reader_test",
+    size = "small",
+    srcs = [
+        "//tensorflow/core/lib/monitoring:cell_reader_test.cc",
+        "//tensorflow/core/lib/monitoring:test_utils_test.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:sampler",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

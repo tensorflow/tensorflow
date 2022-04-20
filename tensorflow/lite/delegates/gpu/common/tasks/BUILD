@@ -701,6 +701,32 @@ cc_library(
 )
 
 cc_library(
+    name = "one_hot",
+    srcs = ["one_hot.cc"],
+    hdrs = ["one_hot.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_library(
+    name = "one_hot_test_util",
+    testonly = 1,
+    srcs = ["one_hot_test_util.cc"],
+    hdrs = ["one_hot_test_util.h"],
+    deps = [
+        ":one_hot",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "padding",
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],

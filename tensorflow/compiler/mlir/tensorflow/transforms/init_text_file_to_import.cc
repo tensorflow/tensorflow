@@ -140,7 +140,7 @@ class ConvertInitializeTableFromTextFileV2
 void InitTextFileToImportPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
@@ -150,11 +150,10 @@ void InitTextFileToImportPass::runOnOperation() {
 }  // namespace
 
 // Replace InitializeTableFromTextFileV2Ops with LookupTableImportV2Ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateInitTextFileToImportPass(
     std::string saved_model_dir) {
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
-
 
 }  // namespace TF
 }  // namespace mlir

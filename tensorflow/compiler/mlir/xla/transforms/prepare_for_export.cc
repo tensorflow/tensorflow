@@ -161,7 +161,7 @@ void PrepareForExportPass::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareForExport() {
   return std::make_unique<PrepareForExportPass>();
 }
 

@@ -72,8 +72,7 @@ class GemmThunk : public Thunk {
   GemmThunk(ThunkInfo thunk_info, GpuGemmConfig config,
             const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
-            const BufferAllocation::Slice& output_buffer,
-            bool implements_whole_instruction);
+            const BufferAllocation::Slice& output_buffer);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
@@ -85,24 +84,17 @@ class GemmThunk : public Thunk {
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
-  const bool implements_whole_instruction_;
 };
 
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
-//
-// `implements_whole_instruction` is used for the default profiler creation
-// if the `profiler` is not supplied. False value indicates that the created
-// profiler will not specifically profile the `gemm` instruction.
 //
 // If `algorithm` is provided, it overrides the one specified in
 // `gemm_config.backend_config`.
 Status RunGemm(
     const GpuGemmConfig& gemm_config, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream, bool implements_whole_instruction,
-    absl::optional<int64_t> profile_index,
-    BlasScratchAllocator* scratch_allocator,
+    se::Stream* stream, BlasScratchAllocator* scratch_allocator,
     se::blas::IBlasLtMatmulAlgorithm* const algorithm_being_profiled,
     se::blas::ProfileResult* profile_result = nullptr,
     absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);

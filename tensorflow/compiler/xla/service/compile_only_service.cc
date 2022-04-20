@@ -103,8 +103,21 @@ CompileOnlyService::CompileAheadOfTime(
   execution_options.set_deduplicate_hlo(options.deduplicate_hlo());
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
+    auto update_shape_with_empty_tiles = [this](Shape* subshape,
+                                                const xla::ShapeIndex& index) {
+      if (subshape->IsArray() && subshape->layout().tiles().empty()) {
+        *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
+      }
+    };
+    ShapeUtil::ForEachMutableSubshape(
+        const_cast<Shape*>(instance.result_layout),
+        update_shape_with_empty_tiles);
     *execution_options.mutable_shape_with_output_layout() =
         instance.result_layout->ToProto();
+    for (auto shape : instance.argument_layouts) {
+      ShapeUtil::ForEachMutableSubshape(const_cast<Shape*>(shape),
+                                        update_shape_with_empty_tiles);
+    }
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,

@@ -66,7 +66,9 @@ namespace TFL {
 namespace {
 
 struct SplitMergedOperandsPass
-    : public PassWrapper<SplitMergedOperandsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<SplitMergedOperandsPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitMergedOperandsPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {
@@ -129,7 +131,7 @@ void SplitMergedOperandsPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect SplitMergedOperands
 /// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitMergedOperandsPass() {
   return std::make_unique<SplitMergedOperandsPass>();
 }
 

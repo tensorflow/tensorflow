@@ -115,12 +115,6 @@ CreateGpuKernelToNvvmPass();
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
 
-// Pass to lower index cast on tensors to tensor dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass();
-
-// Pass to simplify shape ops.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeSimplification();
-
 // Pass to create vectorized code for CPU.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();
 

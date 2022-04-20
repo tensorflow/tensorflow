@@ -28,12 +28,14 @@ extern "C" {
 
 /// TfLiteSignatureRunner is used to run inference on a signature.
 ///
-/// Note: A signature refers to a computation supported by a model, identified
-/// by a distinct name, a list of named inputs and a list of named outputs. Each
-/// named input/output is associated with a specific input/output tensor. A
-/// model can have multiple signatures.
-// To learn more about signatures in TFLite, refer to:
-// https://www.tensorflow.org/lite/guide/signatures
+/// Note: A signature is used to define a computation in a TF model. A model can
+/// have multiple signatures. Each signature contains three components:
+///   * Signature Key: A unique string to identify a signature
+///   * Inputs: A list of names, each mapped to an input tensor of a signature
+///   * Outputs: A list of names, each mapped to an output tensor of a signature
+///
+/// To learn more about signatures in TFLite, refer to:
+/// https://www.tensorflow.org/lite/guide/signatures
 ///
 /// Using the TfLiteSignatureRunner, for a particular signature, you can set its
 /// inputs, invoke (i.e. execute) the computation, and retrieve its outputs.
@@ -111,6 +113,21 @@ void TfLiteInterpreterOptionsSetOpResolver(
     const TfLiteRegistration* (*find_custom_op)(void* user_data,
                                                 const char* custom_op,
                                                 int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// `TfLiteRegistration_V1` version of TfLiteInterpreterOptionsSetOpResolver.
+///
+/// WARNING: This function is deprecated / not an official part of the API, is
+/// only for binary backwards compatibility, and should not be called.
+void TfLiteInterpreterOptionsSetOpResolverV1(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V1* (*find_custom_op_v1)(void* user_data,
+                                                      const char* op,
+                                                      int version),
     void* op_resolver_user_data);
 
 /// Returns a new interpreter using the provided model and options, or null on
@@ -245,21 +262,21 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetSignatureCount(
     const TfLiteInterpreter* interpreter);
 
-/// Returns the name of the Nth signature in the model, where N is specified as
+/// Returns the key of the Nth signature in the model, where N is specified as
 /// `signature_index`.
 ///
-/// NOTE: The lifetime of the returned name is the same as (and depends on) the
+/// NOTE: The lifetime of the returned key is the same as (and depends on) the
 /// lifetime of `interpreter`.
 ///
 /// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern const char* TfLiteInterpreterGetSignatureName(
+TFL_CAPI_EXPORT extern const char* TfLiteInterpreterGetSignatureKey(
     const TfLiteInterpreter* interpreter, int32_t signature_index);
 
 /// Returns a new signature runner using the provided interpreter and signature
-/// name, or nullptr on failure.
+/// key, or nullptr on failure.
 ///
-/// NOTE: `signature_name` is a null-terminated C string that must match the
-/// name of a signature in the interpreter's model.
+/// NOTE: `signature_key` is a null-terminated C string that must match the
+/// key of a signature in the interpreter's model.
 ///
 /// NOTE: The returned signature runner should be destroyed, by calling
 /// TfLiteSignatureRunnerDelete(), before the interpreter is destroyed.
@@ -267,7 +284,7 @@ TFL_CAPI_EXPORT extern const char* TfLiteInterpreterGetSignatureName(
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteSignatureRunner*
 TfLiteInterpreterGetSignatureRunner(const TfLiteInterpreter* interpreter,
-                                    const char* signature_name);
+                                    const char* signature_key);
 
 /// Returns the number of inputs associated with a signature.
 ///

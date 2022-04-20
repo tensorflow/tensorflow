@@ -14,63 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
+#include <utility>
+
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-class DefaultWorkQueueWrapper final : public WorkQueueInterface {
+class DefaultWorkQueueWrapperBase : public WorkQueueInterface {
  public:
-  explicit DefaultWorkQueueWrapper(
-      std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue)
-      : work_queue_(std::move(work_queue)) {}
+  explicit DefaultWorkQueueWrapperBase(int64_t id,
+                                       tfrt::ConcurrentWorkQueue* work_queue)
+      : id_(id), work_queue_(work_queue) {}
 
-  DefaultWorkQueueWrapper(std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue,
-                          thread::ThreadPoolInterface* intra_thread_pool)
-      : work_queue_(std::move(work_queue)),
-        intra_thread_pool_(intra_thread_pool) {}
-
-  ~DefaultWorkQueueWrapper() override = default;
-
-  StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
-      tfrt::RequestContextBuilder* request_context_builder,
-      thread::ThreadPoolInterface** intra_op_threadpool) const override {
-    *intra_op_threadpool = intra_thread_pool_;
-    return {nullptr};
-  }
+  ~DefaultWorkQueueWrapperBase() override = default;
 
  private:
   std::string name() const override { return work_queue_->name(); }
 
   void AddTask(tfrt::TaskFunction work) override {
-    work_queue_->AddTask(WrapWork(/*id=*/0, "inter", std::move(work)));
-  }
-
-  void AddTask(const tfrt::ExecutionContext& exec_ctx,
-               tfrt::TaskFunction work) override {
-    int64_t id = 0;
-    if (auto* request_context = exec_ctx.request_ctx()) {
-      id = request_context->id();
-    }
-    work_queue_->AddTask(exec_ctx, WrapWork(id, "inter", std::move(work)));
+    work_queue_->AddTask(WrapWork(id_, "inter", std::move(work)));
   }
 
   llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override {
     return work_queue_->AddBlockingTask(
-        WrapWork(/*id=*/0, "blocking", std::move(work)), allow_queuing);
-  }
-
-  llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
-      const tfrt::ExecutionContext& exec_ctx, tfrt::TaskFunction work,
-      bool allow_queuing) override {
-    int64_t id = 0;
-    if (auto* request_context = exec_ctx.request_ctx()) {
-      id = request_context->id();
-    }
-    return work_queue_->AddBlockingTask(
-        exec_ctx, WrapWork(id, "blocking", std::move(work)), allow_queuing);
+        WrapWork(id_, "blocking", std::move(work)), allow_queuing);
   }
 
   void Await(
@@ -86,6 +56,40 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
 
   bool IsInWorkerThread() const override {
     return work_queue_->IsInWorkerThread();
+  }
+
+ private:
+  int64_t id_ = 0;
+  tfrt::ConcurrentWorkQueue* work_queue_ = nullptr;
+};
+
+class DefaultWorkQueueWrapper final : public DefaultWorkQueueWrapperBase {
+ public:
+  explicit DefaultWorkQueueWrapper(
+      std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue)
+      : DefaultWorkQueueWrapperBase(/*id=*/0, work_queue.get()),
+        work_queue_(std::move(work_queue)) {}
+
+  ~DefaultWorkQueueWrapper() override = default;
+
+  DefaultWorkQueueWrapper(std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue,
+                          thread::ThreadPoolInterface* intra_thread_pool)
+      : DefaultWorkQueueWrapperBase(/*id=*/0, work_queue.get()),
+        work_queue_(std::move(work_queue)),
+        intra_thread_pool_(intra_thread_pool) {}
+
+  StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
+      tfrt::RequestContextBuilder* request_context_builder,
+      thread::ThreadPoolInterface** intra_op_threadpool) const override {
+    *intra_op_threadpool = intra_thread_pool_;
+
+    int64_t id = 0;
+    if (request_context_builder) {
+      id = request_context_builder->id();
+    }
+
+    return {
+        std::make_unique<DefaultWorkQueueWrapperBase>(id, work_queue_.get())};
   }
 
  private:

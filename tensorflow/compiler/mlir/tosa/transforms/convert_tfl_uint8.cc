@@ -342,7 +342,7 @@ void ConvertUint8ToInt8::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass() {
   return std::make_unique<ConvertUint8ToInt8>();
 }
 

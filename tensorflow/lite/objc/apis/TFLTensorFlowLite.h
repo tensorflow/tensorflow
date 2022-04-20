@@ -18,6 +18,7 @@
 #import "TFLInterpreter.h"
 #import "TFLInterpreterOptions.h"
 #import "TFLQuantizationParameters.h"
+#import "TFLSignatureRunner.h"
 #import "TFLTensor.h"
 
 NS_ASSUME_NONNULL_BEGIN

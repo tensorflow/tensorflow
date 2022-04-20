@@ -510,6 +510,38 @@ retained with length 1.
   let hasVerifier = 1;
 }
 
+def TF_ApproxTopKOp : TF_Op<"ApproxTopK", [NoSideEffect]> {
+  let summary = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let description = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Array to search. Must be at least 1-D of the floating type}]>:$input,
+
+    Confined<I64Attr, [IntMinValue<0>]>:$k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_dimension,
+    DefaultValuedAttr<F32Attr, "0.95f">:$recall_target,
+    DefaultValuedAttr<BoolAttr, "true">:$is_max_k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_input_size_override,
+    DefaultValuedAttr<BoolAttr, "true">:$aggregate_to_topk
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{The min/max k values along the `reduction_dimension` of the `input` operand.
+The dimension are the same as the `input` operand except for the
+`reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+dimension is `k`; otherwise, it is greater equals to `k` where the size is
+implementation-defined.}]>:$values,
+    Res<TF_Int32Tensor, [{The indices of `values` along the `reduction_dimension` of the `input` operand.}]>:$indices
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
 
@@ -2490,7 +2522,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_Conv2DOp : TF_Op<"Conv2D", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_LayoutSensitiveInterface]> {
+def TF_Conv2DOp : TF_Op<"Conv2D", [InferTensorType, NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
   }];
@@ -2632,7 +2664,7 @@ w.r.t. the input of the convolution.}]>:$output
   }];
 }
 
-def TF_Conv3DOp : TF_Op<"Conv3D", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_Conv3DOp : TF_Op<"Conv3D", [InferTensorType, NoSideEffect]> {
   let summary = [{
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
   }];
@@ -3268,7 +3300,7 @@ The attr `block_size` indicates the input block size and how the data is moved.
 
   * Chunks of data of size `block_size * block_size` from depth are rearranged
     into non-overlapping blocks of size `block_size x block_size`
-  * The width the output tensor is `input_depth * block_size`, whereas the
+  * The width of the output tensor is `input_depth * block_size`, whereas the
     height is `input_height * block_size`.
   * The Y, X coordinates within each block of the output image are determined
     by the high order component of the input channel index.
@@ -4577,7 +4609,7 @@ dimension of size 1 added.}]>:$output
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Expm1Op : TF_Op<"Expm1", [InferTensorType, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -10474,8 +10506,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
     // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
   }];
 
@@ -14207,26 +14239,28 @@ Scatters `updates` into a tensor of shape `shape` according to `indices`.
   }];
 
   let description = [{
-Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
-This op returns an `output` tensor with the `shape` you specify. This op is the
-inverse of the `tf.gather_nd` operator which extracts values or slices from a
-given tensor.
+Scatter sparse `updates` according to individual values at the specified
+`indices`. This op returns an output tensor with the `shape` you specify. This
+op is the inverse of the `tf.gather_nd` operator which extracts values or slices
+from a given tensor.
 
 This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
-is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+is zero-initialized. Calling `tf.scatter_nd(indices, updates, shape)`
 is identical to calling
-`tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
+`tf.tensor_scatter_nd_add(tf.zeros(shape, updates.dtype), indices, updates)`
 
-If `indices` contains duplicates, the duplicate `values` are accumulated
-(summed).
+If `indices` contains duplicates, the associated `updates` are accumulated
+(summed) into the output tensor.
 
-**WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates;
-numbers summed in different order may yield different results because of some
-numerical approximation issues.
+**WARNING**: For floating-point data types, the output may be nondeterministic.
+This is because the order in which the updates are applied is nondeterministic
+and when floating-point numbers are added in different orders the resulting
+numerical approximation error can be slightly different. However, the output
+will be deterministic if op determinism is enabled via
+`tf.config.experimental.enable_op_determinism`.
 
-`indices` is an integer tensor of shape `shape`. The last dimension
-of `indices` can be at most the rank of `shape`:
+`indices` is an integer tensor containing indices into the output tensor. The
+last dimension of `indices` can be at most the rank of `shape`:
 
     indices.shape[-1] <= shape.rank
 
@@ -19532,7 +19566,7 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [InferTensorType, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Helper operator for performing XLA-style broadcasts";
 
   let description = [{
@@ -20129,7 +20163,7 @@ key: A unique identifier for this region used to match up host transfers.
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [InferTensorType, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Make a static dimension into a xla bounded dynamic dimension.";
 
   let description = [{
@@ -20807,7 +20841,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 
   let extraClassDeclaration = [{
-    FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+    func::FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
   }];
 
   let hasVerifier = 1;

@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -80,6 +85,15 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
+    case HloOpcode::kFusion:
+      if (instruction->IsCustomFusion() &&
+          ExtractInstruction(instruction, [](const HloInstruction* inst) {
+            return inst->opcode() == HloOpcode::kAllReduce;
+          }) != nullptr) {
+        return true;
+      } else {
+        return false;
+      }
     default:
       return false;
   }
@@ -375,7 +389,10 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           hlo->shape(), hlo->operands(), kAllocateBuffer));
+  auto replaced_collective_op_str =
+      hlo->ToString(HloPrintOptions().Canonical());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
+  custom_call->set_metadata_replaced_op(replaced_collective_op_str);
   return Status::OK();
 }
 
@@ -432,7 +449,8 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
           TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
           changed = true;
         }
-      } else if (remove_comm_ && IsCollective(instruction)) {
+      } else if (remove_comm_ && IsCollective(instruction) &&
+                 !instruction->parent()->IsFusionComputation()) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveCollective(instruction));
         changed = true;
@@ -444,6 +462,10 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
       }
     }
   }
+
+  HloDCE hlo_dce;
+  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module));
+  changed |= dce_changed;
 
   // Fix the schedule if the module was scheduled.
   if (changed && module->has_schedule()) {

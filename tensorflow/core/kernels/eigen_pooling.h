@@ -40,14 +40,13 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<typename internal::traits<Input>::Index,
                         internal::traits<Input>::NumDimensions>,
     const TensorReductionOp<
-        internal::MaxReducer<typename internal::remove_const<
-            typename internal::traits<Input>::Scalar>::type>,
-        typename internal::conditional<
+        internal::MaxReducer<
+            std::remove_const_t<typename internal::traits<Input>::Scalar>>,
+        std::conditional_t<
             internal::traits<Input>::Layout == ColMajor,
-            const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >,
-            const Eigen::IndexList<Eigen::type2index<2>,
-                                   Eigen::type2index<3> > >::type,
-        const TensorImagePatchOp<Dynamic, Dynamic, const Input> > >
+            const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>>,
+            const Eigen::IndexList<Eigen::type2index<2>, Eigen::type2index<3>>>,
+        const TensorImagePatchOp<Dynamic, Dynamic, const Input>>>
 SpatialMaxPooling(const Input& input, DenseIndex patchRows,
                   DenseIndex patchCols, DenseIndex strideRows,
                   DenseIndex strideCols, const PaddingType padding_type,
@@ -96,18 +95,18 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
 
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
-  typename internal::conditional<
+  std::conditional_t<
       internal::traits<Input>::Layout == ColMajor,
-      const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >,
-      const Eigen::IndexList<Eigen::type2index<2>,
-                             Eigen::type2index<3> > >::type reduction_dims;
+      const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>>,
+      const Eigen::IndexList<Eigen::type2index<2>, Eigen::type2index<3>>>
+      reduction_dims;
 
   return input
       .extract_image_patches(
           patchRows, patchCols, strideRows, strideCols, in_strideRows,
           in_strideCols, padding_type,
-          Eigen::NumTraits<typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type>::lowest())
+          Eigen::NumTraits<std::remove_const_t<
+              typename internal::traits<Input>::Scalar>>::lowest())
       .maximum(reduction_dims)
       .reshape(post_reduce_dims);
 }
@@ -366,14 +365,13 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<typename internal::traits<Input>::Index,
                         internal::traits<Input>::NumDimensions>,
     const TensorReductionOp<
-        internal::AvgPoolMeanReducer<typename internal::remove_const<
-            typename internal::traits<Input>::Scalar>::type>,
-        typename internal::conditional<
+        internal::AvgPoolMeanReducer<
+            std::remove_const_t<typename internal::traits<Input>::Scalar>>,
+        std::conditional_t<
             internal::traits<Input>::Layout == ColMajor,
-            const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >,
-            const Eigen::IndexList<Eigen::type2index<2>,
-                                   Eigen::type2index<3> > >::type,
-        const TensorImagePatchOp<Dynamic, Dynamic, const Input> > >
+            const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>>,
+            const Eigen::IndexList<Eigen::type2index<2>, Eigen::type2index<3>>>,
+        const TensorImagePatchOp<Dynamic, Dynamic, const Input>>>
 SpatialAvgPooling(const Input& input, DenseIndex patchRows,
                   DenseIndex patchCols, DenseIndex strideRows,
                   DenseIndex strideCols, const PaddingType padding_type,
@@ -420,17 +418,17 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
   }
   post_reduce_dims[3] = in.dimension(3);
 
-  typedef typename internal::remove_const<
-      typename internal::traits<Input>::Scalar>::type CoeffReturnType;
+  typedef std::remove_const_t<typename internal::traits<Input>::Scalar>
+      CoeffReturnType;
   internal::AvgPoolMeanReducer<CoeffReturnType> mean_with_nan;
 
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
-  typename internal::conditional<
+  std::conditional_t<
       internal::traits<Input>::Layout == ColMajor,
-      const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >,
-      const Eigen::IndexList<Eigen::type2index<2>,
-                             Eigen::type2index<3> > >::type reduction_dims;
+      const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>>,
+      const Eigen::IndexList<Eigen::type2index<2>, Eigen::type2index<3>>>
+      reduction_dims;
   return input
       .extract_image_patches(patchRows, patchCols, strideRows, strideCols,
                              in_strideRows, in_strideCols, padding_type,
@@ -524,8 +522,8 @@ CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
     pre_reduce_dims[2] = post_reduce_dims[4];
   }
 
-  typedef typename internal::remove_const<
-      typename internal::traits<Input>::Scalar>::type CoeffReturnType;
+  typedef std::remove_const_t<typename internal::traits<Input>::Scalar>
+      CoeffReturnType;
   internal::AvgPoolMeanReducer<CoeffReturnType> mean_with_nan;
 
   // Take advantage of cxx11 to give the compiler information it can use to

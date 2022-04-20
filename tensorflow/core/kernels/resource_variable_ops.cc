@@ -359,6 +359,31 @@ REGISTER_KERNEL_BUILDER(
     Name("DestroyResourceOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
     DestroyResourceOp);
 
+void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
+  core::RefCountPtr<Var> variable;
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
+  const auto status = LookupResource(ctx, handle, &variable);
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Could not find variable ", handle.name(), ". ",
+                  "This could mean that the variable has been deleted. ",
+                  "In TF1, it can also mean the variable is uninitialized. ",
+                  "Debug info: container=", handle.container(),
+                  ", status error message=", status.error_message()));
+  // If the variable is currently in copy-on-read mode, its refcount is 1
+  if (variable->copy_on_read_mode.load()) {
+    // Obtain an exclusive lock on the variable and change the access mode
+    mutex_lock ml(*variable->mu());
+    variable->copy_on_read_mode.store(false);
+  }
+}
+
+REGISTER_KERNEL_BUILDER(Name("DisableCopyOnRead").Device(DEVICE_CPU),
+                        DisableCopyOnReadOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DisableCopyOnRead").Device(DEVICE_DEFAULT).HostMemory("resource"),
+    DisableCopyOnReadOp);
+
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
  public:

@@ -1232,8 +1232,6 @@ cc_library(
     visibility = [
         "//configs/devtools/hawkeye/tflite:__subpackages__",
         "//learning/brain/models/app_benchmarks:__subpackages__",
-        "//tensorflow/compiler/mlir/lite:friends",
-        "//tensorflow/lite/experimental/mlir:__subpackages__",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",

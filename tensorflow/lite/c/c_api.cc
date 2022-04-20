@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api.h"
 
 #include <memory>
+#include <mutex>  // NOLINT
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -42,43 +43,6 @@ class CallbackErrorReporter : public tflite::ErrorReporter {
   TfLiteErrorReporterCallback callback_;
 };
 
-/// `CallbackOpResolver` is a (C++) `tflite::OpResolver` that forwards the
-/// methods to (C ABI) callback functions from a `TfLiteOpResolverCallbacks`
-/// struct.
-///
-/// The SetCallbacks method must be called before calling any of the FindOp
-/// methods.
-class CallbackOpResolver : public ::tflite::OpResolver {
- public:
-  CallbackOpResolver() {}
-  void SetCallbacks(
-      const struct TfLiteOpResolverCallbacks& op_resolver_callbacks) {
-    op_resolver_callbacks_ = op_resolver_callbacks;
-  }
-  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                                   int version) const override {
-    if (op_resolver_callbacks_.find_builtin_op == nullptr) {
-      return nullptr;
-    }
-    return op_resolver_callbacks_.find_builtin_op(
-        op_resolver_callbacks_.user_data,
-        static_cast<TfLiteBuiltinOperator>(op), version);
-  }
-  const TfLiteRegistration* FindOp(const char* op, int version) const override {
-    if (op_resolver_callbacks_.find_custom_op == nullptr) {
-      return nullptr;
-    }
-    return op_resolver_callbacks_.find_custom_op(
-        op_resolver_callbacks_.user_data, op, version);
-  }
-
- private:
-  CallbackOpResolver(const CallbackOpResolver&) = delete;
-  CallbackOpResolver& operator=(const CallbackOpResolver&) = delete;
-
-  struct TfLiteOpResolverCallbacks op_resolver_callbacks_ = {};
-};
-
 }  // namespace
 
 extern "C" {
@@ -101,6 +65,29 @@ TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
 }
 
 void TfLiteModelDelete(TfLiteModel* model) { delete model; }
+
+TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
+    const char* custom_name, const int version) {
+  return new TfLiteRegistrationExternal{custom_name, version};
+}
+
+void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
+  delete reg;
+}
+
+void TfLiteRegistrationExternalSetPrepare(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node)) {
+  registration->prepare = prepare;
+}
+
+void TfLiteRegistrationExternalSetInvoke(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
+                           TfLiteOpaqueNode* node)) {
+  registration->invoke = invoke;
+}
 
 TfLiteInterpreterOptions* TfLiteInterpreterOptionsCreate() {
   return new TfLiteInterpreterOptions{};
@@ -126,6 +113,20 @@ void TfLiteInterpreterOptionsSetErrorReporter(
     void* user_data) {
   options->error_reporter_callback.error_reporter = reporter;
   options->error_reporter_callback.user_data = user_data;
+}
+
+void TfLiteInterpreterOptionsAddRegistrationExternal(
+    TfLiteInterpreterOptions* options,
+    TfLiteRegistrationExternal* registration) {
+  options->op_registrations.push_back(registration);
+}
+
+static void InitTfLiteRegistration(
+    TfLiteRegistration* registration,
+    TfLiteRegistrationExternal* registration_external) {
+  registration->custom_name = registration_external->custom_name;
+  registration->version = registration_external->version;
+  registration->registration_external = registration_external;
 }
 
 TfLiteInterpreter* TfLiteInterpreterCreate(
@@ -235,6 +236,79 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
 namespace tflite {
 namespace internal {
 
+// Implementation of CallbackOpResolver class which is defined in
+// c_api_internal.h. CallbackOpResolver is a (C++) `tflite::OpResolver` that
+// forwards the methods to (C ABI) callback functions from a
+// `TfLiteOpResolverCallbacks` struct.
+
+// FindOp for buildin op query.
+const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
+                                                     int version) const {
+  // Use Registration V2 API to find op.
+  if (op_resolver_callbacks_.find_builtin_op) {
+    return op_resolver_callbacks_.find_builtin_op(
+        op_resolver_callbacks_.user_data,
+        static_cast<TfLiteBuiltinOperator>(op), version);
+  }
+  if (op_resolver_callbacks_.find_builtin_op_v1) {
+    // Check if cached Registration is available.
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& created_registration : temporary_builtin_registrations_) {
+      if (created_registration->builtin_code == op &&
+          created_registration->version == version) {
+        return created_registration.get();
+      }
+    }
+    // Get a Registration V1 object and create a Registration V2 object.
+    const TfLiteRegistration_V1* reg_v1 =
+        op_resolver_callbacks_.find_builtin_op_v1(
+            op_resolver_callbacks_.user_data,
+            static_cast<TfLiteBuiltinOperator>(op), version);
+    if (reg_v1) {
+      TfLiteRegistration* new_registration = new TfLiteRegistration();
+      memcpy(new_registration, reg_v1, sizeof(TfLiteRegistration_V1));
+      new_registration->registration_external = nullptr;
+      temporary_builtin_registrations_.push_back(
+          std::unique_ptr<TfLiteRegistration>(new_registration));
+      return new_registration;
+    }
+  }
+  return nullptr;
+}
+
+// FindOp for custom op query.
+const TfLiteRegistration* CallbackOpResolver::FindOp(const char* op,
+                                                     int version) const {
+  // Use Registration V2 API to find op.
+  if (op_resolver_callbacks_.find_custom_op) {
+    return op_resolver_callbacks_.find_custom_op(
+        op_resolver_callbacks_.user_data, op, version);
+  }
+  if (op_resolver_callbacks_.find_custom_op_v1) {
+    // Check if cached Registration is available.
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& created_registration : temporary_custom_registrations_) {
+      if (strcmp(created_registration->custom_name, op) == 0 &&
+          created_registration->version == version) {
+        return created_registration.get();
+      }
+    }
+    // Get a Registration V1 object and create a Registration V2 object.
+    const TfLiteRegistration_V1* reg_v1 =
+        op_resolver_callbacks_.find_custom_op_v1(
+            op_resolver_callbacks_.user_data, op, version);
+    if (reg_v1) {
+      TfLiteRegistration* new_registration = new TfLiteRegistration();
+      memcpy(new_registration, reg_v1, sizeof(TfLiteRegistration_V1));
+      new_registration->registration_external = nullptr;
+      temporary_custom_registrations_.push_back(
+          std::unique_ptr<TfLiteRegistration>(new_registration));
+      return new_registration;
+    }
+  }
+  return nullptr;
+}
+
 TfLiteInterpreter* InterpreterCreateWithOpResolver(
     const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options,
     tflite::MutableOpResolver* mutable_resolver) {
@@ -256,6 +330,13 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
   tflite::OpResolver* op_resolver = mutable_resolver;
   if (optional_options) {
     mutable_resolver->AddAll(optional_options->mutable_op_resolver);
+    for (auto* registration_external : optional_options->op_registrations) {
+      TfLiteRegistration registration{};
+      InitTfLiteRegistration(&registration, registration_external);
+      mutable_resolver->AddCustom(registration_external->custom_name,
+                                  &registration,
+                                  registration_external->version);
+    }
   }
   // However, if `TfLiteInterpreterOptionsSetOpResolver` has been called with
   // a non-null callback parameter, then we instead use a
@@ -263,7 +344,9 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
   CallbackOpResolver callback_op_resolver;
   if (optional_options &&
       (optional_options->op_resolver_callbacks.find_builtin_op != nullptr ||
-       optional_options->op_resolver_callbacks.find_custom_op != nullptr)) {
+       optional_options->op_resolver_callbacks.find_custom_op != nullptr ||
+       optional_options->op_resolver_callbacks.find_builtin_op_v1 != nullptr ||
+       optional_options->op_resolver_callbacks.find_custom_op_v1 != nullptr)) {
     callback_op_resolver.SetCallbacks(optional_options->op_resolver_callbacks);
     op_resolver = &callback_op_resolver;
   }

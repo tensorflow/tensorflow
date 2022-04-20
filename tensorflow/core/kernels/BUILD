@@ -26,6 +26,10 @@ load(
     "tf_fingerprint_deps",
     "tf_kernel_tests_linkstatic",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -844,6 +848,7 @@ cc_library(
     defines = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -860,6 +865,7 @@ cc_library(
     ] + select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -1857,9 +1863,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/stream_executor/cuda:cudnn_plugin",
-    ],
+    ] + if_mkl(["//tensorflow/core/kernels/mkl:mkl_conv_op"]),
 )
 
 tf_cuda_cc_test(
@@ -3095,6 +3100,7 @@ tf_cc_test(
     srcs = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -6723,6 +6729,7 @@ filegroup(
         "transpose_op.cc",
         "unicode_ops.cc",
         "unique_op.cc",
+        "unsorted_segment_join_op.cc",
         "where_op.cc",
         "whole_file_read_ops.cc",
         "xent_op.cc",

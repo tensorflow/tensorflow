@@ -284,18 +284,18 @@ SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
     ModuleOp module) {
   SymbolTableCollection table;
   SymbolUserMap symbol_map(table, module);
-  llvm::DenseMap<FuncOp, llvm::DenseSet<FuncOp>> caller_callee_map;
+  llvm::DenseMap<func::FuncOp, llvm::DenseSet<func::FuncOp>> caller_callee_map;
   // Creates work queue for determining reachability below.
-  std::queue<FuncOp> function_worklist;
+  std::queue<func::FuncOp> function_worklist;
 
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (auto user : symbol_map.getUsers(func)) {
       // Populates work queue with func ops called from TPUPartionedCall.
       if (llvm::isa<TF::TPUPartitionedCallOp>(user)) {
         function_worklist.push(func);
       }
       // Populates caller to called func map.
-      if (FuncOp caller = user->getParentOfType<FuncOp>()) {
+      if (func::FuncOp caller = user->getParentOfType<func::FuncOp>()) {
         caller_callee_map[caller].insert(func);
       }
     }
@@ -305,7 +305,7 @@ SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
   // and iteratively descending through called ops.
   SmallPtrSet<Operation*, 16> reachable_functions;
   while (!function_worklist.empty()) {
-    FuncOp caller = function_worklist.front();
+    func::FuncOp caller = function_worklist.front();
     function_worklist.pop();
     if (reachable_functions.insert(caller).second) {
       for (auto callee : caller_callee_map[caller]) {
@@ -321,8 +321,8 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
 
   // Map tpu cluster names to the functions that contain operations for this
   // cluster.
-  DenseMap<StringRef, DenseSet<FuncOp>> tpu_funcs;
-  for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
+  DenseMap<StringRef, DenseSet<func::FuncOp>> tpu_funcs;
+  for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
       StringAttr cluster_name =
           op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
@@ -343,7 +343,8 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     for (NamedAttribute attr : op->getAttrs()) {
       auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symbol_ref) continue;
-      FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
+      func::FuncOp callee =
+          symbol_table.lookup<func::FuncOp>(symbol_ref.getValue());
       if (!callee) continue;
       if (funcs_for_cluster->second.count(callee)) return true;
     }
@@ -353,7 +354,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   // Populates skip set with functions reachable from TPUPartionedCall ops.
   const auto functions_to_skip =
       FindTPUPartitionedCallReachableFunctions(getOperation());
-  for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
+  for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     if (functions_to_skip.contains(func_op)) {
       continue;
     }

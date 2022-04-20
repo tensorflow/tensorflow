@@ -225,8 +225,9 @@ your app project code:
     implementation.
 3.  If you have migrated all of your code to use the Play services API for
     TensorFlow Lite, you should remove the existing TensorFlow Lite *runtime
-    library* dependencies (entries with `org.tensorflow:**tensorflow-lite**:\*`)
-    from your build.gradle file so that you can reduce your app size.
+    library* dependencies (entries with
+    <code>org.tensorflow:**tensorflow-lite**:*</code>) from your build.gradle
+    file so that you can reduce your app size.
 4.  Identify all occurrences of `new Interpreter` object creation in your code,
     and modify it so that it uses the InterpreterApi.create() call. This new API
     is asynchronous, which means in most cases it's not a drop-in replacement,
@@ -297,7 +298,7 @@ Google Play Store automatically receive the required libraries.
 TensorFlow Lite in Google Play services is currently at public beta and has the
 following limitations:
 
-*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/performance/nnapi)
+*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/android/delegates/nnapi)
     is currently supported by Google Play services. Other TensorFlow Lite
     [Delegates](https://www.tensorflow.org/lite/performance/delegates),
     including GPU, XNNPack, and Flex are not currently supported.

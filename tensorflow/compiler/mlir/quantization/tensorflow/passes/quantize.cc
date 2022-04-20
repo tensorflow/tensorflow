@@ -267,8 +267,11 @@ class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
 };
 
 // Applies quantization on the model in TF dialect.
-struct QuantizePass : public PassWrapper<QuantizePass, OperationPass<FuncOp>> {
+struct QuantizePass
+    : public PassWrapper<QuantizePass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
+
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() { quant_specs.inference_type = tensorflow::DT_QINT8; }
 
@@ -314,7 +317,7 @@ void QuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect Quantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass() {
   QuantizationSpecs quant_specs;
   return std::make_unique<QuantizePass>(quant_specs);
 }

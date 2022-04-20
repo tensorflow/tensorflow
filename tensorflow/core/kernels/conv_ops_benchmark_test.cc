@@ -22,24 +22,24 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/util.h"
 
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#define MKL_OP_LABEL mkl_op_registry::kMklNameChangeOpLabel
+#else
+#define MKL_OP_LABEL ""
+#endif  // INTEL_MKL
+
 namespace tensorflow {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Performance benchmarks for the Conv2DOp and FusedConv2Op.                  //
 ////////////////////////////////////////////////////////////////////////////////
-
-#ifdef INTEL_MKL
-#define MKL_OP_LABEL mkl_op_registry::kMklNameChangeOpLabel
-#else
-#define MKL_OP_LABEL ""
-#endif  // INTEL_MKL
 
 struct Conv2DGraph {
   Graph* graph;

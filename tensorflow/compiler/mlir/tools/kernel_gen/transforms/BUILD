@@ -210,17 +210,16 @@ cc_library(
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
-        "lower_index_cast_pass.cc",
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",
         "same_shape_propagation.cc",
-        "shape_simplification.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
         "tf_to_jit_invocations.cc",
         "vectorization_pass.cc",
     ],
     hdrs = ["passes.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":bufferize",  # buildcleaner: keep
         ":bufferize_tiled_loop",  # buildcleaner: keep

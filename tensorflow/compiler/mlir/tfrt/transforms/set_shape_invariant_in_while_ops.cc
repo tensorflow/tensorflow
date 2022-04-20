@@ -26,6 +26,8 @@ class SetShapeInvariantInWhileOps
     : public mlir::PassWrapper<SetShapeInvariantInWhileOps,
                                mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SetShapeInvariantInWhileOps)
+
   void runOnOperation() override {
     mlir::func::FuncOp func_op = getOperation();
 

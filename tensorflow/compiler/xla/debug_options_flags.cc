@@ -734,6 +734,11 @@ static void AllocateFlags() {
           &DebugOptions::set_xla_gpu_redzone_scratch_max_megabytes),
       flag_values->xla_gpu_redzone_scratch_max_megabytes(),
       "Max size (in megabytes) for the GPU redzone scratch allocator."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_simplify_all_fp_conversions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_all_fp_conversions),
+      flag_values->xla_gpu_simplify_all_fp_conversions(),
+      "Allows any chain of floating-point conversions to be simplified."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)

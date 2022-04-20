@@ -60,6 +60,8 @@ class OptimizeTfForTfrt
     : public mlir::PassWrapper<OptimizeTfForTfrt,
                                mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeTfForTfrt)
+
   llvm::StringRef getArgument() const final { return "optimize-tf-for-tfrt"; }
 
   llvm::StringRef getDescription() const final {

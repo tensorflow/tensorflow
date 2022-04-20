@@ -68,7 +68,7 @@ namespace {
 //   }
 struct OutlineXLAFunc : public RewritePattern {
   explicit OutlineXLAFunc(MLIRContext *context, PatternBenefit benefit = 1)
-      : RewritePattern(FuncOp::getOperationName(), benefit, context) {}
+      : RewritePattern(func::FuncOp::getOperationName(), benefit, context) {}
 
   static void filterFuncAttributes(ArrayRef<NamedAttribute> attrs,
                                    bool argAttrs,
@@ -77,7 +77,7 @@ struct OutlineXLAFunc : public RewritePattern {
       if (attr.getName() == SymbolTable::getSymbolAttrName() ||
           attr.getName() == FunctionOpInterface::getTypeAttrName() ||
           attr.getName() == "std.varargs" ||
-          (argAttrs && attr.getName() == FuncOp::getArgDictAttrName()))
+          (argAttrs && attr.getName() == func::FuncOp::getArgDictAttrName()))
         continue;
       result.push_back(attr);
     }
@@ -85,7 +85,7 @@ struct OutlineXLAFunc : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    auto func = dyn_cast<FuncOp>(op);
+    auto func = dyn_cast<func::FuncOp>(op);
     auto ctx = rewriter.getContext();
     auto loc = func.getLoc();
     SmallVector<Location> locs(func.getFunctionType().getNumInputs(), loc);
@@ -113,9 +113,9 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // The wrapper function will have the same name but with _xla_framework
     // appended and will be annotated with the attribute "xla_entry".
-    auto outline_func =
-        rewriter.create<FuncOp>(loc, func.getSymName().str() + "_xla_framework",
-                                func_type, attrs, arg_attrs);
+    auto outline_func = rewriter.create<func::FuncOp>(
+        loc, func.getSymName().str() + "_xla_framework", func_type, attrs,
+        arg_attrs);
     outline_func->setAttr("outlined", BoolAttr::get(ctx, true));
     outline_func->setAttr("xla_entry", BoolAttr::get(ctx, true));
     auto *b = rewriter.createBlock(&outline_func.getBody(), {},
@@ -165,7 +165,7 @@ class OutlineWithXLAFrameworkPass
     if (failed(applyPatternsAndFoldGreedily(m, std::move(patterns)))) {
       signalPassFailure();
     }
-    m->walk([](FuncOp f) {
+    m->walk([](func::FuncOp f) {
       if (f->hasAttr("outlined")) f->removeAttr("outlined");
     });
   }

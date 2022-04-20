@@ -28,6 +28,10 @@ namespace {
 class RemoveTfIfConstArgs
     : public mlir::PassWrapper<RemoveTfIfConstArgs,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RemoveTfIfConstArgs)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-remove-tf-if-const-args";
   }

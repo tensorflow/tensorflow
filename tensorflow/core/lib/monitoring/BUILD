@@ -43,6 +43,35 @@ cc_library(
 )
 
 cc_library(
+    name = "cell_reader",
+    testonly = 1,
+    hdrs = ["cell_reader.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cell_reader-inl",
+        ":collected_metrics",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "cell_reader-inl",
+    testonly = 1,
+    srcs = ["cell_reader-inl.cc"],
+    hdrs = ["cell_reader-inl.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":collected_metrics",
+        ":collection_registry",
+        ":test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "collected_metrics",
     hdrs = [
         "collected_metrics.h",
@@ -150,16 +179,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_utils",
+    testonly = 1,
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "cell_reader.h",
         "collection_registry.h",
         "counter.h",
         "gauge.h",
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "test_utils.h",
         "timed.h",
         "types.h",
     ],
@@ -169,6 +215,7 @@ filegroup(
 filegroup(
     name = "legacy_lib_monitoring_lib_headers",
     srcs = [
+        "cell_reader.h",
         "collected_metrics.h",
         "collection_registry.h",
         "counter.h",
@@ -176,6 +223,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "test_utils.h",
         "timed.h",
         "types.h",
     ],
@@ -185,6 +233,7 @@ filegroup(
 filegroup(
     name = "legacy_lib_monitoring_all_headers",
     srcs = [
+        "cell_reader.h",
         "collected_metrics.h",
         "collection_registry.h",
         "counter.h",
@@ -192,6 +241,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "test_utils.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -205,12 +255,14 @@ filegroup(
 # "/tensorflow/test/sampler_without_labels").
 exports_files(
     [
+        "cell_reader_test.cc",
         "collection_registry_test.cc",
         "counter_test.cc",
         "gauge_test.cc",
         "metric_def_test.cc",
         "percentile_sampler_test.cc",
         "sampler_test.cc",
+        "test_utils_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

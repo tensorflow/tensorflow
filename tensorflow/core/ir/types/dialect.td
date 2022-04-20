@@ -17,6 +17,7 @@ limitations under the License.
 #else
 #define TFType_DIALECT
 
+include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 

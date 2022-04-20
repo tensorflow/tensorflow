@@ -86,7 +86,6 @@ tensorflow/tools/ci_build/release/common_win.bat:
 tensorflow/tools/ci_build/release/mac_build_utils.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/nightly.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/release.sh:
-tensorflow/tools/ci_build/release/ubuntu_16/sanity/build.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py310_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py37_full/release_pip_rename.sh:
@@ -135,6 +134,8 @@ tensorflow/tools/toolchains/win/tf_win_01252022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02042022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02082022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02212022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_04062022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_04112022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06212021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06242021/BUILD:
@@ -142,6 +143,7 @@ tensorflow/tools/toolchains/win/tf_win_08062020/BUILD:
 tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
+tensorflow/tools/toolchains/win_1803/py39/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
 third_party/BUILD:

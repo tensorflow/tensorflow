@@ -228,6 +228,10 @@ class BatchDatasetV2OpConversion
 class TFToTFRTDataRewritePass
     : public mlir::PassWrapper<TFToTFRTDataRewritePass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFToTFRTDataRewritePass)
+
+ private:
   llvm::StringRef getArgument() const final { return "tf-to-tfrt-data"; }
   llvm::StringRef getDescription() const final {
     return "Convert Tensorflow dialect to TFRT's data dialect.";
@@ -246,13 +250,13 @@ class TFToTFRTDataRewritePass
     target.addLegalDialect<tfrt::data::DataDialect>();
     target.addLegalDialect<tfrt::compiler::TFRTDialect>();
     target.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&data_converter](FuncOp op) {
+        [&data_converter](func::FuncOp op) {
           return data_converter.isSignatureLegal(op.getFunctionType());
         });
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
                  ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
         patterns, data_converter);
 
     auto result =

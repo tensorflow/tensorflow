@@ -102,7 +102,6 @@ void PopulateDynamicShapeFusionPatterns(MLIRContext *context,
 
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
-// TODO(laurenzo): Implement un-fusing of batch_norm_training.
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      RewritePatternSet *patterns);
 

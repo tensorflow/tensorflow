@@ -138,7 +138,7 @@ std::string StackFrameToString(
 
 class StackTraceWrapper : public AbstractStackTrace {
  public:
-  explicit StackTraceWrapper(absl::Span<StackFrame const> stack_frames)
+  explicit StackTraceWrapper(absl::Span<const StackFrame> stack_frames)
       : stack_frames_cache_(std::vector<StackFrame>(stack_frames.begin(),
                                                     stack_frames.end())) {}
 
@@ -149,7 +149,7 @@ class StackTraceWrapper : public AbstractStackTrace {
                              stacklevel};
   }
 
-  absl::Span<StackFrame const> ToFrames() const override {
+  absl::Span<const StackFrame> ToFrames() const override {
     if (stack_frames_cache_) {
       return *stack_frames_cache_;
     }
@@ -171,6 +171,10 @@ class StackTraceWrapper : public AbstractStackTrace {
     PyGILState_Release(state);
     return *stack_frames_cache_;
   }
+
+  int get_stacklevel() const { return stacklevel_; }
+
+  void set_stacklevel(int stacklevel) { stacklevel_ = stacklevel; }
 
   std::vector<StackFrame> GetUserFrames(int limit = -1) const {
     PyGILState_STATE state = PyGILState_Ensure();
@@ -262,7 +266,7 @@ class StackTraceWrapper : public AbstractStackTrace {
         filter_(filter),
         stacklevel_(stacklevel) {}
 
-  static std::string ToStringHelper(absl::Span<StackFrame const> stack_frames,
+  static std::string ToStringHelper(absl::Span<const StackFrame> stack_frames,
                                     const TracePrintingOptions& opts,
                                     int shared_prefix_size) {
     return absl::StrJoin(
@@ -369,8 +373,8 @@ PYBIND11_MODULE(_tf_stack, m) {
       // TODO(slebedev): upstream negative indexing support into pybind11.
       .def(
           "__getitem__",
-          [](const StackTraceWrapper& self, ssize_t index) {
-            absl::Span<StackFrame const> frames = self.ToFrames();
+          [](const StackTraceWrapper& self, py::ssize_t index) {
+            absl::Span<const StackFrame> frames = self.ToFrames();
             const size_t eff_index =
                 index < 0 ? frames.size() + index : static_cast<size_t>(index);
             if (eff_index >= frames.size()) {
@@ -382,7 +386,7 @@ PYBIND11_MODULE(_tf_stack, m) {
       .def(
           "__getitem__",
           [](const StackTraceWrapper& self, py::slice slice) {
-            absl::Span<StackFrame const> frames = self.ToFrames();
+            absl::Span<const StackFrame> frames = self.ToFrames();
             py::ssize_t start, stop, step, slicelength;
             if (!slice.compute(frames.size(), &start, &stop, &step,
                                &slicelength)) {
@@ -403,8 +407,18 @@ PYBIND11_MODULE(_tf_stack, m) {
           },
           py::return_value_policy::reference_internal)
       .def("__delitem__",
+           [](StackTraceWrapper& self, py::ssize_t index) {
+             absl::Span<const StackFrame> frames = self.ToFrames();
+             const size_t eff_index =
+                 index < 0 ? frames.size() + index : static_cast<size_t>(index);
+             if (eff_index >= frames.size()) {
+               throw py::index_error();
+             }
+             self.Erase(eff_index, eff_index + 1);
+           })
+      .def("__delitem__",
            [](StackTraceWrapper& self, py::slice slice) {
-             absl::Span<StackFrame const> frames = self.ToFrames();
+             absl::Span<const StackFrame> frames = self.ToFrames();
              py::ssize_t start, stop, step, slicelength;
              if (!slice.compute(frames.size(), &start, &stop, &step,
                                 &slicelength)) {
@@ -433,6 +447,10 @@ PYBIND11_MODULE(_tf_stack, m) {
            [](const StackTraceWrapper& self) {
              return py::str(self.ToString({}));
            })
+      .def_property(
+          "_stacklevel", &StackTraceWrapper::get_stacklevel,
+          &StackTraceWrapper::set_stacklevel,
+          "Adjusts stacklevel; no effects after ToFrames() is called.")
       .def(
           "get_user_frames",
           [](const StackTraceWrapper& self) {

@@ -82,6 +82,14 @@ def DTensorDCE
   ];
 }
 
+def DTensorUndoMergeConstAcrossMesh
+    : Pass<"dtensor-undo-merge-const-across-mesh", "mlir::func::FuncOp"> {
+  let summary = "Undo constant merging across meshes";
+  let constructor = "CreateDTensorUndoMergeConstAcrossMesh()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorSetDefaultSharding
     : Pass<"dtensor-set-default-sharding", "mlir::func::FuncOp"> {
   let summary = "Sets default sharding of TPU computation inputs/ouputs to maximal.";
@@ -223,7 +231,7 @@ def DTensorEmbedding
   let summary = "Extracts the ApplyEmbeddingOptimizer and checks if the attached optimizer is usable for TPU embeddings.";
   let constructor = "CreateDTensorEmbeddingPass()";
   let dependentDialects = [
-    "::mlir::chlo::HloClientDialect",
+    "::mlir::chlo::ChloDialect",
     "::mlir::memref::MemRefDialect",
     "::mlir::mhlo::MhloDialect",
     "::mlir::shape::ShapeDialect",

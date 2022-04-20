@@ -58,6 +58,8 @@ class TpuDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 

@@ -854,7 +854,7 @@ static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
                                 SymbolRefAttr func) {
   auto module = op->getParentOfType<ModuleOp>();
   auto function =
-      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
+      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
   FunctionType function_ty = function.getFunctionType();
 
   for (auto arg_in : llvm::zip(args, function_ty.getInputs())) {

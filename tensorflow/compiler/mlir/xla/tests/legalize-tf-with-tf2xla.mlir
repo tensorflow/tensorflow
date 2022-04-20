@@ -96,7 +96,7 @@ func.func @ternary_op(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2
 
 // CHECK-LABEL: func @convert
 func.func @convert(%arg0: tensor<2xi32>) -> tensor<2xf32> {
-  // CHECK: "mhlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  // CHECK: mhlo.convert(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
   %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<2xi32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
 }

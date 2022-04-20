@@ -287,8 +287,6 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
-
 void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,

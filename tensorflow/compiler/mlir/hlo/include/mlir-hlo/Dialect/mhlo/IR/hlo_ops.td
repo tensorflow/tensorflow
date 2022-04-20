@@ -124,9 +124,9 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     InferShapedTypeOpInterface, InferShapeEqualityOpInterface,
     SameOperandsAndResultShape]> {
   let arguments = (ins TensorType:$operand);
-  let results = (outs TensorType);
+  let results = (outs TensorType:$result);
   let extraClassDeclaration = [{
-    static  LogicalResult inferReturnTypeComponents(
+    static LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location,
         ValueRange operands, DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
@@ -152,6 +152,15 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
       return true;
     }
   }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return ::mlir::mhlo::parseUnaryOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      ::mlir::mhlo::printUnaryOp(getOperation(), p);
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -508,6 +517,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
+
 def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
@@ -1055,7 +1065,8 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
 //===----------------------------------------------------------------------===//
 // MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
-def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
+def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "GetTupleElement operator";
   let description = [{
     Returns a member of a tuple specified by an index.
@@ -1071,12 +1082,10 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
 
   let hasFolder = 1;
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "Value":$value, "int32_t":$index)>];
 }
 
-def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
+def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "XLA's tuple op";
   let description = [{
      Groups a set of tensor inputs into a single tuple object.
@@ -1085,9 +1094,6 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
    }];
   let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
-
-  let builders = [
-    OpBuilder<(ins "ValueRange":$values)>];
 
   let hasCanonicalizer = 1;
   let hasVerifier = 1;

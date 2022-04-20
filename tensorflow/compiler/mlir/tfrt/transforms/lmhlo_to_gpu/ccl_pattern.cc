@@ -363,10 +363,10 @@ bool CanImplement(lmhlo::CollectivePermuteOp op) {
 }
 
 template <class CclOpType>
-struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      CclOpType>::GpuAsyncOpConversionPattern;
+struct CclRewritePattern : tfrt::gpu::StreamifyOpConversionPattern<CclOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<CclOpType>::OpAdaptor;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      CclOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       CclOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

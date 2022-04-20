@@ -1246,7 +1246,9 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     const Shape& from_shape, const Shape& to_shape,
     absl::Span<const int64_t> input_dim_indices) {
-  CHECK(std::is_sorted(input_dim_indices.begin(), input_dim_indices.end()));
+  if (!std::is_sorted(input_dim_indices.begin(), input_dim_indices.end())) {
+    return absl::nullopt;
+  }
 
   std::vector<int64_t> output_dim_indices;
   std::vector<std::pair<int64_t, int64_t>> unmodified_dims =

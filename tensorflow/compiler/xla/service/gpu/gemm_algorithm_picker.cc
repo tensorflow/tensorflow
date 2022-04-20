@@ -105,20 +105,49 @@ StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
 
 Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
                            se::DeviceMemoryAllocator* allocator,
-                           se::RedzoneAllocator& input_output_allocator,
-                           const GemmBackendConfig& gemm_config,
-                           PrimitiveType element_type,
-                           int32_t cublas_autotune_level,
-                           se::DeviceMemoryBase lhs_buffer,
-                           se::DeviceMemoryBase rhs_buffer,
-                           se::DeviceMemoryBase output_buffer) {
+                           const GemmBackendConfig& gemm_config) {
   GpuGemmConfig config = GetGpuGemmConfig(instr);
   int64_t batch_size = gemm_config.batch_size();
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+  const int32_t cublas_autotune_level =
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level >= 2;
+  const bool reinit_cublas_data = cublas_autotune_level >= 3;
+  const bool check_cublas = cublas_autotune_level >= 4;
   const bool crash_on_checking_failure =
       hlo_module_config.debug_options()
           .xla_gpu_crash_on_verification_failures();
+
+  const int64_t redzone_size =
+      check_cublas ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
+
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator,
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/redzone_size);
+  int64_t rng_state = 0;
+  auto get_initialized_buffer =
+      [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
+                        input_output_allocator.AllocateBytes(
+                            ShapeUtil::ByteSizeOf(op->shape())));
+    if (init_cublas_data) {
+      InitializeBuffer(stream, op->shape().element_type(), &rng_state, buffer);
+    }
+    return buffer;
+  };
+
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
+                      get_initialized_buffer(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
+                      get_initialized_buffer(instr->operand(1)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
+                      get_initialized_buffer(instr));
+
+  const Shape& output_shape = config.output_shape;
+  PrimitiveType element_type = output_shape.element_type();
 
   se::blas::MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
   std::tie(lhs_matrix, rhs_matrix, output_matrix) = PopulateInputOutputMatrices(
@@ -159,8 +188,6 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
       algorithms = plan_and_algorithms->algorithms;
 
-  const bool reinit_cublas_data = cublas_autotune_level >= 3;
-  const bool check_cublas = cublas_autotune_level >= 4;
   // Note that algorithm_config.algorithm() here is used to refer
   // to the index within the algorithms vector, not the algorithm
   // itself.
@@ -187,8 +214,6 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
 
       TF_RETURN_IF_ERROR(
           RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                  /*implements_whole_instruction=*/true,
-                  /*profile_index=*/-1,
                   /*scratch allocator=*/&scratch_allocator,
                   /*algorithm_being_profiled=*/algorithms[i].get(),
                   /*profile_result=*/&profile_result, absl::nullopt));
@@ -243,17 +268,48 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
 // all.
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     const HloInstruction* gemm, se::Stream* stream,
-    se::RedzoneAllocator* input_output_allocator,
-    se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
-    se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase reference_result_buffer) {
+    se::DeviceMemoryAllocator* allocator) {
   if (!stream->parent()->SynchronizeAllActivity()) {
     return InternalError("Failed to synchronize GPU for autotuning.");
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
+  const int32_t cublas_autotune_level =
+      hlo_module_config.debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level >= 2;
+  const bool reinit_cublas_data = cublas_autotune_level >= 3;
+  const bool check_cublas = cublas_autotune_level >= 4;
+
+  const int64_t redzone_size =
+      check_cublas ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator,
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/redzone_size);
 
   BufferComparator comparator(gemm->shape(), hlo_module_config);
+
+  int64_t rng_state = 0;
+  auto get_initialized_buffer =
+      [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
+                        input_output_allocator.AllocateBytes(
+                            ShapeUtil::ByteSizeOf(op->shape())));
+    if (init_cublas_data) {
+      InitializeBuffer(stream, op->shape().element_type(), &rng_state, buffer);
+    }
+    return buffer;
+  };
+
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
+                      get_initialized_buffer(gemm->operand(0)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
+                      get_initialized_buffer(gemm->operand(1)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
+                      get_initialized_buffer(gemm));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase reference_result_buffer,
+                      get_initialized_buffer(gemm));
 
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
@@ -263,10 +319,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
   GemmBackendConfig backend_config =
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-  const int32_t cublas_autotune_level =
-      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
-  const bool reinit_cublas_data = cublas_autotune_level >= 3;
-  const bool check_cublas = cublas_autotune_level >= 4;
 
   std::vector<se::blas::AlgorithmType> algorithms;
   CHECK(stream->parent()->GetBlasGemmAlgorithms(&algorithms));
@@ -291,8 +343,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
     Status st = RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                        /*implements_whole_instruction=*/true,
-                        /*profile_index=*/-1, /*scratch allocator=*/nullptr,
+                        /*scratch allocator=*/nullptr,
                         /* algorithm_being_profiled=*/nullptr,
                         /*profile_result=*/&profile_result, algorithm);
     CHECK(st.ok()) << st.ToString();
@@ -318,7 +369,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
     TF_ASSIGN_OR_RETURN(
         se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-        input_output_allocator->CheckRedzones());
+        input_output_allocator.CheckRedzones());
     if (!rz_check_status.ok()) {
       result.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
       *result.mutable_failure()->mutable_msg() =
@@ -378,47 +429,15 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const HloInstruction* lhs = instr->operand(0);
   const HloInstruction* rhs = instr->operand(1);
 
+  GpuGemmConfig config = GetGpuGemmConfig(instr);
+  PrimitiveType element_type = config.output_shape.element_type();
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
-  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
-  const int32_t cublas_autotune_level =
-      hlo_module_config.debug_options().xla_gpu_autotune_level();
-  const bool init_cublas_data = cublas_autotune_level >= 2;
 
-  se::RedzoneAllocator input_output_allocator(
-      stream, allocator,
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max());
-  int64_t rng_state = 0;
-  auto get_initialized_buffer =
-      [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
-                        input_output_allocator.AllocateBytes(
-                            ShapeUtil::ByteSizeOf(op->shape())));
-    if (init_cublas_data) {
-      InitializeBuffer(stream, op->shape().element_type(), &rng_state, buffer);
-    }
-    return buffer;
-  };
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
-                      get_initialized_buffer(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
-                      get_initialized_buffer(instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
-                      get_initialized_buffer(instr));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase reference_result_buffer,
-                      get_initialized_buffer(instr));
-
-  GpuGemmConfig config = GetGpuGemmConfig(instr);
-  const Shape& output_shape = config.output_shape;
-  PrimitiveType element_type = output_shape.element_type();
-  if (stream->parent()->SupportsBlasPlans() && config.use_cublaslt &&
+  if (config.use_cublaslt && stream->parent()->SupportsBlasPlans() &&
       BlasPlansCompatibleType(element_type)) {
     TF_RETURN_IF_ERROR(
-        DoBlasPlansAutotune(stream, instr, allocator, input_output_allocator,
-                            gemm_config, element_type, cublas_autotune_level,
-                            lhs_buffer, rhs_buffer, output_buffer));
+        DoBlasPlansAutotune(stream, instr, allocator, gemm_config));
     return {se::blas::kNoAlgorithm};
   } else {
     GemmCacheKey key =
@@ -443,11 +462,18 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     cache_misses++;
     VLOG(4) << "Autotuning cache miss";
 
-    TF_ASSIGN_OR_RETURN(
-        absl::optional<se::blas::AlgorithmType> result,
-        DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
-                               lhs_buffer, rhs_buffer, output_buffer,
-                               reference_result_buffer));
+    // Make sure any previous activity on this executor is done. We don't want
+    // other work still running on the GPU to interfere with autotuning.
+    if (!stream->parent()->SynchronizeAllActivity()) {
+      auto options = HloPrintOptions::Canonical();
+      options.set_print_backend_config(true);
+      return InternalError(
+          "Failed to synchronize GPU for autotuning gemm instruction: %s",
+          instr->ToString(options));
+    }
+
+    TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
+                        DoUncachedGemmAutotune(instr, stream, allocator));
 
     CHECK(autotune_cache.emplace(key, result).second);
     return result;

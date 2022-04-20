@@ -184,12 +184,6 @@ packed weights. If it can be found, we access the packed weights in the
 cache for subsequent operations, and the temporary buffer is freed. Otherwise,
 the packed weights is added to the cache.
 
-Note that this weights cache is not thread-safe. If you are creating multiple
-threads of the interpreter based on the same model buffer, you will need to
-ensure that a single thread is writing all the packed weights into the weights
-cache. Afterwards, the weights cache can be shared freely between the threads,
-as there will be no more writes to the cache.
-
 ## Limitations and supported operators
 
 XNNPACK delegate is a work-in-progress, and currently supports a limited set of
@@ -456,6 +450,10 @@ TfLiteDelegate* xnnpack_delegate =
 
 Below is the list of operators supported in IEEE FP16 inference:
 
+#### `ABS`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `ADD`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -465,6 +463,11 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `CONCATENATION`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `DEPTH_TO_SPACE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -472,6 +475,11 @@ Below is the list of operators supported in IEEE FP16 inference:
 #### `DEPTHWISE_CONV_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `DIV`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `HARD_SWISH`
 
@@ -489,14 +497,28 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `MAXIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `MEAN`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MINIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `MUL`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `NEG`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `PAD`
 
@@ -525,6 +547,24 @@ Below is the list of operators supported in IEEE FP16 inference:
 #### `RESIZE_BILINEAR`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SPLIT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARED_DIFFERENCE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `SUB`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `TRANSPOSE_CONV`
 

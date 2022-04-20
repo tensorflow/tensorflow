@@ -70,7 +70,7 @@ class InterpreterOptions {
   InterpreterOptions()
       : experimental_preserve_all_tensors_(false),
         experimental_ensure_dynamic_tensors_are_released_(false),
-        experimental_dynamic_allocation_for_large_tensors_(0) {}
+        experimental_optimize_memory_for_large_tensors_(0) {}
 
   /// Preserving all intermediates tensors for debugging.
   /// WARNING: This is an experimental API and subject to change.
@@ -98,27 +98,30 @@ class InterpreterOptions {
     return experimental_ensure_dynamic_tensors_are_released_;
   }
 
-  /// Use dynamic tensor allocation method for large tensors instead of static
-  /// memory planner. It improves peak memory usage but there could be some
-  /// latency impact. The value is used to determine large tensors.
+  /// Use dynamic tensor allocation and deallocation method for large tensors
+  /// instead of static memory planner. Dynamic tensors are allocated just
+  /// before when they're needed and released when they're not needed anymore.
+  /// It improves peak memory usage but there could be some latency impact. The
+  /// value (in bytes, and default is 1024 * 1024) is used to determine large
+  /// tensors.
   /// WARNING: This is an experimental API and subject to change.
-  void SetDynamicAllocationForLargeTensors(int value) {
+  void OptimizeMemoryForLargeTensors(int value = 1 << 20) {
     if (value > 0) {
-      experimental_dynamic_allocation_for_large_tensors_ = value;
+      experimental_optimize_memory_for_large_tensors_ = value;
     }
   }
 
-  /// Returns the size threshold for dynamic tensor allocation method.
-  /// It returns zero if the feature is not enabled.
+  /// Returns the size (in bytes) threshold for dynamic tensor allocation
+  /// method. It returns zero if the feature is not enabled.
   /// WARNING: This is an experimental API and subject to change.
   int GetDynamicAllocationForLargeTensors() {
-    return experimental_dynamic_allocation_for_large_tensors_;
+    return experimental_optimize_memory_for_large_tensors_;
   }
 
  private:
   bool experimental_preserve_all_tensors_;
   bool experimental_ensure_dynamic_tensors_are_released_;
-  int experimental_dynamic_allocation_for_large_tensors_;
+  int experimental_optimize_memory_for_large_tensors_;
 };
 
 /// An interpreter for a graph of nodes that input and output from tensors.

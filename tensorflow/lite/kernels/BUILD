@@ -2442,6 +2442,7 @@ cc_test(
         ":subgraph_test_util",
         ":test_main",
         "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/profiling:memory_info",
         "@com_google_googletest//:gtest",
     ],
 )

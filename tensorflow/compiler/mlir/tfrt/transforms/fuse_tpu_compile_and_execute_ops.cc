@@ -33,6 +33,8 @@ class FuseTpuCompileAndExecutePass
     : public mlir::PassWrapper<FuseTpuCompileAndExecutePass,
                                mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseTpuCompileAndExecutePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-fuse-tpu-compile-and-execute-ops";
   }

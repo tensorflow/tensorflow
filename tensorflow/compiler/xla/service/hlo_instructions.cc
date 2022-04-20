@@ -327,9 +327,9 @@ HloCompareInstruction::HloCompareInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     ComparisonDirection direction, absl::optional<Comparison::Type> type)
     : HloInstruction(HloOpcode::kCompare, shape),
-      compare_(direction, type ? (*type)
-                               : Comparison::DefaultComparisonType(
-                                     lhs->shape().element_type())) {
+      compare_(type.has_value()
+                   ? Comparison(direction, *type)
+                   : Comparison(direction, lhs->shape().element_type())) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }

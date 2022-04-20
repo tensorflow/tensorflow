@@ -48,6 +48,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -1377,7 +1378,7 @@ void BuildJaxjitSubmodule(py::module& m) {
                xla::StatusOr<xla::DevicePutResult> results =
                    DevicePut(obj, to_device.contents, options);
                if (!results.ok()) {
-                 throw std::runtime_error(results.status().error_message());
+                 throw xla::XlaRuntimeError(results.status().error_message());
                }
                if (results->owned_buffer) {
                  auto buffer = xla::PyBuffer::Make(

@@ -101,7 +101,7 @@ LogicalResult RunOnRegion(Region* region) {
 }
 
 void RewriteTPUEmbeddingOps::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   if (failed(RunOnRegion(&func.getBody()))) return signalPassFailure();
 
   func.walk([&](Operation* op) {
@@ -113,7 +113,8 @@ void RewriteTPUEmbeddingOps::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateRewriteTPUEmbeddingOpsPass() {
   return std::make_unique<RewriteTPUEmbeddingOps>();
 }
 

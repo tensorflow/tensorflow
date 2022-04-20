@@ -475,7 +475,6 @@ cc_library(
 tf_cc_test(
     name = "gradients_math_grad_test",
     srcs = ["gradients/math_grad_test.cc"],
-    tags = ["no_mac"],  # TODO(b/227627018)
     deps = [
         ":cc_ops",
         ":client_session",

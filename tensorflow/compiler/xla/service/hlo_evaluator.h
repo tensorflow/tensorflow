@@ -347,19 +347,19 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // handled by the evaluator.
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
     return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override {
     return Unimplemented(
         "BatchNormInference HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleOutfeed(HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
-  };
+  }
 
   // Returns the already-evaluated literal result for the instruction.
   //

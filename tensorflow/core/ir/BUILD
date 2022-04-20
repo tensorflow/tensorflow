@@ -161,7 +161,6 @@ cc_library(
     deps = [
         ":Dialect",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:convert_types",
@@ -211,6 +210,7 @@ tf_cc_test(
         ":Dialect",
         ":shape_inference_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",

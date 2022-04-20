@@ -249,16 +249,18 @@ static tensorflow::Status InjectTfGpuResourcesHelper(
                                                 /*peer_gpu_ids=*/{});
       if (!tf_allocator)
         return tensorflow::errors::NotFound("TF allocator not found");
-      auto gpu_device_info = gpu_device->tensorflow_accelerator_device_info();
-      if (!gpu_device_info)
-        return tensorflow::errors::NotFound("gpu_device_info not found");
+      auto accelerator_device_info =
+          gpu_device->tensorflow_accelerator_device_info();
+      if (!accelerator_device_info)
+        return tensorflow::errors::NotFound(
+            "accelerator_device_info not found");
 
       tfrt::gpu::GpuResources gpu_resources;
       gpu_resources.gpu_context = tfrt::gpu::wrapper::Context(gpu_context);
       gpu_resources.allocator_factory =
           CreateRuntimeFallbackGpuAllocatorFactory(tf_allocator);
       gpu_resources.stream = tfrt::gpu::wrapper::Stream(static_cast<CUstream>(
-          gpu_device_info->stream->implementation()->GpuStreamHack()));
+          accelerator_device_info->stream->implementation()->GpuStreamHack()));
       auto platform = tfrt::gpu::wrapper::Platform::CUDA;
       tfrt::gpu::SetTfrtGpuResources(
           tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);

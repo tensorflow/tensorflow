@@ -50,6 +50,8 @@ class MockSuccessPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockSuccessPass)
+
   explicit MockSuccessPass() {}
 
  private:
@@ -69,6 +71,8 @@ class MockFailurePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockFailurePass)
+
   explicit MockFailurePass() {}
 
  private:

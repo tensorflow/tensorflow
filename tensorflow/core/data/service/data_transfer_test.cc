@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
@@ -70,12 +71,28 @@ TEST(DataTransferTest, EstimateMemoryUsageBytes) {
   GetElementResult empty;
   EXPECT_GT(empty.EstimatedMemoryUsageBytes(), 0);
 
-  Tensor tensor(DT_INT64, TensorShape({5, 5}));
+  Tensor tensor(DT_INT64, TensorShape({10, 100}));
   GetElementResult int64_result = MakeElementResult(tensor);
-  EXPECT_GT(int64_result.EstimatedMemoryUsageBytes(), 25 * sizeof(int64_t));
+  EXPECT_GT(int64_result.EstimatedMemoryUsageBytes(), 1000 * sizeof(int64_t));
   EXPECT_GT(int64_result.EstimatedMemoryUsageBytes(),
             int64_result.components[0].AllocatedBytes());
   EXPECT_GE(int64_result.EstimatedMemoryUsageBytes(), sizeof(int64_result));
+}
+
+TEST(DataTransferTest, EstimateVariantMemoryUsageBytes) {
+  const size_t data_size = 1000;
+  CompressedElement compressed;
+  compressed.set_data(std::string(data_size, 'a'));
+
+  Tensor tensor(DT_VARIANT, TensorShape({}));
+  tensor.scalar<Variant>()() = compressed;
+
+  GetElementResult variant_result = MakeElementResult(tensor);
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(), data_size);
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
+            compressed.ByteSizeLong());
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
+            compressed.SpaceUsedLong());
 }
 
 TEST(DataTransferTest, CopyGetElementResult) {

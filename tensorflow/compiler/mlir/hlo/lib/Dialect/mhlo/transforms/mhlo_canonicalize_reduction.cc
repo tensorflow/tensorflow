@@ -248,7 +248,8 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

@@ -324,7 +324,7 @@ void populateGroupReductionDimensionsPatterns(MLIRContext* context,
                                                  prefer_columns_reductions);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool prefer_columns_reductions) {
   return std::make_unique<GroupReductionDimensionsPass>(
       prefer_columns_reductions);

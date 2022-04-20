@@ -2,10 +2,26 @@
 
 // CHECK-LABEL: @types
 func.func @types() {
-  // CHECK: %{{.*}} = gml_st.point [42] : !gml_st.point
-  %0 = gml_st.point [42] : !gml_st.point
-  // CHECK: %{{.*}} = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
-  %1 = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
+  // CHECK: %[[ARG:.*]] = gml_st.space [64] : !gml_st.tile<64>
+  %0 = gml_st.space [64] : !gml_st.tile<64>
+  // CHECK: %{{.*}} = gml_st.point %[[ARG]] [42] : !gml_st.tile<64> to !gml_st.point
+  %1 = gml_st.point %0 [42] : !gml_st.tile<64> to !gml_st.point
+  // CHECK: %{{.*}} = gml_st.tile %[[ARG]] [0] [42] [1] : !gml_st.tile<64> to !gml_st.tile<42>
+  %2 = gml_st.tile %0 [0] [42] [1] : !gml_st.tile<64> to !gml_st.tile<42>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: @dynamic_types
+// CHECK-SAME: (%[[SIZE:.*]]: index)
+func.func @dynamic_types(%size : index) {
+  // CHECK: %[[ARG:.*]] = gml_st.space [%[[SIZE]]] : !gml_st.tile<?>
+  %0 = gml_st.space [%size] : !gml_st.tile<?>
+  // CHECK: %{{.*}} = gml_st.point %[[ARG]] [42] : !gml_st.tile<?> to !gml_st.point
+  %1 = gml_st.point %0 [42] : !gml_st.tile<?> to !gml_st.point
+  // CHECK: %{{.*}} = gml_st.tile %[[ARG]] [0] [42] [1] : !gml_st.tile<?> to !gml_st.tile<42>
+  %2 = gml_st.tile %0 [0] [42] [1] : !gml_st.tile<?> to !gml_st.tile<42>
   func.return
 }
 

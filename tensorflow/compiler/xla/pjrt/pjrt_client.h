@@ -124,7 +124,13 @@ class PjRtDevice {
   // compatible compilation.
   virtual absl::string_view device_kind() const = 0;
 
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current device unambiguously.
   virtual std::string DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse,
+  // for example: "CpuDevice(id=0)".
+  virtual std::string ToString() const = 0;
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the
@@ -851,12 +857,14 @@ struct ExecuteOptions {
 //   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
 //   + temp_size_in_bytes.
 struct CompiledMemoryStats {
-  int32_t generated_code_size_in_bytes = 0;
-  int32_t argument_size_in_bytes = 0;
-  int32_t output_size_in_bytes = 0;
+  int64_t generated_code_size_in_bytes = 0;
+  int64_t argument_size_in_bytes = 0;
+  int64_t output_size_in_bytes = 0;
   // How much argument is reused for output.
-  int32_t alias_size_in_bytes = 0;
-  int32_t temp_size_in_bytes = 0;
+  int64_t alias_size_in_bytes = 0;
+  int64_t temp_size_in_bytes = 0;
+
+  std::string DebugString() const;
 };
 
 // Represents a compiled computation that can be executed given handles to

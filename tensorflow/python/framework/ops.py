@@ -2114,6 +2114,10 @@ class Operation(object):
     # Post process for control flows.
     self._control_flow_post_processing(input_tensors=inputs)
 
+    # Removes this frame from the Python traceback.
+    # We adjust stacklevel directly to avoid triggering serialization.
+    self.traceback._stacklevel += 1  # pylint: disable=protected-access
+
   @classmethod
   def _from_c_op(cls, c_op, g):
     """Create an Operation from a TF_Operation.
@@ -3168,7 +3172,7 @@ class Graph(object):
     # will be shared when defining function graphs, for example, so optimizers
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
-    self._graph_key = "grap-key-%d/" % (uid(),)
+    self._graph_key = "graph-key-%d/" % (uid(),)
     # A string with the last reduction method passed to
     # losses.compute_weighted_loss(), or None. This is required only for
     # backward compatibility with Estimator and optimizer V1 use cases.

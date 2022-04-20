@@ -1149,6 +1149,11 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "error_payloads",
+    hdrs = ["error_payloads.h"],
+)
+
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",

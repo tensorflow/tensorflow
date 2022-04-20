@@ -205,6 +205,10 @@ tf_module {
     argspec: "args=[\'var\', \'ms\', \'mom\', \'lr\', \'rho\', \'momentum\', \'epsilon\', \'grad\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ApproxTopK"
+    argspec: "args=[\'input\', \'k\', \'reduction_dimension\', \'recall_target\', \'is_max_k\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'True\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "ApproximateEqual"
     argspec: "args=[\'x\', \'y\', \'tolerance\', \'name\'], varargs=None, keywords=None, defaults=[\'1e-05\', \'None\'], "
   }
@@ -1307,6 +1311,10 @@ tf_module {
   member_method {
     name: "DirectedInterleaveDataset"
     argspec: "args=[\'selector_input_dataset\', \'data_input_datasets\', \'output_types\', \'output_shapes\', \'stop_on_empty_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "DisableCopyOnRead"
+    argspec: "args=[\'resource\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Div"

@@ -21,6 +21,7 @@ import sys
 import traceback
 
 import numpy as np
+from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -1076,9 +1077,10 @@ def _wrap_and_tile_variants(tensor, length):
   return wrap(tensor)
 
 
-def _fallback_converter(pfor_input, warn=True):
+def _fallback_converter(pfor_input, root_cause="", warn=True):
   if warn:
-    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning("Using a while_loop for converting %s cause %s",
+                    pfor_input.op_type, root_cause)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1591,6 +1593,7 @@ class PFor:
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
+            root_cause = (f"there is no registered converter for this op.")
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
             has_vectorized_variant_inputs = any(
@@ -1598,7 +1601,7 @@ class PFor:
                 y_op.inputs)
             if (self._fallback_to_while_loop and not has_variant_outputs
                 and not has_vectorized_variant_inputs):
-              converter = _fallback_converter
+              converter = partial(_fallback_converter, root_cause=root_cause)
             else:
               message = (f"No pfor vectorization defined for {y_op.type}\n"
                          f"{y_op}\n inputs: {converted_inputs}.")
@@ -1619,7 +1622,8 @@ class PFor:
                   y_op.inputs)
               if (self._fallback_to_while_loop
                   and not has_vectorized_variant_inputs):
-                new_outputs = _fallback_converter(pfor_inputs)
+                new_outputs = _fallback_converter(
+                    pfor_inputs, root_cause=str(e))
               else:
                 raise ValueError(str(e)).with_traceback(sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
@@ -4647,6 +4651,7 @@ class WhileV2:
                 "While loop conversion is only supported for TensorLists. Got "
                 f"another variant {inp.t}, probably an optional. Please file "
                 "a bug.")
+
           # For TensorLists, the input format is:
           #
           #   List[user_list_len, Tensor[loop_len, ...]]
@@ -4659,7 +4664,7 @@ class WhileV2:
           # vectorization" format, so we want to keep it that way as much as
           # possible. We'll accumulate finished iterations (only relevant for
           # pfor-loop-variant while_loop conditions) in an accumulator with
-          # type:
+          # type :
           #
           #   List[user_list_len, List[loop_len, Tensor[...]]]
           #
