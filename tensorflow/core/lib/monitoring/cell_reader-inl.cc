@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -107,13 +108,28 @@ StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
 }
 
 template <>
-int64_t GetValue(const monitoring::Point& point) {
+int64_t GetValue(const Point& point) {
   return point.int64_value;
+}
+
+template <>
+Histogram GetValue(const Point& point) {
+  return Histogram(point.histogram_value);
 }
 
 template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b) {
   return a - b;
+}
+
+template <>
+Histogram GetDelta(const Histogram& a, const Histogram& b) {
+  StatusOr<Histogram> result = a.Subtract(b);
+  if (!result.ok()) {
+    LOG(FATAL) << "Failed to compute the delta between histograms: "
+               << result.status();
+  }
+  return *result;
 }
 
 }  // namespace internal

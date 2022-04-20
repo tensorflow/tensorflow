@@ -50,7 +50,7 @@ namespace testing {
 // ```
 //
 // TODO(b/147227594): This library is working-in-progress. Currently, only
-// counter readers are supported.
+// counter and sampler readers are supported.
 template <typename ValueType>
 class CellReader {
  public:

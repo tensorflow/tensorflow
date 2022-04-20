@@ -1909,15 +1909,25 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_test(
+tf_cc_tests(
     name = "cell_reader_test",
     size = "small",
-    srcs = ["//tensorflow/core/lib/monitoring:cell_reader_test.cc"],
+    srcs = [
+        "//tensorflow/core/lib/monitoring:cell_reader_test.cc",
+        "//tensorflow/core/lib/monitoring:test_utils_test.cc",
+    ],
     deps = [
         ":test",
         ":test_main",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:sampler",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -61,11 +62,14 @@ StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
 template <typename ValueType>
 ValueType GetValue(const Point& point) {
   LOG(FATAL) << "Not implemented: Tensorflow CellReader currently only "
-                "supports the counter type.";
+                "supports counters and samplers.";
 }
 
 template <>
 int64_t GetValue(const Point& point);
+
+template <>
+Histogram GetValue(const Point& point);
 
 // Returns the latest value for `metric_name`, associated with the `labels`. If
 // the metric has not collected any data, it returns a default value appropriate
@@ -91,11 +95,14 @@ ValueType GetLatestValueOrDefault(const CollectedMetrics& metrics,
 template <typename ValueType>
 ValueType GetDelta(const ValueType& a, const ValueType& b) {
   LOG(FATAL) << "Not implemented: Tensorflow CellReader currently only "
-                "supports the counter type.";
+                "supports counters and samplers.";
 }
 
 template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b);
+
+template <>
+Histogram GetDelta(const Histogram& a, const Histogram& b);
 
 }  // namespace internal
 }  // namespace testing
