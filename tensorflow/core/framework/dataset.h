@@ -89,6 +89,7 @@ constexpr char kTraceInfoUnavailable[] = "unavailable";
 constexpr char kMetadata[] = "metadata";
 
 constexpr char kCardinalityAttrForRewrite[] = "_cardinality";
+constexpr char UseGpuCompatAllocatorAttr[] = "use_gpu_compat_allocator";
 
 class DatasetBase;
 class SerializationContext;
@@ -1336,6 +1337,10 @@ class DatasetOpKernel : public OpKernel {
                   errors::InvalidArgument(absl::StrCat(
                       "Could not parse the 'metadata' attribute.")));
     }
+    if (ctx->HasAttr(UseGpuCompatAllocatorAttr))
+    {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(UseGpuCompatAllocatorAttr, &UseGpuCompatAllocatorAttr_));
+    }
   }
 
   void Compute(OpKernelContext* ctx) final;
@@ -1356,6 +1361,7 @@ class DatasetOpKernel : public OpKernel {
 
  private:
   Metadata metadata_;
+  bool UseGpuCompatAllocatorAttr_ = false;
 };
 
 // Encapsulates the work required to plug unary Datasets into the core

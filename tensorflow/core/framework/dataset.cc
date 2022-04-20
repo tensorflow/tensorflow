@@ -998,7 +998,16 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   MakeDataset(ctx, &dataset);
   if (ctx->status().ok()) {
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    if (UseGpuCompatAllocatorAttr_)
+    {
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output, attr));
+    }
+    else
+    {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    }
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
     dataset->Initialize(metadata_);
   }

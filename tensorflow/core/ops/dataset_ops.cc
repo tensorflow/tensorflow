@@ -88,6 +88,7 @@ REGISTER_OP("GeneratorDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
@@ -122,6 +123,7 @@ REGISTER_OP("RepeatDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -171,6 +173,7 @@ REGISTER_OP("MapDataset")
     .Attr("use_inter_op_parallelism: bool = true")
     .Attr("preserve_cardinality: bool = false")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -188,6 +191,7 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("sloppy: bool = false")
     .Attr("preserve_cardinality: bool = false")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -206,6 +210,7 @@ REGISTER_OP("ParallelMapDatasetV2")
     .Attr("deterministic: string = 'default'")
     .Attr("preserve_cardinality: bool = false")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -253,6 +258,7 @@ REGISTER_OP("InterleaveDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -270,6 +276,7 @@ REGISTER_OP("ParallelInterleaveDatasetV2")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("sloppy: bool = false")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -288,6 +295,7 @@ REGISTER_OP("ParallelInterleaveDatasetV3")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -309,6 +317,7 @@ REGISTER_OP("ParallelInterleaveDatasetV4")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -322,6 +331,7 @@ REGISTER_OP("FilterDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -338,6 +348,7 @@ REGISTER_OP("ParallelFilterDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
@@ -391,6 +402,7 @@ REGISTER_OP("BatchDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -409,6 +421,7 @@ REGISTER_OP("BatchDatasetV2")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
@@ -434,6 +447,7 @@ REGISTER_OP("ParallelBatchDataset")
     // "true", "false", or "default".
     .Attr("deterministic: string = 'default'")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -456,6 +470,7 @@ REGISTER_OP("ShardDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -481,6 +496,7 @@ REGISTER_OP("PaddedBatchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "Toutput_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -502,6 +518,7 @@ REGISTER_OP("PaddedBatchDatasetV2")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
     .Attr("metadata: string = ''")
+    .Attr("use_gpu_compat_allocator: bool = false")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "Toutput_types"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
