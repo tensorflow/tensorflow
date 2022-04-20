@@ -1004,12 +1004,15 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
     mlir::ArrayAttr branches = op.branches();
 
     llvm::SmallVector<mlir::Type, 4> result_types;
+    result_types.push_back(corert_converter_.chain_type());
     for (mlir::Type type : op->getResultTypes()) {
       if (failed(type_converter_.convertType(type, result_types)))
         return failure();
     }
 
     llvm::SmallVector<mlir::Value, 4> branch_operands;
+    branch_operands.push_back(
+        corert_converter_.GetLocalSideEffectChain(op, &rewriter));
     if (mlir::failed(ConvertFunctionCallOperands(
             op, adaptor.getOperands().drop_front(), &branch_operands, rewriter,
             func_use_fallback_tensor_)))
@@ -1037,11 +1040,9 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
             op.getLoc(), rewriter.getI32Type(), index_operand);
 
     auto new_op = rewriter.create<tfrt::compiler::CaseOp>(
-        op.getLoc(), corert_converter_.chain_type(), result_types, index_value,
-        branches, corert_converter_.GetLocalSideEffectChain(op, &rewriter),
-        branch_operands);
+        op.getLoc(), result_types, index_value, branches, branch_operands);
 
-    rewriter.replaceOp(op, new_op.branch_outputs());
+    rewriter.replaceOp(op, new_op.branch_outputs().drop_front());
     return success();
   }
 
