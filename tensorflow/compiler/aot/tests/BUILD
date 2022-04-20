@@ -539,6 +539,7 @@ tf_cc_test(
     extra_copts = ["-DENABLE_MLIR_BRIDGE_TEST"],
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
     deps = [
         ":test_graph_tfadd_mlir_bridge",
