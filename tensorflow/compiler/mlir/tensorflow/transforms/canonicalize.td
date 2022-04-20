@@ -324,3 +324,19 @@ def HashTableAndLookupTableFindToV2 :
      (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
      $keys, $default_value)
  >;
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Maximum of zero to tf.Relu
+//===----------------------------------------------------------------------===//
+
+def MaximumOfZeroToRelu : Pat<(TF_MaximumOp $x, $y), (TF_ReluOp $x),
+                              [(IsConstantValueOf<0> $y)]>;
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Relu of Minimul six to tf.Relu6
+//===----------------------------------------------------------------------===//
+
+def ReluOfMinimum6ToRelu6 :
+  Pat<(TF_ReluOp (TF_MinimumOp $x, $y)),
+      (TF_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;
