@@ -75,6 +75,16 @@ class OpConverterRegistry::Impl {
     registry_.erase(itr);
   }
 
+  std::vector<std::string> ListRegisteredOps() const {
+    mutex_lock lock(mu_);
+    std::vector<std::string> result;
+    result.reserve(registry_.size());
+    for (const auto& item : registry_) {
+      result.push_back(item.first);
+    }
+    return result;
+  }
+
  private:
   mutable mutex mu_;
   mutable std::unordered_map<std::string, OpConverterRegistration> registry_
@@ -91,6 +101,10 @@ InitOnStartupMarker OpConverterRegistry::Register(const string& name,
                                                   const int priority,
                                                   OpConverter converter) {
   return impl_->Register(name, priority, converter);
+}
+
+std::vector<std::string> OpConverterRegistry::ListRegisteredOps() const {
+  return impl_->ListRegisteredOps();
 }
 
 void OpConverterRegistry::Clear(const std::string& name) { impl_->Clear(name); }
