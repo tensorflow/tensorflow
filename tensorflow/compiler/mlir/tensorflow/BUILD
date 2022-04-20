@@ -2447,6 +2447,7 @@ cc_library(
     srcs = ["utils/attribute_utils.cc"],
     hdrs = ["utils/attribute_utils.h"],
     deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "@llvm-project//mlir:IR",
     ],
 )

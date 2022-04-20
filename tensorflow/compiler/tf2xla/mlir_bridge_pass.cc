@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -42,33 +43,33 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
 
 namespace {
 
-constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
-
 bool HasTPUDevice(mlir::ModuleOp module) {
   mlir::TF::RuntimeDevices devices;
   if (failed(GetDevicesFromOp(module.getOperation(), &devices))) return false;
   return absl::c_any_of(
       devices.device_names(),
       [](const tensorflow::DeviceNameUtils::ParsedName& device) {
-        return device.has_type && device.type == "TPU";
+        return device.has_type && device.type == kTpuDevice;
       });
 }
 
 bool HasTPUOp(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
-    // TODO(jiancai): we should check "_replication_info" attribute here instead
-    // once the migration to unified compilation and replication markers is
-    // done. See b/220150965 for more details.
-    auto replicate_attr =
-        op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);
+    // TODO(b/223677572): We should check `_replication_info` attribute here
+    // instead once the migration to unified compilation and replication markers
+    // is done.
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    const llvm::StringRef str(kTpuReplicateAttr.data(),
+                              kTpuReplicateAttr.size());
+    auto replicate_attr = op->getAttrOfType<mlir::StringAttr>(str);
     if (replicate_attr) return mlir::WalkResult::interrupt();
     return mlir::WalkResult::advance();
   });
   return walk_result.wasInterrupted();
 }
 
-// Checks that the module has both - TPU devices in its device list and contains
-// TPU ops (identifed by `_tpu_replicate` attribute on ops).
+// Checks that the module has both TPU devices in its device list and contains
+// TPU ops.
 bool HasTPUDevicesAndOps(mlir::ModuleOp module) {
   return HasTPUDevice(module) && HasTPUOp(module);
 }

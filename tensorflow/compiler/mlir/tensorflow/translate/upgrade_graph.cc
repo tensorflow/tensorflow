@@ -124,14 +124,8 @@ Status GenerateResourceSharedNameIfEmpty(
 }
 
 bool IsCompiledNode(const Node* n) {
-  // TODO(b/229028654) remove casts once C++17 is available
-  absl::string_view kTPUReplicateAttrStr(mlir::TF::kTPUReplicateAttr.data(),
-                                         mlir::TF::kTPUReplicateAttr.size());
-  absl::string_view kCompileDeviceTypeAttrStr(
-      mlir::TF::kCompileDeviceTypeAttr.data(),
-      mlir::TF::kCompileDeviceTypeAttr.size());
-  return n->attrs().Find(kTPUReplicateAttrStr) ||
-         n->attrs().Find(kCompileDeviceTypeAttrStr);
+  return n->attrs().Find(tensorflow::kTpuReplicateAttr) ||
+         n->attrs().Find(tensorflow::kCompileDeviceTypeAttr);
 }
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,

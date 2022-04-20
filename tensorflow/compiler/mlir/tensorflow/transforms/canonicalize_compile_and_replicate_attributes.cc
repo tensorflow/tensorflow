@@ -46,10 +46,11 @@ void CanonicalizeCompileAndReplicateAttributesPass::runOnOperation() {
   ModuleOp module_op = func_op->getParentOfType<ModuleOp>();
   mlir::OpBuilder builder(module_op.getContext());
   func_op->walk([&](mlir::Operation* op) {
-    if (op->hasAttr(TF::kTPUReplicateAttr)) {
-      op->setAttr(TF::kReplicationInfoAttr, op->getAttr(TF::kTPUReplicateAttr));
-      op->removeAttr(TF::kTPUReplicateAttr);
-      op->setAttr(TF::kCompileDeviceTypeAttr, builder.getStringAttr("TPU"));
+    if (op->hasAttr(TF::kTpuReplicateAttr)) {
+      op->setAttr(TF::kReplicationInfoAttr, op->getAttr(TF::kTpuReplicateAttr));
+      op->removeAttr(TF::kTpuReplicateAttr);
+      op->setAttr(TF::kCompileDeviceTypeAttr,
+                  builder.getStringAttr(TF::kTpuDevice));
     }
     return mlir::WalkResult::advance();
   });
