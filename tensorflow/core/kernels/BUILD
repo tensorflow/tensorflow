@@ -3542,7 +3542,18 @@ cc_library(
 tf_kernel_library(
     name = "aggregate_ops",
     prefix = "aggregate_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [":variant_ops_util"],
+)
+
+tf_kernel_library(
+    name = "variant_ops_util",
+    srcs = ["variant_ops_util.cc"],
+    hdrs = ["variant_ops_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_kernel_library(
