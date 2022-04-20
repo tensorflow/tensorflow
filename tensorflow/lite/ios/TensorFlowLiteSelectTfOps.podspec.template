@@ -19,4 +19,14 @@ Pod::Spec.new do |s|
   s.library = 'c++'
   s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.framework'
   s.weak_frameworks = 'CoreML'
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.pod_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+  }
 end
