@@ -1110,12 +1110,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                 ShapeUtil::HumanString(*operand_shapes[operand]));
           }
         }
-        std::vector<Shape> operand_shape_values;
-        operand_shape_values.reserve(operand_shapes.size());
-        for (const Shape* operand_shape : operand_shapes) {
-          operand_shape_values.push_back(*operand_shape);
-        }
-        return ShapeUtil::MakeTupleShape(operand_shape_values);
+        return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
       }
       return InvalidArgument("Unexpected number of operands for sort");
     }
@@ -1319,9 +1314,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
-  return ShapeUtil::MakeTupleShape({operand_shape,
-                                    output_shape_for_mean_and_var,
-                                    output_shape_for_mean_and_var});
+  return ShapeUtil::MakeTupleShapeWithPtrs({&operand_shape,
+                                            &output_shape_for_mean_and_var,
+                                            &output_shape_for_mean_and_var});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
@@ -1620,8 +1615,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
 
-  return ShapeUtil::MakeTupleShape(
-      {operand_shape, feature_shape, feature_shape});
+  return ShapeUtil::MakeTupleShapeWithPtrs(
+      {&operand_shape, &feature_shape, &feature_shape});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
@@ -2076,17 +2071,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       Shape ag_shape,
       InferAllGatherShape(operand_shapes, all_gather_dimension, shard_count));
   Shape input_shape;
-  std::vector<Shape> op_shapes;
-  op_shapes.reserve(operand_shapes.size());
-  for (const Shape* shp : operand_shapes) {
-    op_shapes.push_back(*shp);
-  }
-  if (op_shapes.size() == 1) {
-    input_shape = op_shapes[0];
+  if (operand_shapes.size() == 1) {
+    input_shape = *operand_shapes[0];
   } else {
-    input_shape = ShapeUtil::MakeTupleShape(op_shapes);
+    input_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
   }
-  return ShapeUtil::MakeTupleShape({input_shape, ag_shape});
+  return ShapeUtil::MakeTupleShapeWithPtrs({&input_shape, &ag_shape});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllGatherDoneShape(
@@ -2103,12 +2093,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (operand_shapes.size() == 1) {
     return *operand_shapes[0];
   }
-  std::vector<Shape> operand_shape_values;
-  operand_shape_values.reserve(operand_shapes.size());
-  for (const Shape* operand_shape : operand_shapes) {
-    operand_shape_values.push_back(*operand_shape);
-  }
-  return ShapeUtil::MakeTupleShape(operand_shape_values);
+  return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceScatterShape(
@@ -2217,17 +2202,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteStartShape(
     absl::Span<const Shape* const> operand_shapes) {
+  const Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
   if (operand_shapes.size() == 1) {
     TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
                                    "operand of collective-permute-start"));
-    return ShapeUtil::MakeTupleShape(
-        {*(operand_shapes[0]), *(operand_shapes[0]),
-         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
+    return ShapeUtil::MakeTupleShapeWithPtrs(
+        {operand_shapes[0], operand_shapes[0], &u32_scalar, &u32_scalar});
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
-    return ShapeUtil::MakeTupleShape(
-        {*(operand_shapes[0]), *(operand_shapes[1]),
-         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
+    return ShapeUtil::MakeTupleShapeWithPtrs(
+        {operand_shapes[0], operand_shapes[1], &u32_scalar, &u32_scalar});
   }
 }
 

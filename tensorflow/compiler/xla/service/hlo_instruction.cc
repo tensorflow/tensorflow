@@ -1875,12 +1875,12 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     absl::Span<HloInstruction* const> elements) {
-  std::vector<Shape> element_shapes;
+  std::vector<const Shape*> element_shapes;
   element_shapes.reserve(elements.size());
   for (auto element : elements) {
-    element_shapes.push_back(element->shape());
+    element_shapes.push_back(&element->shape());
   }
-  Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
+  Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
   return CreateVariadic(tuple_shape, HloOpcode::kTuple, elements);
 }
 

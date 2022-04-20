@@ -2314,8 +2314,8 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
                                PrimitiveType_Name(output_shape.element_type()));
     }
     return RngBitGeneratorInternal(
-        ShapeUtil::MakeTupleShape({state_shape, output_shape}), algorithm,
-        initial_state);
+        ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
+        algorithm, initial_state);
   });
 }
 
