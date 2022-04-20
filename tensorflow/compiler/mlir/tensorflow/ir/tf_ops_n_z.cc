@@ -727,15 +727,6 @@ OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// ReluOp
-//===----------------------------------------------------------------------===//
-
-void ReluOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                         MLIRContext *context) {
-  results.add<ReluOfMinimum6ToRelu6>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 

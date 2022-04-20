@@ -2285,13 +2285,3 @@ func.func @dynamic_update_slice(%arg0: tensor<4x5xi32>, %arg1: tensor<1x5xi32>, 
 // CHECK-LABEL:dynamic_update_slice
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xi32>, tensor<1x5xi32>, tensor<2xi32>) -> tensor<4x5xi32>
 }
-
-func.func @testReluI32(%arg0: tensor<1xi32>) -> tensor<1xi32> {
-  %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
-  func.return %0: tensor<1xi32>
-
-// CHECK-LABEL: testReluI32
-// CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i32>
-// CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
-// CHECK:  return %[[RES0]] : tensor<1xi32>
-}
