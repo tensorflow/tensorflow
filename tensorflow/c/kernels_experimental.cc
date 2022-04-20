@@ -180,7 +180,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
     OP_REQUIRES(ctx,
                 (!variable->is_initialized ||
                  variable->tensor()->shape().IsSameSize(value.shape())),
-                errors::InvalidArgument(
+                InvalidArgument(
                     "Trying to assign to variable with tensor with wrong shape."
                     " Expected ",
                     variable->tensor()->shape().DebugString(), " got ",
