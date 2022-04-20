@@ -526,10 +526,16 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(ReadAttributes(tflite_node, tf_options, reader, &attr));
 
     const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
-    if (attr.weights.data.empty()) {
+    if (runtime_inputs == 2) {
       // weights are second runtime input
-      if (runtime_inputs != 2) {
-        return absl::InternalError("Not supported CONVOLUTION_2D case.");
+      const TfLiteTensor* src_tensor = reader->GetInputTensor(0);
+      const TfLiteTensor* weights_tensor = reader->GetInputTensor(1);
+      BHWC src_shape, weights_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*src_tensor, &src_shape));
+      RETURN_IF_ERROR(ExtractTensorShape(*weights_tensor, &weights_shape));
+      if (src_shape.c != weights_shape.c) {
+        return absl::InternalError(
+            "No support of CONVOLUTION_2D with runtime grouped weights.");
       }
 
       Node* node = graph->NewNode();
@@ -544,8 +550,9 @@ class Conv2DOperationParser : public TFLiteOperationParser {
       // weights are constants
       const int src_group_size = attr.weights.shape.i;
       const int dst_group_size = attr.weights.shape.o / attr.groups;
-      if (attr.groups != 1 &&
-          (src_group_size % 4 != 0 || dst_group_size % 4 != 0)) {
+      const bool supported_grouped_conv =
+          src_group_size % 4 == 0 && dst_group_size % 4 == 0;
+      if (attr.groups != 1 && !supported_grouped_conv) {
         // Not supported case, replace with usual convolutions:
         return ResolveGroupedConvolution(attr, tf_options, reader, graph);
       } else {
@@ -566,20 +573,21 @@ class Conv2DOperationParser : public TFLiteOperationParser {
                               const TfLiteConvParams* tf_options,
                               ObjectReader* reader,
                               Convolution2DAttributes* attr) {
+    const TfLiteTensor* src_tensor = reader->GetInputTensor(0);
+    BHWC src_shape;
+    RETURN_IF_ERROR(ExtractTensorShape(*src_tensor, &src_shape));
     const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
     if (runtime_inputs == 1) {
       RETURN_IF_ERROR(reader->ReadTensor(1, &attr->weights));
+      attr->groups = src_shape.c / attr->weights.shape.i;
+    } else {
+      attr->groups = 1;
     }
     reader->ReadTensor(2, &attr->bias).IgnoreError();  // bias is optional
     attr->strides = ToHW(tf_options->stride_height, tf_options->stride_width);
     attr->dilations = HW(tf_options->dilation_height_factor,
                          tf_options->dilation_width_factor);
-
-    const TfLiteTensor* src_tensor = reader->GetInputTensor(0);
-    BHWC src_shape;
-    RETURN_IF_ERROR(ExtractTensorShape(*src_tensor, &src_shape));
     UpdatePadding(tf_options->padding, src_shape, attr);
-    attr->groups = src_shape.c / attr->weights.shape.i;
     return absl::OkStatus();
   }
 
