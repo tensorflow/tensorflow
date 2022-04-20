@@ -1001,7 +1001,7 @@ class RealDynamicSliceConverter
         loc, IntegerAttr::get(arith_type, 0));
     SmallVector<OpFoldResult, 4> offsets, sizes, strides;
     SmallVector<Type, 3> clamp_type(3, arith_type);
-    for (auto i : llvm::seq<uint>(0, arg_type.getRank())) {
+    for (auto i : llvm::seq<unsigned>(0, arg_type.getRank())) {
       Value dim = rewriter.create<arith::ConstantIndexOp>(loc, i);
       Value start =
           rewriter.create<tensor::ExtractOp>(loc, adaptor.start_indices(), dim);
