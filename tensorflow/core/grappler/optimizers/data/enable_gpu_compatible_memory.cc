@@ -32,7 +32,7 @@ namespace grappler {
 namespace {
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
-constexpr char UseGpuCompatAllocatorAttr[] = "UseGpuCompatAllocator";
+constexpr char UseGpuCompatAllocatorAttr[] = "use_gpu_compat_allocator";
 
 bool HasUseGpuCompatAllocatorAttr(const NodeDef& node) {
     return node.attr().contains(UseGpuCompatAllocatorAttr);

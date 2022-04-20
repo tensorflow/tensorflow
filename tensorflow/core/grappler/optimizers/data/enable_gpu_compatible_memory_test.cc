@@ -77,11 +77,11 @@ TEST_P(RewriteTest, DisablePrefetchLegacyAutotune) {
   NodeDef prefetch_node1 =
       output.node(graph_utils::FindGraphNodeWithName("prefetch1", output));
   EXPECT_EQ(prefetch_node1.attr().at("legacy_autotune").b(), !autotune);
-  // TODO (kushanam): enable when the UseGpuAllocator attribute is added 
+  // TODO (kushanam): enable when the use_gpu_compat_allocator attribute is added 
   // to the Dataset ops
   // NodeDef range =
   //     output.node(graph_utils::FindGraphNodeWithName("range", output));
-  // EXPECT_TRUE(prefetch_node2.attr().at("UseGpuAllocator").b());
+  // EXPECT_TRUE(prefetch_node2.attr().at("use_gpu_compat_allocator").b());
 }
 
 }  // namespace
