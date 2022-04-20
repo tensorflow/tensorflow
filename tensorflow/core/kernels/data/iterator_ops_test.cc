@@ -81,10 +81,12 @@ TEST_F(IteratorOpsTest, CollectMetrics) {
   CellReader<Histogram> iterator_gap("/tensorflow/data/iterator_gap");
   CellReader<int64_t> throughput("/tensorflow/data/bytes_fetched");
   CellReader<int64_t> iterator_lifetime("/tensorflow/data/iterator_lifetime");
+  CellReader<int64_t> iterator_busy("/tensorflow/data/iterator_busy");
   EXPECT_FLOAT_EQ(latency.Delta().num(), 0.0);
   EXPECT_FLOAT_EQ(iterator_gap.Delta().num(), 0.0);
   EXPECT_EQ(throughput.Delta(), 0.0);
   EXPECT_EQ(iterator_lifetime.Delta(), 0.0);
+  EXPECT_EQ(iterator_busy.Delta(), 0.0);
 
   RangeDatasetParams dataset_params = RangeDatasetParams(0, 10, 3);
   TF_ASSERT_OK(Initialize(dataset_params));
@@ -102,6 +104,7 @@ TEST_F(IteratorOpsTest, CollectMetrics) {
   EXPECT_GT(iterator_gap_histogram.sum(), 0.0);
   EXPECT_GT(throughput.Delta(), 0);
   EXPECT_GT(iterator_lifetime.Delta(), 0);
+  EXPECT_GT(iterator_busy.Delta(), 0.0);
 }
 
 }  // namespace
