@@ -95,6 +95,17 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   }
 }
 
+bool EnableCublasLtGemm() {
+  static bool enable_cublaslt_gemm = [] {
+    bool cublaslt_gemm = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_CUBLASLT",
+                                               /*default_val=*/false,
+                                               &cublaslt_gemm));
+    return cublaslt_gemm;
+  }();
+  return enable_cublaslt_gemm;
+}
+
 namespace {
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
