@@ -963,6 +963,11 @@ TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
 
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
+  if (op_reg.registration_external && op_reg.registration_external->prepare) {
+    return op_reg.registration_external->prepare(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+        reinterpret_cast<TfLiteOpaqueNode*>(node));
+  }
   if (op_reg.prepare == nullptr) {
     // Check if it's an unresolved custom op.
     if (IsUnresolvedCustomOp(op_reg)) {
