@@ -108,7 +108,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 
   // Class users should override this method if there are any op-specific
   // compatibility requirements for devices.
-  virtual bool IsDeviceCompatible(SrcOpT contraction_op,
+  virtual bool IsDeviceCompatible(SrcOpT contraction_op, BiasAddOp bias_add,
                                   PatternRewriter &rewriter) const {
     return true;
   }
@@ -143,7 +143,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
           contraction, "cannot fuse with the subsequent BiasAdd op");
     }
 
-    if (!IsDeviceCompatible(contraction, rewriter)) {
+    if (!IsDeviceCompatible(contraction, bias_add, rewriter)) {
       return rewriter.notifyMatchFailure(
           contraction,
           "cannot fuse with the subsequent op as it's not supported by the "
@@ -262,6 +262,22 @@ class FuseConv2DBiasAdd
     }
     return true;
   }
+
+  bool IsDeviceCompatible(Conv2DOp conv, BiasAddOp bias_add,
+                          PatternRewriter &rewriter) const override {
+    // Currently, GPU only supports Conv2D+BiasAdd+Relu fusion.
+    if (IsGpuDevice(conv)) {
+      auto activation = GetActivation(bias_add);
+      if (!activation || activation->getName().stripDialect() != "Relu" ||
+          !bias_add.output().hasOneUse()) {
+        (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+          diag << "GPU only supports Conv2D+BiasAdd+Relu fusion";
+        });
+        return false;
+      }
+    }
+    return true;
+  }
 };
 
 // Performs a fusion of the following pattern(s), if possible:
@@ -284,7 +300,7 @@ class FuseMatMulBiasAdd
     return true;
   }
 
-  bool IsDeviceCompatible(MatMulOp matmul,
+  bool IsDeviceCompatible(MatMulOp matmul, BiasAddOp bias_add,
                           PatternRewriter &rewriter) const override {
     if (IsGpuDevice(matmul)) {
       (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
