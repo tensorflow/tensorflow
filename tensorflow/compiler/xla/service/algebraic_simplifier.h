@@ -308,6 +308,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleNot(HloInstruction* logical_not) override;
 
+  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
+
   Status HandleOr(HloInstruction* logical_or) override;
 
   Status HandlePad(HloInstruction* pad) override;
