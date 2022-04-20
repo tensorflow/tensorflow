@@ -152,6 +152,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // Remove all DTensorLayout ops after the expansion is done.
   pm->addPass(CreateDTensorSPMDExpansion());
 
+  AddDTensorEmbeddingLoadPass(pm);
+
   // Expand all ops that consume SparseTensors to possibly new ops.
   // Remove any unused SparseToDense, Layout, and Const Ops after
   // the expansion is done.

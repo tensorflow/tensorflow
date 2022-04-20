@@ -247,6 +247,14 @@ def DTensorEmbeddingV2
   ];
 }
 
+def DTensorEmbeddingLoad
+    : Pass<"dtensor-embedding-load", "mlir::ModuleOp"> {
+  let summary = "Load TPU embeddings and slot variables.";
+  let constructor = "CreateDTensorEmbeddingLoadPass()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorFunctionRenaming
     : Pass<"dtensor-function-renaming", "mlir::ModuleOp"> {
   let summary = "Renames private functions by appending an id to each name. This is used to make private function names unique across modules.";
