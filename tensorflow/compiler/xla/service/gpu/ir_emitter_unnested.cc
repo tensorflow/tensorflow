@@ -4601,7 +4601,6 @@ bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
       for (mlir::Value v : op->getResults()) {
         for (mlir::OpOperand use : v.getUsers()) {
           if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {

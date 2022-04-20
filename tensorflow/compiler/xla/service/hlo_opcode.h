@@ -159,7 +159,6 @@ namespace xla {
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
-  V(kTupleSelect, "tuple-select", 3)                                           \
   V(kWhile, "while", 1)
 
 enum class HloOpcode {

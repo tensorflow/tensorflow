@@ -147,10 +147,6 @@ Status ShapeVerifier::HandleSelect(HloInstruction* select) {
   return CheckTernaryShape(select);
 }
 
-Status ShapeVerifier::HandleTupleSelect(HloInstruction* tuple_select) {
-  return CheckTernaryShape(tuple_select);
-}
-
 Status ShapeVerifier::HandleConcatenate(HloInstruction* concatenate) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : concatenate->operands()) {
@@ -1475,7 +1471,6 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReduceWindow:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
@@ -1571,7 +1566,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       // The opcodes below can't have implicit layout conversions, nor can they
       // implicitly transform f32 -> bf16.  Fundamentally these are either
       // reinterpreting existing data (e.g. kBitcast) or shuffling data around
-      // without modifying it (e.g. kGetTupleElement, kTupleSelect).
+      // without modifying it (e.g. kGetTupleElement).
       case HloOpcode::kBitcast:
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
@@ -1590,7 +1585,6 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kSend:
       case HloOpcode::kSendDone:
       case HloOpcode::kTuple:
-      case HloOpcode::kTupleSelect:
       case HloOpcode::kWhile:
         return ShapesSame(instruction->shape(), inferred_shape,
                           only_compare_minor_to_major_in_layout);

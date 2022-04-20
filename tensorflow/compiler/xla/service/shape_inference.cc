@@ -1067,8 +1067,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       return InferClampShape(lhs, rhs, ehs);
     case HloOpcode::kSelect:
       return InferSelectShape(lhs, rhs, ehs);
-    case HloOpcode::kTupleSelect:
-      return InferTupleSelectShape(lhs, rhs, ehs);
     default:
       return InvalidArgument("Unknown operation %s.", HloOpcodeString(opcode));
   }
@@ -3310,28 +3308,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   return ShapeUtil::ChangeElementType(
       pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
-}
-
-/* static */ StatusOr<Shape> ShapeInference::InferTupleSelectShape(
-    const Shape& pred, const Shape& on_true, const Shape& on_false) {
-  // Select only defines the top-level buffer, so if it's a tuple, the two
-  // input must match exactly.
-  if (!ShapeUtil::Compatible(on_true, on_false)) {
-    return InvalidArgument(
-        "Operands to tuple-select must be the same shape; got %s and %s.",
-        ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(on_false));
-  }
-  if (pred.element_type() != PRED) {
-    return InvalidArgument(
-        "TupleSelect's pred operand must have PRED element type; got %s.",
-        ShapeUtil::HumanString(pred));
-  }
-  if (!ShapeUtil::IsScalar(pred)) {
-    return InvalidArgument(
-        "TupleSelect operation with non-scalar predicate: %s.",
-        ShapeUtil::HumanString(pred));
-  }
-  return on_true;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCallShape(
