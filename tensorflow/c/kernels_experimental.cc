@@ -177,7 +177,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
   tensorflow::mutex_lock ml(*variable->mu());
 
   if (validate_shape) {
-    OP_REQUIRES(ctx,
+    OP_REQUIRES(cc_ctx,
                 (!variable->is_initialized ||
                  variable->tensor()->shape().IsSameSize(value.shape())),
                 InvalidArgument(
