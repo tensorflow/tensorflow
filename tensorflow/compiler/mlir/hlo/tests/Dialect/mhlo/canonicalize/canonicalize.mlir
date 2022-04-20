@@ -899,33 +899,6 @@ func.func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   func.return %arg0 : tensor<i64>
 }
 
-// CHECK-LABEL: @while_move_loop_invariant_code
-//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
-func.func @while_move_loop_invariant_code(%arg0: tensor<i32>) -> (tensor<i32>) {
-  // CHECK-NEXT: %[[V0:.*]] = mhlo.add
-  // CHECK-NEXT: %[[V1:.*]] = mhlo.multiply
-  // CHECK-NEXT: mhlo.add %[[V0]], %[[ARG0]]
-  // CHECK-NEXT: mhlo.add %[[V1]], %[[V0]]
-  %0 = mhlo.add %arg0, %arg0 : tensor<i32>
-  %1 = mhlo.multiply %arg0, %arg0 : tensor<i32>
-  %2 = mhlo.while(%iterArg0 = %arg0) : tensor<i32>
-  // CHECK: cond {
-  cond {
-    // CHECK-NEXT: mhlo.compare
-    %3 = mhlo.add %0, %arg0 : tensor<i32>
-    %4 = "mhlo.compare"(%iterArg0, %3) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    "mhlo.return"(%4) : (tensor<i1>) -> ()
-    // CHECK: } do {
-  } do {
-    // CHECK-NEXT: mhlo.add
-    %5 = mhlo.add %1, %0 : tensor<i32>
-    %6 = mhlo.add %5, %iterArg0 : tensor<i32>
-    // CHECK-NEXT: mhlo.return
-    "mhlo.return"(%6) : (tensor<i32>) -> ()
-  }
-  func.return %2 : tensor<i32>
-}
-
 // CHECK-LABEL: fold_sign_posi
 func.func @fold_sign_posi() -> tensor<i32> {
   // CHECK: %0 = mhlo.constant dense<1> : tensor<i32>
@@ -1687,26 +1660,6 @@ func.func @fold_if_false(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32
   func.return %0 : tensor<f32>
 }
 
-// CHECK-LABEL: func @if_sink_conditional_code
-//  CHECK-SAME:   %[[COND:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
-//  CHECK-SAME: )
-func.func @if_sink_conditional_code(%cond: tensor<i1>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<f32>
-  %1 = mhlo.multiply %arg0, %arg1 : tensor<f32>
-  // CHECK-NEXT: mhlo.if
-  %2 = "mhlo.if"(%cond) ({
-    // CHECK-NEXT: mhlo.add
-    "mhlo.return"(%0) : (tensor<f32>) -> ()
-    // CHECK: }, {
-  }, {
-    // CHECK-NEXT: mhlo.multiply
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) : (tensor<i1>) -> tensor<f32>
-  func.return %2 : tensor<f32>
-}
-
 // CHECK-LABEL: func @fold_case(
 //  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
 //  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
@@ -1762,27 +1715,6 @@ func.func @fold_case_oob_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 :
       "mhlo.return"(%arg2) : (tensor<f32>) -> ()
   }) : (tensor<i32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// CHECK-LABEL: func @case_sink_conditional_code
-//  CHECK-SAME:   %[[COND:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
-//  CHECK-SAME: )
-func.func @case_sink_conditional_code(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
-  // CHECK-NEXT: mhlo.multiply
-  %1 = "mhlo.multiply"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
-  // CHECK-NEXT: mhlo.case
-  %2 = "mhlo.case"(%index) ({
-    // CHECK-NEXT: mhlo.add
-    "mhlo.return"(%0) : (tensor<f32>) -> ()
-  }, {
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }, {
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) : (tensor<i32>) -> tensor<f32>
-  func.return %2 : tensor<f32>
 }
 
 // CHECK-LABEL: @tensor_flow_scatter_v1_update
