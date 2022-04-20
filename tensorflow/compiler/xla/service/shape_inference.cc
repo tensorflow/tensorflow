@@ -1067,8 +1067,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       return InferClampShape(lhs, rhs, ehs);
     case HloOpcode::kSelect:
       return InferSelectShape(lhs, rhs, ehs);
-    case HloOpcode::kTupleSelect:
-      return InferTupleSelectShape(lhs, rhs, ehs);
     default:
       return InvalidArgument("Unknown operation %s.", HloOpcodeString(opcode));
   }
@@ -1112,12 +1110,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                 ShapeUtil::HumanString(*operand_shapes[operand]));
           }
         }
-        std::vector<Shape> operand_shape_values;
-        operand_shape_values.reserve(operand_shapes.size());
-        for (const Shape* operand_shape : operand_shapes) {
-          operand_shape_values.push_back(*operand_shape);
-        }
-        return ShapeUtil::MakeTupleShape(operand_shape_values);
+        return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
       }
       return InvalidArgument("Unexpected number of operands for sort");
     }
@@ -1321,9 +1314,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
-  return ShapeUtil::MakeTupleShape({operand_shape,
-                                    output_shape_for_mean_and_var,
-                                    output_shape_for_mean_and_var});
+  return ShapeUtil::MakeTupleShapeWithPtrs({&operand_shape,
+                                            &output_shape_for_mean_and_var,
+                                            &output_shape_for_mean_and_var});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
@@ -1622,8 +1615,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
 
-  return ShapeUtil::MakeTupleShape(
-      {operand_shape, feature_shape, feature_shape});
+  return ShapeUtil::MakeTupleShapeWithPtrs(
+      {&operand_shape, &feature_shape, &feature_shape});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
@@ -2078,17 +2071,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       Shape ag_shape,
       InferAllGatherShape(operand_shapes, all_gather_dimension, shard_count));
   Shape input_shape;
-  std::vector<Shape> op_shapes;
-  op_shapes.reserve(operand_shapes.size());
-  for (const Shape* shp : operand_shapes) {
-    op_shapes.push_back(*shp);
-  }
-  if (op_shapes.size() == 1) {
-    input_shape = op_shapes[0];
+  if (operand_shapes.size() == 1) {
+    input_shape = *operand_shapes[0];
   } else {
-    input_shape = ShapeUtil::MakeTupleShape(op_shapes);
+    input_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
   }
-  return ShapeUtil::MakeTupleShape({input_shape, ag_shape});
+  return ShapeUtil::MakeTupleShapeWithPtrs({&input_shape, &ag_shape});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllGatherDoneShape(
@@ -2105,12 +2093,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (operand_shapes.size() == 1) {
     return *operand_shapes[0];
   }
-  std::vector<Shape> operand_shape_values;
-  operand_shape_values.reserve(operand_shapes.size());
-  for (const Shape* operand_shape : operand_shapes) {
-    operand_shape_values.push_back(*operand_shape);
-  }
-  return ShapeUtil::MakeTupleShape(operand_shape_values);
+  return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceScatterShape(
@@ -2219,17 +2202,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteStartShape(
     absl::Span<const Shape* const> operand_shapes) {
+  const Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
   if (operand_shapes.size() == 1) {
     TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
                                    "operand of collective-permute-start"));
-    return ShapeUtil::MakeTupleShape(
-        {*(operand_shapes[0]), *(operand_shapes[0]),
-         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
+    return ShapeUtil::MakeTupleShapeWithPtrs(
+        {operand_shapes[0], operand_shapes[0], &u32_scalar, &u32_scalar});
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
-    return ShapeUtil::MakeTupleShape(
-        {*(operand_shapes[0]), *(operand_shapes[1]),
-         ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
+    return ShapeUtil::MakeTupleShapeWithPtrs(
+        {operand_shapes[0], operand_shapes[1], &u32_scalar, &u32_scalar});
   }
 }
 
@@ -3310,28 +3292,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   return ShapeUtil::ChangeElementType(
       pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
-}
-
-/* static */ StatusOr<Shape> ShapeInference::InferTupleSelectShape(
-    const Shape& pred, const Shape& on_true, const Shape& on_false) {
-  // Select only defines the top-level buffer, so if it's a tuple, the two
-  // input must match exactly.
-  if (!ShapeUtil::Compatible(on_true, on_false)) {
-    return InvalidArgument(
-        "Operands to tuple-select must be the same shape; got %s and %s.",
-        ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(on_false));
-  }
-  if (pred.element_type() != PRED) {
-    return InvalidArgument(
-        "TupleSelect's pred operand must have PRED element type; got %s.",
-        ShapeUtil::HumanString(pred));
-  }
-  if (!ShapeUtil::IsScalar(pred)) {
-    return InvalidArgument(
-        "TupleSelect operation with non-scalar predicate: %s.",
-        ShapeUtil::HumanString(pred));
-  }
-  return on_true;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCallShape(

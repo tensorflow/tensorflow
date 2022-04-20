@@ -555,10 +555,35 @@ TfLiteStatus EvalInt8Int32(TfLiteContext* context, const OpData* data,
                            const TfLiteTensor* rhs,
                            const RuntimeShape& output_shape,
                            TfLiteTensor* output) {
-  // optimized_ops not yet implemnted.
-  reference_ops::BatchMatMul<int8, int8, int32>(
-      rhs_shape, GetTensorData<int8>(rhs), lhs_shape, GetTensorData<int8>(lhs),
-      GetTensorShape(output), GetTensorData<int32>(output));
+  // Reuse params struct from FullyConnected Op.
+  FullyConnectedParams op_params;
+  int32_t input_offset = -lhs->params.zero_point;
+  int32_t weights_offset = -rhs->params.zero_point;
+  int32_t output_offset = output->params.zero_point;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = weights_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+  op_params.lhs_cacheable = IsConstantTensor(lhs);
+  op_params.rhs_cacheable = IsConstantTensor(rhs);
+
+  // Set BatchMatMul lhs param to rhs(filter) and rhs param to lhs(input). For
+  // the reason, see comment of Eval() function.
+  if (kernel_type == kReference) {
+    reference_ops::BatchMatMul<int8, int8, int32>(
+        rhs_shape, GetTensorData<int8>(rhs), lhs_shape,
+        GetTensorData<int8>(lhs), GetTensorShape(output),
+        GetTensorData<int32>(output));
+  } else {
+    optimized_ops::BatchMatMul(op_params, rhs_shape, GetTensorData<int8_t>(rhs),
+                               lhs_shape, GetTensorData<int8_t>(lhs),
+                               GetTensorShape(output),
+                               GetTensorData<int32_t>(output),
+                               CpuBackendContext::GetFromContext(context));
+  }
   return kTfLiteOk;
 }
 

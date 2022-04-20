@@ -2289,17 +2289,17 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
   const HloSharding sharding = HloSharding::AssignDevice(device);
 
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> operand_shapes;
+  std::vector<const Shape*> operand_shapes;
   const auto& old_operands = hlo->operands();
   const auto old_operands_size = old_operands.size();
   operands.reserve(old_operands_size);
   operand_shapes.reserve(old_operands_size);
   for (const HloInstruction* operand : old_operands) {
     operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
-    operand_shapes.push_back(operand->shape());
+    operand_shapes.push_back(&operand->shape());
   }
   auto operand = b_.AddInstruction(HloInstruction::CreateTuple(operands));
-  auto operand_shape = ShapeUtil::MakeTupleShape(operand_shapes);
+  auto operand_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 
   auto on_device = b_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(device)));
@@ -2315,7 +2315,7 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
     std::vector<HloInstruction*> new_operands;
     for (int64_t i = 0; i < operands.size(); ++i) {
       new_operands.push_back(true_b.AddInstruction(
-          HloInstruction::CreateGetTupleElement(operand_shapes[i], param, i)));
+          HloInstruction::CreateGetTupleElement(*operand_shapes[i], param, i)));
     }
     auto root = true_b.AddInstruction(
         hlo->CloneWithNewOperands(hlo->shape(), new_operands));
@@ -2915,10 +2915,10 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  std::vector<Shape*> new_operand_shapes(input_count * 2);
+  std::vector<const Shape*> new_operand_shapes(input_count * 2);
   for (int64_t i = 0; i < input_count; ++i) {
-    new_operand_shapes[i] = inputs[i].hlo()->mutable_shape();
-    new_operand_shapes[i + input_count] = inits[i]->mutable_shape();
+    new_operand_shapes[i] = &inputs[i].hlo()->shape();
+    new_operand_shapes[i + input_count] = &inits[i]->shape();
   }
   // Create the shard shape of the reduce result.
   TF_ASSIGN_OR_RETURN(

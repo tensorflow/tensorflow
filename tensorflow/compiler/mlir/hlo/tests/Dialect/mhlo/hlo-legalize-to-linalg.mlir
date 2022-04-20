@@ -723,7 +723,7 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 // 1.4. Clamp starting index : 0 <= start <= ub
 //      where upper bound (ub) is computed at step 1.3
 // CHECK-NEXT: %[[START0_Int:.*]] = arith.index_cast %[[START0]] : index to i64
-// CHECK-NEXT: %[[UB0:.*]] = arith.constant 0 : i64
+// CHECK-NEXT: %[[UB0:.*]] = arith.index_cast %[[UB]] : index to i64
 // CHECK-NEXT: %[[MIN0:.*]] = arith.minsi %[[START0_Int]], %[[UB0]] : i64
 // CHECK-NEXT: %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[ZERO]] : i64
 // CHECK-NEXT: %[[CLAMPED_START0:.*]] = arith.index_cast %[[MAX0]] : i64 to index
@@ -756,24 +756,6 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 
 // CHECK-NEXT: %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]][%[[CLAMPED_START0]], %[[CLAMPED_START1]]] [256, %[[SIZE1]]] [%[[STRIDE0]], %[[STRIDE1]]] : tensor<256x?xf32> to tensor<256x?xf32>
 // CHECK-NEXT: return %[[SLICE]] : tensor<256x?xf32>
-
-// -----
-
-// CHECK-LABEL: real_dynamic_slice_with_int
-// Verify that legalization of real_dynamic_slice legalization with integer
-// dims work & passes verification.
-func public @real_dynamic_slice_with_int(%arg0: tensor<10xi32> , %arg1: tensor<1xi32> ) -> tensor<?xi32> {
-  %0 = mhlo.constant dense<0> : tensor<1xi32>
-  %1 = mhlo.constant dense<1> : tensor<1xi32>
-  %2 = mhlo.constant dense<0> : tensor<i32>
-// Verify cast is inserted for extracted value feeding into subtraction with
-// result of dim.
-// CHECK: %[[SIZE1:.*]] = arith.ceildivui
-// CHECK: %[[SIZE2:.*]] = arith.index_cast %[[SIZE1]] : i32 to index
-// CHECK: arith.subi %{{.*}}, %[[SIZE2]] : index
-  %4 = "mhlo.real_dynamic_slice"(%arg0, %0, %arg1, %1) : (tensor<10xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<?xi32>
-  return %4 : tensor<?xi32>
-}
 
 // -----
 

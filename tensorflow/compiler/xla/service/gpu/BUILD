@@ -1829,6 +1829,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":target_constants",
         ":tree_reduction_rewriter",
+        ":triangular_solve_rewriter",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",
@@ -2725,6 +2726,8 @@ cc_library(
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
     ]),
 )
 

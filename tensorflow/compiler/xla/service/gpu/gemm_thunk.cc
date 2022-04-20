@@ -485,9 +485,9 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
 
     switch (output_shape.element_type()) {
       case S32: {
-        if (!best_algorithm) {
-          return InternalError("Only extended GEMM is supported for int32_t");
-        }
+        // Only extended GEMM is supported for int32.
+        if (!best_algorithm) best_algorithm = se::blas::kDefaultGemmAlgo;
+
         CHECK_EQ(alpha.imag(), 0);
         if (lhs_shape.element_type() == PrimitiveType::S8 &&
             rhs_shape.element_type() == lhs_shape.element_type()) {

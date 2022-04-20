@@ -882,8 +882,6 @@ LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) {
     return llvm::formatv("branch #{0}", index).str();
   };
-  // TODO(jpienaar): Remove.
-  if (failed(CaseOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(symbol_table, *this,
                                          branches().getValue(), branch_name);
 }
@@ -2858,8 +2856,6 @@ LogicalResult IfOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) -> std::string {
     return index == 0 ? "'then_branch'" : "'else_branch'";
   };
-  // TODO(jpienaar): Remove.
-  if (failed(IfOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(
       symbol_table, *this, {then_branchAttr(), else_branchAttr()}, branch_name);
 }
