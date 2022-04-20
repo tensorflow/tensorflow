@@ -554,6 +554,10 @@ class StreamExecutor {
   // allocation.
   StreamExecutorMemoryAllocator* GetAllocator() { return &allocator_; }
 
+  internal::StreamExecutorInterface* GetInternalExecutor() {
+    return implementation_.get();
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
             typename... BeginArgsT>
