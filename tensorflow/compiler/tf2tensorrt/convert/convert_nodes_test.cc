@@ -36,8 +36,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -67,6 +65,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1370,20 +1370,34 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // Add weights for both validation and conversion.
-  template <typename T>
+  // Adds weights for both validation and conversion. The type of the weight is
+  // determined by tf_type. The initial value vector (values) can have any
+  // type (T) that can be static casted to tf_type.
+  template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values) {
+                      const std::vector<T>& values_inp, DataType tf_type,
+                      bool fix_values = true) {
+    const DimsAdapter dims_adap(dims);
+    const int64_t num_elements = dims_adap.Volume();
+
+    std::vector<T> values(values_inp);
+    if (num_elements != values.size()) {
+      if (fix_values) {
+        AdjustVectorByDims<T>(values, num_elements, name, "AddTestWeights");
+      } else {
+        FAIL() << "Unable to create test weights: "
+               << (num_elements > values.size() ? "not enough" : "to many")
+               << " values specified: " << values.size() << " vs. "
+               << num_elements << " defined by dims";
+      }
+    }
     // Add weights for validation.
-    const auto tf_type = DataTypeToEnum<T>::v();
-    const Tensor t = AsTensor<T>(values, dims, tf_type);
+    Tensor t = AsTensor<T>(values, dims, tf_type);
     node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
 
     // Add weights for conversion.
     nvinfer1::DataType dtype;
     TF_ASSERT_OK(TfTypeToTrtType(tf_type, &dtype));
-    const DimsAdapter dims_adap(dims);
-    const int64_t num_elements = dims_adap.Volume();
     QCHECK_EQ(num_elements, values.size())
         << num_elements << " vs " << values.size();
     TRT_ShapedWeights weights(dtype);
@@ -1415,33 +1429,8 @@ class OpConverterTest : public ::testing::Test {
   // value type (T) will determine the type of the weights.
   template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values_inp, DataType tf_type,
-                      bool fix_values = true) {
-    const auto num_elements = std::accumulate(std::begin(dims), std::end(dims),
-                                              1, std::multiplies<int>());
-
-    std::vector<T> values(values_inp);
-    if (num_elements != values.size()) {
-      if (fix_values) {
-        AdjustVectorByDims<T>(values, num_elements, name, "AddTestWeights");
-      } else {
-        FAIL() << "Unable to create test weights: "
-               << (num_elements > values.size() ? "not enough" : "to many")
-               << " values specified: " << values.size() << " vs. "
-               << num_elements << " defined by dims";
-      }
-    }
-
-    if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastVector<T, float>(values));
-    } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
-    } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastVector<T, int32>(values));
-    } else {
-      FAIL() << "Cannot create test weights with type "
-             << DataTypeString(tf_type);
-    }
+                      const std::vector<T>& value, bool fix_values = true) {
+    AddTestWeights(name, dims, value, DataTypeToEnum<T>::value, fix_values);
   }
 
   // Test validation in validation-only mode.
@@ -3577,7 +3566,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
     AddTestWeights("dims", {2}, {2, 2}, DT_INT32);
     AddTestWeights("value", {1}, {42.0}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Conversion for Fill is not implemented in"
+                               "Conversion for Fill is not implemented in "
                                "implicit batch mode");
     return;
   }
@@ -3612,6 +3601,186 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
           TestOpConverter("my_fill", node_def, output_dims, status, status,
                           ElementsAreArray(expected_output));
         }
+      }
+    }
+  }
+}
+
+bool getNextTensorWeigtConfiguration(std::vector<int>& config) {
+  for (int i = config.size(); i >= 0; i--) {
+    if (config[i] = 1 - config[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+NodeDef set_range_placeholders(const std::array<DataType, 3>& param_types) {
+  Scope s = Scope::NewRootScope();
+  const auto start_p = ops::Placeholder(s.WithOpName("start"), param_types[0]);
+  const auto limit_p = ops::Placeholder(s.WithOpName("limit"), param_types[1]);
+  const auto delta_p = ops::Placeholder(s.WithOpName("delta"), param_types[2]);
+  const auto range =
+      ops::Range(s.WithOpName("my_range"), start_p, limit_p, delta_p);
+  return range.operation.node()->def();
+}
+
+float get_casted_value(const float value, const DataType dtype) {
+  return dtype == DT_INT32 ? static_cast<int32>(value) : value;
+}
+
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
+  const float start = 1.0;
+  const float limit = 43.0;
+  const float delta = 2.0;
+
+  std::array<DataType, 3> range_param_types = {tf_type_, tf_type_, tf_type_};
+  const NodeDef& node_def = set_range_placeholders(range_param_types);
+
+  // ConverterRange is not implemented for Implicite batch mode.
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    Reset();
+    AddTestWeights("start", {1}, {start}, tf_type_);
+    AddTestWeights("limit", {1}, {limit}, tf_type_);
+    AddTestWeights("delta", {1}, {delta}, tf_type_);
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Conversion for Range is not implemented in "
+                               "implicit batch mode");
+    return;
+  }
+
+  std::vector<DataType> param_types{DT_FLOAT, DT_HALF, DT_INT32};
+  nvinfer1::DataType trt_type;
+  TF_ASSERT_OK(TfTypeToTrtType(tf_type_, &trt_type));
+  const std::string expected = DebugString(trt_type);
+  std::array<const char*, 3> param_name = {"start", "limit", "delta"};
+  std::array<std::vector<float>, 3> param_value;
+  param_value[0] = {start};
+  param_value[1] = {limit};
+  param_value[2] = {delta};
+  std::array<DataType, 3> param_type = {tf_type_, tf_type_, tf_type_};
+  // Reject invalid parameters if delta = 0  (for weights only)
+  for (auto limit_type : param_types) {
+    for (auto delta_type : param_types) {
+      param_type[1] = limit_type;
+      param_type[2] = delta_type;
+      param_value[2] = {0};
+      Reset();
+      for (int i = 0; i < 3; i++) {
+        AddTestWeights(param_name[i], {1}, param_value[i], param_type[i]);
+      }
+
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "The delta parameter of Range operation cannot be equal to 0");
+
+      // Reject invalid parameters preventing the limit from being reached for
+      // fixed values of start and delta.
+      float limit_tmp, delta_tmp;
+      for (float i = -1; i <= 1; i += 2) {
+        Reset();
+        param_value[1] = {limit_tmp = i * limit};
+        param_value[2] = {delta_tmp = -i * 2};
+        for (int i = 0; i < 3; i++) {
+          AddTestWeights(param_name[i], {1}, param_value[i], param_type[i]);
+        }
+
+        const auto error = convert_range_error_message(start, limit_tmp, delta_tmp);
+        RunValidationAndConversion(node_def, error::INVALID_ARGUMENT, error);
+      }
+    }
+  }
+
+  // The tests that pass all checks in ConvertRange::Validate().
+  const Status status = Status::OK();
+  // Loop for positive and negative deltas
+  for (int i = -1; i <= 1; i += 2) {
+    for (auto limit_type : param_types) {
+      for (auto delta_type : param_types) {
+        // Define the expected result which should match the usage
+        // of DT_INT32 for one of (start, limit, delta)
+        float start_curr = get_casted_value(start, tf_type_);
+        float limit_curr = get_casted_value(limit, param_type[1] = limit_type);
+        float delta_curr = get_casted_value(delta, param_type[2] = delta_type);
+        param_value[0] = {start_curr};
+        param_value[1] = {i * limit_curr};
+        param_value[2] = {i * delta_curr};
+
+        std::vector<float> expected_output;
+        float value = start;
+        int num_values = 0;
+        while (limit_curr - i * value > 0) {
+          num_values++;
+          expected_output.push_back(value);
+          value += i * delta_curr;
+        }
+
+        for (bool all_tensors : {false /*, true*/}) {
+          Reset();
+          for (int i = 0; i < 3; i++) {
+            if (all_tensors) {
+              AddTestTensor(param_name[i], {1}, param_type[i], param_value[i]);
+            } else {
+              AddTestWeights(param_name[i], {1}, param_value[i], param_type[i]);
+            }
+          }
+
+          const std::vector<int> output_dims = {num_values};
+          TestOpConverter("my_range", node_def, output_dims, status, status,
+                          ElementsAreArray(expected_output));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
+  auto get_node = [&](int value) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+    if (value == 0) {
+      auto zeros_like = ops::ZerosLike(s.WithOpName("Zeros"), input);
+      return zeros_like.operation.node()->def();
+    }
+    auto ones_like = ops::OnesLike(s.WithOpName("Ones"), input);
+    return ones_like.operation.node()->def();
+  };
+
+  for (int value : {0, 1}) {
+    Reset();
+    const NodeDef& node_def = get_node(value);
+    const std::string name = value ? "Ones" : "Zeros";
+
+    if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+      std::vector<float> input_data(8, 42.0f);
+      AddTestTensor("input", {8}, tf_type_, input_data);
+      RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                                 "Conversion for " + name + "Like is not " +
+                                     "implemented in implicit batch mode");
+      continue;
+    }
+
+    std::vector<std::vector<int>> output_dims_params = {
+        {8}, {8, 2, 4}, {32, 32, 3200}};
+
+    float val = 42.0;
+    Status status = Status::OK();
+    for (bool input_is_tensor : {true, false}) {
+      for (auto output_dims : output_dims_params) {
+        Reset();
+        size_t nb_el = 1;
+        for (auto d : output_dims) {
+          nb_el *= d;
+        }
+        std::vector<float> input_data(nb_el, val);
+        if (input_is_tensor) {
+          AddTestTensor("input", output_dims, tf_type_, input_data);
+        } else {
+          AddTestWeights("input", output_dims, input_data, tf_type_);
+        }
+        std::vector<float> expected_output(nb_el, value);
+        TestOpConverter(name, node_def, output_dims, status, status,
+                        ElementsAreArray(expected_output));
       }
     }
   }
