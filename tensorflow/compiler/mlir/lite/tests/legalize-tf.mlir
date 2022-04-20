@@ -2295,3 +2295,13 @@ func.func @testReluI32(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:  return %[[RES0]] : tensor<1xi32>
 }
+
+func.func @testReluI64(%arg0: tensor<1xi64>) -> tensor<1xi64> {
+  %0 = "tf.Relu"(%arg0) : (tensor<1xi64>) -> tensor<1xi64>
+  func.return %0: tensor<1xi64>
+
+// CHECK-LABEL: testReluI64
+// CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i64>
+// CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi64>, tensor<i64>) -> tensor<1xi64>
+// CHECK:  return %[[RES0]] : tensor<1xi64>
+}
