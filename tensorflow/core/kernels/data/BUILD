@@ -435,6 +435,32 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "iterator_ops_test",
+    size = "small",
+    srcs = ["iterator_ops_test.cc"],
+    deps = [
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
 tf_kernel_library(
     name = "map_dataset_op",
     srcs = ["map_dataset_op.cc"],

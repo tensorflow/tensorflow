@@ -5047,7 +5047,7 @@ bool DistributedTPURewritePass::
 bool DistributedTPURewritePass::
     enable_cross_replica_sharding_mirrored_variables_ = true;
 bool DistributedTPURewritePass::enable_automatic_model_parallelism_ = false;
-bool DistributedTPURewritePass::enable_xla_param_broadcast_ = false;
+bool DistributedTPURewritePass::enable_xla_param_broadcast_ = true;
 bool DistributedTPURewritePass::enable_multicore_locking_ = false;
 bool DistributedTPURewritePass::use_nd_sharding_ops_ = false;
 

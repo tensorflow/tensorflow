@@ -258,8 +258,22 @@ message HexagonSettings {
 //
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h
+enum XNNPackFlags {
+  // These flags match the flags in xnnpack_delegate.h.
+  TFLITE_XNNPACK_DELEGATE_NO_FLAGS = 0;
+  // Enable fast signed integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8 = 1;
+  // Enable fast unsigned integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QU8 = 2;
+  // Enable both, signed and unsigned integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8 = 3;
+  // Force 16-bit floating point inference.
+  TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 = 4;
+}
+
 message XNNPackSettings {
   optional int32 num_threads = 1;
+  optional XNNPackFlags flags = 2 [default = TFLITE_XNNPACK_DELEGATE_NO_FLAGS];
 }
 
 // CoreML Delegate settings.

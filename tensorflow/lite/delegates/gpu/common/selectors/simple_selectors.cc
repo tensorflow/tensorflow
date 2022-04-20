@@ -164,9 +164,10 @@ void SelectDepthToSpace(const SpaceToDepthAttributes& attr,
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
-void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
+void SelectSplit(const SplitAttributes& attr, const std::vector<int>& channels,
+                 const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr) {
-  Split operation = CreateSplit(op_def, attr);
+  Split operation = CreateSplit(op_def, attr, channels);
   *ptr = absl::make_unique<Split>(std::move(operation));
 }
 

@@ -159,7 +159,6 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
       return true;
     // Technically the following ops do not require an explicit result shape,
@@ -1323,8 +1322,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     // Ternary ops.
     case HloOpcode::kClamp:
-    case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect: {
+    case HloOpcode::kSelect: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
           !ParseAttributes(attrs, allow_attributes)) {

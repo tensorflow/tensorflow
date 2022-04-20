@@ -178,13 +178,6 @@ Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
-  // Select allocates a new buffer and then shallow copies the on_true or
-  // on_false buffer into this new buffer.
-  NewLogicalBuffer(tuple_select, /*index=*/{});
-  return Status::OK();
-}
-
 Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   absl::flat_hash_set<ShapeIndex> aliased_outputs;

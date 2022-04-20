@@ -1248,14 +1248,28 @@ XlaOp XlaBuilder::Collapse(XlaOp operand,
   });
 }
 
+// Dummy pass-through computation returning it's parameter of shape `shape`.
+static StatusOr<XlaComputation> PassthroughComputation(
+    const xla::Shape& shape) {
+  XlaBuilder builder("dummy");
+  XlaOp out = Parameter(&builder, 0, shape, "p");
+  return builder.Build(out);
+}
+
 XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* true_shape, GetShapePtr(on_true));
     TF_ASSIGN_OR_RETURN(const Shape* false_shape, GetShapePtr(on_false));
     TF_RET_CHECK(true_shape->IsTuple() == false_shape->IsTuple());
-    HloOpcode opcode =
-        true_shape->IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
-    return TernaryOp(opcode, pred, on_true, on_false);
+    if (true_shape->IsTuple()) {
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_true,
+                          PassthroughComputation(*true_shape));
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_false,
+                          PassthroughComputation(*false_shape));
+      return Conditional(pred, on_true, passthrough_true, on_false,
+                         passthrough_false);
+    }
+    return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
   });
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdio>
 #include <iostream>
+#include <string>
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -105,6 +106,13 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     return true;
   }
 
+  // Class users should override this method if there are any op-specific
+  // compatibility requirements for devices.
+  virtual bool IsDeviceCompatible(SrcOpT contraction_op,
+                                  PatternRewriter &rewriter) const {
+    return true;
+  }
+
   LogicalResult matchAndRewrite(SrcOpT contraction,
                                 PatternRewriter &rewriter) const override {
     auto context = rewriter.getContext();
@@ -133,6 +141,13 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (!AreFuseCompatible(contraction, bias_add, rewriter)) {
       return rewriter.notifyMatchFailure(
           contraction, "cannot fuse with the subsequent BiasAdd op");
+    }
+
+    if (!IsDeviceCompatible(contraction, rewriter)) {
+      return rewriter.notifyMatchFailure(
+          contraction,
+          "cannot fuse with the subsequent op as it's not supported by the "
+          "target device.");
     }
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
@@ -192,6 +207,31 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
   }
 };
 
+const char kDeviceAttr[] = "device";
+const char kDeviceGpu[] = "GPU";
+
+llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
+  mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
+  if (!device || device.getValue().empty()) {
+    return llvm::None;
+  }
+  const std::string device_name = device.str();
+  tensorflow::DeviceNameUtils::ParsedName parsed_name;
+  if (!tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return llvm::None;
+  }
+  if (!parsed_name.has_type) {
+    return llvm::None;
+  }
+  return parsed_name.type;
+}
+
+bool IsGpuDevice(mlir::Operation *op) {
+  llvm::Optional<std::string> device = GetDevice(op);
+  if (!device) return false;
+  return *device == kDeviceGpu;
+}
+
 // Performs a fusion of the following pattern(s), if possible:
 //   Conv2D + BiasAdd + <Activation> -> _FusedConv2D
 class FuseConv2DBiasAdd
@@ -238,6 +278,17 @@ class FuseMatMulBiasAdd
       (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedMatMul are float and bfloat16, "
              << " but got " << matmul.T();
+      });
+      return false;
+    }
+    return true;
+  }
+
+  bool IsDeviceCompatible(MatMulOp matmul,
+                          PatternRewriter &rewriter) const override {
+    if (IsGpuDevice(matmul)) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "_FusedMatMul is not supported by GPU";
       });
       return false;
     }

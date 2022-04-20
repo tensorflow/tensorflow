@@ -115,9 +115,9 @@ class Stream {
   // StreamExecutor's platform.
   explicit Stream(StreamExecutor *parent);
 
-  // Test only. Use an externally-populated value (like a mock) for the
-  // platform-specific stream implementation.
-  Stream(StreamExecutor *parent, internal::StreamInterface *implementation);
+  // Create stream for an existing stream handle.
+  Stream(StreamExecutor *parent,
+         std::unique_ptr<internal::StreamInterface> implementation);
 
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed
@@ -2082,13 +2082,7 @@ class Stream {
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_) {
-    if (operation_retcode) {
-      return;
-    }
-    absl::MutexLock lock(&mu_);
-    status_ = port::InternalError("Unknown error");
-  }
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
 
   // Checks the status and logs the error message, if any.
   void CheckStatus(port::Status status) TF_LOCKS_EXCLUDED(mu_);
@@ -2135,6 +2129,10 @@ class Stream {
   // notes when they can be reclaimed -- reclamation is attempted when
   // BlockHostUntilDone() is called.
   internal::TemporaryMemoryManager temporary_memory_manager_;
+
+  // Whether the stream resources are managed externally: that is, whether the
+  // destructor of the stream needs to deallocate it.
+  bool managed_externally_ = false;
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_

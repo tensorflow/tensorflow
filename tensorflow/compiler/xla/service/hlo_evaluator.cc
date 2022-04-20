@@ -2814,19 +2814,6 @@ Status HloEvaluator::HandleSelect(HloInstruction* select) {
   return DefaultAction(select);
 }
 
-Status HloEvaluator::HandleTupleSelect(HloInstruction* tuple_select) {
-  const auto& pred = GetEvaluatedLiteralFor(tuple_select->operand(0));
-  const auto& on_true = GetEvaluatedLiteralFor(tuple_select->operand(1));
-  const auto& on_false = GetEvaluatedLiteralFor(tuple_select->operand(2));
-
-  if (pred.Get<bool>({})) {
-    evaluated_[tuple_select] = on_true.Clone();
-  } else {
-    evaluated_[tuple_select] = on_false.Clone();
-  }
-  return Status::OK();
-}
-
 namespace {
 
 StatusOr<Literal> CreateScalarLiteral(int64_t value,

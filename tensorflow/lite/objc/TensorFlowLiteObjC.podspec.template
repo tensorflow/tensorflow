@@ -27,6 +27,13 @@ Pod::Spec.new do |s|
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
     'VALID_ARCHS' => 'x86_64 arm64',
+    # TODO: Remove this after adding support for arm64 simulator.
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
   }
 
   s.default_subspec = 'Core'

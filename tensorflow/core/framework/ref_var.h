@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(skye): this is largely a copy of tpu_api_dlsym_initializer.cc. Figure
-// out how to deduplicate these files a little.
+#ifndef TENSORFLOW_CORE_FRAMEWORK_REF_VAR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_REF_VAR_H_
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
+#include <functional>
 
 namespace tensorflow {
-namespace tpu {
+class OpKernelContext;
 
-Status InitializeTpuLibrary(void* library_handle) {
-  return errors::Unimplemented(
-      "Loading TPU library is not supported on Windows.");
-}
+void AssignRefVariable(
+    OpKernelContext* context, int input_ref_index, int output_ref_index,
+    int value_index, bool use_locking, bool validate_shape,
+    bool relax_constraints,
+    std::function<void(OpKernelContext*, Tensor*, const Tensor&)> copy);
+}  //  end namespace tensorflow
 
-}  // namespace tpu
-}  // namespace tensorflow
+#endif  // TENSORFLOW_CORE_FRAMEWORK_REF_VAR_H_

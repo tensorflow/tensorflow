@@ -53,31 +53,21 @@ bool IsEqualToImageFormat(cl_image_format image_format, DataType data_type,
 void AddSupportedImageFormats(cl_context context, GpuInfo* info) {
   auto supported_formats =
       GetSupportedImage2DFormats(context, CL_MEM_READ_WRITE);
+  const std::vector<DataType> kPossibleDataTypes = {
+      DataType::FLOAT16, DataType::FLOAT32, DataType::INT8,  DataType::UINT8,
+      DataType::INT16,   DataType::UINT16,  DataType::INT32, DataType::UINT32};
   for (auto format : supported_formats) {
-    info->opencl_info.supports_r_f16_tex2d =
-        info->opencl_info.supports_r_f16_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT16, 1);
-    info->opencl_info.supports_rg_f16_tex2d =
-        info->opencl_info.supports_rg_f16_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT16, 2);
-    info->opencl_info.supports_rgb_f16_tex2d =
-        info->opencl_info.supports_rgb_f16_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT16, 3);
-    info->opencl_info.supports_rgba_f16_tex2d =
-        info->opencl_info.supports_rgba_f16_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT16, 4);
-    info->opencl_info.supports_r_f32_tex2d =
-        info->opencl_info.supports_r_f32_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT32, 1);
-    info->opencl_info.supports_rg_f32_tex2d =
-        info->opencl_info.supports_rg_f32_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT32, 2);
-    info->opencl_info.supports_rgb_f32_tex2d =
-        info->opencl_info.supports_rgb_f32_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT32, 3);
-    info->opencl_info.supports_rgba_f32_tex2d =
-        info->opencl_info.supports_rgba_f32_tex2d ||
-        IsEqualToImageFormat(format, DataType::FLOAT32, 4);
+    for (auto data_type : kPossibleDataTypes) {
+      if (IsEqualToImageFormat(format, data_type, 1)) {
+        info->opencl_info.supported_images_2d.r_layout.insert(data_type);
+      } else if (IsEqualToImageFormat(format, data_type, 2)) {
+        info->opencl_info.supported_images_2d.rg_layout.insert(data_type);
+      } else if (IsEqualToImageFormat(format, data_type, 3)) {
+        info->opencl_info.supported_images_2d.rgb_layout.insert(data_type);
+      } else if (IsEqualToImageFormat(format, data_type, 4)) {
+        info->opencl_info.supported_images_2d.rgba_layout.insert(data_type);
+      }
+    }
   }
 }
 

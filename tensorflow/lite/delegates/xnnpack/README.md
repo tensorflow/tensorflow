@@ -476,6 +476,11 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `DIV`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `HARD_SWISH`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -492,9 +497,19 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `MAXIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `MEAN`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MINIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `MUL`
 
@@ -540,6 +555,16 @@ Below is the list of operators supported in IEEE FP16 inference:
 #### `SQUARE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARED_DIFFERENCE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `SUB`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `TRANSPOSE_CONV`
 

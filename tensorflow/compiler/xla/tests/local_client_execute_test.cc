@@ -738,26 +738,6 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
               ContainsRegex("stream is uninitialized or in an error state"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(SelectBetweenTuples)) {
-  XlaBuilder builder(TestName());
-
-  std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};
-  std::initializer_list<float> vec2 = {2.f, 4.f, 6.f};
-  auto tuple12 = Tuple(&builder, {ConstantR1<float>(&builder, vec1),
-                                  ConstantR1<float>(&builder, vec2)});
-  auto tuple21 = Tuple(&builder, {ConstantR1<float>(&builder, vec2),
-                                  ConstantR1<float>(&builder, vec1)});
-  Select(ConstantR0<bool>(&builder, false), tuple12, tuple21);
-
-  ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
-  Literal tuple_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR1Equal<float>({2.0f, 4.0f, 6.0f},
-                                        LiteralSlice(tuple_literal, {0}));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0f, 2.0f, 3.0f},
-                                        LiteralSlice(tuple_literal, {1}));
-}
-
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");

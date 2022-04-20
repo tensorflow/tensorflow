@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -28,6 +30,17 @@ auto* test_counter = monitoring::Counter<0>::New(
 auto* test_counter_with_labels = monitoring::Counter<2>::New(
     "/tensorflow/monitoring/test/counter_with_labels",
     "Test counter with two labels.", "label1", "label2");
+
+auto* test_sampler = monitoring::Sampler<0>::New(
+    {"/tensorflow/monitoring/test/sampler", "Test sampler."},
+    /*buckets=*/monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0}));
+
+auto* test_sampler_with_labels = monitoring::Sampler<2>::New(
+    {"/tensorflow/monitoring/test/sampler_with_labels", "Test sampler.",
+     "label1", "label2"},
+    /*buckets=*/monitoring::Buckets::Exponential(
+        /*scale=*/1, /*growth_factor=*/10, /*bucket_count=*/5));
 
 TEST(CellReaderTest, CounterDeltaNoLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
@@ -255,6 +268,570 @@ TEST(CellReaderTest, RepeatedReads) {
   EXPECT_EQ(cell_reader.Read(), 1);
   EXPECT_EQ(cell_reader_with_labels.Read("x1", "y1"), 100);
   EXPECT_EQ(cell_reader_with_labels.Read("x2", "y2"), 0);
+}
+
+TEST(CellReaderTest, SamplerDeltaNoLabels) {
+  CellReader<Histogram> cell_reader("/tensorflow/monitoring/test/sampler");
+  Histogram histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(0.1);
+  histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 1.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.1);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.01);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(1.1);
+  histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 1.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 1.1);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 1.21);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(100);
+  histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 1.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 100);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 10000);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+}
+
+TEST(CellReaderTest, SamplerReadNoLabels) {
+  CellReader<Histogram> cell_reader("/tensorflow/monitoring/test/sampler");
+  Histogram histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(0.1);
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 1.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.1);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.01);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(1.1);
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 1.2);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 1.22);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(100);
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 101.2);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 10001.22);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+}
+
+TEST(CellReaderTest, SamplerDeltaAndReadNoLabels) {
+  CellReader<Histogram> cell_reader("/tensorflow/monitoring/test/sampler");
+  Histogram histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(0.1);
+  test_sampler->GetCell()->Add(0.1);
+  histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.2);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.02);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.2);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.02);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  test_sampler->GetCell()->Add(100);
+  test_sampler->GetCell()->Add(100);
+  histogram = cell_reader.Delta();
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 200);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 4.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 200.2);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000.02);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(8), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(9), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(10), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(11), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(12), 0.0);
+}
+
+TEST(CellReaderTest, SamplerDeltaWithLabels) {
+  CellReader<Histogram> cell_reader(
+      "/tensorflow/monitoring/test/sampler_with_labels");
+  Histogram histogram = cell_reader.Delta("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Delta("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100);
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100);
+  histogram = cell_reader.Delta("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -200.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Delta("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100);
+  histogram = cell_reader.Delta("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Delta("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 200.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100000000);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100000000);
+  histogram = cell_reader.Delta("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 1.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -100000000);
+  EXPECT_FLOAT_EQ(histogram.num(0), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Delta("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 1.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 100000000);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
+}
+
+TEST(CellReaderTest, SamplerReadWithLabels) {
+  CellReader<Histogram> cell_reader(
+      "/tensorflow/monitoring/test/sampler_with_labels");
+  Histogram histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100);
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100);
+  histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -200.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100);
+  histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -200.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 2.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 200.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 20000.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100000000);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100000000);
+  histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 3.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
+}
+
+TEST(CellReaderTest, SamplerRepeatedReads) {
+  CellReader<Histogram> cell_reader(
+      "/tensorflow/monitoring/test/sampler_with_labels");
+  Histogram histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100);
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100);
+  test_sampler_with_labels->GetCell("x1", "y1")->Add(-100000000);
+  test_sampler_with_labels->GetCell("x2", "y2")->Add(100000000);
+  histogram = cell_reader.Delta("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 3.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Delta("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
+
+  histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 3.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
+
+  // Repeats the previous read. The values will stay the same, while the deltas
+  // will be 0.
+  histogram = cell_reader.Delta("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Delta("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+
+  histogram = cell_reader.Read("x1", "y1");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), -100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 3.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  histogram = cell_reader.Read("x2", "y2");
+  EXPECT_FLOAT_EQ(histogram.num(), 3.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 100000200);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
 }
 
 #ifdef GTEST_HAS_DEATH_TEST

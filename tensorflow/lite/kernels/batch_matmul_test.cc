@@ -115,6 +115,19 @@ TEST_P(BatchMatMulOpTest, Int8Test_Simple) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 
+TEST_P(BatchMatMulOpTest, Int8Test_LargeElement) {
+  BatchMatMulOpModel<int32_t> model({TensorType_INT8, {1, 2, 3}},
+                                    {TensorType_INT8, {1, 3, 4}});
+  model.PopulateTensor<int8_t>(model.lhs(), {121, 122, 123, 124, 125, 126});
+  model.PopulateTensor<int8_t>(model.rhs(), {117, 118, 119, 110, 111, 112, 113,
+                                             114, 115, 116, 117, 118});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(
+                  {41844, 42210, 42576, 41732, 42873, 43248, 43623, 42758}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+}
+
 TEST_P(BatchMatMulOpTest, Float32Test_SimpleRHSAdjoint) {
   BatchMatMulOpModel<float> model({TensorType_FLOAT32, {1, 2, 3}},
                                   {TensorType_FLOAT32, {1, 4, 3}}, false, true);

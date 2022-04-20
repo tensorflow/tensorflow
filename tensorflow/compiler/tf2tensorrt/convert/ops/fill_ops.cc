@@ -145,6 +145,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
 
   Status Convert() {
     const auto& params = *this->params_;
+    auto* network = params.converter->network();
     const auto& inputs = params.inputs;
 
     const bool is_dims_static = inputs[0].is_weights();
@@ -275,6 +276,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     if (start_ + delta_ * num_values_ != param[1]) {
       num_values_++;
     }
+
     return Status::OK();
   }
 

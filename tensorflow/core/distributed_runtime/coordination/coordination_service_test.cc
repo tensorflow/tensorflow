@@ -1087,6 +1087,9 @@ TEST_F(CoordinateTwoTasksTest,
   });
   // Block until barrier times out.
   n.WaitForNotification();
+  // Provide time for coordination service to shut down after barrier timeout.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(absl::Seconds(1)));
 
   EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status)) << barrier_status;
 
@@ -1094,7 +1097,8 @@ TEST_F(CoordinateTwoTasksTest,
   // error propagation.
   // Task 1 still sends unexpected heartbeat because it doesn't know that
   // service has stopped yet, which should fail.
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
+
+  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 }
 }  // namespace tensorflow

@@ -448,6 +448,16 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This condition takes precedence over :linux_x86_64
+config_setting(
+    name = "linux_x86_64_no_sse",
+    values = {
+        "cpu": "k8",
+        "copt": "-mno-sse4.2",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},

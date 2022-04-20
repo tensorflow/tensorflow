@@ -2516,6 +2516,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                           : mlir::func::FuncOp::Visibility::Private;
     function.setVisibility(visibility);
   }
+  VLOG(1) << "Imported: "
+          << tensorflow::DumpMlirOpToFile("tf_mlir_imported_base",
+                                          module.get());
   return module;
 }
 

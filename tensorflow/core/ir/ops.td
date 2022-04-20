@@ -280,7 +280,7 @@ class TFGraph_IfLikeOp<string mnemonic>
                          [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let arguments = (ins
     // Op operands.
-    I1Tensor:$cond,
+    TFGraph_OpaqueTensorOr<I1Tensor>:$cond,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
     TFType_FuncAttr:$then_branch,
@@ -327,7 +327,7 @@ class TFGraph_CaseLikeOp<string mnemonic>
                          [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let arguments = (ins
     // Op operands.
-    I32Tensor:$branch_index,
+    TFGraph_OpaqueTensorOr<I32Tensor>:$branch_index,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
     TypedArrayAttrBase<TFType_FuncAttr, "an array of functions">:$branches,
@@ -419,9 +419,9 @@ def TFGraph_ForOp
 
   let arguments = (ins
     // Op operands.
-    I32Tensor:$start,
-    I32Tensor:$limit,
-    I32Tensor:$delta,
+    TFGraph_OpaqueTensorOr<I32Tensor>:$start,
+    TFGraph_OpaqueTensorOr<I32Tensor>:$limit,
+    TFGraph_OpaqueTensorOr<I32Tensor>:$delta,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
     TFType_FuncAttr:$body,

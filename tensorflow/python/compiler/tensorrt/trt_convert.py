@@ -1050,8 +1050,8 @@ class TrtGraphConverterV2(object):
       use_dynamic_shape: whether to enable dynamic shape support. None is
         equivalent to False in the current implementation.
       dynamic_shape_profile_strategy: one of the strings in
-        supported_profile_strategies(). None is equivalent to Range in the
-        current implementation.
+        supported_profile_strategies(). None is equivalent to
+        ImplicitBatchModeCompatible in the current implementation.
       max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
         engine can use at execution time. This corresponds to the
         'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
@@ -1119,7 +1119,8 @@ class TrtGraphConverterV2(object):
     self._profile_strategy = "Unknown"
     if self._use_dynamic_shape:
       if dynamic_shape_profile_strategy is None:
-        self._profile_strategy = PROFILE_STRATEGY_RANGE
+        self._profile_strategy = \
+            PROFILE_STRATEGY_IMPLICIT_BATCH_MODE_COMPATIBLE
       else:
         self._verify_profile_strategy(dynamic_shape_profile_strategy)
         self._profile_strategy = dynamic_shape_profile_strategy
@@ -1332,7 +1333,10 @@ class TrtGraphConverterV2(object):
 
     self._build_called_once = True
 
-  def save(self, output_saved_model_dir, save_gpu_specific_engines=True):
+  def save(self,
+           output_saved_model_dir,
+           save_gpu_specific_engines=True,
+           options=None):
     """Save the converted SavedModel.
 
     Args:
@@ -1343,6 +1347,7 @@ class TrtGraphConverterV2(object):
         save_gpu_specific_engines=False after doing INT8 calibration, inference
         can be done on different GPUs than the GPU that the model was calibrated
         and saved on.
+      options: `tf.saved_model.SaveOptions` object for configuring save options.
     """
     assert self._converted
 
@@ -1413,7 +1418,8 @@ class TrtGraphConverterV2(object):
       self._converted_func = reset_converted_func
 
     signatures[self._input_saved_model_signature_key] = self._converted_func
-    save.save(self._saved_model, output_saved_model_dir, signatures)
+    save.save(
+        self._saved_model, output_saved_model_dir, signatures, options=options)
 
   def summary(self, line_length=160, detailed=True, print_fn=None):
     """This method describes the results of the conversion by TF-TRT.

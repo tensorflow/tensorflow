@@ -109,15 +109,8 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
         SetTensorShapeProto(subtype,
                             handle_shapes_attr.mutable_list()->add_shape());
       }
-
-      (*node_def->mutable_attr())["_handle_dtypes"] = handle_dtypes_attr;
-      (*node_def->mutable_attr())["_handle_shapes"] = handle_shapes_attr;
     }
   }
-
-  if (arg_type.isa<RankedTensorType>())
-    TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes", arg_type,
-                                         node_def->mutable_attr()));
 
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(arg_type.getElementType(), &dtype));

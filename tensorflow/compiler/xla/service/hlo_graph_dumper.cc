@@ -1076,7 +1076,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReshape:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
       // De-emphasize scalar-shaped data movement ops and all data movement ops
       // inside fusion nodes, both of which are essentially free.

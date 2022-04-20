@@ -44,7 +44,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleClamp(HloInstruction* clamp) override;
   Status HandleSelect(HloInstruction* select) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleIota(HloInstruction* hlo) override;
   Status HandleConvert(HloInstruction* convert) override;

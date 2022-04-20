@@ -496,12 +496,6 @@ llvm::SyncScope::ID IrEmitter::DetermineSyncScope() const {
              : llvm::SyncScope::System;
 }
 
-Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
-  return InternalError(
-      "Dynamic selection of tuples is not supported. Please file a bug against "
-      "XLA/GPU if you need it");
-}
-
 namespace {
 llvm::Value* Real(llvm::Value* x, llvm::IRBuilder<>* b) {
   return b->CreateExtractValue(x, {0});

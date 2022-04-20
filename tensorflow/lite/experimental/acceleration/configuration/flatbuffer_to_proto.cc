@@ -245,6 +245,7 @@ proto::HexagonSettings ConvertHexagonSettings(const HexagonSettings& settings) {
 proto::XNNPackSettings ConvertXNNPackSettings(const XNNPackSettings& settings) {
   proto::XNNPackSettings proto_settings;
   proto_settings.set_num_threads(settings.num_threads());
+  proto_settings.set_flags(::tflite::proto::XNNPackFlags(settings.flags()));
   return proto_settings;
 }
 
