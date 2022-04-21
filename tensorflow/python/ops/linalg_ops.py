@@ -91,12 +91,15 @@ def matrix_triangular_solve(matrix, rhs, lower=True, adjoint=False, name=None):
   is assumed to be zero and not accessed. `rhs` is a tensor of shape
   `[..., M, N]`.
 
-  The output is a tensor of shape `[..., M, N]`. If `adjoint` is `True` then the
+  The output is a tensor of shape `[..., M, N]`. If `adjoint` is `False` then the
   innermost matrices in output satisfy matrix equations `
   sum_k matrix[..., i, k] * output[..., k, j] = rhs[..., i, j]`.
-  If `adjoint` is `False` then the
+  If `adjoint` is `True` then the
   innermost matrices in output satisfy matrix equations
   `sum_k adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+  Equivalently, this can be expressed in the following equality (which in general
+  will only hold approximately due to finite numeric precision):
+  `tf.matmul(matrix, output, transpose_a=adjoint) == rhs`.
 
   Example:
 
