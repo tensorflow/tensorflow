@@ -4598,8 +4598,6 @@ py_library(
     name = "dtensor",
     deps = [
         "//tensorflow/dtensor/python:core",
-        "//tensorflow/dtensor/python:mesh_util",
-        "//tensorflow/dtensor/python:tpu_util",
     ],
 )
 

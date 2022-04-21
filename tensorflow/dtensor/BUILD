@@ -18,6 +18,7 @@ package_group(
     name = "dtensor-internal",
     packages = [
         "//learning/brain/public/...",
+        "//tensorflow/core/...",
         "//tensorflow/dtensor/...",
         "//tensorflow/python/...",
     ],
