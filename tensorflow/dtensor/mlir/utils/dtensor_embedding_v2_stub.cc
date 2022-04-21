@@ -31,5 +31,13 @@ CreateDTensorEmbeddingPassV2() {
   return std::make_unique<DTensorEmbeddingV2>();
 }
 
+struct DTensorEmbeddingLoad
+    : public DTensorEmbeddingLoadBase<DTensorEmbeddingLoad> {
+  void runOnOperation() override {}
+};
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorEmbeddingLoadPass();
+
 }  // namespace dtensor
 }  // namespace tensorflow
