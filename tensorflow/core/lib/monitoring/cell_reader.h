@@ -34,23 +34,37 @@ namespace testing {
 // For tfstreamz metrics like the following:
 //
 // ```
-// auto* test_counter = monitoring::Counter<2>::New(
+// auto* test_counter = monitoring::Counter<1>::New(
 //    "/tensorflow/monitoring/test/counter", "label",
 //    "Test tfstreamz counter.");
+// auto* test_sampler = monitoring::Sampler<2>::New(
+//    "/tensorflow/monitoring/test/sampler", "label1", "label2",
+//    "Test tfstreamz sampler.");
+// auto* test_string_gauge = monitoring::Gauge<2>::New(
+//    "/tensorflow/monitoring/test/gauge", "label1", "label2",
+//    "Test tfstreamz gauge.");
 // ```
 //
 // one could read the exported tfstreamz values using a `CellReader` like this:
 //
 // ```
 // CellReader<int64_t> counter_reader("/tensorflow/monitoring/test/counter");
+// CellReader<Histogram> sampler_reader("/tensorflow/monitoring/test/sampler");
+// CellReader<std::string> gauge_reader("/tensorflow/monitoring/test/gauge");
 // EXPECT_EQ(counter_reader.Delta("label_value"), 0);
+// EXPECT_EQ(sampler_reader.Delta("x", "y").num(), 0.0);
+// EXPECT_EQ(gauge_reader.Delta("x", "y"), "");
 //
-// CodeThatIncrementsCounters();
+// CodeThatUpdateMetrics();
 // EXPECT_EQ(counter_reader.Delta("label_value"), 5);
+// Histogram histogram = sampler_reader.Delta("x", "y");
+// EXPECT_FLOAT_EQ(histogram.num(), 5.0);
+// EXPECT_GT(histogram.sum(), 0.0);
+// EXPECT_EQ(gauge_reader.Delta("x", "y"), "gauge value");
 // ```
 //
 // TODO(b/147227594): This library is working-in-progress. Currently, only
-// counter and sampler readers are supported.
+// counter, sampler, and string gauges are supported.
 template <typename ValueType>
 class CellReader {
  public:
@@ -127,6 +141,14 @@ ValueType CellReader<ValueType>::Delta(const LabelType&... labels) {
   }
   delta_map_[labels_list] = value;
   return internal::GetDelta<ValueType>(value, initial_value);
+}
+
+template <>
+template <typename... LabelType>
+std::string CellReader<std::string>::Delta(const LabelType&... labels) {
+  LOG(FATAL) << "`CellReader<std::string>` does not support `Delta`. "
+             << "Please use `Read` instead.";
+  return "";
 }
 
 }  // namespace testing

@@ -36,6 +36,7 @@ namespace {
 // Returns the labels of `point` as a vector of strings.
 std::vector<std::string> GetLabels(const monitoring::Point& point) {
   std::vector<std::string> labels;
+  labels.reserve(point.labels.size());
   for (const monitoring::Point::Label& label : point.labels) {
     labels.push_back(label.value);
   }
@@ -113,6 +114,11 @@ int64_t GetValue(const Point& point) {
 }
 
 template <>
+std::string GetValue(const Point& point) {
+  return point.string_value;
+}
+
+template <>
 Histogram GetValue(const Point& point) {
   return Histogram(point.histogram_value);
 }
@@ -120,6 +126,13 @@ Histogram GetValue(const Point& point) {
 template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b) {
   return a - b;
+}
+
+template <>
+std::string GetDelta(const std::string& a, const std::string& b) {
+  // String gauges do not support `CellReader::Delta`. This is called by `Read`
+  // to ignore the initial snapshot collected at the time of construction.
+  return a;
 }
 
 template <>

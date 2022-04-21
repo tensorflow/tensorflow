@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 
+#include <cstdint>
+#include <string>
+
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/test.h"
@@ -41,6 +45,13 @@ auto* test_sampler_with_labels = monitoring::Sampler<2>::New(
      "label1", "label2"},
     /*buckets=*/monitoring::Buckets::Exponential(
         /*scale=*/1, /*growth_factor=*/10, /*bucket_count=*/5));
+
+auto* test_string_gauge = monitoring::Gauge<std::string, 0>::New(
+    "/tensorflow/monitoring/test/string_gauge", "Test gauge.");
+
+auto* test_string_gauge_with_labels = monitoring::Gauge<std::string, 2>::New(
+    "/tensorflow/monitoring/test/string_gauge_with_labels", "Test gauge.",
+    "label1", "label2");
 
 TEST(CellReaderTest, CounterDeltaNoLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
@@ -834,6 +845,75 @@ TEST(CellReaderTest, SamplerRepeatedReads) {
   EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
 }
 
+TEST(CellReaderTest, StringGaugeRead) {
+  CellReader<std::string> cell_reader(
+      "/tensorflow/monitoring/test/string_gauge");
+  EXPECT_EQ(cell_reader.Read(), "");
+
+  test_string_gauge->GetCell()->Set("gauge value");
+  EXPECT_EQ(cell_reader.Read(), "gauge value");
+
+  test_string_gauge->GetCell()->Set("Updated gauge value");
+  EXPECT_EQ(cell_reader.Read(), "Updated gauge value");
+
+  test_string_gauge->GetCell()->Set("");
+  EXPECT_EQ(cell_reader.Read(), "");
+}
+
+TEST(CellReaderTest, StringGaugeReadWithLabels) {
+  CellReader<std::string> cell_reader(
+      "/tensorflow/monitoring/test/string_gauge_with_labels");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "");
+
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("Value 1");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "Value 1");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "");
+
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("Value 2");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "Value 1");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "Value 2");
+
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("Value 3");
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("Value 3");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "Value 3");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "Value 3");
+
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("");
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "");
+}
+
+TEST(CellReaderTest, StringGaugeRepeatedSetAndRead) {
+  CellReader<std::string> cell_reader(
+      "/tensorflow/monitoring/test/string_gauge_with_labels");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "");
+
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("Value 1");
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("Value 2");
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("Value 3");
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("Value 3");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "Value 3");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "Value 3");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "Value 3");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "Value 3");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "Value 3");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "Value 3");
+
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("");
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("");
+  test_string_gauge_with_labels->GetCell("x1", "y1")->Set("-10");
+  test_string_gauge_with_labels->GetCell("x2", "y2")->Set("-10");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "-10");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "-10");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "-10");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "-10");
+  EXPECT_EQ(cell_reader.Read("x1", "y1"), "-10");
+  EXPECT_EQ(cell_reader.Read("x2", "y2"), "-10");
+}
+
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(CellReaderTest, WrongNumberOfLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
@@ -856,6 +936,16 @@ TEST(CellReaderTest, MetricIsNotFound) {
   CellReader<int64_t> empty_cell_reader("");
   EXPECT_DEATH(cell_reader.Read(), "Metric descriptor is not found");
   EXPECT_DEATH(empty_cell_reader.Read(), "Metric descriptor is not found");
+}
+
+TEST(CellReaderTest, StringGaugeDelta) {
+  CellReader<std::string> cell_reader(
+      "/tensorflow/monitoring/test/string_gauge");
+  CellReader<std::string> cell_reader_with_labels(
+      "/tensorflow/monitoring/test/string_gauge_with_labels");
+  EXPECT_DEATH(cell_reader.Delta(), "Please use `Read` instead.");
+  EXPECT_DEATH(cell_reader_with_labels.Delta("x", "y"),
+               "Please use `Read` instead.");
 }
 #endif
 
