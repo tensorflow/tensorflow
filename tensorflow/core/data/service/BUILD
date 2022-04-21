@@ -226,6 +226,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
     ],
 )
