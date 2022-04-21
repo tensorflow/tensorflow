@@ -82,6 +82,7 @@ constexpr char kTFRTDeviceAttr[] = "tfrt.device";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kHostAttr[] = "host";
 constexpr char kDeviceTypeTpu[] = "TPU";
+constexpr int64_t kDefaultCheapCost = 1;
 
 void getDependentConversionDialects(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::corert::CoreRTDialect, mlir::func::FuncDialect,
@@ -251,7 +252,16 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
       rewriter.getI64IntegerAttr(fallback_converter.GetNextFallbackKey());
 
   // Query cost analysis to assign costs.
-  auto cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+  IntegerAttr cost;
+  auto parsed_device_name =
+      corert_converter_.ParseDeviceName(device.getValue());
+  if (parsed_device_name && parsed_device_name->device_type == DEVICE_GPU) {
+    // For GPU ops, the host only needs to dispatch them to GPUs, which should
+    // be relatively cheap for the host.
+    cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
+  } else {
+    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+  }
 
   if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
     auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOp>(
