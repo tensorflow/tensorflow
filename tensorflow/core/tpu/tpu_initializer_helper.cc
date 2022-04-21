@@ -99,11 +99,11 @@ bool IsTpuUsed(int64_t pid) {
 // processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-std::string FindAndLogLibtpuProcess() {
+StatusOr<int64_t> FindAndLogLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
-    return "";
+    return errors::Unavailable("was not able to open /proc");
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
@@ -113,73 +113,68 @@ std::string FindAndLogLibtpuProcess() {
 
     pid = strtol(ent->d_name, nullptr, 10);
     if (IsTpuUsed(pid)) {
-      std::string error_message =
-          "libtpu.so is already in use by process with pid " +
-          std::to_string(pid) +
-          ". Not attempting to load libtpu.so in this process.";
-      return error_message;
+      return pid;
     }
   }
-  return "";
+  return errors::NotFound("did not find which pid uses the libtpu.so");
 }
 
 Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
-  static bool attempted_file_open = false;
-  static bool should_load_library = false;
+  std::string load_library_override =
+      absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
 
-  if (!attempted_file_open) {
-    std::string load_library_override =
-        absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
+  if (load_library_override == "1") {
+    return Status::OK();
+  } else if (load_library_override == "0") {
+    return errors::FailedPrecondition("TPU_LOAD_LIBRARY=0, not loading libtpu");
+  }
 
-    if (load_library_override == "1") {
-      return Status::OK();
-    } else if (load_library_override == "0") {
-      return errors::FailedPrecondition("load library override is not set");
-    }
+  // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
+  // we're using different chips in different processes and thus multiple
+  // libtpu loads are ok.
+  // TODO(skyewm): we could make per-chip lock files and look at
+  // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
+  std::string chips_per_process_bounds =
+      GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
+  bool allow_multiple_libtpu_load =
+      GetEnvBool("ALLOW_MULTIPLE_LIBTPU_LOAD", false);
+  // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
+  // deprecated
+  if (chips_per_process_bounds.empty()) {
+    chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
+  }
+  if ((chips_per_process_bounds.empty() ||
+       chips_per_process_bounds == "2,2,1") &&
+      !allow_multiple_libtpu_load) {
+    int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
-    // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
-    // we're using different chips in different processes and thus multiple
-    // libtpu loads are ok.
-    // TODO(skyewm): we could make per-chip lock files and look at
-    // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
-    std::string chips_per_process_bounds =
-        GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
-    bool allow_multiple_libtpu_load =
-        GetEnvBool("ALLOW_MULTIPLE_LIBTPU_LOAD", false);
-    // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
-    // deprecated
-    if (chips_per_process_bounds.empty()) {
-      chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
-    }
-    if ((chips_per_process_bounds.empty() ||
-         chips_per_process_bounds == "2,2,1") &&
-        !allow_multiple_libtpu_load) {
-      int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
-
-      // This lock is held until the process exits intentionally. The underlying
-      // TPU device will be held on until it quits.
-      if (lockf(fd, F_TLOCK, 0) != 0) {
-        std::string error_message = FindAndLogLibtpuProcess();
-        if (error_message == "") {
-          error_message =
-              "libtpu.so already in use by another process probably  owned by "
-              "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-              "which process is using the TPU. Not attempting to load "
-              "libtpu.so in this process.";
-        }
-        return errors::Aborted(error_message);
-      } else {
-        return Status::OK();
+    // This lock is held until the process exits intentionally. The underlying
+    // TPU device will be held on until it quits.
+    if (lockf(fd, F_TLOCK, 0) != 0) {
+      auto pid = FindAndLogLibtpuProcess();
+      if (!pid.ok()) {
+        return errors::Aborted(
+            "libtpu.so already in use by another process probably  owned by "
+            "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
+            "which process is using the TPU. Not attempting to load "
+            "libtpu.so in this process.");
+      }
+      else {
+	return errors::Aborted(absl::StrCat("libtpu.so is already in use by process"
+				" with pid ", pid.ValueOrDie(), 
+				". Not attempting to load libtpu.so in this process."));
       }
     } else {
-      VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
-                 "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
-                 "therefore allowing multiple libtpu.so loads.";
       return Status::OK();
     }
+  } else {
+    VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
+               "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
+               "therefore allowing multiple libtpu.so loads.";
+    return Status::OK();
   }
 }
 #if defined(PLATFORM_GOOGLE)
@@ -260,15 +255,8 @@ Status FindAndLoadTpuLibrary() {
   if (library) {
     // We can open the shared library which means we are in a TPU environment.
     // Try to acquire exclusive access.
-    Status tpu_lock_status = TryAcquireTpuLock();
-    if (tpu_lock_status == Status::OK()) {
-      Status initialize_library_status = InitializeTpuLibrary(library);
-      if (initialize_library_status != Status::OK()) {
-        return initialize_library_status;
-      }
-    } else {
-      return tpu_lock_status;
-    }
+    TF_RETURN_IF_ERROR(TryAcquireTpuLock());
+    TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
   }
 
   InitializeCreateGcsFileSystemFnPtr();
