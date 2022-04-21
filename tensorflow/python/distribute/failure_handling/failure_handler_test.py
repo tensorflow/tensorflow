@@ -92,6 +92,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     ]
     if clear_events:
       if trigger_it:
+        logging.info('Set preemption signal')
         clear_events[0].set()
       elif random.randrange(0, 9) > 6:
         clear_events[0].set()
@@ -100,7 +101,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
                 checkpoint_dir,
                 cluster_spec,
                 training_started_event=None,
-                raise_app_error_on_worker=None):
+                raise_app_error_on_worker=None,
+                termination_config=failure_handling.TerminationConfig()):
 
     _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
@@ -129,7 +131,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         fh_ckpt = tracking_util.Checkpoint(model=model)
 
         worker_preemption_watcher = failure_handling.WorkerPreemptionHandler(
-            strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
+            strategy.cluster_resolver, fh_ckpt, checkpoint_dir,
+            termination_config)
 
       def distributed_train_step(current_epoch, current_step):
 
@@ -166,6 +169,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           trigger_it = False
 
         self._maybe_trigger_a_preemption(training_started_event, trigger_it)
+
+      logging.info('Training finished.')
 
       self.assertEqual(
           model.v.numpy(),
@@ -254,7 +259,86 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
     logging.info('Cluster starting.')
     mpr.start()
-    mpr.join()
+    mpr.join(timeout=250)
+
+  def test_grace_period_continue_training(self):
+    grace_period = 5
+    has_chief = False
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=has_chief,
+        num_workers=CLUSTER_SIZE)
+    training_started_event = multi_process_runner.manager().Event()
+
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
+
+    if _is_oss():
+      rpc_layer = 'grpc'
+    else:
+      rpc_layer = 'grpc+loas'
+
+    termination_config = failure_handling.TerminationConfig(
+        time_till_termination=grace_period)
+    mpr = multi_process_runner.MultiProcessRunner(
+        self.worker_fn,
+        cluster_spec,
+        args=(checkpoint_dir, cluster_spec, [training_started_event], None,
+              termination_config),
+        rpc_layer=rpc_layer,
+        return_output=True,
+        dependence_on_chief=has_chief)
+
+    logging.info('Cluster starting.')
+    mpr.start()
+    while not training_started_event.is_set():
+      time.sleep(1)
+
+    killed_worker = random.randrange(0, CLUSTER_SIZE)
+    logging.info('sending SIGTERM')
+    os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
+    logging.info('SIGTERM sent')
+
+    # wait for all cluster within the given grace period (plus a buffer since
+    # our per-step time here is too small)
+    waiting_time = 0
+    exit_process_count = 0
+    while exit_process_count != CLUSTER_SIZE and waiting_time < grace_period + 10:
+      exit_process_count = 0
+      for worker_id in range(CLUSTER_SIZE):
+        if not mpr.process_exists('worker', worker_id):
+          exit_process_count += 1
+      waiting_time += 1
+      time.sleep(1)
+
+    if waiting_time == grace_period + 10:
+      raise RuntimeError('Waited exceeding grace period. ')
+
+    logging.info('restarting workers')
+    for worker_id in range(CLUSTER_SIZE):
+      mpr.start_single_process('worker', worker_id, cluster_spec)
+    logging.info('workers restarted')
+
+    stdout = mpr.join(timeout=250).stdout
+    all_start_point = []
+    checkpoint_count = []
+    for msg in stdout:
+      # TODO(wxinyi): remove the string matching and assert checkpoint number.
+      matched_group = re.search(r'.*Restored training at (\d+)', msg)
+      checkpoint_group = re.search(r'.*RUN_TO_CHECKPOINT set to (\d+)', msg)
+
+      if matched_group:
+        all_start_point.append(int(matched_group.group(1)))
+
+      if checkpoint_group:
+        checkpoint_count.append(int(checkpoint_group.group(1)))
+
+    # remove duplicate logs created due to presence of multiple workers
+    start_points = all_start_point[::CLUSTER_SIZE]
+
+    # assert that after restarting, we don't repeat previous training steps
+    self.assertNotEqual(start_points[-1], 0)
+
+    # One for timing, another for final call.
+    self.assertLen(set(checkpoint_count), 2)
 
 
 if __name__ == '__main__':
