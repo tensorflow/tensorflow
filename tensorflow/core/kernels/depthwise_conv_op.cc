@@ -544,7 +544,6 @@ class DepthwiseConv2dGroupedConvOp
                               .Label("cudnn_grouped_convolution"), \
                           DepthwiseConv2dGroupedConvOp<T>)
 
-TF_CALL_bfloat16(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_half(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
