@@ -12,57 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for determinsitic depthwise convolutional operations."""
+"""Functional tests for determinsitic depthwise convolutional operations."""
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
-from tensorflow.python.kernel_tests.nn_ops import depthwise_conv_op_test
+from tensorflow.python.kernel_tests.nn_ops import depthwise_conv_op_base
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 # The following imports are required to register the gradient functions.
 from tensorflow.python.ops.nn_grad import _DepthwiseConv2dNativeBackpropInputGrad  # pylint: disable=unused-import
-from tensorflow.python.ops.nn_grad import _DepthwiseConv2dNaticeBackpropFilterGrad  # pylint: disable=unused-import
+from tensorflow.python.ops.nn_grad import _DepthwiseConv2dNativeBackpropFilterGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
 class DepthwiseConv2DDeterministicTest(
-    depthwise_conv_op_test.DepthwiseConv2DTest):
+    depthwise_conv_op_base.DepthwiseConv2DBase):
   """Test determinism-related functionality of tf.nn.depthwise_conv2d."""
-
-  @classmethod
-  def setUpClass(cls):
-    super(DepthwiseConv2DDeterministicTest, cls).setUpClass()
-    # The op-determinism setting can be enabled and disabled on-the-fly.
-    # However, if cuDNN convolution is used (as it is for these tests) then its
-    # setting at the time will influence which algorithm for a particular layer
-    # configuration is cached (independently for XLA and non-XLA operation).
-    #
-    # If DepthwiseConv2DTest were to run first and cause a nondeterministic
-    # cuDNN algorithm to be cached for the configurations used by the
-    # determinism tests below, then it should cause them to fail.
-    #
-    # This persistence of state between tests could also reduce the quality of
-    # the testing for the cases where cuDNN convolution is used for both the
-    # nondeterministic and deterministic operation because algorithm selection,
-    # when this test class and its parent are run (in either order) on an
-    # instance of TensorFlow, may be different from algorithm selection when the
-    # tests were run independently.
-    #
-    # If necessary, a workaround for this issue would be to move
-    # DepthwiseConv2DDeterministicTest into a sparate test file and thereby run
-    # it under a different test.main().
-    #
-    # TODO(duncanriach): Implement cuDNN auto-tuning cache invalidation and
-    # and execute when op-determinism setting is changed.
-    tf_config.enable_op_determinism()
-
-  @classmethod
-  def tearDownClass(cls):
-    super(DepthwiseConv2DDeterministicTest, cls).tearDownClass()
-    tf_config.disable_op_determinism()
 
   def _genParams(self,
                  use_cudnn=False,
@@ -181,4 +149,20 @@ class DepthwiseConv2DDeterministicTest(
 
 
 if __name__ == "__main__":
+  # The op-determinism setting can be enabled and disabled on-the-fly.
+  # However, if cuDNN convolution is used (as it is for these tests) then its
+  # setting at the time will influence which algorithm for a particular layer
+  # configuration is cached (independently for XLA and non-XLA operation).
+  #
+  # The tests in this file must be run under a separate test.main from the
+  # tests in depthwise_conv_op_test.py to prevent caching the selection of
+  # nondeterminsitic algorithms, which would cause the tests defined in this
+  # file to fail.
+  #
+  # Also because of this caching, the tests defined in depthwise_conv_op_base.py
+  # should be run with and without op-determinism enabled in separate files.
+  #
+  # TODO(duncanriach): Implement cuDNN auto-tuning cache invalidation and
+  # and execute when op-determinism setting is changed.
+  tf_config.enable_op_determinism()
   test.main()

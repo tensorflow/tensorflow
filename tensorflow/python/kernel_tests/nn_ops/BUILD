@@ -310,6 +310,20 @@ cuda_py_test(
     ],
 )
 
+py_library(
+    name = "depthwise_conv_op_base",
+    srcs = ["depthwise_conv_op_base.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "depthwise_conv_op_d9m_test",
     size = "medium",  # http://b/30603882
@@ -318,15 +332,9 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-        "manual",
     ],
     deps = [
-        ":depthwise_conv_op_test",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:nn_grad",
-        "//tensorflow/python:nn_ops",
+        ":depthwise_conv_op_base",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/eager:backprop",
     ],
@@ -342,13 +350,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
     ],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:nn_grad",
-        "//tensorflow/python:nn_ops",
-        "//third_party/py/numpy",
+        ":depthwise_conv_op_base",
     ],
 )
 
