@@ -40,7 +40,7 @@ class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
   // `num_tfg_threads` is non-zero, then TFG will use threading with the
   // specified number of threads.
   explicit TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
-                                unsigned num_tfg_threads);
+                                unsigned num_tfg_threads = 0);
   // Explicit destructor to defer instantiation of Impl.
   ~TFGGrapplerOptimizer() override;
 

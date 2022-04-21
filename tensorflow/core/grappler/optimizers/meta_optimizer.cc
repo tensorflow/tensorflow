@@ -280,7 +280,7 @@ Status MetaOptimizer::InitializeOptimizers(
   // Hooks the MLIR optimizer, it won't run any optimizations right now. This
   // optimizer instance runs on functions one at a time; don't use any threads.
   optimizers->push_back(MakeUnique<mlir::tfg::TFGGrapplerOptimizer>(
-      mlir::tfg::DefaultGrapplerPipeline, /*num_tfg_threads=*/0));
+      mlir::tfg::DefaultGrapplerPipeline));
 #endif
 
 // A set of macro utilities which check if the toggle of an optimization.
