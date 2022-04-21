@@ -399,7 +399,7 @@ bool TF_IsRefInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
 
 template <typename T>
 static Status ValidateVariantType(const Variant& variant) {
-  if (variant.get<::tensorflow::TensorList>() == nullptr) {
+  if (variant.get<T>() == nullptr) {
     const std::string type_index_name =
         ::tensorflow::port::MaybeAbiDemangle(variant.TypeId().name());
 
