@@ -115,25 +115,27 @@ class AlternativeSubgraphPass
   // transform/optimize for those devices.
   // This will only happen if the whole subgraph can be supported by the target
   // or can be supported after some transformations.
-  void GetAlternativeGraphForFunc(ArrayRef<std::string> devices, FuncOp func,
-                                  ModuleOp module, OpBuilder* builder);
+  void GetAlternativeGraphForFunc(ArrayRef<std::string> devices,
+                                  func::FuncOp func, ModuleOp module,
+                                  OpBuilder* builder);
 
   // If all ops in the func op is able to be represented in the hardware, we
   // will return true, else will be false.
   // This is basically all or nothing.
-  bool IsAllSupportedbySpec(FuncOp func,
+  bool IsAllSupportedbySpec(func::FuncOp func,
                             const InferenceDeviceType& inference_type);
 
   // Given a func and a targeted device, we will try to clonse the func &
   // transform/optimize for that device.
   // It's simply clone the FuncOp and hardware specific transformations.
-  FuncOp GetAlternativeViewForSpec(
-      FuncOp func, const InferenceDeviceType& current_device_inference_type,
+  func::FuncOp GetAlternativeViewForSpec(
+      func::FuncOp func,
+      const InferenceDeviceType& current_device_inference_type,
       const InferenceDeviceType& target_device_inference_type, ModuleOp module,
       OpBuilder* builder);
 
   // Apply any device-specific optimizations.
-  void Optimize(FuncOp func, const std::string& hardware);
+  void Optimize(func::FuncOp func, const std::string& hardware);
 
   ListOption<std::string> device_specs_flag_{
       *this, "device-specs",
@@ -143,7 +145,7 @@ class AlternativeSubgraphPass
 };
 
 void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
-    ArrayRef<std::string> devices, FuncOp func, ModuleOp module,
+    ArrayRef<std::string> devices, func::FuncOp func, ModuleOp module,
     OpBuilder* builder) {
   auto current_device = GetTargetAnnotation(func);
   if (current_device->empty()) {
@@ -171,7 +173,7 @@ void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
 
   for (const auto& device_inference_type : all_inference_device_type) {
     if (device_inference_type != current_device_type) {
-      FuncOp cloned_func = GetAlternativeViewForSpec(
+      func::FuncOp cloned_func = GetAlternativeViewForSpec(
           func, current_device_type, device_inference_type, module, builder);
       // If we found unsupported ops, we will just go ahead and remove this
       // function.
@@ -193,12 +195,12 @@ void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
 }
 
 bool AlternativeSubgraphPass::IsAllSupportedbySpec(
-    FuncOp func, const InferenceDeviceType& device_inference_type) {
+    func::FuncOp func, const InferenceDeviceType& device_inference_type) {
   bool found_unsupported = false;
   func.walk([&](Operation* op) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
         NotTFLQuantDequantizeOp(op) &&
-        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op) &&
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op) &&
         !IsSupported(op, device_inference_type.hardware)) {
       found_unsupported = true;
     }
@@ -206,7 +208,7 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
   return !found_unsupported;
 }
 
-void AlternativeSubgraphPass::Optimize(FuncOp func,
+void AlternativeSubgraphPass::Optimize(func::FuncOp func,
                                        const std::string& hardware) {
   auto* ctx = &getContext();
   RewritePatternSet patterns = GetHardwareRewritePatterns(ctx, hardware);
@@ -216,11 +218,11 @@ void AlternativeSubgraphPass::Optimize(FuncOp func,
 // Get the alternative view of the func for the given device_inference_type.
 // It's possible the transformed func can still contain unsupported ops for the
 // given device_inference_type.
-FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
-    FuncOp func, const InferenceDeviceType& current_device_inference_type,
+func::FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
+    func::FuncOp func, const InferenceDeviceType& current_device_inference_type,
     const InferenceDeviceType& target_device_inference_type, ModuleOp module,
     OpBuilder* builder) {
-  FuncOp cloned_func = func.clone();
+  func::FuncOp cloned_func = func.clone();
   cloned_func.setPrivate();
   auto interface_name = GetInterFaceName(func);
   if (!interface_name.hasValue()) {
@@ -252,7 +254,7 @@ FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
   // Set device for each op.
   cloned_func.walk([&](Operation* op) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
-        !llvm::isa<func::ReturnOp, FuncOp, CallableOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallableOpInterface>(op)) {
       op->setAttr(kDevice, builder->getStringAttr(
                                target_device_inference_type.hardware));
       op->setAttr(kInferenceType,
@@ -280,9 +282,9 @@ void AlternativeSubgraphPass::runOnOperation() {
     signalPassFailure();
   }
 
-  SmallVector<FuncOp, 25> funcs_to_be_processed;
+  SmallVector<func::FuncOp, 25> funcs_to_be_processed;
   // We only process if func has device annotations.
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     auto device_attr = func->getAttrOfType<StringAttr>(kDevice);
     if (device_attr != nullptr) funcs_to_be_processed.push_back(func);
   }

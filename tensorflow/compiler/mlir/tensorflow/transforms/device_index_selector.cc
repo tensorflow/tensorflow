@@ -52,7 +52,7 @@ struct DeviceIndexSelector
 }  // namespace
 
 void DeviceIndexSelector::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   // Convert all the DeviceIndex ops to constant values.
   func.getBody().walk([](TF::DeviceIndexOp op) {
     // This just selects the default in all cases where DeviceIndex feeds into
@@ -75,7 +75,7 @@ void DeviceIndexSelector::runOnOperation() {
 }
 
 // Creates an instance of the TensorFlow DeviceIndex selector pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceIndexSelectorPass() {
   return std::make_unique<DeviceIndexSelector>();
 }
 

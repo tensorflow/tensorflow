@@ -111,7 +111,7 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
 
 void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
     runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   OpBuilder builder(func.getContext());
   SmallVector<VariableV2Op, 4> variable_v2s_to_replace;
@@ -184,7 +184,7 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
   return std::make_unique<
       ConvertReadonlyReferenceVariablesToResourceVariablesPass>();

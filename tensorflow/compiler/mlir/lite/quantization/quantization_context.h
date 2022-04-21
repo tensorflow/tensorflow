@@ -64,7 +64,7 @@ struct RequantizeState {
 // This class manages all the intermediate quantization states.
 class QuantizeContext {
  public:
-  QuantizeContext(FuncOp func, const DeviceTarget &spec);
+  QuantizeContext(func::FuncOp func, const DeviceTarget &spec);
 
   // Returns all the quant region ops.
   std::vector<quant::QuantizeRegionOp> GetAllOps();
@@ -226,7 +226,7 @@ class QuantizeContext {
     llvm::DenseMap<OpValue, int> result_states_;
   };
 
-  FuncOp func_;
+  func::FuncOp func_;
 
   DeviceTarget target_spec_;
 

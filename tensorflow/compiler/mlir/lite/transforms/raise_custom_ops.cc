@@ -44,7 +44,7 @@ namespace {
 // This transformation pass takes an operation with unknown op properties and
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
-    : public PassWrapper<RaiseCustomOpsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<RaiseCustomOpsPass, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<TensorFlowLiteDialect>();
   }
@@ -122,7 +122,7 @@ void RaiseCustomOpsPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect raise custom op pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
     const std::vector<std::string> &target_ops) {
   return std::make_unique<RaiseCustomOpsPass>(target_ops);
 }

@@ -56,7 +56,7 @@ upper_tabs:
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for Android"
-        path: /lite/guide/build_android
+        path: /lite/android/lite_build
       - title: "Build for iOS"
         path: /lite/guide/build_ios
       - title: "Build for ARM"
@@ -80,7 +80,7 @@ upper_tabs:
     - name: "Android"
       contents:
       - title: "Quickstart"
-        path: /lite/guide/android
+        path: /lite/android/quickstart
 
       - title: "Run with Play Services"
         path: /lite/android/play_services
@@ -115,9 +115,9 @@ upper_tabs:
 
       - heading: "Hardware acceleration"
       - title: "NNAPI delegate"
-        path: /lite/performance/nnapi
+        path: /lite/android/delegates/nnapi
       - title: "Hexagon delegate"
-        path: /lite/performance/hexagon_delegate
+        path: /lite/android/delegates/hexagon
 
       - heading: "Models with metadata"
       - title: "Overview"

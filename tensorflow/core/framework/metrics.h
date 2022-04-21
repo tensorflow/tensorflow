@@ -321,6 +321,8 @@ class TestDelta {
   int64 last_value_;
 };
 void UpdateTpuErrorCounter(const string& op, const string& error_type);
+void UpdateEagerClientErrorCounter(const string& error_source,
+                                   const string& error_type);
 
 }  // namespace metrics
 }  // namespace tensorflow

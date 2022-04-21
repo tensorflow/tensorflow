@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -333,6 +333,7 @@ tf_python_pybind_extension(
     srcs = ["tfcompile_wrapper.cc"],
     features = ["-layering_check"],
     module_name = "_pywrap_tfcompile",
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
@@ -3295,7 +3296,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
@@ -3387,7 +3388,7 @@ filegroup(
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
@@ -3856,23 +3857,6 @@ cuda_py_test(
         ":nccl_ops",
         ":platform_test",
         "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-cuda_py_test(
-    name = "factory_ops_test",
-    size = "small",
-    srcs = ["ops/factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): a similar test times out
-    ],
-    deps = [
-        ":sparse_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/eager:def_function",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

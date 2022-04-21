@@ -92,6 +92,9 @@ and the following optional parameters:
 *  `release_dynamic_tensors`: `bool` (default=false) \
     Whether to configure the Interpreter to immediately release the memory of
     dynamic tensors in the graph once they are not used.
+*  `optimize_memory_for_large_tensors`: `int` (default=0) \
+    Whether to optimize memory usage for large tensors with sacrificing latency.
+    When the feature is enabled, `release_dynamic_tensors` is also enabled.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following

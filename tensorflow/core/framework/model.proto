@@ -53,7 +53,7 @@ message ModelProto {
     // The number of elements produced by the node.
     int64 num_elements = 8;
 
-    // The aggregate processing time spent in this node.
+    // The aggregate processing time spent in this node in nanoseconds.
     int64 processing_time = 9;
 
     // An indication whether this node records metrics about produced and

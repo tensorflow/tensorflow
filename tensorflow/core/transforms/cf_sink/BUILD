@@ -15,6 +15,7 @@ cc_library(
     hdrs = ["cf_sink.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/transforms:PassDetail",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",

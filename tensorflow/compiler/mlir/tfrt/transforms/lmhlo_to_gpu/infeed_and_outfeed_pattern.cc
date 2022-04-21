@@ -24,11 +24,11 @@ namespace tensorflow {
 namespace {
 
 struct InfeedRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::InfeedOp> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::InfeedOp> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<
       lmhlo::InfeedOp>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::InfeedOp>::GpuAsyncOpConversionPattern;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::InfeedOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::InfeedOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -40,11 +40,11 @@ struct InfeedRewritePattern
 };
 
 struct OutfeedRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::OutfeedOp> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::OutfeedOp> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<
       lmhlo::OutfeedOp>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::OutfeedOp>::GpuAsyncOpConversionPattern;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::OutfeedOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::OutfeedOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

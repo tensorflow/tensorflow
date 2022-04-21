@@ -38,6 +38,11 @@ namespace mlir {
 namespace tfg {
 namespace util {
 
+// The SimpleDevice is supposed to be used for evaluating single operation. To
+// avoid the overhead of thread creation. Set a small and conservative number as
+// the default.
+static constexpr int kThreads = 2;
+
 SimpleDevice::SimpleDevice() : DeviceBase(tensorflow::Env::Default()) {
   eigen_worker_ = std::make_unique<tensorflow::thread::ThreadPool>(
       tensorflow::Env::Default(), "eval_utils", kThreads);

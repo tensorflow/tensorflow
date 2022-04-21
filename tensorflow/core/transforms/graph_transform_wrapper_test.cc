@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/graph_transform_wrapper.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"

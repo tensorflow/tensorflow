@@ -3031,7 +3031,7 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
   populateWithGenerated(*patterns);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();
 }
 

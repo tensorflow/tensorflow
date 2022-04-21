@@ -143,7 +143,7 @@ struct TestGmlStLoopTilingPass
   }
 
   void runOnOperation() override {
-    FuncOp funcOp = getOperation();
+    func::FuncOp funcOp = getOperation();
 
     auto distTypes = llvm::to_vector<2>(llvm::map_range(
         distribution_types, [](std::string &str) { return StringRef(str); }));
@@ -166,11 +166,11 @@ struct TestGmlStLoopTilingPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopPeelingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass() {
   return std::make_unique<TestGmlStLoopPeelingPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopTilingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass() {
   return std::make_unique<TestGmlStLoopTilingPass>();
 }
 }  // namespace gml_st

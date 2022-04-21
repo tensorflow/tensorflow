@@ -549,7 +549,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
       11, 12, 13,  // batch 1, 5
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       m.GetOutput(),
@@ -579,7 +579,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
   m.SetInput(
       {11, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13});
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       m.GetOutput(),
@@ -616,7 +616,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
       11, 12, 13,  // batch 1, 5
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       m.GetOutput(),
@@ -647,7 +647,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
   m.SetInput(
       {11, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13});
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       m.GetOutput(),

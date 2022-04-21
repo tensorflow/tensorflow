@@ -261,6 +261,15 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   // Parametrization: TFT_RAGGED[<element_type>].
   I32EnumAttrCase<"TFT_RAGGED", 10103, "ragged">,
 
+  // Iterators created by tf.data ops and APIs. Very similar to Datasets, except
+  // they are mutable.
+  //
+  //
+  // Parametrization: TFT_ITERATOR[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  I32EnumAttrCase<"TFT_ITERATOR", 10104, "iterator">,
+
   // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
   // Unlike strict execution models, where ownership of a lock is denoted by
   // "running after the lock has been acquired", in non-strict mode, lock

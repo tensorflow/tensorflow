@@ -37,6 +37,9 @@ _XlaOpMetadata = Any
 
 _T = TypeVar("_T")
 
+class XlaRuntimeError(RuntimeError):
+  pass
+
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
@@ -298,9 +301,6 @@ class Device:
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
 
-class CpuDevice(Device):
-  pass
-
 class GpuDevice(Device):
   device_vendor: str
 
@@ -359,6 +359,10 @@ class Client:
       device: Device = ...,
       force_copy: bool = ...,
       host_buffer_semantics: HostBufferSemantics = ...) -> Buffer: ...
+  def make_cross_host_receive_buffers(
+      self,
+      shapes: Sequence[Shape],
+      device: Device) -> List[Tuple[Buffer, bytes]]: ...
   def compile(
       self,
       computation: XlaComputation,
@@ -406,6 +410,8 @@ class DeviceArray(DeviceArrayBase):
   ndim: int
   _value: np.ndarray
   def copy_to_device(self, dst_device: Device) -> DeviceArray: ...
+  def copy_to_remote_device(self,
+                            descriptor: bytes) -> Tuple[_Status, bool]: ...
   def on_device_size_in_bytes(self) -> int: ...
   def delete(self) -> None: ...
   def is_ready(self) -> bool: ...

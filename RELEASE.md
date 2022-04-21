@@ -17,14 +17,24 @@
 
 * `tf.keras`:
 
-  *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
+    * Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
       class implements the sharpness-aware minimization technique, which boosts
       model performance on various tasks, e.g., ResNet on image classification.
-
-*   `tf.keras`:
     * `EinsumDense` layer moved from experimental to core. Its import path moved
       from `tf.keras.layers.experimental.EinsumDense` to
       `tf.keras.layers.EinsumDense`.
+    * Added `subset="both"` support in
+      `tf.keras.utils.image_dataset_from_directory` and
+      `tf.keras.utils.text_dataset_from_directory`, to be used with the
+      `validation_split` argument, for returning both dataset splits at once,
+      as a tuple.
+
+*   `tf.math`:
+
+    * Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the
+      optimized alternatives to `tf.math.top_k` on TPU. The performance
+      difference range from 8 to 100 times depending on the size of k.
+      When running on CPU and GPU, a non-optimized XLA kernel is used.
 
 # Bug Fixes and Other Changes
 
@@ -232,6 +242,12 @@ This release contains contributions from many people at Google, as well as:
         Now the correct feature key will be used. This aligns the behavior of
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
+    *   Promoting `tf.data.experimental.load` API to `tf.data.Dataset.load`
+        (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/load)
+        and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.save` API to `tf.data.Dataset.save`
+        (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/save) and
+        deprecating the experimental endpoint.
 
     *   Added a new field, `filter_parallelization`, to
         `tf.data.experimental.OptimizationOptions`. If it is set to `True`,

@@ -113,8 +113,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateFusedKernelMatcherPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
@@ -182,8 +181,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateFusedKernelMatcherPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());

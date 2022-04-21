@@ -264,6 +264,8 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   Raises:
     ValueError: if the checkpoint read doesn't have model_checkpoint_path set.
   """
+  if isinstance(checkpoint_dir, os.PathLike):
+    checkpoint_dir = os.fspath(checkpoint_dir)
   ckpt = None
   coord_checkpoint_filename = _GetCheckpointFilename(checkpoint_dir,
                                                      latest_filename)
@@ -622,6 +624,8 @@ class CheckpointManager(object):
           % (max_to_keep,))
     self._max_to_keep = max_to_keep
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    if isinstance(directory, os.PathLike):
+      directory = os.fspath(directory)
     self._directory = directory
     self._checkpoint_prefix = os.path.join(directory, checkpoint_name)
     self._init_fn = init_fn

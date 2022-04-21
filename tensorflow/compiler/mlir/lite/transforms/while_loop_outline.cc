@@ -113,10 +113,11 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
   return false;
 }
 
-FuncOp CreateOutlineFunc(StringRef name, Region& region,
-                         bool passthru_extra_args, int num_loop_carried,
-                         const llvm::SetVector<Value>& extern_values,
-                         const SmallVectorImpl<Type>& types, Location loc) {
+func::FuncOp CreateOutlineFunc(StringRef name, Region& region,
+                               bool passthru_extra_args, int num_loop_carried,
+                               const llvm::SetVector<Value>& extern_values,
+                               const SmallVectorImpl<Type>& types,
+                               Location loc) {
   MLIRContext* context = loc.getContext();
   OpBuilder builder(context);
   FunctionType type;
@@ -129,7 +130,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
     type = FunctionType::get(context, types, result_types);
   }
 
-  auto outlined_func = builder.create<FuncOp>(loc, name, type);
+  auto outlined_func = builder.create<func::FuncOp>(loc, name, type);
   outlined_func.getBody().takeBody(region);
   Region& func_region = outlined_func.getBody();
 

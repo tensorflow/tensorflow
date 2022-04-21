@@ -943,6 +943,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1314,6 +1315,25 @@ cc_library(
 )
 
 cc_library(
+    name = "collapse_elementwise_map",
+    srcs = ["lib/Dialect/mhlo/transforms/collapse_elementwise_map.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "legalize_trigonometric_to_approximation",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_trigonometric_to_approximation.cc"],
     hdrs = [
@@ -1511,6 +1531,7 @@ cc_library(
     ],
     deps = [
         ":MhloPassIncGen",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1585,6 +1606,7 @@ cc_library(
         ":buffer_packing",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
+        ":collapse_elementwise_map",
         ":copy_removal",
         ":expand_hlo_tuples",
         ":gml_st_passes_inc_gen",
@@ -1690,6 +1712,7 @@ cc_library(
     ],
     deps = [
         ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
 )

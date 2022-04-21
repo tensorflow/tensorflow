@@ -52,11 +52,12 @@ void DropWhileShapeInvariantInDeviceClusterPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDropWhileShapeInvariantPass() {
   return std::make_unique<DropWhileShapeInvariantPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateDropWhileShapeInvariantInDeviceClusterPass() {
   return std::make_unique<DropWhileShapeInvariantInDeviceClusterPass>();
 }

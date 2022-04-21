@@ -34,7 +34,7 @@ class DedupBoundInputBindingPass
 };
 
 void DedupBoundInputBindingPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   if (!mlir::tf_saved_model::IsExported(func)) return;
   llvm::SmallDenseMap<Attribute, unsigned, 8> unique_bound_inputs;
   llvm::BitVector arg_indices_to_erase(func.getNumArguments());
@@ -54,7 +54,8 @@ void DedupBoundInputBindingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDedupBoundInputBindingPass() {
   return std::make_unique<DedupBoundInputBindingPass>();
 }
 

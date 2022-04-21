@@ -24,7 +24,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
+void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
@@ -54,7 +54,7 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
   });
 }
 
-void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
+void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);

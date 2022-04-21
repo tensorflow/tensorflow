@@ -37,7 +37,8 @@ std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
       ::grpc::InsecureChannelCredentials();
   std::shared_ptr<::grpc::Channel> channel =
       ::grpc::CreateChannel(address, creds);
-  return GetDistributedRuntimeClient(channel, options);
+  return GetDistributedRuntimeClient(channel, options,
+                                     /*use_coordination_service=*/false);
 }
 
 }  // namespace xla

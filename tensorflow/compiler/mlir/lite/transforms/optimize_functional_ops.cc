@@ -55,7 +55,7 @@ struct OptimizeFunctionalOpsPass
 // op operands' types.
 //
 // Requires the function has exactly one block.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   Operation* terminator = func.front().getTerminator();
   auto return_types = llvm::to_vector<4>(terminator->getOperandTypes());
 
@@ -68,7 +68,7 @@ void UpdateFuncType(FuncOp func) {
 }
 
 // TODO(jpienaar): Remove when recursive side-effect modeling is added.
-bool IsSideEffectFree(FuncOp func) {
+bool IsSideEffectFree(func::FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
                 if (!MemoryEffectOpInterface::hasNoEffect(op) &&
@@ -92,12 +92,12 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // and therefore one terminator op. So, that function return type can be
     // updated if operands' shapes change after inlining. Without this
     // restriction, it would require tensor cast ops.
-    FuncOp parent_op = op->getParentOfType<FuncOp>();
+    func::FuncOp parent_op = op->getParentOfType<func::FuncOp>();
     if (!llvm::hasSingleElement(parent_op)) return failure();
 
     // Find the then and else branch functions.
-    FuncOp then_func = op.then_function();
-    FuncOp else_func = op.else_function();
+    func::FuncOp then_func = op.then_function();
+    func::FuncOp else_func = op.else_function();
 
     // If the If has no uses and its functions are side-effect free, then
     // remove.
@@ -121,7 +121,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 
     // Identify the branch to inline.
     bool cond_value = (*cond.value_begin<APInt>()).getSExtValue();
-    FuncOp func = cond_value ? then_func : else_func;
+    func::FuncOp func = cond_value ? then_func : else_func;
 
     // Make sure that the function has exactly one block to simplify inlining.
     // TFLite doesn't use control flow with blocks so functions with more than

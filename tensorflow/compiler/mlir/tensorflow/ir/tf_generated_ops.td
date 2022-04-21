@@ -510,6 +510,38 @@ retained with length 1.
   let hasVerifier = 1;
 }
 
+def TF_ApproxTopKOp : TF_Op<"ApproxTopK", [NoSideEffect]> {
+  let summary = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let description = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Array to search. Must be at least 1-D of the floating type}]>:$input,
+
+    Confined<I64Attr, [IntMinValue<0>]>:$k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_dimension,
+    DefaultValuedAttr<F32Attr, "0.95f">:$recall_target,
+    DefaultValuedAttr<BoolAttr, "true">:$is_max_k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_input_size_override,
+    DefaultValuedAttr<BoolAttr, "true">:$aggregate_to_topk
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{The min/max k values along the `reduction_dimension` of the `input` operand.
+The dimension are the same as the `input` operand except for the
+`reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+dimension is `k`; otherwise, it is greater equals to `k` where the size is
+implementation-defined.}]>:$values,
+    Res<TF_Int32Tensor, [{The indices of `values` along the `reduction_dimension` of the `input` operand.}]>:$indices
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
 
@@ -10474,8 +10506,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     CallInterfaceCallable getCallableForCallee() { return fAttr(); }
 
     // returns the callee of this operation.
-    FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, f());
     }
   }];
 
@@ -20807,7 +20839,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 
   let extraClassDeclaration = [{
-    FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+    func::FuncOp GetHostFunc(mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
   }];
 
   let hasVerifier = 1;

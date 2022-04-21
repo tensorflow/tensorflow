@@ -536,6 +536,22 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
+template <size_t N>
+struct SignedIntegerTypeForSize {
+  using type = std::make_signed_t<typename UnsignedIntegerTypeForSize<N>::type>;
+};
+
+// Returns the signed magnitude of T.
+template <typename T>
+typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
+  auto as_bits =
+      absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
+  auto sign_mask =
+      absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
+          tensorflow::MathUtil::Sign(as_bits));
+  return as_bits ^ (sign_mask >> 1);
+}
+
 template <typename T>
 constexpr int NanPayloadBits() {
   // Floating point types with NaNs have payloads.

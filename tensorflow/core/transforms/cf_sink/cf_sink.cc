@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
@@ -82,13 +83,14 @@ void ControlFlowSinkPass::runOnOperation() {
   getOperation()->walk([&](RegionBranchOpInterface branch) {
     SmallVector<Region *> regions;
     getSinglyExecutedRegionsToSink(branch, regions);
-    controlFlowSink(
+    num_sunk += controlFlowSink(
         regions, domInfo,
         [&](Operation *op, Region *) {
           return IsStateless(op) && !IsExcluded(op);
         },
         [&](Operation *op, Region *region) { moveAndRename(op, region); });
   });
+  VLOG(1) << "tfg-cf-sink num-sunk: " << num_sunk;
 }
 
 std::unique_ptr<Pass> CreateControlFlowSinkPass() {

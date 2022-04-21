@@ -90,45 +90,6 @@ constexpr StringRef kDeviceAttr = TFGraphDialect::getDeviceAttrKey();
 constexpr StringRef kFullTypeAttr = TFGraphDialect::getFullTypeAttrKey();
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
-// Compute the name to use in GraphDef for a given Value (either the result of
-// an operation or a block operand if a function argument) and store the result
-// in the provided name string. The `control_ty` is the instance of the
-// `ControlType` to compare against and detect a control dependency case.
-static Status GetValueName(Value operand, std::string &name, Type control_ty) {
-  OpResult op_result = operand.dyn_cast<OpResult>();
-  if (!op_result) {
-    BlockArgument block_operand = operand.dyn_cast<BlockArgument>();
-    bool is_control = (block_operand.getType() == control_ty);
-    int arg_num = block_operand.getArgNumber();
-    name.clear();
-    // Function arguments are coming as pair: the even are the actual tensors
-    // while the odd position are the associated control input.
-    if (is_control) name = "^";
-    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
-        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
-    if (!arg_attrs)
-      return InvalidArgument("Missing attribute for argument #", arg_num);
-    StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
-    if (!arg_name)
-      return InvalidArgument(
-          "Can't export graph with missing op-name for function parameter #",
-          arg_num);
-    absl::StrAppend(&name, arg_name.getValue().str());
-    return {};
-  }
-  Operation *producer = op_result.getDefiningOp();
-  auto nameAttr = producer->getAttrOfType<StringAttr>(kNameAttr);
-  if (!nameAttr)
-    return InvalidArgument("Can't export graph with missing op-name");
-
-  name.clear();
-  if (op_result.getType() == control_ty) name = "^";
-  absl::StrAppend(&name, nameAttr.getValue().str());
-  if (op_result.getType() != control_ty && op_result.getResultNumber())
-    absl::StrAppend(&name, ":", op_result.getResultNumber());
-  return {};
-}
-
 Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
                        StringRef name) {
   node_def->set_name(name.str());
@@ -470,6 +431,45 @@ Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
 }
 
 }  // namespace
+
+// Compute the name to use in GraphDef for a given Value (either the result of
+// an operation or a block operand if a function argument) and store the result
+// in the provided name string. The `control_ty` is the instance of the
+// `ControlType` to compare against and detect a control dependency case.
+Status GetValueName(Value operand, std::string &name, Type control_ty) {
+  OpResult op_result = operand.dyn_cast<OpResult>();
+  if (!op_result) {
+    BlockArgument block_operand = operand.dyn_cast<BlockArgument>();
+    bool is_control = (block_operand.getType() == control_ty);
+    int arg_num = block_operand.getArgNumber();
+    name.clear();
+    // Function arguments are coming as pair: the even are the actual tensors
+    // while the odd position are the associated control input.
+    if (is_control) name = "^";
+    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
+        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
+    if (!arg_attrs)
+      return InvalidArgument("Missing attribute for argument #", arg_num);
+    StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
+    if (!arg_name)
+      return InvalidArgument(
+          "Can't export graph with missing op-name for function parameter #",
+          arg_num);
+    absl::StrAppend(&name, arg_name.getValue().str());
+    return {};
+  }
+  Operation *producer = op_result.getDefiningOp();
+  auto nameAttr = producer->getAttrOfType<StringAttr>(kNameAttr);
+  if (!nameAttr)
+    return InvalidArgument("Can't export graph with missing op-name");
+
+  name.clear();
+  if (op_result.getType() == control_ty) name = "^";
+  absl::StrAppend(&name, nameAttr.getValue().str());
+  if (op_result.getType() != control_ty && op_result.getResultNumber())
+    absl::StrAppend(&name, ":", op_result.getResultNumber());
+  return {};
+}
 
 Status ExportFunction(GraphFuncOp func_op,
                       tensorflow::FunctionLibraryDefinition &flib) {

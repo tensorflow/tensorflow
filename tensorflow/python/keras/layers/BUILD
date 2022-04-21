@@ -39,13 +39,8 @@ py_library(
         ":core",
         ":cudnn_recurrent",
         ":dense_attention",
-        ":einsum_dense",
         ":embeddings",
-        ":kernelized",
-        ":local",
         ":merge",
-        ":multi_head_attention",
-        ":noise",
         ":pooling",
         ":recurrent",
         ":recurrent_v2",
@@ -194,39 +189,6 @@ py_library(
 )
 
 py_library(
-    name = "einsum_dense",
-    srcs = ["einsum_dense.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:special_math_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/initializers",
-    ],
-)
-
-py_library(
-    name = "multi_head_attention",
-    srcs = ["multi_head_attention.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python:special_math_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/initializers",
-    ],
-)
-
-py_library(
     name = "embeddings",
     srcs = ["embeddings.py"],
     srcs_version = "PY3",
@@ -246,43 +208,6 @@ py_library(
 )
 
 py_library(
-    name = "kernelized",
-    srcs = ["kernelized.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/initializers",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "local",
-    srcs = ["local.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:activations",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/initializers",
-        "//tensorflow/python/keras/utils:engine_utils",
-        "//tensorflow/python/keras/utils:tf_utils",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
     name = "merge",
     srcs = ["merge.py"],
     srcs_version = "PY3",
@@ -294,21 +219,6 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/utils:tf_utils",
-    ],
-)
-
-py_library(
-    name = "noise",
-    srcs = ["noise.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras/utils:tf_utils",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -556,18 +466,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "multi_head_attention_test",
-    srcs = ["multi_head_attention_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":multi_head_attention",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 cuda_py_test(
     name = "embeddings_test",
     size = "medium",
@@ -588,34 +486,6 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "einsum_dense_test",
-    srcs = ["einsum_dense_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":einsum_dense",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "local_test",
-    size = "medium",
-    srcs = ["local_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = ["no_windows"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "merge_test",
     size = "medium",
     srcs = ["merge_test.py"],
@@ -626,18 +496,6 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "noise_test",
-    size = "medium",
-    srcs = ["noise_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -784,34 +642,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "kernelized_test",
-    size = "small",
-    srcs = ["kernelized_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":layers",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/keras/initializers",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

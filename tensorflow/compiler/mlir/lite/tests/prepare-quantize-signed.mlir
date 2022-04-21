@@ -213,14 +213,12 @@ func.func @bias_adjust_pertensor(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
     fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"
   } : (tensor<1x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<1x2xf32>
   func.return %fc : tensor<1x2xf32>
-// CHECK: %[[weight:.*]] = arith.constant dense<{{\[\[}}0.000000e+00, 1.000000e+00]
-// CHECK: %[[w_q:.*]] = "tfl.quantize"(%[[weight]])
-// CHECK-SAME: quant.uniform<i8<-127:127>:f32, 19998.892343977564>>
-// CHECK: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
-// CHECK: %[[bias:.*]] = arith.constant dense<[0.000000e+00, 2147364.75]>
-// CHECK: %[[b_q:.*]] = "tfl.quantize"(%[[bias]])
-// CHECK-SAME: quant.uniform<i32:f32, 0.0019998892694710656>>
-// CHECK: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+// CHECK-DAG: %[[weight:.*]] = arith.constant dense<{{\[\[}}0.000000e+00, 1.000000e+00]
+// CHECK-DAG: %[[bias:.*]] = arith.constant dense<[0.000000e+00, 2147364.75]>
+// CHECK-DAG: %[[b_q:.*]] = "tfl.quantize"(%[[bias]]){{.*}}quant.uniform<i32:f32, 0.0019998892694710656>>
+// CHECK-DAG: %[[w_q:.*]] = "tfl.quantize"(%[[weight]]){{.*}}quant.uniform<i8<-127:127>:f32, 19998.892343977564>>
+// CHECK-DAG: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+// CHECK-DAG: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%[[input:.*]], %[[w_dq]], %[[b_dq]])
 // CHECK: return %[[fc]]
 }
@@ -236,14 +234,14 @@ func.func @bias_adjust_perchannel(%arg0: tensor<1x5x5x2xf32>, %arg1: tensor<4xi3
     padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
   } : (tensor<4xi32>, tensor<3x1x1x2xf32>, tensor<1x5x5x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
   func.return %transpose_conv : tensor<1x5x5x3xf32>
-// CHECK: %[[weight:.*]] = arith.constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
-// CHECK: %[[w_q:.*]] = "tfl.quantize"(%[[weight]])
-// CHECK-SAME: {0.0078740157480314959,0.19998891099675145,1.9998891454946508}
-// CHECK: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
 // CHECK: %[[bias:.*]] = arith.constant dense<[0.00999999977, 21.4736462, -214.736465]>
 // CHECK: %[[b_q:.*]] = "tfl.quantize"(%[[bias]])
 // CHECK-SAME: {7.8740158861230386E-10,1.9998891450408216E-8,1.9998891805679583E-7}
 // CHECK: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+// CHECK: %[[weight:.*]] = arith.constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
+// CHECK: %[[w_q:.*]] = "tfl.quantize"(%[[weight]])
+// CHECK-SAME: {0.0078740157480314959,0.19998891099675145,1.9998891454946508}
+// CHECK: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
 // CHECK: %[[conv:.*]] = "tfl.transpose_conv"(%arg1, %[[w_dq]], %[[input:.*]], %[[b_dq]])
 // CHECK: return %6 : tensor<1x5x5x3xf32>
 }
@@ -265,20 +263,17 @@ func.func @bias_adjust_duplicate_filter(%arg0: tensor<1x5x5x2xf32>) -> (tensor<1
     padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32
   } : (tensor<1x5x5x2xf32>, tensor<3x1x1x2xf32>, tensor<3xf32>) -> tensor<1x5x5x3xf32>
   func.return %conv, %conv2 : tensor<1x5x5x3xf32>, tensor<1x5x5x3xf32>
-// CHECK: %[[w1:.*]] = arith.constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
-// CHECK: %[[w1_q:.*]] = "tfl.quantize"(%[[w1]])
-// CHECK-SAME: {0.0078740157480314959,0.015748031496062992,0.015748031496062992}
-// CHECK: %[[w1_dq:.*]] = "tfl.dequantize"(%[[w1_q]])
+// CHECK-DAG: %[[bias:.*]] = arith.constant dense<[0.00999999977, 21.4736462, -214.736465]>
+// CHECK-DAG: %[[w1:.*]] = arith.constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
+// CHECK-DAG: %[[b_q:.*]] = "tfl.quantize"(%[[bias]]){{.*}}{7.8740158861230386E-10,1.9998891450408216E-8,1.9998891805679583E-7}
+// CHECK-DAG: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
+// CHECK-DAG: %[[w1_q:.*]] = "tfl.quantize"(%[[w1]]){{.*}}{0.0078740157480314959,0.015748031496062992,0.015748031496062992}
+// CHECK-DAG: %[[w1_dq:.*]] = "tfl.dequantize"(%[[w1_q]])
 // Weight with adjusted scales
-// CHECK: %[[w2:.*]] = arith.constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
-// CHECK: %[[w2_q:.*]] = "tfl.quantize"(%[[w2]])
-// CHECK-SAME: {0.0078740157480314959,0.19998891099675145,1.9998891454946508}
-// CHECK: %[[w2_dq:.*]] = "tfl.dequantize"(%[[w2_q]])
+// CHECK-DAG: %[[w2:.*]] = arith.constant dense<{{\[\[\[\[}}-1.000000e+00, 1.000000e+00]]]
+// CHECK-DAG: %[[w2_q:.*]] = "tfl.quantize"(%[[w2]]){{.*}}{0.0078740157480314959,0.19998891099675145,1.9998891454946508}
+// CHECK-DAG: %[[w2_dq:.*]] = "tfl.dequantize"(%[[w2_q]])
 // Bias with adjusted scales
-// CHECK: %[[bias:.*]] = arith.constant dense<[0.00999999977, 21.4736462, -214.736465]>
-// CHECK: %[[b_q:.*]] = "tfl.quantize"(%[[bias]])
-// CHECK-SAME: {7.8740158861230386E-10,1.9998891450408216E-8,1.9998891805679583E-7}
-// CHECK: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
 
 // CHECK: %[[conv_normal:.*]] = "tfl.conv_2d"(%[[input:.*]], %[[w1_dq]], %[[bias_normal:.*]])
 // CHECK: %[[conv_adjusted:.*]] = "tfl.conv_2d"(%[[input:.*]], %[[w2_dq]], %[[b_dq]])

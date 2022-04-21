@@ -155,7 +155,7 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
 
 // Removes the wrapper of the tf.FakeQuant* ops and creates the tfl.quantize
 // and tfl.dequantize pairs before tf.FakeQuant* being foled.
-LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext *ctx,
+LogicalResult ConvertFakeQuantOps(func::FuncOp func, MLIRContext *ctx,
                                   bool use_fake_quant_num_bits = false);
 
 // Returns the names of all the considered tf.FakeQuant* ops.

@@ -294,6 +294,27 @@ ForwardTypeInferenceFn ContainerMap(
   };
 }
 
+ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
+  return
+      [t, u, input_idx](const TypeRefVector& input_types,
+                        const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+        DCHECK_GE(input_types.size(), input_idx);
+        const FullTypeDef& in_t = input_types.at(input_idx).get();
+        FullTypeDef ret_type;
+        if (in_t.type_id() == TFT_UNSET) {
+          return ret_type;
+        }
+        if (in_t.type_id() != t) {
+          return Status(error::INVALID_ARGUMENT,
+                        absl::StrCat("expected type ", t, " for input ",
+                                     input_idx, ", got ", in_t.DebugString()));
+        }
+        ret_type.set_type_id(u);
+        *ret_type.mutable_args() = in_t.args();
+        return ret_type;
+      };
+}
+
 FullTypeDef BatchTensor(const FullTypeDef& t) {
   // For now, just return the input type.
   // If the input type has a shape in the future, this function needs to be

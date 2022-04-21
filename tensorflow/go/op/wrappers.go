@@ -1034,6 +1034,99 @@ func Any(scope *Scope, input tf.Output, axis tf.Output, optional ...AnyAttr) (ou
 	return op.Output(0)
 }
 
+// ApproxTopKAttr is an optional argument to ApproxTopK.
+type ApproxTopKAttr func(optionalAttr)
+
+// ApproxTopKReductionDimension sets the optional reduction_dimension attribute to value.
+//
+// value: Integer dimension along which to search. Default: -1.
+// If not specified, defaults to -1
+func ApproxTopKReductionDimension(value int64) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["reduction_dimension"] = value
+	}
+}
+
+// ApproxTopKRecallTarget sets the optional recall_target attribute to value.
+//
+// value: Recall target for the approximation. Range in (0,1]
+// If not specified, defaults to 0.95
+func ApproxTopKRecallTarget(value float32) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["recall_target"] = value
+	}
+}
+
+// ApproxTopKIsMaxK sets the optional is_max_k attribute to value.
+//
+// value: When true, computes max-k; otherwise computes min-k.
+// If not specified, defaults to true
+func ApproxTopKIsMaxK(value bool) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["is_max_k"] = value
+	}
+}
+
+// ApproxTopKReductionInputSizeOverride sets the optional reduction_input_size_override attribute to value.
+//
+// value: When set to a positive value, it overrides the size determined by
+// `input[reduction_dim]` for evaluating the recall. This option is useful when
+// the given `input` is only a subset of the overall computation in SPMD or
+// distributed pipelines, where the true input size cannot be deferred by the
+// `input` shape.
+// If not specified, defaults to -1
+func ApproxTopKReductionInputSizeOverride(value int64) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["reduction_input_size_override"] = value
+	}
+}
+
+// ApproxTopKAggregateToTopk sets the optional aggregate_to_topk attribute to value.
+//
+// value: When true, aggregates approximate results to top-k. When false, returns the
+// approximate results. The number of the approximate results is implementation
+// defined and is greater equals to the specified `k`.
+// If not specified, defaults to true
+func ApproxTopKAggregateToTopk(value bool) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["aggregate_to_topk"] = value
+	}
+}
+
+// Returns min/max k values and their indices of the input operand in an approximate manner.
+//
+// Returns min/max k values and their indices of the input operand in an approximate manner.
+//
+// Arguments:
+//	input: Array to search. Must be at least 1-D of the floating type
+//	k: Specifies the number of min/max-k.
+//
+// Returns:
+//	values: The min/max k values along the `reduction_dimension` of the `input` operand.
+// The dimension are the same as the `input` operand except for the
+// `reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+// dimension is `k`; otherwise, it is greater equals to `k` where the size is
+// implementation-defined.
+//	indices: The indices of `values` along the `reduction_dimension` of the `input` operand.
+func ApproxTopK(scope *Scope, input tf.Output, k int64, optional ...ApproxTopKAttr) (values tf.Output, indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"k": k}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ApproxTopK",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // ApproximateEqualAttr is an optional argument to ApproximateEqual.
 type ApproximateEqualAttr func(optionalAttr)
 

@@ -46,7 +46,7 @@ profiler = _xla.profiler
 _version = 63
 
 # Version number for MLIR:Python components.
-mlir_api_version = 6
+mlir_api_version = 8
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -660,6 +660,8 @@ def heap_profile(client: Client) -> bytes:
   """Returns a gzipped pprof protocol buffer containing a heap profile."""
   return gzip.compress(client.heap_profile())
 
+
+XlaRuntimeError = _xla.XlaRuntimeError
 
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.

@@ -26,7 +26,7 @@ Pod::Spec.new do |s|
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
-    'VALID_ARCHS' => 'x86_64 armv7 arm64',
+    'VALID_ARCHS' => 'x86_64 arm64',
   }
 
   s.default_subspec = 'Core'
@@ -37,6 +37,7 @@ Pod::Spec.new do |s|
       objc_dir + '{apis,sources}/*.{h,m,mm}',
       tfl_dir + 'builtin_ops.h',
       tfl_dir + 'c/c_api.h',
+      tfl_dir + 'c/c_api_experimental.h',
       tfl_dir + 'c/c_api_types.h',
       tfl_dir + 'c/common.h',
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
@@ -52,6 +53,7 @@ Pod::Spec.new do |s|
       ts.resources = [
         tfl_dir + 'testdata/add.bin',
         tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_signatures.bin',
       ]
     end
   end

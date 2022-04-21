@@ -76,9 +76,9 @@ def _unused_handle():
       "It seems that you are trying to save a "
       "tf.types.experimental.ConcreteFunction that involves a distributed "
       "model, and the model contains parts that are loaded form a SavedModel. "
-      "It's supported to save such tf.types.experimental.ConcreteFunction. Try"
-      " save a tf.function with input_signature instead, and file a bug there "
-      "are still issues.")
+      "It's not supported to save such tf.types.experimental.ConcreteFunction. "
+      "Try saving a tf.function with input_signature instead, and file a bug if"
+      " there are still issues.")
 
   assert_op = control_flow_ops.Assert(
       array_ops.placeholder_with_default(False, shape=()), [error_message])

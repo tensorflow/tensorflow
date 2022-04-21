@@ -474,7 +474,7 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createMergeAssumingOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass() {
   return std::make_unique<MergeAssumingOpsPass>();
 }
 

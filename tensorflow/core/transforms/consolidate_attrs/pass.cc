@@ -50,7 +50,11 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
   Type element_type = orig.cast<ShapedType>().getElementType();
   TensorType inferred;
   if (shape.hasRank()) {
-    inferred = RankedTensorType::get(shape.getShape(), element_type);
+    // Replace dimensions less than -1 with ?
+    SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
+    for (int64_t &dim : dims)
+      if (dim < -1) dim = -1;
+    inferred = RankedTensorType::get(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }

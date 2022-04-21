@@ -467,7 +467,7 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
-      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
+      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
 
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
@@ -3072,9 +3072,9 @@ LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
 
   auto cond_fn =
-      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
+      symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
   auto body_fn =
-      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
+      symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
   if (!cond_fn) {
     return emitOpError("cond refers to an undefined function : ") << cond();
   }

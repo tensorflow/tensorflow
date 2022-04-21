@@ -59,6 +59,12 @@ LogicalResult VerifyReduceScatter(Operation *op, TypeRange operand_types,
   // If operand and result are both ranked, then the size of the scatter
   // dimension in the operand should be a multiple of the size of the scatter
   // dimension in the result.
+
+  // TODO(zhouxin) Change the ODS definition to return int64_t.
+  if (static_cast<int64_t>(scatter_dimension) < 0) {
+    return op->emitOpError("expects scatter_dimension >= 0");
+  }
+
   for (auto it : llvm::zip(operand_types, result_types)) {
     auto operand_type = std::get<0>(it).cast<ShapedType>();
     auto result_type = std::get<1>(it).cast<ShapedType>();

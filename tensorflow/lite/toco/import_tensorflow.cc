@@ -357,17 +357,18 @@ tensorflow::Status ImportTensorData(const TensorProto& input_tensor,
   } else if (input_tensor.tensor_content().size() ==
              input_flat_size * sizeof(T)) {
     TensorTraits<T>::CopyFromContent(input_tensor, output_data);
-  } else if (num_elements_in_tensor > 0 &&
+  } else if (num_elements_in_tensor >= 0 &&
              num_elements_in_tensor < input_flat_size) {
     // TODO(b/80208043): use tensorflow::Tensor::FromProto() which is the
     // official way to import tensor data. This particular else-if handles a
     // grappler optimization where the last few elements in a tensor are
-    // omitted if they are repeated.
+    // omitted if they are repeated, and where all elements are omitted if they
+    // are zero.
     int i = 0;
     for (; i < num_elements_in_tensor; ++i) {
       (*output_data)[i] = TensorTraits<T>::get(input_tensor, i);
     }
-    auto last = (*output_data)[i - 1];
+    auto last = i == 0 ? T(0) : (*output_data)[i - 1];
     for (; i < input_flat_size; ++i) {
       (*output_data)[i] = last;
     }

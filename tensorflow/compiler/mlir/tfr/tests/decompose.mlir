@@ -263,14 +263,14 @@ func.func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
   %rescaled = "tfr.quant_rescale"(%input, %scale_factor, %zp) : (!tfr.tensor, !tfr.tensor, i64) -> !tfr.tensor
   func.return %rescaled : !tfr.tensor
 
+// CHECK-DAG: %[[f32:.*]] = tfr.constant f32 -> !tfr.attr
+// CHECK-DAG: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr
 // CHECK-DAG: %[[scale_cst:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 // CHECK-DAG: %false = arith.constant false
 // CHECK-DAG: %[[zp_cst:.*]] = "tf.Const"() {value = dense<67> : tensor<i64>} : () -> tensor<i64>
 // CHECK: %[[zp:.*]] = "tfr.cast"(%[[zp_cst]]) : (tensor<i64>) -> !tfr.tensor
 // CHECK: %[[scale:.*]] = "tfr.cast"(%[[scale_cst]]) : (tensor<f32>) -> !tfr.tensor
 // CHECK: %[[input:.*]] = "tfr.cast"(%arg0) : (tensor<2xi32>) -> !tfr.tensor
-// CHECK-DAG: %[[f32:.*]] = tfr.constant f32 -> !tfr.attr
-// CHECK-DAG: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr
 // CHECK: %[[cast:.*]] = tfr.call @tf__cast(%[[input]], %[[f32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
 // CHECK: %[[rescaled:.*]] = tfr.call @tf__mul(%[[cast]], %[[scale]]) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor
 // CHECK: %[[rounded:.*]] = tfr.call @tf__round(%[[rescaled]]) : (!tfr.tensor) -> !tfr.tensor

@@ -277,9 +277,10 @@ Status MetaOptimizer::InitializeOptimizers(
 
   // #TODO(b/200087693): LLVM does not build on Fuchsia.
 #ifndef __Fuchsia__
-  // Hooks the MLIR optimizer, it won't run any optimizations right now.
+  // Hooks the MLIR optimizer, it won't run any optimizations right now. This
+  // optimizer instance runs on functions one at a time; don't use any threads.
   optimizers->push_back(MakeUnique<mlir::tfg::TFGGrapplerOptimizer>(
-      mlir::tfg::DefaultGrapplerPipeline));
+      mlir::tfg::DefaultGrapplerPipeline, /*num_tfg_threads=*/0));
 #endif
 
 // A set of macro utilities which check if the toggle of an optimization.

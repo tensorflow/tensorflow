@@ -817,7 +817,8 @@ class SymbolicShapeOptimizationPass final
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createSymbolicShapeOptimizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass() {
   return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 

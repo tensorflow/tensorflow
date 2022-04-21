@@ -31,7 +31,8 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
 
 // Test that the index when used as a result has a name.
 // CHECK: tfg.func @[[BODY_FUNC0]]
-// CHECK: -> (tensor<i32> {tfg.name = "[[IDX]]_tfg_result_0", tfg.regenerate_output_shapes})
+// CHECK-SAME: tensor<i32> {tfg.name = "[[IDX]]_tfg_result_0"
+// CHECK: -> (tensor<i32> {tfg.name = "[[IDX]]_tfg_result_0_1", tfg.regenerate_output_shapes})
 
 // CHECK: tfg.func @[[BODY_FUNC]](%[[ARG0:.*]]: tensor<i32> {tfg.name = "[[IDX]]_tfg_result_0", tfg.regenerate_output_shapes},
 // CHECK:                         %[[DATA_NAME]]_tfg_result_0: tensor<{{.*}}> {tfg.name = "[[DATA_NAME]]_tfg_result_0", tfg.regenerate_output_shapes})

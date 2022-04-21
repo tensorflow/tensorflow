@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -556,8 +557,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
-  TF_RET_CHECK(module.has_host_program_shape())
-      << "No program shape found in the proto";
+  if (!module.has_host_program_shape()) {
+    return tensorflow::errors::FailedPrecondition(
+        "No program shape found in the proto");
+  }
   ProgramShape program_shape(module.host_program_shape());
   return CreateModuleConfigFromShape(program_shape, debug_options,
                                      execution_options);

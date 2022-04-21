@@ -15,8 +15,13 @@ limitations under the License.
 
 #if !TFLITE_DISABLE_SELECT_JAVA_APIS
 #include <dlfcn.h>
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 #endif
 
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <memory>
 
@@ -34,6 +39,37 @@ limitations under the License.
 
 namespace tflite {
 namespace jni {
+
+namespace {
+
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+
+// Indicates if it is safe to call dlsym to check if a symbol is present
+bool IsDlsymSafeForSymbolCheck() {
+#ifdef __ANDROID__
+  // On Android 4.4 (API 19) and earlier it is not safe to call dlsym to check
+  // if a symbol if present, as dlsym will crash if the symbol isn't present.
+  // The underlying bug is already fixed in the platform long ago
+  // <https://android-review.googlesource.com/c/platform/bionic/+/69033>
+  // but as Android 4.4 systems still exist in the wild, we check API version
+  // as a work-around.
+
+  char sdk_version_str[PROP_VALUE_MAX + 1];
+  std::memset(sdk_version_str, 0, sizeof(sdk_version_str));
+  if (!__system_property_get("ro.build.version.sdk", sdk_version_str)) {
+    return false;
+  }
+
+  char* sdk_version_end = sdk_version_str;
+  const auto sdk_version = strtol(sdk_version_str, &sdk_version_end, 10);
+  return sdk_version_end != sdk_version_str && sdk_version > 19;
+#else
+  return true;
+#endif
+}
+#endif
+
+}  // namespace
 
 const TfLiteRegistration* OpResolverLazyDelegateProxy::FindOp(
     tflite::BuiltinOperator op, int version) const {
@@ -98,23 +134,26 @@ OpResolverLazyDelegateProxy::createXNNPackDelegate(int num_threads) {
 #else
   // We use dynamic loading to avoid taking a hard dependency on XNNPack.
   // This allows clients that use trimmed builds to save on binary size.
-  auto xnnpack_options_default =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
-  auto xnnpack_create =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
-  auto xnnpack_delete =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
 
-  if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
-    TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
-    if (num_threads > 0) {
-      options.num_threads = num_threads;
+  if (IsDlsymSafeForSymbolCheck()) {
+    auto xnnpack_options_default =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
+    auto xnnpack_create =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
+    auto xnnpack_delete =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
+
+    if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
+      TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
+      if (num_threads > 0) {
+        options.num_threads = num_threads;
+      }
+      delegate = xnnpack_create(&options);
+      delegate_deleter = xnnpack_delete;
     }
-    delegate = xnnpack_create(&options);
-    delegate_deleter = xnnpack_delete;
   }
 #endif
   return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(

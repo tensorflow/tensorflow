@@ -347,13 +347,31 @@ def unpack(tensor: Any) -> Sequence[Any]:
 
 @tf_export("experimental.dtensor.fetch_layout", v1=[])
 def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
-  """Returns the layout of a DTensor."""
+  """Fetches the layout of a DTensor.
+
+  Args:
+    tensor: The DTensor whose layout is to be fetched.
+
+  Returns:
+    The `Layout` of this DTensor.
+
+  Raises:
+    RuntimeError: When not called eagerly.
+  """
   return _dtensor_device().fetch_layout(tensor)
 
 
 @tf_export("experimental.dtensor.check_layout", v1=[])
 def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
-  """Asserts that the layout of `tensor` is `layout`."""
+  """Asserts that the layout of the DTensor is `layout`.
+
+  Args:
+    tensor: A DTensor whose layout is to be checked.
+    layout: The `Layout` to compare against.
+
+  Raises:
+    ValueError: If the layout of `tensor` does not match the supplied `layout`.
+  """
   if fetch_layout(tensor) != layout:
     raise ValueError("Layout of tensor: " + str(fetch_layout(tensor)) +
                      ", did not match expected layout: " + str(layout))

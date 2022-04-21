@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
@@ -80,6 +79,10 @@ bool IsOptimizedBuild() {
 
 PYBIND11_MODULE(xla_extension, m) {
   CHECK(tensorflow::RegisterNumpyBfloat16());
+
+  // Exceptions
+  py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
+                                          PyExc_RuntimeError);
 
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
@@ -164,10 +167,6 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  // TODO(tomhennigan): Can we remove this type definition?
-  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>> cpu(
-      m, "CpuDevice");
-
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def_property_readonly("device_vendor", &GpuDevice::device_vendor);
 
@@ -230,6 +229,9 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("device") = nullptr, py::arg("force_copy") = false,
            py::arg("host_buffer_semantics") =
                PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def("make_cross_host_receive_buffers",
+           &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
+           py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("compile", &PyClient::CompileMlir, py::arg("computation"),

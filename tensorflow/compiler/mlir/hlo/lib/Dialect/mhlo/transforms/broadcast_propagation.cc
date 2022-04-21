@@ -446,7 +446,7 @@ struct BroadcastPropagationPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createBroadcastPropagationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass() {
   return std::make_unique<BroadcastPropagationPass>();
 }
 

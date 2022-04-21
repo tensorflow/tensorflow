@@ -20,8 +20,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -1605,7 +1609,8 @@ SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
   return dyn_shape;
 }
 
-class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
+class DotGeneralBatchMatMulOpConversion
+    : public OpConversionPattern<mhlo::DotGeneralOp> {
  public:
   using OpConversionPattern<mhlo::DotGeneralOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -2879,6 +2884,127 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
   }
 };
 
+class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
+ public:
+  using OpConversionPattern<mhlo::DotGeneralOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::DotGeneralOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!VerifyHloOpBufferOrTensorSemantics(op)) {
+      return failure();
+    }
+
+    // Get various dimension iterator information
+    mhlo::DotDimensionNumbersAttr dim_numbers = op.dot_dimension_numbers();
+    auto lhs_batching_dims = dim_numbers.getLhsBatchingDimensions();
+    auto rhs_batching_dims = dim_numbers.getRhsBatchingDimensions();
+    auto lhs_contracting_dims = dim_numbers.getLhsContractingDimensions();
+    auto rhs_contracting_dims = dim_numbers.getRhsContractingDimensions();
+
+    // Get shape information and initialize output
+    assert(lhs_contracting_dims.size() == rhs_contracting_dims.size() &&
+           "number of contracting dims must be equal");
+    auto num_contracting = lhs_contracting_dims.size();
+    auto output_type = op.getType().cast<ShapedType>();
+    auto target_rank = output_type.getRank();
+    auto total_loop_count = num_contracting + target_rank;
+
+    auto lhs_rank = adaptor.lhs().getType().cast<ShapedType>().getRank();
+    auto lhs_extra_dims =
+        lhs_rank - lhs_batching_dims.size() - lhs_contracting_dims.size();
+    auto rhs_rank = adaptor.rhs().getType().cast<ShapedType>().getRank();
+
+    Location loc = op.getLoc();
+    auto output_el_type = output_type.getElementType();
+    SmallVector<Value, 8> dyn_shape = GetDotGeneralOpInitTensorDynSizes(
+        rewriter, loc, adaptor.lhs(), adaptor.rhs(), output_type);
+    auto zero_attr = rewriter.getZeroAttr(output_el_type);
+    Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
+    auto init_tensor = GetInitTensor(rewriter, loc, output_type, dyn_shape);
+    Value zero_tensor =
+        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+    SmallVector<AffineMap, 3> indexing_maps;
+
+    // Get LHS map
+    {
+      llvm::SmallVector<AffineExpr> lhs_indices(
+          lhs_rank, rewriter.getAffineConstantExpr(0));
+      llvm::BitVector assigned_dims(lhs_rank, false);
+      for (const auto& i : llvm::enumerate(lhs_batching_dims)) {
+        lhs_indices[i.value()] = rewriter.getAffineDimExpr(i.index());
+        assigned_dims.set(i.value());
+      }
+      for (const auto& i : llvm::enumerate(lhs_contracting_dims)) {
+        assigned_dims.set(i.value());
+        lhs_indices[i.value()] =
+            rewriter.getAffineDimExpr(i.index() + target_rank);
+      }
+      for (int i = 0; i < lhs_rank; ++i) {
+        if (!assigned_dims[i]) {
+          lhs_indices[i] =
+              rewriter.getAffineDimExpr(i + lhs_batching_dims.size());
+        }
+      }
+      indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
+                                             /*symbolCount=*/0, lhs_indices,
+                                             op->getContext()));
+    }
+
+    // Get RHS map
+    {
+      llvm::SmallVector<AffineExpr> rhs_indices(
+          rhs_rank, rewriter.getAffineConstantExpr(0));
+      llvm::BitVector assigned_dims(rhs_rank, false);
+      for (const auto& i : llvm::enumerate(rhs_batching_dims)) {
+        rhs_indices[i.value()] = rewriter.getAffineDimExpr(i.index());
+        assigned_dims.set(i.value());
+      }
+      for (const auto& i : llvm::enumerate(rhs_contracting_dims)) {
+        assigned_dims.set(i.value());
+        rhs_indices[i.value()] =
+            rewriter.getAffineDimExpr(i.index() + target_rank);
+      }
+      for (int i = 0; i < rhs_rank; ++i) {
+        if (!assigned_dims[i]) {
+          rhs_indices[i] = rewriter.getAffineDimExpr(
+              i + rhs_batching_dims.size() + lhs_extra_dims);
+        }
+      }
+      indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
+                                             /*symbolCount=*/0, rhs_indices,
+                                             op->getContext()));
+    }
+
+    {
+      SmallVector<AffineExpr, 4> dim_exprs;
+      dim_exprs.reserve(target_rank);
+      for (unsigned i = 0; i < target_rank; ++i)
+        dim_exprs.push_back(rewriter.getAffineDimExpr(i));
+      indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
+                                             /*symbolCount=*/0, dim_exprs,
+                                             op.getContext()));
+    }
+
+    Operation* linalg_op = rewriter.create<linalg::GenericOp>(
+        loc, /*resultTensorTypes=*/TypeRange{op.getType()},
+        /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
+        /*outputBuffers=*/ValueRange{zero_tensor}, indexing_maps,
+        GetParallelAndReductionIterators(
+            /*nLoops=*/total_loop_count,
+            /*nReduction=*/num_contracting),
+        [&](OpBuilder& b, Location loc, ValueRange args) {
+          mlir::ArithBuilder ab(b, loc);
+          mlir::Value mul = ab.mul(args[0], args[1]);
+          mlir::Value add = ab.add(mul, args[2]);
+          b.create<mlir::linalg::YieldOp>(loc, add);
+        },
+        PruneAttributeList(op));
+
+    rewriter.replaceOp(op, linalg_op->getResults());
+    return success();
+  }
+};
+
 struct HloLegalizeToLinalgPass
     : public mhlo::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -2973,11 +3099,6 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp>,
-      DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
-      DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
-      DotOpConversion<DotOperationType::kVectorMatrix, linalg::VecmatOp>,
-      DotOpConversion<DotOperationType::kVectorDot, linalg::DotOp>,
-      DotGeneralOpConversion,
       NormalConvOpConversion,
       DepthwiseConvOpConversion,
       ReduceConversion,
@@ -2988,7 +3109,16 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       GatherConversion,
       TorchIndexSelectOpConversion,
       PadOpConversion>(type_converter, context);
+    patterns->add<
+      DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
+      DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
+      DotOpConversion<DotOperationType::kVectorMatrix, linalg::VecmatOp>,
+      DotOpConversion<DotOperationType::kVectorDot, linalg::DotOp>,
+      DotGeneralBatchMatMulOpConversion>(type_converter, context,
+                                         PatternBenefit(2));
   // clang-format on
+  patterns->add<DotGeneralOpConversion>(type_converter, context,
+                                        PatternBenefit(1));
   patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                 ReduceRegionXLAOpConversion<mhlo::AndOp>,
                 ReduceRegionXLAOpConversion<mhlo::CompareOp>,
@@ -3000,7 +3130,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                 ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass() {
   return std::make_unique<HloLegalizeToLinalgPass>();
 }
 

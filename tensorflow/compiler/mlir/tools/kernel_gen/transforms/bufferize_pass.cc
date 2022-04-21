@@ -339,7 +339,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
         lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
         vector::VectorDialect>();
-    target.addLegalOp<FuncOp, ModuleOp>();
+    target.addLegalOp<func::FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
@@ -373,7 +373,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTiledLoopBufferizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass() {
   return std::make_unique<TiledLoopBufferizePass>();
 }
 

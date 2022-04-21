@@ -40,7 +40,7 @@ struct ConvertToLegacyCompileAndReplicateAttributesPass
   void runOnOperation() override;
 };
 
-LogicalResult ConvertToLegacyAttributes(FuncOp func_op) {
+LogicalResult ConvertToLegacyAttributes(func::FuncOp func_op) {
   auto result = func_op->walk([&](mlir::Operation* op) {
     if (failed(TF::HasValidCompilationAndReplicationAttributes(*op)))
       return WalkResult::interrupt();
@@ -55,13 +55,13 @@ LogicalResult ConvertToLegacyAttributes(FuncOp func_op) {
 }
 
 void ConvertToLegacyCompileAndReplicateAttributesPass::runOnOperation() {
-  FuncOp func_op = getOperation();
+  func::FuncOp func_op = getOperation();
   if (failed(ConvertToLegacyAttributes(func_op))) return signalPassFailure();
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertToLegacyCompileAndReplicateAttributesPass() {
   return std::make_unique<ConvertToLegacyCompileAndReplicateAttributesPass>();
 }

@@ -728,11 +728,11 @@ FailureOr<Value> LegacyConvolutionRewritePattern(
 
 template <class ConvolutionOpType>
 struct ConvolutionRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<ConvolutionOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<
+    : tfrt::gpu::StreamifyOpConversionPattern<ConvolutionOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<
       ConvolutionOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      ConvolutionOpType>::GpuAsyncOpConversionPattern;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      ConvolutionOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       ConvolutionOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
