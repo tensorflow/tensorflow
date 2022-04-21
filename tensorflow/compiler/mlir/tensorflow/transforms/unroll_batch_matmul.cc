@@ -283,7 +283,7 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   return success();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();
 }
 

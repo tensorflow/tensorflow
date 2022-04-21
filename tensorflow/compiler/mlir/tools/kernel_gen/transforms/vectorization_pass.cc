@@ -255,7 +255,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 // is determined by confirming all consumers of all aliases are only creating an
 // alias or writing data to an alias but never reading from or interacting with
 // the memref in other ways.
-void RemoveDeadMemrefCode(FuncOp func) {
+void RemoveDeadMemrefCode(func::FuncOp func) {
   BufferViewFlowAnalysis baa(func);
   llvm::SmallSet<Operation *, 8> to_remove;
 
@@ -335,7 +335,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                 .enableContractionLowering());
 
     // Created a nested OpPassManager, populate the strategy and run.
-    OpPassManager dynamicPM("builtin.func");
+    OpPassManager dynamicPM("func.func");
     strategy.configurePassPipeline(dynamicPM, f.getContext());
     if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 
@@ -350,7 +350,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass() {
   return std::make_unique<VectorizationPass>();
 }
 
@@ -368,7 +368,7 @@ struct VectorizationCleanupPass
   }
 };
 
-std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationCleanupPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass() {
   return std::make_unique<VectorizationCleanupPass>();
 }
 

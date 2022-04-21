@@ -3914,14 +3914,23 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
 
 void MemorySpaceAssignment::RemoveAssignmentForInstruction(
     const HloInstruction* instruction) {
-  for (auto& position_and_chunk : alternate_memory_assignments_) {
-    const HloPosition& position = position_and_chunk.first;
+  auto it = alternate_memory_assignments_.begin();
+  auto end = alternate_memory_assignments_.end();
+  while (it != end) {
+    const HloPosition& position = it->first;
     if (position.instruction == instruction) {
       VLOG(3) << "Removing instruction from alternate memory assignments.";
-      // Swap the removed position and chunk with the back and pop back.
-      position_and_chunk = alternate_memory_assignments_.back();
-      alternate_memory_assignments_.pop_back();
-      break;
+      if (std::next(it) == end) {
+        alternate_memory_assignments_.pop_back();
+        break;
+      } else {
+        // Swap the removed position and chunk with the back and pop back.
+        *it = alternate_memory_assignments_.back();
+        alternate_memory_assignments_.pop_back();
+        end = alternate_memory_assignments_.end();
+      }
+    } else {
+      ++it;
     }
   }
 }

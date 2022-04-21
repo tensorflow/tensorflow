@@ -535,6 +535,13 @@ cc_library(
 )
 
 cc_library(
+    name = "framework_types_hdr",
+    hdrs = ["//tensorflow/core/framework:types.h"],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "framework_lite",
     hdrs = [
         "//tensorflow/core/framework:numeric_types.h",
@@ -697,6 +704,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_swish_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_mish_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
@@ -1586,6 +1594,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
+        "//tensorflow/core/framework:ref_var.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
         "//tensorflow/core/framework:run_handler.h",
@@ -1897,6 +1906,28 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_tests(
+    name = "cell_reader_test",
+    size = "small",
+    srcs = [
+        "//tensorflow/core/lib/monitoring:cell_reader_test.cc",
+        "//tensorflow/core/lib/monitoring:test_utils_test.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:sampler",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

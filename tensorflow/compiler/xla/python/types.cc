@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
@@ -323,7 +324,7 @@ absl::optional<CastToArrayResult> CastToArray(py::handle h) {
   }
   auto type_or_status = DtypeToPrimitiveType(array.dtype());
   if (!type_or_status.ok()) {
-    throw std::runtime_error(type_or_status.status().ToString());
+    throw xla::XlaRuntimeError(type_or_status.status());
   }
   PrimitiveType type = type_or_status.ValueOrDie();
 
@@ -333,7 +334,7 @@ absl::optional<CastToArrayResult> CastToArray(py::handle h) {
   }
   Shape shape = ShapeUtil::MakeShape(type, dims);
   if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
-    throw std::runtime_error(absl::StrCat(
+    throw xla::XlaRuntimeError(absl::StrCat(
         "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",
         ShapeUtil::ByteSizeOf(shape)));
   }

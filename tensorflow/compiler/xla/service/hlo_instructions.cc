@@ -248,6 +248,40 @@ HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
   return async_wrapped_instruction()->opcode();
 }
 
+std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (options.syntax_sugar_async_ops()) {
+    return async_wrapped_instruction()->ExtraAttributesToString(options);
+  }
+  return {};
+}
+
+bool HloAsyncInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  return opcode() == other.opcode() &&
+         eq_computations(async_wrapped_computation(),
+                         other.async_wrapped_computation());
+}
+
+std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  HloModule* module = context != nullptr ? context->module() : GetModule();
+  HloComputation* new_wrapped_computation = nullptr;
+  if (context != nullptr) {
+    new_wrapped_computation =
+        context->FindComputation(async_wrapped_computation());
+  }
+  if (new_wrapped_computation == nullptr) {
+    new_wrapped_computation = module->AddEmbeddedComputation(
+        async_wrapped_computation()->Clone("clone", context));
+  }
+  return absl::make_unique<HloAsyncInstruction>(opcode(), shape, new_operands,
+                                                new_wrapped_computation);
+}
+
 HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
                                                  HloInstruction* operand,
                                                  bool is_cross_program_prefetch)
@@ -293,9 +327,9 @@ HloCompareInstruction::HloCompareInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     ComparisonDirection direction, absl::optional<Comparison::Type> type)
     : HloInstruction(HloOpcode::kCompare, shape),
-      compare_(direction, type ? (*type)
-                               : Comparison::DefaultComparisonType(
-                                     lhs->shape().element_type())) {
+      compare_(type.has_value()
+                   ? Comparison(direction, *type)
+                   : Comparison(direction, lhs->shape().element_type())) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }
@@ -1376,6 +1410,9 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  if (!literal_.has_value()) {
+    return absl::make_unique<HloConstantInstruction>(this->shape());
+  }
   CHECK(literal_.has_value());
   // Literal's shape may have no/different tiling info. Use this instruction's
   // shape instead.
@@ -1415,33 +1452,6 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     // Do not show large constants or tuples.
     return "{...}";
   }
-}
-
-HloTraceInstruction::HloTraceInstruction(const std::string& tag,
-                                         HloInstruction* operand)
-    : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
-      literal_(LiteralUtil::CreateR1U8(tag)) {
-  AppendOperand(operand);
-  operand->set_tracing(this);
-}
-
-HloInstructionProto HloTraceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_.ToProto();
-  return proto;
-}
-
-bool HloTraceInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  return false;
-}
-
-std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    HloCloneContext* context) const {
-  LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
 }
 
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
@@ -2723,12 +2733,14 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   if (custom_call_schedule_ != casted_other.custom_call_schedule()) {
     return false;
   }
-  if (HasLiteral() == casted_other.HasLiteral()) {
-    if (HasLiteral() && literal() == casted_other.literal()) {
-      return false;
-    }
-  } else {
-    return true;
+  if (HasLiteral() != casted_other.HasLiteral()) {
+    return false;
+  }
+  if (HasLiteral() && literal() != casted_other.literal()) {
+    return false;
+  }
+  if (api_version_ != casted_other.api_version_) {
+    return false;
   }
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.

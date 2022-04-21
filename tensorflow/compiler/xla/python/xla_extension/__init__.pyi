@@ -37,6 +37,9 @@ _XlaOpMetadata = Any
 
 _T = TypeVar("_T")
 
+class XlaRuntimeError(RuntimeError):
+  pass
+
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
@@ -155,7 +158,6 @@ class HloPrintOptions:
   canonicalize_computations: bool
   indent_amount: int
   is_in_nested_computation: bool
-  leading_and_trailing_instructions_number: int
 
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
@@ -225,6 +227,15 @@ class DebugOptions:
   xla_llvm_disable_expensive_passes: bool
   xla_test_all_input_layouts: bool
 
+class CompiledMemoryStats:
+  generated_code_size_in_bytes: int
+  argument_size_in_bytes: int
+  output_size_in_bytes: int
+  alias_size_in_bytes: int
+  temp_size_in_bytes: int
+  def __str__(self) -> str: ...
+
+
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...
@@ -235,6 +246,8 @@ class ExecutableBuildOptions:
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
   use_auto_spmd_partitioning: bool
+  auto_spmd_partitioning_mesh_shape: List[int]
+  auto_spmd_partitioning_mesh_ids: List[int]
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
@@ -284,22 +297,18 @@ class Device:
   platform: str
   device_kind: str
   client: Client
+  def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
 
-class CpuDevice(Device):
-  def __repr__(self) -> str: ...
-
 class GpuDevice(Device):
   device_vendor: str
-  def __repr__(self) -> str: ...
 
 class TpuDevice(Device):
   coords: Tuple[int, ...]
   core_on_chip: int
-  def __repr__(self) -> str: ...
 
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int
@@ -352,6 +361,10 @@ class Client:
       device: Device = ...,
       force_copy: bool = ...,
       host_buffer_semantics: HostBufferSemantics = ...) -> Buffer: ...
+  def make_cross_host_receive_buffers(
+      self,
+      shapes: Sequence[Shape],
+      device: Device) -> List[Tuple[Buffer, bytes]]: ...
   def compile(
       self,
       computation: XlaComputation,
@@ -399,8 +412,12 @@ class DeviceArray(DeviceArrayBase):
   ndim: int
   _value: np.ndarray
   def copy_to_device(self, dst_device: Device) -> DeviceArray: ...
+  def copy_to_remote_device(self,
+                            descriptor: bytes) -> Tuple[_Status, bool]: ...
   def on_device_size_in_bytes(self) -> int: ...
   def delete(self) -> None: ...
+  def is_ready(self) -> bool: ...
+  def is_known_ready(self) -> bool: ...
   def block_until_ready(self) -> DeviceArray: ...
   def copy_to_host_async(self) -> _Status: ...
   def to_py(self) -> np.ndarray: ...

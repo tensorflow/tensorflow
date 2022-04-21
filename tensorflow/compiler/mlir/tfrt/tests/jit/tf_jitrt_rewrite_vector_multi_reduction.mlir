@@ -16,24 +16,24 @@
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @vector_row
-func @vector_row(%arg0: vector<2x4xf32>) -> vector<2xf32> {
+func.func @vector_row(%arg0: vector<2x4xf32>) -> vector<2xf32> {
     %0 = vector.multi_reduction <mul>, %arg0 [1] : vector<2x4xf32> to vector<2xf32>
-    return %0 : vector<2xf32>
+    func.return %0 : vector<2xf32>
 }
 // CHECK: arith.mulf
 // CHECK: arith.mulf
 // CHECK: arith.mulf
 
 // CHECK-LABEL: func @vector_col
-func @vector_col(%arg0: vector<2x4xf32>) -> vector<4xf32> {
+func.func @vector_col(%arg0: vector<2x4xf32>) -> vector<4xf32> {
     %0 = vector.multi_reduction <mul>, %arg0 [0] : vector<2x4xf32> to vector<4xf32>
-    return %0 : vector<4xf32>
+    func.return %0 : vector<4xf32>
 }
 // CHECK: arith.mulf
 
 // CHECK-LABEL: func @vector_1d
-func @vector_1d(%arg0: vector<4xf32>) -> f32 {
+func.func @vector_1d(%arg0: vector<4xf32>) -> f32 {
     %0 = vector.multi_reduction <mul>, %arg0 [0] : vector<4xf32> to f32
-    return %0 : f32
+    func.return %0 : f32
 }
 // CHECK: vector.reduction <mul>

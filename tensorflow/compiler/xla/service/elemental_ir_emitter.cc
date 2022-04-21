@@ -520,6 +520,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round,
                                           {operand_value},
                                           {operand_value->getType()}, b_);
+    case HloOpcode::kRoundNearestEven:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::roundeven,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
@@ -2434,6 +2438,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kConvert:

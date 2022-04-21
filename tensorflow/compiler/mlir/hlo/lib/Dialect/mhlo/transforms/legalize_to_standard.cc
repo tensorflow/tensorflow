@@ -218,7 +218,8 @@ struct LegalizeToStandardPass
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandardPass>();
 }
 

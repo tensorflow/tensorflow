@@ -549,7 +549,7 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
 static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
                                   std::string* constant_name) {
   auto func_op =
-      mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
+      mlir::cast<mlir::func::FuncOp>(func_arg.getParentRegion()->getParentOp());
   if (constant_name) {
     if (auto constant_name_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
             func_arg.getArgNumber(), "lmhlo.constant_name")) {

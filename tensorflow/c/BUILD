@@ -279,6 +279,7 @@ tf_cuda_library(
         # "//tensorflow/cc/experimental/tf2:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
+        "//tensorflow/core/transforms:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -950,6 +951,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/core:protos_all_cc",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
         "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],

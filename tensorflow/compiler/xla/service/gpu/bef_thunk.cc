@@ -22,6 +22,7 @@ limitations under the License.
 #if XLA_ENABLE_XLIR
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -116,7 +117,8 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateModule(mlir::Operation* op) {
   builder.setInsertionPointToEnd(module->getBody());
   auto func_type = builder.getType<mlir::FunctionType>(op->getOperandTypes(),
                                                        op->getResultTypes());
-  auto func = builder.create<mlir::FuncOp>(op->getLoc(), kFuncName, func_type);
+  auto func =
+      builder.create<mlir::func::FuncOp>(op->getLoc(), kFuncName, func_type);
   func.setPublic();
 
   builder.setInsertionPointToEnd(func.addEntryBlock());
@@ -212,15 +214,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
 
 static MlirAndTfrtHostCtx GetMlirAndTfrtHostCtx() {
   static auto* mlir_ctx = new mlir::MLIRContext;
-  static auto* host_ctx = [&] {
-    auto* result = new tfrt::HostContext(
-        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
-        // TODO(hanbinyoon): Make these configurable.
-        tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
-                                           /*num_blocking_threads=*/16));
-    tfrt::RegisterStaticKernels(result->GetMutableRegistry());
-    return result;
-  }();
+  static auto* host_ctx =
+      tfrt::gpu::CreateHostContext(tfrt::gpu::GetDiagHandler(mlir_ctx))
+          .release();
   return {mlir_ctx, host_ctx};
 }
 
@@ -244,11 +240,11 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
 
   // Add a function that loads the module and main function.
   builder.setInsertionPointToEnd(tfrt_module->getBody());
-  mlir::FuncOp module_func = builder.create<mlir::FuncOp>(
+  mlir::func::FuncOp module_func = builder.create<mlir::func::FuncOp>(
       loc, "module_load",
       builder.getFunctionType(builder.getType<tfrt::gpu::ContextType>(),
                               module_type));
-  mlir::FuncOp main_func = builder.create<mlir::FuncOp>(
+  mlir::func::FuncOp main_func = builder.create<mlir::func::FuncOp>(
       loc, kFuncName, builder.getFunctionType(input_types, chain_type));
   main_func.setPublic();
 
@@ -323,7 +319,7 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefCollectiveThunk(
       builder.getI64IntegerAttr(replica_count);
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(partition_count);
-  mlir::FuncOp func = module->lookupSymbol<mlir::FuncOp>(kFuncName);
+  mlir::func::FuncOp func = module->lookupSymbol<mlir::func::FuncOp>(kFuncName);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
@@ -343,8 +339,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions) {
   // Construct the TFRT module and convert it to BEF.
   mlir::MLIRContext mlir_context;
-  mlir_context.loadDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
-                           xla::gpu::XlirDialect>();
+  mlir_context.loadDialect<mlir::func::FuncDialect, tfrt::compiler::TFRTDialect,
+                           tfrt::gpu::GpuDialect, xla::gpu::XlirDialect>();
 
   mlir::OwningOpRef<mlir::ModuleOp> tfrt_module = CreateTfrtKernelLaunchModule(
       &mlir_context, kernel_name, args.size(), launch_dimensions);

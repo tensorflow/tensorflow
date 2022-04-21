@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: HloModule main
 module {
-  func @main(%arg0: tensor<i64>) -> tensor<i64> {
+  func.func @main(%arg0: tensor<i64>) -> tensor<i64> {
     %0 = "mhlo.while"(%arg0) ({
     // CHECK: [[R0:%.+]] ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
@@ -22,7 +22,7 @@ module {
     // CHECK: ENTRY %main.9 ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
     // CHECK:   ROOT %while.8 = s64[] while(s64[] %[[A0]]), condition=[[R1]], body=[[R0]]
-    return %0 : tensor<i64>
+    func.return %0 : tensor<i64>
   }
 }
 
@@ -63,7 +63,7 @@ module {
 // CHECK-NEXT:  %[[GTE_2:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[WHILE]]), index=2
 // CHECK-NEXT:  ROOT %[[GTE_3:.*]] = f32[] get-tuple-element((s32[], s32[], f32[], f32[]) %[[WHILE]]), index=3
 
-func @main(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<100> : tensor<i32>
   %2 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -77,7 +77,7 @@ func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %4 = mhlo.add %arg3, %arg4 : tensor<f32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>)
-  return %3#3 : tensor<f32>
+  func.return %3#3 : tensor<f32>
 }
 
 // -----
@@ -122,7 +122,7 @@ func @main(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:  %[[GTE_2:.*]] = f32[1] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[WHILE]]), index=2
 // CHECK-NEXT:  ROOT %[[GTE_3:.*]] = f32[3] get-tuple-element((s32[1], s32[2], f32[1], f32[3]) %[[WHILE]]), index=3
 
-func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %0 = mhlo.constant dense<0> : tensor<1xi32>
   %1 = mhlo.constant dense<100> : tensor<2xi32>
   %2 = mhlo.constant dense<1.000000e+00> : tensor<1xf32>
@@ -147,7 +147,7 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %5 = mhlo.add %arg4, %4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %5) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %3#3 : tensor<3xf32>
+  func.return %3#3 : tensor<3xf32>
 }
 
 // -----
@@ -187,7 +187,7 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK-NEXT:  %[[TUPLE_2:.*]] = (s32[], (s32[])) tuple(s32[] %[[GTE_6]], (s32[]) %[[TUPLE_1]])
 // CHECK-NEXT:  ROOT %[[TUPLE_3:.*]] = (s32[], (s32[], (s32[]))) tuple(s32[] %[[GTE_5]], (s32[], (s32[])) %[[TUPLE_2]])
 
- func  @main(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>> {
+ func.func  @main(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>> {
     %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tensor<i32>
     %1 = "mhlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
     %2 = "mhlo.get_tuple_element"(%1) {index = 0 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tensor<i32>
@@ -205,7 +205,7 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %6 = "mhlo.tuple"(%5#2) : (tensor<i32>) -> tuple<tensor<i32>>
     %7 = "mhlo.tuple"(%5#1, %6) : (tensor<i32>, tuple<tensor<i32>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
     %8 = "mhlo.tuple"(%5#0, %7) {xla_shape = "(s32[], (s32[], (s32[])))"} : (tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-    return %8 : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
+    func.return %8 : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
 }
 
 // -----
@@ -240,7 +240,7 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK-NEXT:  %[[ARG_0:.*]] = f32[3,3] parameter(0)
 // CHECK-NEXT:  ROOT %[[WHILE:.*]] = f32[3,3] while(f32[3,3] %[[ARG_0]]), condition=[[COND]], body=[[BODY]]
 
-func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
+func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
   %0 = mhlo.constant dense<false> : tensor<i1>
   %1 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<3x3xf32>):
@@ -263,7 +263,7 @@ func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
     %5 = mhlo.add %arg1, %4 : tensor<3x3xf32>
     "mhlo.return"(%5) : (tensor<3x3xf32>) -> ()
   }) : (tensor<3x3xf32>) -> tensor<3x3xf32>
-  return %1 : tensor<3x3xf32>
+  func.return %1 : tensor<3x3xf32>
 }
 
 // -----
@@ -296,7 +296,7 @@ func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 // CHECK-NEXT:  ROOT %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[WHILE]]), index=0
 // CHECK-NEXT:  %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[]) %[[WHILE]]), index=1
 
-func @main(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1:2 = "mhlo.while"(%0, %arg0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
@@ -310,6 +310,6 @@ func @main(%arg0: tensor<i32>) -> tensor<i32> {
     %5 = "mhlo.get_tuple_element"(%3) {index = 1 : i32} : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>
     "mhlo.return"(%4, %5) : (tensor<i32>, tensor<i32>) -> ()
   }) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
-  return %1#0 : tensor<i32>
+  func.return %1#0 : tensor<i32>
 }
 

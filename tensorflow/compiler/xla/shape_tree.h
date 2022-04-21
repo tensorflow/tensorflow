@@ -117,7 +117,7 @@ class ShapeTree {
       : ShapeTree(std::make_shared<Shape>(std::move(shape)), init_value) {}
 
   ShapeTree(const Shape* shape, const T& init_value)
-      : ShapeTree(shape, CreateNodes(*shape, [&] { return init_value; })) {}
+      : ShapeTree(shape, CreateNodes(*shape, init_value)) {}
 
   // Returns the data element associated with the array in the shape at the
   // given index (see ShapeUtil::GetSubshape for how indexes are defined).
@@ -324,13 +324,13 @@ class ShapeTree {
     DCHECK_EQ(nodes_.size(), ShapeUtil::SubshapeCount(*shape));
   }
 
-  static Nodes CreateNodes(
-      const Shape& shape, absl::FunctionRef<T()> gen = [] { return T(); }) {
+  template <typename... Ts>
+  static Nodes CreateNodes(const Shape& shape, Ts&&... args) {
     Nodes nodes;
-    ShapeUtil::ForEachSubshape(shape,
-                               [&](const Shape&, const ShapeIndex& index) {
-                                 nodes.push_back({index, gen()});
-                               });
+    ShapeUtil::ForEachSubshape(
+        shape, [&](const Shape&, const ShapeIndex& index) {
+          nodes.push_back({index, T(std::forward<Ts>(args)...)});
+        });
     return nodes;
   }
 

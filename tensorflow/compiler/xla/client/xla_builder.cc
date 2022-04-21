@@ -1248,13 +1248,12 @@ XlaOp XlaBuilder::Collapse(XlaOp operand,
   });
 }
 
-void XlaBuilder::Trace(const std::string& tag, XlaOp operand) {
-  ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = ShapeUtil::MakeNil().ToProto();
-    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag).ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
-  });
+// Dummy pass-through computation returning it's parameter of shape `shape`.
+static StatusOr<XlaComputation> PassthroughComputation(
+    const xla::Shape& shape) {
+  XlaBuilder builder("dummy");
+  XlaOp out = Parameter(&builder, 0, shape, "p");
+  return builder.Build(out);
 }
 
 XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
@@ -1262,9 +1261,15 @@ XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
     TF_ASSIGN_OR_RETURN(const Shape* true_shape, GetShapePtr(on_true));
     TF_ASSIGN_OR_RETURN(const Shape* false_shape, GetShapePtr(on_false));
     TF_RET_CHECK(true_shape->IsTuple() == false_shape->IsTuple());
-    HloOpcode opcode =
-        true_shape->IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
-    return TernaryOp(opcode, pred, on_true, on_false);
+    if (true_shape->IsTuple()) {
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_true,
+                          PassthroughComputation(*true_shape));
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_false,
+                          PassthroughComputation(*false_shape));
+      return Conditional(pred, on_true, passthrough_true, on_false,
+                         passthrough_false);
+    }
+    return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
   });
 }
 
@@ -1978,10 +1983,16 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   HloInstructionProto instr;
-  // Bit of a hack: conv-bias-activation-forward custom-calls are created
-  // through this API. Give them a user-friendly name. (This has no effect on
-  // correctness, it's just cosmetic.)
-  if (call_target_name == "__cudnn$convBiasActivationForward") {
+  // Bit of a hack: cudnn conv custom-calls are created through this API. Give
+  // them a user-friendly name. (This has no effect on correctness, it's just
+  // cosmetic.)
+  if (call_target_name == "__cudnn$convForward") {
+    instr.set_name("cudnn-conv");
+  } else if (call_target_name == "__cudnn$convBackwardInput") {
+    instr.set_name("cudnn-conv-bw-input");
+  } else if (call_target_name == "__cudnn$convBackwardFilter") {
+    instr.set_name("cudnn-conv-bw-filter");
+  } else if (call_target_name == "__cudnn$convBiasActivationForward") {
     instr.set_name("cudnn-conv-bias-activation");
   }
   *instr.mutable_shape() = shape.ToProto();
@@ -2303,8 +2314,8 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
                                PrimitiveType_Name(output_shape.element_type()));
     }
     return RngBitGeneratorInternal(
-        ShapeUtil::MakeTupleShape({state_shape, output_shape}), algorithm,
-        initial_state);
+        ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
+        algorithm, initial_state);
   });
 }
 
@@ -4041,10 +4052,6 @@ XlaOp DynamicUpdateSlice(const XlaOp operand, const XlaOp update,
 XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   int64_t dimension) {
   return builder->ConcatInDim(operands, dimension);
-}
-
-void Trace(const std::string& tag, const XlaOp operand) {
-  return operand.builder()->Trace(tag, operand);
 }
 
 XlaOp Select(const XlaOp pred, const XlaOp on_true, const XlaOp on_false) {

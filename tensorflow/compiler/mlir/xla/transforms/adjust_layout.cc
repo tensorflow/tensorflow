@@ -128,12 +128,15 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
 }
 
 namespace {
-class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
+class AdjustLayout
+    : public PassWrapper<AdjustLayout, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AdjustLayout)
+
   StringRef getArgument() const final { return "xla-adjust-layout"; }
   StringRef getDescription() const final {
     return "Adjust layouts so infeed send & receive use the same format.";

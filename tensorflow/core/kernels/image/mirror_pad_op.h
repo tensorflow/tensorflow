@@ -33,7 +33,7 @@ struct traits<TensorMirrorPadOp<PaddingDimensions, XprType>>
   typedef typename XprTraits::StorageKind StorageKind;
   typedef typename XprTraits::Index Index;
   typedef typename XprType::Nested Nested;
-  typedef typename remove_reference<Nested>::type _Nested;
+  typedef std::remove_reference_t<Nested> _Nested;
   static constexpr int NumDimensions = XprTraits::NumDimensions;
   static constexpr int Layout = XprTraits::Layout;
 };
@@ -229,8 +229,7 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     }
 
     // If the road is not contiguous, then fall back to coeff().
-    EIGEN_ALIGN_MAX typename internal::remove_const<CoeffReturnType>::type
-        values[kPacketSize];
+    EIGEN_ALIGN_MAX std::remove_const_t<CoeffReturnType> values[kPacketSize];
     values[0] = impl_.coeff(input_index);
     for (int i = 1; i < kPacketSize; ++i) {
       values[i] = coeff(index + i);

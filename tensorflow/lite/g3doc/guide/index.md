@@ -1,7 +1,7 @@
 # TensorFlow Lite
 
 TensorFlow Lite is a set of tools that enables on-device machine learning by
-helping developers run their models on mobile, embedded, and IoT devices.
+helping developers run their models on mobile, embedded, and edge devices.
 
 ### Key features
 

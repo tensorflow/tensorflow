@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -28,6 +29,48 @@ limitations under the License.
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Support/LogicalResult.h"
+
+namespace mlir {
+namespace {
+
+void printShapeTypeDimensionsList(AsmPrinter &printer,
+                                  ArrayRef<int64_t> integers) {
+  if (integers.empty()) {
+    return;
+  }
+  llvm::interleave(
+      integers, printer,
+      [&](int64_t val) {
+        if (val == ShapedType::kDynamicSize)
+          printer << '?';
+        else
+          printer << val;
+      },
+      "x");
+}
+
+ParseResult parseShapeTypeDimensionsList(
+    AsmParser &parser, FailureOr<SmallVector<int64_t>> &dims) {
+  SmallVector<int64_t> vals;
+  int64_t val;
+  while (true) {
+    auto maybeInteger = parser.parseOptionalInteger(val);
+    if (maybeInteger.hasValue() && succeeded(*maybeInteger)) {
+      vals.push_back(val);
+    } else if (succeeded(parser.parseOptionalQuestion())) {
+      vals.push_back(ShapedType::kDynamicSize);
+    } else {
+      break;
+    }
+    if (failed(parser.parseOptionalKeyword("x"))) break;
+  }
+  dims = vals;
+  return success();
+}
+
+}  // namespace
+}  // namespace mlir
 
 // Generated dialect definitions.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.cc.inc"
@@ -193,20 +236,20 @@ void LoopOp::print(OpAsmPrinter &p) {
 ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   // Parse an opening `(` followed by induction variables followed by `)`
-  SmallVector<OpAsmParser::OperandType, 4> ivs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> ivs;
   if (parser.parseRegionArgumentList(ivs, /*requiredOperandCount=*/-1,
                                      OpAsmParser::Delimiter::Paren))
     return failure();
 
   // Parse loop bounds.
-  SmallVector<OpAsmParser::OperandType, 4> lower;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> lower;
   if (parser.parseEqual() ||
       parser.parseOperandList(lower, ivs.size(),
                               OpAsmParser::Delimiter::Paren) ||
       parser.resolveOperands(lower, builder.getIndexType(), result.operands))
     return failure();
 
-  SmallVector<OpAsmParser::OperandType, 4> upper;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> upper;
   if (parser.parseKeyword("to") ||
       parser.parseOperandList(upper, ivs.size(),
                               OpAsmParser::Delimiter::Paren) ||
@@ -214,7 +257,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse step values.
-  SmallVector<OpAsmParser::OperandType, 4> steps;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> steps;
   if (parser.parseKeyword("step") ||
       parser.parseOperandList(steps, ivs.size(),
                               OpAsmParser::Delimiter::Paren) ||
@@ -222,7 +265,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse input tensors.
-  SmallVector<OpAsmParser::OperandType, 4> inputs, inputRegionArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs, inputRegionArgs;
   SmallVector<Type, 4> inputTypes;
   if (succeeded(parser.parseOptionalKeyword("ins"))) {
     SMLoc inputsOperandsLoc = parser.getCurrentLocation();
@@ -237,7 +280,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse output tensors.
-  SmallVector<OpAsmParser::OperandType, 4> outputs, outputRegionArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs;
   SmallVector<Type, 4> outputTypes;
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
     SMLoc outputsOperandsLoc = parser.getCurrentLocation();
@@ -301,7 +344,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   regionTypes.append(inputTypes);
   regionTypes.append(outputTypes);
 
-  SmallVector<OpAsmParser::OperandType, 4> regionArgs(ivs);
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionArgs(ivs);
   regionArgs.append(inputRegionArgs);
   regionArgs.append(outputRegionArgs);
 
@@ -314,15 +357,6 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 Region &LoopOp::getLoopBody() { return region(); }
-
-LogicalResult LoopOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
-  for (auto *op : ops) op->moveBefore(*this);
-  return success();
-}
-
-bool LoopOp::isDefinedOutsideOfLoop(Value value) {
-  return !region().isAncestor(value.getParentRegion());
-}
 
 LogicalResult LoopOp::verify() {
   // Check if iterator types are provided for every loop dimension.

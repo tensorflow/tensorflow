@@ -172,7 +172,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   def testEqualTypes(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
+    signature_context = trace_type.InternalTracingContext(shape_relaxation)
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
         None).__tf_tracing_type__(signature_context)
@@ -187,7 +187,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   def testDtypeMismatch(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
+    signature_context = trace_type.InternalTracingContext(shape_relaxation)
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
         None).__tf_tracing_type__(signature_context)
@@ -200,7 +200,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   def testSubtypeOfShapeless(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
+    signature_context = trace_type.InternalTracingContext(shape_relaxation)
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape(None), dtypes.float32,
         None).__tf_tracing_type__(signature_context)
@@ -212,7 +212,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertTrue(type_2.is_subtype_of(type_1))
 
   def testSubtypeOfDimlessShape(self):
-    signature_context = trace_type.SignatureContext(False)
+    signature_context = trace_type.InternalTracingContext(False)
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape([None, None, None]), dtypes.float32,
         None).__tf_tracing_type__(signature_context)

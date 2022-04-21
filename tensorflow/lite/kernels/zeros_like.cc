@@ -61,10 +61,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       memset(GetTensorData<float>(output), 0, num_elements * sizeof(float));
       break;
     default:
-      context->ReportError(context,
-                           "ZerosLike only currently supports int64, int32, "
-                           "and float32, got %d.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "ZerosLike only currently supports int64, int32, "
+                         "and float32, got %d.",
+                         input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
 

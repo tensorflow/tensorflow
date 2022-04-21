@@ -73,12 +73,12 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
   // Build GraphOp.
   OpBuilder builder(&body, body.begin());
-  auto graph_op =
-      builder.create<tf_executor::GraphOp>(loc, func.getType().getResults());
+  auto graph_op = builder.create<tf_executor::GraphOp>(
+      loc, func.getFunctionType().getResults());
   graph_op.body().push_back(new Block);
   builder.setInsertionPointToEnd(&graph_op.GetBody());
   auto island = builder.create<tf_executor::IslandOp>(
-      loc, func.getType().getResults(),
+      loc, func.getFunctionType().getResults(),
       tf_executor::ControlType::get(&getContext()), ArrayRef<Value>());
   // Create Fetch.
   ValueRange to_fetch = island.getResults();
@@ -99,7 +99,7 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass() {
   return std::make_unique<FunctionalToExecutorDialectConversion>();
 }

@@ -45,6 +45,9 @@ class LiftQuantizableSpotsAsFunctionsPass
     : public PassWrapper<LiftQuantizableSpotsAsFunctionsPass,
                          OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      LiftQuantizableSpotsAsFunctionsPass)
+
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
     // the textual format (on the commandline for example).
@@ -75,7 +78,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 
   populateWithGenerated(patterns);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

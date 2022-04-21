@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -53,7 +54,8 @@ void MaterializePassthroughOpPass::runOnOperation() {
       op->emitError() << "could not parse attached MLIR module";
       return;
     }
-    FuncOp main = dyn_cast<FuncOp>(nested_module->lookupSymbol("main"));
+    func::FuncOp main =
+        dyn_cast<func::FuncOp>(nested_module->lookupSymbol("main"));
     if (!main) {
       op->emitError() << "MLIR Opaque Op expects a main() entry point\n";
       return;
@@ -65,11 +67,12 @@ void MaterializePassthroughOpPass::runOnOperation() {
                       << main.getNumArguments() << " args)\n";
       return;
     }
-    if (main.getType().getNumResults() != op->getNumResults()) {
+    if (main.getFunctionType().getNumResults() != op->getNumResults()) {
       op->emitError() << "mismatch between MLIR Opaque Op number of results ("
                       << op->getNumResults()
                       << ") and main() entry point in the module ("
-                      << main.getType().getNumResults() << " results)\n";
+                      << main.getFunctionType().getNumResults()
+                      << " results)\n";
       return;
     }
     Region &body = main.getBody();
@@ -98,7 +101,8 @@ void MaterializePassthroughOpPass::runOnOperation() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateMaterializePassthroughOpPass() {
   return std::make_unique<MaterializePassthroughOpPass>();
 }
 }  // namespace TF

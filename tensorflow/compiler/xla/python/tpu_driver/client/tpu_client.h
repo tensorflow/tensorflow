@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -57,6 +58,8 @@ class TpuDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
@@ -80,6 +83,11 @@ class TpuDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("Outfeed not yet implemented via this API");
+  }
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
   }
 
  private:

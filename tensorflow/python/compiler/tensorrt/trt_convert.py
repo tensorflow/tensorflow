@@ -1050,8 +1050,8 @@ class TrtGraphConverterV2(object):
       use_dynamic_shape: whether to enable dynamic shape support. None is
         equivalent to False in the current implementation.
       dynamic_shape_profile_strategy: one of the strings in
-        supported_profile_strategies(). None is equivalent to Range in the
-        current implementation.
+        supported_profile_strategies(). None is equivalent to
+        ImplicitBatchModeCompatible in the current implementation.
       max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
         engine can use at execution time. This corresponds to the
         'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
@@ -1119,7 +1119,8 @@ class TrtGraphConverterV2(object):
     self._profile_strategy = "Unknown"
     if self._use_dynamic_shape:
       if dynamic_shape_profile_strategy is None:
-        self._profile_strategy = PROFILE_STRATEGY_RANGE
+        self._profile_strategy = \
+            PROFILE_STRATEGY_IMPLICIT_BATCH_MODE_COMPATIBLE
       else:
         self._verify_profile_strategy(dynamic_shape_profile_strategy)
         self._profile_strategy = dynamic_shape_profile_strategy
@@ -1332,7 +1333,10 @@ class TrtGraphConverterV2(object):
 
     self._build_called_once = True
 
-  def save(self, output_saved_model_dir, save_gpu_specific_engines=True):
+  def save(self,
+           output_saved_model_dir,
+           save_gpu_specific_engines=True,
+           options=None):
     """Save the converted SavedModel.
 
     Args:
@@ -1343,6 +1347,7 @@ class TrtGraphConverterV2(object):
         save_gpu_specific_engines=False after doing INT8 calibration, inference
         can be done on different GPUs than the GPU that the model was calibrated
         and saved on.
+      options: `tf.saved_model.SaveOptions` object for configuring save options.
     """
     assert self._converted
 
@@ -1413,7 +1418,8 @@ class TrtGraphConverterV2(object):
       self._converted_func = reset_converted_func
 
     signatures[self._input_saved_model_signature_key] = self._converted_func
-    save.save(self._saved_model, output_saved_model_dir, signatures)
+    save.save(
+        self._saved_model, output_saved_model_dir, signatures, options=options)
 
   def summary(self, line_length=160, detailed=True, print_fn=None):
     """This method describes the results of the conversion by TF-TRT.
@@ -1450,14 +1456,15 @@ class TrtGraphConverterV2(object):
     # for each field is a space.
     columns = [
         # (column name, column size in % of line)
-        ("TRTEngineOP Name", .21),  # 21%
-        ("# Nodes", .09),  # 30%
-        ("# Inputs", .09),  # 39%
-        ("# Outputs", .09),  # 48%
-        ("Input DTypes", .13),  # 61%
-        ("Output Dtypes", .13),  # 74%
-        ("Input Shapes", .13),  # 87%
-        ("Output Shapes", .13)  # 100%
+        ("TRTEngineOP Name", .20),  # 20%
+        ("Device", .09),  # 29%
+        ("# Nodes", .05),  # 34%
+        ("# Inputs", .09),  # 43%
+        ("# Outputs", .09),  # 52%
+        ("Input DTypes", .12),  # 64%
+        ("Output Dtypes", .12),  # 76%
+        ("Input Shapes", .12),  # 88%
+        ("Output Shapes", .12)  # 100%
     ]
 
     positions = [int(line_length * p) for _, p in columns]
@@ -1483,6 +1490,7 @@ class TrtGraphConverterV2(object):
         n_engines += 1
 
     for name, node in sorted(trtengineops_dict.items()):
+      node_device = node.device.split("/")[-1]
       in_shapes = _extract_shapes_from_node(node, "input_shapes")
       out_shapes = _extract_shapes_from_node(node, "_output_shapes")
       in_dtypes = _get_engine_dtypes_from_node(node, "InT")
@@ -1498,8 +1506,8 @@ class TrtGraphConverterV2(object):
 
       _print_row(
           fields=[
-              name, node_count, in_nodes_count, out_nodes_count, in_dtypes,
-              out_dtypes, in_shapes, out_shapes
+              name, node_device, node_count, in_nodes_count, out_nodes_count,
+              in_dtypes, out_dtypes, in_shapes, out_shapes
           ],
           positions=positions,
           print_fn=print_fn)

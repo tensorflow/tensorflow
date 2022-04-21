@@ -1394,7 +1394,7 @@ def build_as_function_and_v1_graph(func=None):
           function_in_eager()
         ops.dismantle_graph(graph_for_eager_test)
       else:
-        return ValueError("Unknown run mode %s" % run_mode)
+        raise ValueError("Unknown run mode %s" % run_mode)
 
     return decorated
 

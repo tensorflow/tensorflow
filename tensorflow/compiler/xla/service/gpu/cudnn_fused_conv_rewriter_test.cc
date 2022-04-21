@@ -1669,13 +1669,13 @@ TEST_F(CudnnFusedConvRewriterTest,
       // post_hlo
       R"(
       ; CHECK-LABEL: ENTRY %Test (input: s8[1,3,3,64], filter: s8[3,3,64,64], side_input: s8[1,3,3,64], bias: f32[64]) -> s8[1,3,3,64] {
-      ; CHECK:  %cudnn-conv-bias-activation{{(\.[0-9])?}} =
+      ; CHECK:  %cudnn-conv-bias-activation{{(\.[0-9]+)?}} =
       ; CHECK-SAME: (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0})
-      ; CHECK-SAME: custom-call(%input, %copy{{(\.[0-9])?}}, %bias, %side_input),
+      ; CHECK-SAME: custom-call(%input, %copy{{(\.[0-9]+)?}}, %bias, %side_input),
       ; CHECK-SAME: window={size=3x3 pad=1_1x1_1},
       ; CHECK-SAME: dim_labels=b01f_01io->b01f,
       ; CHECK-SAME: custom_call_target="__cudnn$convBiasActivationForward",
-      ; CHECK-NEXT: ROOT %get-tuple-element{{(\.[0-9])?}} = s8[1,3,3,64]{3,2,1,0} get-tuple-element(%cudnn-conv-bias-activation{{(\.[0-9])?}}), index=0
+      ; CHECK-NEXT: ROOT %get-tuple-element{{(\.[0-9]+)?}} = s8[1,3,3,64]{3,2,1,0} get-tuple-element(%cudnn-conv-bias-activation{{(\.[0-9]+)?}}), index=0
       )");
 }
 

@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/ThreadPool.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -52,14 +54,18 @@ void DefaultGrapplerPipeline(PassManager& mgr) {}
 // pass manager.
 class TFGGrapplerOptimizer::Impl {
  public:
-  // Builds the pass pipeline. The context is initialized without threading.
-  // Creating and destroying the threadpool each time Grappler is invoked is
-  // prohibitively expensive.
-  // TODO(jeffniu): Some passes may run in parallel on functions. Find a way to
-  // hold and re-use a threadpool.
-  explicit Impl(TFGPassPipelineBuilder builder)
+  // Builds the pass pipeline. The context is initialized with threading
+  // disabled. If the user specifies to run the optimizer with more than zero
+  // threads, a threadpool is initialized and passed to the MLIR context.
+  explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
       : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
     builder(mgr_);
+    if (num_tfg_threads) {
+      llvm::ThreadPoolStrategy strategy;
+      strategy.ThreadsRequested = num_tfg_threads;
+      threadpool_ = std::make_unique<llvm::ThreadPool>(strategy);
+      ctx_.setThreadPool(*threadpool_);
+    }
   }
 
   // Runs the pass manager.
@@ -77,14 +83,18 @@ class TFGGrapplerOptimizer::Impl {
   }
 
  private:
+  // An optional threadpool for running MLIR with threading. Use an external
+  // threadpool so the number of threads can be controlled.
+  std::unique_ptr<llvm::ThreadPool> threadpool_;
   // The MLIR context.
   MLIRContext ctx_;
   // The pass manager containing the loaded TFG pass pipeline.
   PassManager mgr_;
 };
 
-TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder)
-    : impl_(std::make_unique<Impl>(std::move(builder))) {}
+TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
+                                           unsigned num_tfg_threads)
+    : impl_(std::make_unique<Impl>(std::move(builder), num_tfg_threads)) {}
 
 TFGGrapplerOptimizer::~TFGGrapplerOptimizer() = default;
 

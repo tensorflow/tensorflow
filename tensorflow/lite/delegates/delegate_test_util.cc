@@ -121,7 +121,7 @@ void TestDelegation::AddSubgraphs(int subgraphs_to_add,
 }
 
 void TestDelegate::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   SetUpSubgraph(&interpreter_->primary_subgraph());
 }
 
@@ -134,7 +134,7 @@ void TestDelegate::TearDown() {
 }
 
 void TestTwoDelegates::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   SetUpSubgraph(&interpreter_->primary_subgraph());
 }
 
@@ -277,7 +277,10 @@ TfLiteRegistration SimpleDelegate::FakeFusedRegistration() {
     };
   } else {
     reg.invoke = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-      // Copy input data to output data.
+      // Compute output data as elementwise sum of the two input arguments:
+      //   func(x, y) = x + y
+      // or for a single argument compute 2 * x:
+      //   func(x) = x + x
       const TfLiteTensor* a0;
       const TfLiteTensor* a1;
       if (node->inputs->size == 2) {
@@ -377,7 +380,7 @@ std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
 }
 
 void TestFP16Delegation::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   interpreter_->AddTensors(13);
   interpreter_->SetInputs({0});
   interpreter_->SetOutputs({12});

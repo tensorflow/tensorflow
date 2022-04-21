@@ -786,6 +786,12 @@ class FunctionLibraryRuntime {
     // TPU/XLA devices. So this is mainly used to handle the case of multi-CPU
     // and GPU (non-XLA) graphs.
     bool int_args_and_retvals_on_device = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function for XLA compilation on device_type. If empty,
+    // function is not compiled.
+    std::string xla_compile_device_type;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,

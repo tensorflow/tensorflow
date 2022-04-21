@@ -68,7 +68,7 @@ namespace {
 //   }
 struct OutlineXLAFunc : public RewritePattern {
   explicit OutlineXLAFunc(MLIRContext *context, PatternBenefit benefit = 1)
-      : RewritePattern(FuncOp::getOperationName(), benefit, context) {}
+      : RewritePattern(func::FuncOp::getOperationName(), benefit, context) {}
 
   static void filterFuncAttributes(ArrayRef<NamedAttribute> attrs,
                                    bool argAttrs,
@@ -77,7 +77,7 @@ struct OutlineXLAFunc : public RewritePattern {
       if (attr.getName() == SymbolTable::getSymbolAttrName() ||
           attr.getName() == FunctionOpInterface::getTypeAttrName() ||
           attr.getName() == "std.varargs" ||
-          (argAttrs && attr.getName() == FuncOp::getArgDictAttrName()))
+          (argAttrs && attr.getName() == func::FuncOp::getArgDictAttrName()))
         continue;
       result.push_back(attr);
     }
@@ -85,10 +85,10 @@ struct OutlineXLAFunc : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    auto func = dyn_cast<FuncOp>(op);
+    auto func = dyn_cast<func::FuncOp>(op);
     auto ctx = rewriter.getContext();
     auto loc = func.getLoc();
-    SmallVector<Location> locs(func.getType().getNumInputs(), loc);
+    SmallVector<Location> locs(func.getFunctionType().getNumInputs(), loc);
 
     // Functions should only be outlined once and should only use memrefs
     if (!func) return failure();
@@ -101,9 +101,9 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // Prepare new func attribute information
     func.setSymNameAttr(mlir::StringAttr::get(ctx, func.getName()));
-    SmallVector<Type> operands(func.getType().getNumInputs(),
+    SmallVector<Type> operands(func.getFunctionType().getNumInputs(),
                                ::mlir::xla_framework::BufferType::get(ctx));
-    SmallVector<Type> result_array(func.getType().getNumResults(),
+    SmallVector<Type> result_array(func.getFunctionType().getNumResults(),
                                    ::mlir::xla_framework::BufferType::get(ctx));
     auto func_type = FunctionType::get(ctx, operands, result_array);
     SmallVector<NamedAttribute> attrs;
@@ -113,9 +113,9 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // The wrapper function will have the same name but with _xla_framework
     // appended and will be annotated with the attribute "xla_entry".
-    auto outline_func =
-        rewriter.create<FuncOp>(loc, func.getSymName().str() + "_xla_framework",
-                                func_type, attrs, arg_attrs);
+    auto outline_func = rewriter.create<func::FuncOp>(
+        loc, func.getSymName().str() + "_xla_framework", func_type, attrs,
+        arg_attrs);
     outline_func->setAttr("outlined", BoolAttr::get(ctx, true));
     outline_func->setAttr("xla_entry", BoolAttr::get(ctx, true));
     auto *b = rewriter.createBlock(&outline_func.getBody(), {},
@@ -123,13 +123,13 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // Unwrap arguments
     SmallVector<Value> args;
-    for (const auto &t : llvm::enumerate(func.getType().getInputs())) {
+    for (const auto &t : llvm::enumerate(func.getFunctionType().getInputs())) {
       args.push_back(rewriter.create<xla_framework::XLABufferToMemOp>(
           loc, t.value(), b->getArgument(t.index())));
     }
 
     auto call = rewriter.create<func::CallOp>(
-        loc, func.getSymName(), func.getType().getResults(), args);
+        loc, func.getSymName(), func.getFunctionType().getResults(), args);
     // Wrap results
     SmallVector<Value> results;
     for (auto t : call.getResults()) {
@@ -165,7 +165,7 @@ class OutlineWithXLAFrameworkPass
     if (failed(applyPatternsAndFoldGreedily(m, std::move(patterns)))) {
       signalPassFailure();
     }
-    m->walk([](FuncOp f) {
+    m->walk([](func::FuncOp f) {
       if (f->hasAttr("outlined")) f->removeAttr("outlined");
     });
   }

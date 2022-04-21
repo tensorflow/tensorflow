@@ -1,4 +1,4 @@
-builtin.func @test(
+func.func @test(
     %V__0 : tensor<i1> { python_test_attrs.static_type = tensor<i1> },
     %V__1 : tensor<?xi64> { python_test_attrs.static_type = tensor<1xi64> },
     %V__2 : tensor<1xi64> { python_test_attrs.static_type = tensor<1xi64> },
@@ -14,5 +14,5 @@ builtin.func @test(
   %2 = "tf.AddV2"(%0, %1) {
         device = "/job:localhost/replica:0/task:0/device:CPU:0"
       } : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
-  return %2 : tensor<1xi64>
+  func.return %2 : tensor<1xi64>
 }

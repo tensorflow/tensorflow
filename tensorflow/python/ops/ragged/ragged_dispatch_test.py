@@ -39,11 +39,15 @@ from tensorflow.python.ops.ragged import ragged_dispatch
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_test_ops as test_ops
+from tensorflow.python.ops.ragged.dynamic_ragged_shape import DynamicRaggedShape
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import dispatch
-
+from tensorflow.python.util import nest
 
 # pylint: disable=g-complex-comprehension
+# pylint: disable=g-long-lambda
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -908,9 +912,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(
           op=array_ops.bitcast,
           kwargs={
-              'input': ragged_factory_ops.constant_value([[1, 2], [-1]],
-                                                         dtype=dtypes.int64),
-              'type': dtypes.uint64
+              'input':
+                  ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                    dtype=dtypes.int64),
+              'type':
+                  dtypes.uint64
           },
           expected=ragged_factory_ops.constant_value([[1, 2], [-1]],
                                                      dtype=dtypes.uint64)),
@@ -925,6 +931,81 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               ragged_factory_ops.constant_value([[1]]),
               ragged_factory_ops.constant_value([[2, 3, 4]]),
           ]),
+      dict(
+          op=array_ops.reshape,
+          kwargs=lambda: {
+              'tensor': ragged_factory_ops.constant([[1, 2], [3]]),
+              'shape': DynamicRaggedShape.from_lengths([3, (1, 0, 2)]),
+          },
+          expected=[[1], [], [2, 3]]),
+      dict(
+          op=array_ops.reshape,
+          kwargs=lambda: {
+              'tensor': [[1, 2], [3, 4]],
+              'shape': DynamicRaggedShape.from_lengths([3, (1, 0, 3)]),
+          },
+          expected=[[1], [], [2, 3, 4]]),
+      dict(
+          op=array_ops.reshape,
+          kwargs=lambda: {
+              'tensor': ragged_factory_ops.constant([[1, 2], [3]]),
+              'shape': [3],
+          },
+          expected=[1, 2, 3]),
+      dict(
+          op=array_ops.broadcast_to,
+          kwargs=lambda: {
+              'input': 3,
+              'shape': DynamicRaggedShape.from_lengths([3, (1, 0, 2)])
+          },
+          expected=[[3], [], [3, 3]]),
+      dict(
+          op=array_ops.shape,
+          kwargs=lambda: {
+              'input': ragged_factory_ops.constant([(1, 2), (3,)]),
+              'out_type': dtypes.int64
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 1)])),
+      dict(
+          op=array_ops.shape_v2,
+          kwargs=lambda: {
+              'input': ragged_factory_ops.constant([(1, 2), (3,)]),
+              'out_type': dtypes.int64
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 1)])),
+      dict(
+          op=array_ops.broadcast_dynamic_shape,
+          kwargs=lambda: {
+              'shape_x': DynamicRaggedShape.from_lengths([2, (2, 3), 1]),
+              'shape_y': DynamicRaggedShape.from_lengths([5])
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 3), 5])),
+      dict(
+          op=array_ops.broadcast_dynamic_shape,
+          kwargs=lambda: {
+              'shape_x': DynamicRaggedShape.from_lengths([2, (2, 3), 1]),
+              'shape_y': [5],
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 3), 5])),
+      dict(
+          op=array_ops.ones,
+          kwargs=lambda: {
+              'shape': DynamicRaggedShape.from_lengths([2, (2, 3)]),
+          },
+          expected=[[1.0, 1.0], [1.0, 1.0, 1.0]]),
+      dict(
+          op=array_ops.zeros,
+          kwargs=lambda: {
+              'shape': DynamicRaggedShape.from_lengths([2, (2, 3)]),
+          },
+          expected=[[0.0, 0.0], [0.0, 0.0, 0.0]]),
+      dict(
+          op=array_ops.fill,
+          kwargs=lambda: {
+              'dims': DynamicRaggedShape.from_lengths([2, (2, 3)]),
+              'value': 5
+          },
+          expected=[[5.0, 5.0], [5.0, 5.0, 5.0]]),
   ])
   def testRaggedDispatch(self,
                          op,
@@ -933,6 +1014,15 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                          result_is_list=False,
                          rtol=None,
                          kwargs=None):
+    # For some tests, the inputs/outputs to the function need to be
+    # constructed late, because they contain tensors.
+    if callable(kwargs):
+      kwargs = kwargs()
+    if callable(args):
+      args = args()
+    if callable(expected):
+      expected = expected()
+
     kwargs = kwargs or {}
     if rtol is not None:
       assert_fn = lambda x, y: self.assertAllClose(x, y, rtol=rtol)
@@ -940,7 +1030,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       assert_fn = self.assertAllEqual
 
     result = op(*args, **kwargs)
-    if result_is_list:
+    if isinstance(expected, DynamicRaggedShape):
+      self.assertDynamicRaggedShapeEqual(expected, result)
+    elif result_is_list:
       self.assertLen(result, len(expected))
       for (r, e) in zip(result, expected):
         assert_fn(r, e)
@@ -1063,6 +1155,14 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         [check_ops.assert_type(x, dtypes.float32)]):
       y = array_ops.identity(x)
     self.assertAllEqual(x, y)
+
+  def assertDynamicRaggedShapeEqual(self, expected, result):
+    self.assertIsInstance(result, DynamicRaggedShape)
+    self.assertTrue(expected._type_spec.is_compatible_with(result))
+    for (e, r) in zip(
+        nest.flatten(expected, expand_composites=True),
+        nest.flatten(result, expand_composites=True)):
+      self.assertAllEqual(e, r)
 
 
 if __name__ == '__main__':

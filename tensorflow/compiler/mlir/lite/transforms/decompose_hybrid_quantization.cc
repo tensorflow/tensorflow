@@ -38,8 +38,10 @@ namespace {
 
 class DecomposeHybridQuantizationPass
     : public PassWrapper<DecomposeHybridQuantizationPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeHybridQuantizationPass)
+
   DecomposeHybridQuantizationPass() = default;
   DecomposeHybridQuantizationPass(const DecomposeHybridQuantizationPass &) {}
 
@@ -155,7 +157,8 @@ void DecomposeHybridQuantizationPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeHybridQuantizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDecomposeHybridQuantizationPass() {
   return std::make_unique<DecomposeHybridQuantizationPass>();
 }
 

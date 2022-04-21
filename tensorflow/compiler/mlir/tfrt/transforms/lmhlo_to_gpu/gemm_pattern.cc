@@ -330,10 +330,11 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
 }
 
 template <class GemmOpType>
-struct GemmRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      GemmOpType>::GpuAsyncOpConversionPattern;
+struct GemmRewritePattern
+    : tfrt::gpu::StreamifyOpConversionPattern<GemmOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<GemmOpType>::OpAdaptor;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      GemmOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       GemmOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

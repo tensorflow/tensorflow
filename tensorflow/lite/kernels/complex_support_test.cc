@@ -62,7 +62,7 @@ TEST(RealOpTest, SimpleFloatTest) {
                                                     {0, 0},
                                                     {22.1, 33.3}});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
                                  {75, -6, 9, -10, -3, -6, 0, 22.1f})));
@@ -81,7 +81,7 @@ TEST(RealOpTest, SimpleDoubleTest) {
                                                      {0, 0},
                                                      {22.1, 33.3}});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
                                  {75, -6, 9, -10, -3, -6, 0, 22.1f})));
@@ -123,7 +123,7 @@ TEST(ImagOpTest, SimpleFloatTest) {
                                                     {0, 0},
                                                     {22.1, 33.3}});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
                                  {7, -1, 3.5f, 5, 2, 11, 0, 33.3f})));
@@ -142,7 +142,7 @@ TEST(ImagOpTest, SimpleDoubleTest) {
                                                      {0, 0},
                                                      {22.1, 33.3}});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
                                  {7, -1, 3.5f, 5, 2, 11, 0, 33.3f})));
@@ -200,7 +200,7 @@ TEST(ComplexAbsOpTest, SimpleFloatTest) {
                                                     {0, 0},
                                                     {22.1, 33.3}});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), testing::ElementsAre(2, 4));
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(
@@ -221,7 +221,7 @@ TEST(ComplexAbsOpTest, SimpleDoubleTest) {
                                                      {0, 0},
                                                      {22.1, 33.3}});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), testing::ElementsAre(2, 4));
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(ArrayFloatNear(

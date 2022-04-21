@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -259,7 +260,7 @@ GraphdefToSplattedMlirTranslateFunction(
   }
   auto& module = module_or.ValueOrDie();
   std::srand(0);
-  for (auto fn : module->getOps<mlir::FuncOp>()) {
+  for (auto fn : module->getOps<mlir::func::FuncOp>()) {
     for (auto& bb : fn) {
       for (auto& inst : bb) {
         auto attr_id = mlir::StringAttr::get(context, "value");

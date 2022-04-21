@@ -678,7 +678,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(
       LOG_WARNING_WITH_PREFIX << msg;
     }
     AllocatorAttributes alloc_attr;
-    cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
+    cuda_device_id = devices[0]->tensorflow_accelerator_device_info()->gpu_id;
     dev_allocator = devices[0]->GetAllocator(alloc_attr);
     VLOG(1) << "Using allocator " << dev_allocator->Name()
             << " and cuda_device_id " << cuda_device_id;

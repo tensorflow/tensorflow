@@ -21,6 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -267,9 +269,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
-      continue;
-    }
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
@@ -440,7 +439,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-
+  if (proto.has_schedule()) {
+    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
@@ -509,6 +510,16 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());
@@ -546,8 +557,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
-  TF_RET_CHECK(module.has_host_program_shape())
-      << "No program shape found in the proto";
+  if (!module.has_host_program_shape()) {
+    return tensorflow::errors::FailedPrecondition(
+        "No program shape found in the proto");
+  }
   ProgramShape program_shape(module.host_program_shape());
   return CreateModuleConfigFromShape(program_shape, debug_options,
                                      execution_options);
@@ -738,8 +751,8 @@ bool CompareComputationsByContent(const HloComputation* a,
   if (a->instruction_count() != b->instruction_count()) {
     return a->instruction_count() < b->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
+         b->ToString(HloPrintOptions::ModuleFingerprint());
 }
 
 uint64_t GetFingerprint(
@@ -750,7 +763,7 @@ uint64_t GetFingerprint(
     return it->second;
   } else {
     const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::Fingerprint()));
+        computation->ToString(HloPrintOptions::ModuleFingerprint()));
     fingerprint_map[computation] = fingerprint;
     return fingerprint;
   }

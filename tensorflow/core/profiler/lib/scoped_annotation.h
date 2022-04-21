@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
 #endif
 
 namespace tensorflow {

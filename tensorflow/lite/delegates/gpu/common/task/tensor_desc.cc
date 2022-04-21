@@ -147,6 +147,7 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
           desc.use_buffer_for_write_only_2d_texture),
       use_buffer_for_write_only_image_buffer(
           desc.use_buffer_for_write_only_image_buffer),
+      zero_clamp_support(desc.zero_clamp_support),
       shape(desc.shape),
       data(std::move(desc.data)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
@@ -158,6 +159,7 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
               desc.use_buffer_for_write_only_2d_texture);
     std::swap(use_buffer_for_write_only_image_buffer,
               desc.use_buffer_for_write_only_image_buffer);
+    std::swap(zero_clamp_support, desc.zero_clamp_support);
     std::swap(shape, desc.shape);
     data = std::move(desc.data);
     GPUObjectDescriptor::operator=(std::move(desc));
@@ -1286,11 +1288,16 @@ bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
     case TensorStorageType::IMAGE_BUFFER:
       return false;
     case TensorStorageType::TEXTURE_ARRAY:
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
+             zero_clamp_support.image2d_array;
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return axis == Axis::WIDTH || axis == Axis::HEIGHT;
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
+             zero_clamp_support.image2d;
     case TensorStorageType::TEXTURE_3D:
-      return axis == Axis::WIDTH || axis == Axis::HEIGHT || axis == Axis::DEPTH;
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT ||
+              axis == Axis::DEPTH) &&
+             zero_clamp_support.image3d;
   }
 }
 
@@ -1315,7 +1322,8 @@ bool TensorDescriptor::IsLinear() const {
 }
 
 bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
-  return storage_type == TensorStorageType::IMAGE_BUFFER;
+  return storage_type == TensorStorageType::IMAGE_BUFFER &&
+         zero_clamp_support.image_buffer;
 }
 
 absl::Status TensorDescriptor::CanCreateTensorWithShape(

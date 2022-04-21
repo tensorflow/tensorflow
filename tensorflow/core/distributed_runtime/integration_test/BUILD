@@ -49,6 +49,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/time",
     ],
 )
 

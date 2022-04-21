@@ -8,15 +8,14 @@
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @memcpy(%dst: memref<4x4xf32>, %src: memref<4x4xf32>) {
+func.func @memcpy(%dst: memref<4x4xf32>, %src: memref<4x4xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
-  // CHECK: tfrt_gpu.mem.copy
   "gpu.memcpy"(%dst, %src)
     : (memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK-NOT: cast
-  // CHECK: tfrt.return {{.*}} : !tfrt.chain
+  // CHECK: tfrt.return %arg0 : !tfrt.chain
   "lmhlo.terminator"() : () -> ()
 }

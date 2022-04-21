@@ -12,9 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 def NonOpaqueElementsAttr : ElementsAttrBase<
   CPred<"!$_self.isa<OpaqueElementsAttr>()">,
   "non-opaque constant tensor">;
+
+// Checks if the data format is "NHWC".
+def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
+
+def FalseBoolAttr : AttrConstraint<
+  CPred<"!$_self.cast<BoolAttr>().getValue()">>;

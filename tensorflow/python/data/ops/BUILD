@@ -54,6 +54,34 @@ py_library(
 )
 
 py_library(
+    name = "load_ops",
+    srcs = ["load_ops.py"],
+    deps = [
+        ":dataset_ops",
+        ":structured_function",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "save_ops",
+    srcs = ["save_ops.py"],
+    deps = [
+        ":dataset_ops",
+        ":structured_function",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.py"],
     srcs_version = "PY3",

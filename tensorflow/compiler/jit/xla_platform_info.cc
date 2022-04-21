@@ -46,11 +46,15 @@ xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
 Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache) {
+  XlaCompilationCache::Config cache_config(
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(
-        platform_info.xla_device_metadata()->client(),
-        platform_info.xla_device_metadata()->jit_device_type(),
-        GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory);
+        std::move(cache_config), platform_info.xla_device_metadata()->client(),
+        platform_info.xla_device_metadata()->jit_device_type());
     return Status::OK();
   }
 
@@ -105,8 +109,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                    platform_info.device_type().type());
   }
   *cache = new XlaCompilationCache(
-      client.ValueOrDie(), DeviceType(registration->compilation_device_name),
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory);
+      std::move(cache_config), client.ValueOrDie(),
+      DeviceType(registration->compilation_device_name));
   return Status::OK();
 }
 
@@ -119,7 +123,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
   } else if (device->device_type() == DEVICE_GPU) {
-    platform_id = device->tensorflow_gpu_device_info()
+    platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();

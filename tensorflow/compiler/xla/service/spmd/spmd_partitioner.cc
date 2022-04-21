@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
-#include <float.h>
-
+#include <algorithm>
 #include <functional>
 #include <memory>
+#include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1924,7 +1926,6 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     const int64_t partition_count =
         input_sharding.tile_assignment().dim(sort_dim);
     const int64_t input_size = input->shape().dimensions(sort_dim);
-    const int64_t per_partition_size = CeilOfRatio(input_size, partition_count);
     const auto element_type = input->shape().element_type();
     const auto index_type = index->shape().element_type();
 
@@ -1942,7 +1943,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     // becomes the padded shape.
     std::vector<int64_t> replicated_dimensions(
         input->shape().dimensions().begin(), input->shape().dimensions().end());
-    replicated_dimensions[sort_dim] = per_partition_size * partition_count;
+    replicated_dimensions[sort_dim] = RoundUpTo(input_size, partition_count);
     const Shape replicated_shape = ShapeUtil::MakeTupleShape(
         {ShapeUtil::MakeShape(element_type, replicated_dimensions),
          ShapeUtil::MakeShape(index_type, replicated_dimensions)});
@@ -2288,17 +2289,17 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
   const HloSharding sharding = HloSharding::AssignDevice(device);
 
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> operand_shapes;
+  std::vector<const Shape*> operand_shapes;
   const auto& old_operands = hlo->operands();
   const auto old_operands_size = old_operands.size();
   operands.reserve(old_operands_size);
   operand_shapes.reserve(old_operands_size);
   for (const HloInstruction* operand : old_operands) {
     operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
-    operand_shapes.push_back(operand->shape());
+    operand_shapes.push_back(&operand->shape());
   }
   auto operand = b_.AddInstruction(HloInstruction::CreateTuple(operands));
-  auto operand_shape = ShapeUtil::MakeTupleShape(operand_shapes);
+  auto operand_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 
   auto on_device = b_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(device)));
@@ -2314,7 +2315,7 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
     std::vector<HloInstruction*> new_operands;
     for (int64_t i = 0; i < operands.size(); ++i) {
       new_operands.push_back(true_b.AddInstruction(
-          HloInstruction::CreateGetTupleElement(operand_shapes[i], param, i)));
+          HloInstruction::CreateGetTupleElement(*operand_shapes[i], param, i)));
     }
     auto root = true_b.AddInstruction(
         hlo->CloneWithNewOperands(hlo->shape(), new_operands));
@@ -2914,10 +2915,10 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  std::vector<Shape*> new_operand_shapes(input_count * 2);
+  std::vector<const Shape*> new_operand_shapes(input_count * 2);
   for (int64_t i = 0; i < input_count; ++i) {
-    new_operand_shapes[i] = inputs[i].hlo()->mutable_shape();
-    new_operand_shapes[i + input_count] = inits[i]->mutable_shape();
+    new_operand_shapes[i] = &inputs[i].hlo()->shape();
+    new_operand_shapes[i + input_count] = &inits[i]->shape();
   }
   // Create the shard shape of the reduce result.
   TF_ASSIGN_OR_RETURN(
@@ -3938,17 +3939,25 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
           << "Parameter shape changed for the entry computation";
     }
   } else {
+    // Fix up some bad tiling in entry computation layout.
+    auto update_shape = [this](Shape* subshape, const xla::ShapeIndex& index) {
+      if (subshape->IsArray()) {
+        UpdateLayout(subshape);
+      }
+    };
     const auto& old_entry_layout = module->entry_computation_layout();
     // Shapes can change but the layout should still remain the same.
     for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.parameter_shape(i),
           new_program_shape.mutable_parameters(i)));
-      UpdateLayout(new_program_shape.mutable_parameters(i));
+      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_parameters(i),
+                                        update_shape);
     }
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         old_entry_layout.result_shape(), new_program_shape.mutable_result()));
-    UpdateLayout(new_program_shape.mutable_result());
+    ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
+                                      update_shape);
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =

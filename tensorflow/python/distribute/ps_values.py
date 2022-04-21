@@ -558,7 +558,8 @@ class DistributedTable(lookup_ops.StaticHashTable):
   """
 
   def __init__(self, strategy, wrapped_creator):
-
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "PSSDistributedLookupTable").increase_by(1)
     self._coordinator_instance = wrapped_creator()
     self._wrapped_creator = wrapped_creator
     self._coordinator = strategy._cluster_coordinator
@@ -757,12 +758,9 @@ class RestoredDistributedTable(DistributedTable):
       # been created. We store them in '_restored_function' and set them to the
       # distributed tables when they're created in
       # `self._maybe_build_distributed_table.create_copy`.
-      if load_context.in_load_context() or (
-          "RestoredStaticHashtable" in self._wrapped.__class__.__name__):
-
-        if not hasattr(self, "_restored_function"):
-          self._restored_function = {}
-        self._restored_function[name] = value
+      if not hasattr(self, "_restored_function"):
+        self._restored_function = {}
+      self._restored_function[name] = value
       return self._coordinator_instance.__setattr__(name, value)
     else:
       return super(RestoredDistributedTable, self).__setattr__(name, value)

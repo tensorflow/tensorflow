@@ -116,7 +116,7 @@ and the conversion logic
 [here](https://github.com/tensorflow/tensorflow/blob/82abf0dbf316526cd718ae8cd7b11cfcb805805e/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L130).
 We also provide an example for another of Lingvo’s LSTM definitions in
 [lingvo.LayerNormalizedLSTMCellSimple interface](https://github.com/tensorflow/lingvo/blob/91a4609dbc2579748a95110eda59c66d17c594c5/lingvo/core/rnn_cell.py#L1173)
-and its convertion logic
+and its conversion logic
 [here](https://github.com/tensorflow/tensorflow/blob/c11d5d8881fd927165eeb09fd524a80ebaf009f2/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L137).
 
 ## “Bring your own TensorFlow RNN” to TensorFlow Lite

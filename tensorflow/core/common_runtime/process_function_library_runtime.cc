@@ -200,7 +200,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
 
   if (device->IsRemoteCallAllowed()) {
-    auto* dev_info = flr->device()->tensorflow_gpu_device_info();
+    auto* dev_info = flr->device()->tensorflow_accelerator_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
       return Status::OK();
@@ -827,6 +827,15 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
     default_device = flr->device();
   }
+
+  // Mark each node in the graph to be compiled by specified device.
+  if (!options.xla_compile_device_type.empty()) {
+    for (Node* node : graph->op_nodes()) {
+      node->AddAttr("_xla_compile_device_type",
+                    options.xla_compile_device_type);
+    }
+  }
+
   const std::shared_ptr<DeviceSet> dev_set = device_set();
 
   TF_RETURN_IF_ERROR(

@@ -1038,12 +1038,24 @@ TEST_F(NaryGradTest, SelectV2_Broadcast) {
   RunTest({x, y}, {x_shape, y_shape}, {z}, {x_shape});
 }
 
+TEST_F(NaryGradTest, SelectV2_Broadcast2) {
+  TensorShape x_shape({2, 3});
+  auto cond = Const<bool>(scope_, {{false}, {true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, x_shape}, {z}, {x_shape});
+}
+
 TEST_F(NaryGradTest, Atan2Grad) {
   TensorShape shape({3, 2, 5});
   auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Test with x2 = 1 + |x1| to avoid regions where the gradient
+  // is unstable and might cause problems for the numeric estimator.
+  auto x2 =
+      Div(scope_, x1, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x1)));
   auto y = Atan2(scope_, x1, x2);
-  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
+  RunTest({x1}, {shape}, {y}, {shape});
 }
 
 }  // namespace

@@ -44,6 +44,7 @@ using ::testing::EqualsProto;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
+constexpr absl::Duration kShutdownBarrierTimeout = absl::Seconds(1);
 constexpr char kCoordinationServiceType[] = "standalone";
 
 class TestCoordinationClient : public CoordinationClient {
@@ -61,7 +62,8 @@ class TestCoordinationClient : public CoordinationClient {
     done(Status::OK());
   }
 
-  void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+  void ReportErrorToTaskAsync(CallOptions* call_opts,
+                              const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
     mutex_lock l(mu_);
@@ -77,9 +79,7 @@ class TestCoordinationClient : public CoordinationClient {
     done(errors::Unimplemented(#method "Async"));                     \
   }
 
-  UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(ShutdownTask);
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
@@ -88,6 +88,17 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
+                      HeartbeatResponse* response,
+                      StatusCallback done) override {
+    done(errors::Unimplemented("HeartbeatAsync"));
+  }
+  void ShutdownTaskAsync(CallOptions* call_opts,
+                         const ShutdownTaskRequest* request,
+                         ShutdownTaskResponse* response,
+                         StatusCallback done) override {
+    done(errors::Unimplemented("ShutdownTaskAsync"));
+  }
 
  private:
   mutex mu_;
@@ -171,7 +182,8 @@ class CoordinateTwoTasksTest : public ::testing::Test {
   }
 
   // Set up coordination service.
-  void EnableCoordinationService(bool has_service_to_client_connection = true) {
+  void EnableCoordinationService(bool has_service_to_client_connection = true,
+                                 bool enable_shutdown_barrier = false) {
     ServerDef server_def = GetMultiClientServerDef("worker", /*num_tasks=*/2);
     auto client_cache = std::make_unique<TestCoordinationClientCache>();
     if (has_service_to_client_connection) {
@@ -180,13 +192,16 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     } else {
       client_cache = nullptr;
     }
-
     auto coord_config = server_def.mutable_default_session_config()
                             ->mutable_experimental()
                             ->mutable_coordination_config();
     coord_config->set_service_type(kCoordinationServiceType);
     coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
                                               absl::Milliseconds(1));
+    if (enable_shutdown_barrier) {
+      coord_config->set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
+                                                       absl::Milliseconds(1));
+    }
     // Init service.
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
         kCoordinationServiceType, Env::Default(), server_def,
@@ -913,4 +928,177 @@ TEST_F(CoordinationBarrierTest,
   TF_EXPECT_OK(barrier_status_2);
 }
 
+TEST_F(CoordinateTwoTasksTest, ResetAndRegisterAgain) {
+  EnableCoordinationService();
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+
+  // Task should be allowed to register again after being reset.
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+}
+
+TEST_F(CoordinateTwoTasksTest, Reset_HeartbeatsAreAcceptedForAGracePeriod) {
+  EnableCoordinationService();
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+  // Heartbeat should be allowed for a short grace period after reset.
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+
+  // Heartbeat failure should be triggered for disconnected task after grace
+  // period.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(3 * kHeartbeatTimeout));
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+}
+
+TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  Status barrier_status;
+  absl::Notification barrier_n;
+  coord_service_->BarrierAsync(
+      "ongoing_barrier", absl::InfiniteDuration(), task_0_,
+      /*participating_tasks=*/{}, [&barrier_status, &barrier_n](Status s) {
+        barrier_status = s;
+        barrier_n.Notify();
+      });
+
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+
+  // Ongoing barrier should fail with error after shutdown.
+  EXPECT_TRUE(barrier_n.HasBeenNotified());
+  EXPECT_TRUE(errors::IsInternal(barrier_status)) << barrier_status;
+}
+
+TEST_F(CoordinateTwoTasksTest, Shutdown_HeartbeatsAreAcceptedForAGracePeriod) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+
+  absl::Notification n;
+  coord_service_->ShutdownTaskAsync(task_0_, [&n](Status s) {
+    TF_EXPECT_OK(s);
+    n.Notify();
+  });
+  n.WaitForNotification();
+
+  // Heartbeat should be allowed for a short grace period after shutdown.
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+
+  // Heartbeat failure should be triggered for disconnected task after grace
+  // period.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(3 * kHeartbeatTimeout));
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+}
+
+TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  Status barrier_status;
+  absl::Notification barrier_n;
+  coord_service_->BarrierAsync(
+      "ongoing_barrier", absl::InfiniteDuration(), task_0_,
+      /*participating_tasks=*/{}, [&barrier_status, &barrier_n](Status s) {
+        barrier_status = s;
+        barrier_n.Notify();
+      });
+
+  absl::Notification shutdown_n;
+  coord_service_->ShutdownTaskAsync(task_0_, [&shutdown_n](Status s) {
+    TF_EXPECT_OK(s);
+    shutdown_n.Notify();
+  });
+  shutdown_n.WaitForNotification();
+
+  // Ongoing barrier should fail with error after shutdown.
+  EXPECT_TRUE(barrier_n.HasBeenNotified());
+  EXPECT_TRUE(errors::IsInternal(barrier_status)) << barrier_status;
+}
+
+TEST_F(CoordinateTwoTasksTest, ShutdownWithBarrier_BarrierSucceeds) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/true);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  Status barrier_status;
+  Status barrier_status_2;
+
+  coord_service_->ShutdownTaskAsync(
+      task_0_, [&barrier_status](Status s) { barrier_status = s; });
+  coord_service_->ShutdownTaskAsync(
+      task_1_, [&barrier_status_2](Status s) { barrier_status_2 = s; });
+
+  TF_EXPECT_OK(barrier_status);
+  TF_EXPECT_OK(barrier_status_2);
+
+  // Confirm that both tasks have disconnected.
+  // Note: this should not happen in prod where RegisterTask() is called after
+  // Shutdown(), which is prevented by agent-side logic.
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       ShutdownWithBarrier_BarrierFails_TaskDisconnectsOtherTaskIsAlerted) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/true);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  Status barrier_status;
+
+  absl::Notification n;
+  coord_service_->ShutdownTaskAsync(task_0_, [&n, &barrier_status](Status s) {
+    barrier_status = s;
+    n.Notify();
+  });
+  // Block until barrier times out.
+  n.WaitForNotification();
+
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status)) << barrier_status;
+  // Confirm that task_0_ has disconnected.
+  // Note: this should not happen in prod where RegisterTask() is called after
+  // Shutdown(), which is prevented by agent-side logic.
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+
+  // Other task is alerted that shutdown has been initiated without it.
+  Status other_task_status = client_1_.GetStatus();
+  EXPECT_TRUE(errors::IsInternal(other_task_status)) << other_task_status;
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       ShutdownWithBarrier_BarrierFailsWithoutClientConnection_ServiceStops) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/true);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  Status barrier_status;
+
+  absl::Notification n;
+  coord_service_->ShutdownTaskAsync(task_0_, [&n, &barrier_status](Status s) {
+    barrier_status = s;
+    n.Notify();
+  });
+  // Block until barrier times out.
+  n.WaitForNotification();
+  // Provide time for coordination service to shut down after barrier timeout.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(absl::Seconds(1)));
+
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status)) << barrier_status;
+
+  // Service stops because no service-to-client connection is available for
+  // error propagation.
+  // Task 1 still sends unexpected heartbeat because it doesn't know that
+  // service has stopped yet, which should fail.
+  Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
+
+  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+}
 }  // namespace tensorflow

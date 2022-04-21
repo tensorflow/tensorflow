@@ -854,8 +854,8 @@ static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
                                 SymbolRefAttr func) {
   auto module = op->getParentOfType<ModuleOp>();
   auto function =
-      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
-  FunctionType function_ty = function.getType();
+      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
+  FunctionType function_ty = function.getFunctionType();
 
   for (auto arg_in : llvm::zip(args, function_ty.getInputs())) {
     if (std::get<0>(arg_in).getType() != std::get<1>(arg_in)) {
@@ -6231,9 +6231,9 @@ class ConvertXlaReduceWindowOp
             .cast<DenseIntElementsAttr>());
     // Insert a call to the reducer in the region of the mhlo op.
     mlir::SymbolRefAttr func = op.computation();
-    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
-    auto func_ty = func_op.getType();
+    auto func_ty = func_op.getFunctionType();
     BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_window_op.body());
 
     rewriter.replaceOp(op, reduce_window_op.getResults());
@@ -7086,9 +7086,9 @@ class ConvertXlaSelectAndScatterOp
             .cast<DenseIntElementsAttr>());
 
     auto insert_call_to = [&](const mlir::SymbolRefAttr &func, Region *region) {
-      auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+      auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
           op->getParentOfType<mlir::ModuleOp>(), func));
-      auto func_ty = func_op.getType();
+      auto func_ty = func_op.getFunctionType();
       BuildBodyWithCall(rewriter, loc, func, func_ty, region);
     };
 
@@ -7180,9 +7180,9 @@ class ConvertXlaVariadicReduceV2Op
         loc, op.inputs(), op.init_values(),
         GetI64ElementsAttr(op.dimensions_to_reduce()));
     mlir::SymbolRefAttr func = op.reducer();
-    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
-    auto func_ty = func_op.getType();
+    auto func_ty = func_op.getFunctionType();
     // Insert a call to the reducer in the region of the mhlo op.
     BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.body());
 
@@ -7208,9 +7208,9 @@ class ConvertXlaVariadicSortOp
         loc, op.inputs(), dimension.getValues<IntegerAttr>()[0].getInt(),
         op.is_stable());
     mlir::SymbolRefAttr func = op.comparator();
-    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
-    auto func_ty = func_op.getType();
+    auto func_ty = func_op.getFunctionType();
     // Insert a call to the reducer in the region of the mhlo op.
     BuildBodyWithCall(rewriter, loc, func, func_ty, &sort_op.comparator());
 

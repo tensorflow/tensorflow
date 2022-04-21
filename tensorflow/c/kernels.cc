@@ -484,6 +484,8 @@ TF_StringView TF_OpKernelConstruction_GetName(TF_OpKernelConstruction* ctx) {
 
 TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(i, 0);
+  CHECK_LT(i, cc_ctx->num_outputs());
   return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
 }
 

@@ -273,16 +273,6 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
           changed |= propagate_shapetree(called->root_instruction(), inst);
         }
       }
-    } else if (inst->opcode() == HloOpcode::kTupleSelect) {
-      if (!hlo_replication_[inst->operand(0)].element({})) {
-        // The predicate is not replicated, so the result is different across
-        // replicas.
-        changed |= assign_or_combine_shapetree(
-            ShapeTree<bool>(inst->shape(), false), inst);
-      } else {
-        changed |= propagate_shapetree(inst->operand(1), inst);
-        changed |= propagate_shapetree(inst->operand(2), inst);
-      }
     } else if (inst->opcode() == HloOpcode::kTuple) {
       ShapeTree<bool> shape_tree(inst->shape(), true);
       for (int64_t i = 0; i < inst->operand_count(); ++i) {

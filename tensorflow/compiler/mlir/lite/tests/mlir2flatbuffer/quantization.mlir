@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
+func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // CHECK: {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
@@ -174,5 +174,5 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
   %5 = "tfl.reshape"(%4, %0) : (tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>, tensor<2xi32>) -> tensor<1x401408x!quant.uniform<u8:f32, 0.023528476789885875>>
   %6 = "tfl.softmax"(%5) {beta = 1.000000e+00 : f32} : (tensor<1x401408x!quant.uniform<u8:f32, 0.023528476789885875>>) -> tensor<1x401408x!quant.uniform<u8:f32, 3.906250e-03>>
   %7 = "tfl.dequantize"(%6) : (tensor<1x401408x!quant.uniform<u8:f32, 3.906250e-03>>) -> tensor<1x401408xf32>
-  return %7 : tensor<1x401408xf32>
+  func.return %7 : tensor<1x401408xf32>
 }

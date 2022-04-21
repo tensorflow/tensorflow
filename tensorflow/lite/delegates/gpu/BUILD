@@ -73,6 +73,7 @@ objc_library(
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
     copts = ["-std=c++17"],
+    features = ["-layering_check"],
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [

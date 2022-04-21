@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 
+#include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/miopen_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/rocblas_wrapper.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -59,6 +63,7 @@ const tfrt::gpu::wrapper::BlasDiagType kBlasDiagNonUnit = CUBLAS_DIAG_NON_UNIT;
 tfrt::gpu::wrapper::BlasDataType MlirTypeToBlasDataType(mlir::Type type) {
 #if TENSORFLOW_USE_ROCM
   if (type.isF16()) return rocblas_datatype_f16_r;
+  if (type.isBF16()) return rocblas_datatype_bf16_r;
   if (type.isF32()) return rocblas_datatype_f32_r;
   if (type.isF64()) return rocblas_datatype_f64_r;
   if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {

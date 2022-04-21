@@ -1319,34 +1319,6 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   }
 }
 
-TEST_P(MemorySpaceAssignmentTest, TupleSelect) {
-  // Make sure tuple-select is not optimized away.
-  absl::string_view hlo_string = R"(
-  HloModule tuple, is_scheduled=true
-
-  ENTRY %main (a: f32[2], b: f32[2], c: f32[2], d: f32[2], cond: pred[]) -> f32[2] {
-    %cond = pred[]{:T(128)E(32)} parameter(4)
-    %token0 = token[] after-all()
-    %d = f32[2]{0:T(128)} parameter(3)
-    %c = f32[2]{0:T(128)} parameter(2)
-    %b = f32[2]{0:T(128)} parameter(1)
-    %a = f32[2]{0:T(128)} parameter(0)
-    %tup0 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %a, f32[2]{0:T(128)} %b)
-    %tup1 = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %c, f32[2]{0:T(128)} %d)
-    %s = (f32[2]{0:T(128)}, f32[2]{0:T(128)}) tuple-select(pred[]{:T(128)E(32)} %cond, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup0, (f32[2]{0:T(128)}, f32[2]{0:T(128)}) %tup1)
-    %gte = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[2]{0:T(128)}) %s), index=0
-    ROOT %negate = f32[2]{0:T(128)} negate(f32[2]{0:T(128)} %gte)
-  }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Negate(op::GetTupleElement(op::TupleSelect())));
-}
-
 TEST_P(MemorySpaceAssignmentTest, AddDependency) {
   // Make sure add-dependency is not optimized away.
   absl::string_view hlo_string = R"(
@@ -1899,6 +1871,34 @@ TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
     while = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
     ROOT gte = f32[3]{0} get-tuple-element(while), index=2
   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, b228599972) {
+  absl::string_view hlo_string = R"(
+HloModule entry, is_scheduled=true
+
+fused_computation {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %result0 = f32[2,3]{1,0} copy(%p0)
+  %result1 = f32[2,3]{1,0} copy(%p0)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(%result0, %result1)
+}
+
+ENTRY entry {
+  %p0 = f32[2,3]{1,0} parameter(0)
+  %p1 = f32[2,3]{1,0} parameter(1)
+  %unused = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(%p0), kind=kLoop, calls=%fused_computation
+  %unused.0 = f32[2,3]{1,0} get-tuple-element(%unused), index=0
+  %unused.1 = f32[2,3]{1,0} get-tuple-element(%unused), index=1
+  %negate.0 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.0)
+  %negate.1 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %unused.1)
+
+  ROOT %result = f32[2,3]{1,0} negate(%p1)
+}
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));

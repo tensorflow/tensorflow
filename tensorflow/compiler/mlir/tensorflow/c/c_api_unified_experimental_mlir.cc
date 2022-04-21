@@ -218,7 +218,7 @@ class MlirAbstractOp : public TracingOperation {
 class MlirFunction : public AbstractFunction {
  public:
   explicit MlirFunction(std::unique_ptr<MLIRContext> context,
-                        OwningOpRef<mlir::ModuleOp> module, FuncOp func)
+                        OwningOpRef<mlir::ModuleOp> module, func::FuncOp func)
       : AbstractFunction(kMlir),
         context_(std::move(context)),
         module_(std::move(module)),
@@ -234,7 +234,7 @@ class MlirFunction : public AbstractFunction {
  private:
   std::unique_ptr<MLIRContext> context_;
   OwningOpRef<mlir::ModuleOp> module_;
-  FuncOp func_;
+  func::FuncOp func_;
   std::unique_ptr<tensorflow::FunctionDef> fdef_;
 };
 
@@ -247,8 +247,9 @@ class MlirFunctionContext : public TracingContext {
     RegisterDialects(*context_);
     // TODO(aminim) figure out the location story here
     module_ = ModuleOp::create(builder_.getUnknownLoc());
-    func_ = FuncOp::create(builder_.getUnknownLoc(), name,
-                           builder_.getFunctionType(llvm::None, llvm::None));
+    func_ =
+        func::FuncOp::create(builder_.getUnknownLoc(), name,
+                             builder_.getFunctionType(llvm::None, llvm::None));
     module_->push_back(func_);
     builder_ = OpBuilder::atBlockBegin(func_.addEntryBlock());
   }
@@ -279,7 +280,7 @@ class MlirFunctionContext : public TracingContext {
  private:
   std::unique_ptr<MLIRContext> context_;
   OpBuilder builder_;
-  FuncOp func_;
+  func::FuncOp func_;
   OwningOpRef<mlir::ModuleOp> module_;
 };
 
@@ -523,7 +524,8 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   }
   PassManager pm(func_.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(pm);
-  pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
+  pm.addNestedPass<func::FuncOp>(
+      CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(CreateBreakUpIslandsPass());
 
   // In case of failure, the `diag_handler` converts MLIR errors emitted to
@@ -554,7 +556,7 @@ Status MlirAbstractOp::Execute(absl::Span<AbstractTensorHandle*> retvals,
 
 Operation* MlirFunctionContext::CreateOperationFromState(
     const OperationState& state) {
-  return builder_.createOperation(state);
+  return builder_.create(state);
 }
 
 Status MlirFunctionContext::AddParameter(

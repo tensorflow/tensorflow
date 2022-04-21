@@ -23,11 +23,12 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
 
 namespace mlir {
 namespace detail {
-// This class implements the iterator on control return of a value.
+// This class iterates over the control dependencies of the values.
 template <typename ValueIteratorT>
 class ControlRetIterator final
     : public llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
@@ -35,7 +36,12 @@ class ControlRetIterator final
  public:
   using llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
                                    ValueIteratorT, Value>::mapped_iterator_base;
-  Value mapElement(Value value) const;
+
+  Value mapElement(Value value) const {
+    return value.getType().isa<tf_type::ControlType>()
+               ? value
+               : tfg::LookupControlDependency(value);
+  }
 };
 }  // namespace detail
 
@@ -116,7 +122,10 @@ class TFOp {
   // requested device otherwise.
   StringAttr deviceAttr() {
     StringAttr device = assignedDeviceAttr();
-    if (device) return device;
+    if (device) {
+      assert(!device.getValue().empty());
+      return device;
+    }
     return requestedDeviceAttr();
   }
   StringRef device() {

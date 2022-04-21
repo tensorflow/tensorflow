@@ -1847,7 +1847,9 @@ TEST_F(OpTest, AvgPool3DGrad) {
 }
 
 TEST_F(OpTest, BatchMatMul) {
-  GTEST_SKIP() << "b/201095155";
+  // See note about failing Kokoro tests: b/214080339#comment22
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     const BatchMatMulArguments a = ChooseBatchMatMulArguments(false);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchMatMul")
@@ -1860,8 +1862,11 @@ TEST_F(OpTest, BatchMatMul) {
 }
 
 TEST_F(OpTest, BatchMatMulV2) {
-  GTEST_SKIP() << "b/201095155";
-  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  // :randomized_tests_seeded is flaky with --tf_xla_random_seed=200839030
+  // See b/229622638.
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
+  Repeatedly([this]() {
     const BatchMatMulArguments a = ChooseBatchMatMulArguments(true);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchMatMulV2")
                                              .RandomInput(a.dtype, a.lhs_dims)
@@ -1983,7 +1988,7 @@ TEST_F(OpTest, BiasAddV1) {
 }
 
 TEST_F(OpTest, Bitcast) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto src_type = Choose<DataType>(kAllNumberTypes);
     auto dst_type = Choose<DataType>(kAllNumberTypes);
@@ -2082,7 +2087,7 @@ TEST_F(OpTest, Cast) {
 }
 
 TEST_F(OpTest, CastBF16) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     DataType src_type, dst_type;
     src_type = Choose<DataType>({DT_FLOAT});
@@ -2135,8 +2140,6 @@ TEST_F(OpTest, Complex) {
 }
 
 TEST_F(OpTest, Concat) {
-  GTEST_SKIP() << "b/201095155";
-  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     ConcatArguments a = ChooseConcatArguments(false);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Concat")
@@ -2274,7 +2277,6 @@ TEST_F(OpTest, RFFT3D) {
 }
 
 TEST_F(OpTest, IRFFT) {
-  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     std::vector<int64_t> dims = RandomDims(1, kDefaultMaxRank, 3);
     int64_t orig_size = dims[dims.size() - 1];
@@ -2340,7 +2342,6 @@ TEST_F(OpTest, Conv2D) {
 }
 
 TEST_F(OpTest, Conv2DBackpropFilter) {
-  GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2898,7 +2899,9 @@ TEST_F(OpTest, GatherV2) {
 TEST_F(OpTest, GatherNd) {
   // :randomized_tests_mlir fails with --tf_xla_random_seed=459353625
   // --test_arg=--tf_xla_test_repetitions=100
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  // See b/214080339#comment27 as this test causes Kokoro to crash.
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto params_type = Choose<DataType>(kAllXlaTypes);
     // GatherNd seems undefined on the case where params has rank 0.
@@ -3265,7 +3268,6 @@ TEST_F(OpTest, MatrixBandPart) {
 }
 
 TEST_F(OpTest, MatrixDiag) {
-  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiag")
@@ -3275,7 +3277,7 @@ TEST_F(OpTest, MatrixDiag) {
 }
 
 TEST_F(OpTest, MatrixDiagPart) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiagPart")
@@ -3565,7 +3567,7 @@ TEST_F(OpTest, OneHot) {
 }
 
 TEST_F(OpTest, OnesLike) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
@@ -3595,7 +3597,8 @@ TEST_F(OpTest, Pack) {
 }
 
 TEST_F(OpTest, Pad) {
-  GTEST_SKIP() << "b/201095155";
+  // See note about failing Kokoro tests: b/214080339#comment22
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto a = ChoosePadArguments();
     return ExpectTfAndXlaOutputsAreClose(
@@ -3680,8 +3683,9 @@ TEST_F(OpTest, QuantizeAndDequantizeV2) {
 }
 
 TEST_F(OpTest, RandomShuffle) {
-  GTEST_SKIP()
-      << "b/209062491";  // This test passes with --tf_xla_test_device=CPU:0
+  // See b/209062491 as this test passes with --tf_xla_test_device=CPU:0
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto type = Choose<DataType>(kAllXlaTypes);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("RandomShuffle")
@@ -3888,7 +3892,7 @@ TEST_F(OpTest, ResizeBilinearGrad) {
 }
 
 TEST_F(OpTest, Reverse) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     std::vector<int64_t> dims = RandomDims(1);
     auto type = Choose<DataType>(kAllXlaTypes);
@@ -4327,7 +4331,9 @@ TEST_F(OpTest, SparseSoftmaxCrossEntropyWithLogits) {
 }
 
 TEST_F(OpTest, Split) {
-  GTEST_SKIP() << "b/197140886";
+  // See b/214080339#comment27 as this test causes Kokoro to crash.
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64_t> dims = RandomDims(1);
@@ -4463,7 +4469,7 @@ TEST_F(OpTest, Sum) {
 }
 
 TEST_F(OpTest, StridedSlice) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64_t> data_dims = RandomDims();
@@ -4779,7 +4785,7 @@ TEST_F(OpTest, Xlogy) {
 }
 
 TEST_F(OpTest, ZerosLike) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
@@ -4805,7 +4811,8 @@ TEST_F(OpTest, Zeta) {
 //   --gunit_filter='OpTest.FusedBatchNormTraining'
 //   --tf_xla_random_seed=2838146746
 TEST_F(OpTest, FusedBatchNormTraining) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   bool is_nhwc = RandomBool();
   std::vector<int64_t> x_dims = RandomDims(/*min_rank=*/4, /*max_rank=*/4,
                                            /*min_size=*/5, /*max_size=*/20);

@@ -113,7 +113,6 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kGather:
       return operand_index == 0;
     case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect:
       return operand_index == 1 || operand_index == 2;
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow: {

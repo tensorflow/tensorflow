@@ -101,9 +101,7 @@ def convert_structure_to_signature(structure, arg_names=None):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-      name = "/".join(str(p) for p in path)
-      return resource_variable_ops.VariableSpec(
-          arg.shape, arg.dtype, name, trainable=arg.trainable)
+      return resource_variable_ops.VariableSpec.from_value(arg)
     if isinstance(arg, (
         int,
         float,

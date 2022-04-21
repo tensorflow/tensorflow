@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -330,7 +331,7 @@ struct FuseFillIntoTiledReductionPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseFillIntoTiledReductionPass() {
   return std::make_unique<FuseFillIntoTiledReductionPass>();
 }

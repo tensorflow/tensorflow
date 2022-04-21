@@ -39,6 +39,7 @@ enum class OperationType {
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
+  CAST,
   CONCAT,
   CONSTANT,
   CONVOLUTION_2D,
@@ -614,6 +615,11 @@ struct QuantizeAndDequantizeAttributes {
 
 struct GatherAttributes {
   Axis axis = Axis::UNKNOWN;
+};
+
+struct OneHotAttributes {
+  float on_value = 1;
+  float off_value = 0;
 };
 
 }  // namespace gpu

@@ -416,11 +416,11 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
       if (device_parsed_name.type == "TPU" &&
           DeviceNameUtils::IsSameAddressSpace(tpu_system_name,
                                               device_parsed_name)) {
-        const DeviceBase::GpuDeviceInfo* gpu_device_info =
-            device->tensorflow_gpu_device_info();
-        if (gpu_device_info && gpu_device_info->stream) {
+        const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+            device->tensorflow_accelerator_device_info();
+        if (accelerator_device_info && accelerator_device_info->stream) {
           int device_ordinal =
-              gpu_device_info->stream->parent()->device_ordinal();
+              accelerator_device_info->stream->parent()->device_ordinal();
           if (device_ordinal >= device_id_output_size) {
             OP_REQUIRES_OK(ctx,
                            errors::Internal(absl::StrCat(

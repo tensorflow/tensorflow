@@ -622,7 +622,8 @@ LogicalResult FormClustersInBlock(
 }
 
 LogicalResult FormClustersInFunction(
-    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    func::FuncOp func,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
@@ -659,7 +660,7 @@ LogicalResult FormClustersInFunction(
 
 void TPUClusterFormationPass::runOnOperation() {
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
-  for (auto func : getOperation().getOps<FuncOp>())
+  for (auto func : getOperation().getOps<func::FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
             func, side_effect_analysis.GetAnalysisForFunc(func))))

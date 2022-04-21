@@ -25,7 +25,7 @@ limitations under the License.
 namespace {
 
 bool IsCPU(tensorflow::Device* d) {
-  return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
+  return d == nullptr || d->tensorflow_accelerator_device_info() == nullptr;
 }
 
 }  // namespace

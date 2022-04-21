@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -73,8 +75,8 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
-using mlir::FuncOp;
 using mlir::Value;
+using mlir::func::FuncOp;
 using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
 
@@ -117,6 +119,8 @@ bool IsSmallAlloc(Value alloc) {
 struct CollapseParallelLoopsTo1D
     : public mlir::PassWrapper<CollapseParallelLoopsTo1D,
                                mlir::OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CollapseParallelLoopsTo1D)
+
   void runOnOperation() override {
     getOperation().walk([&](ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
@@ -134,6 +138,8 @@ struct CollapseParallelLoopsTo1D
 class TileLoops
     : public mlir::PassWrapper<TileLoops, mlir::OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TileLoops)
+
   explicit TileLoops(llvm::ArrayRef<int64_t> tile_sizes,
                      llvm::ArrayRef<int64_t> unroll_factors) {
     tile_sizes_ = llvm::to_vector<4>(tile_sizes);
@@ -244,8 +250,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<FuncOp>(mlir::CreateShapeSimplification());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
@@ -299,8 +304,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
         mlir::kernel_gen::transforms::CreateVectorizationPass());
     pm.addNestedPass<FuncOp>(
         mlir::bufferization::createBufferLoopHoistingPass());
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateShapeSimplification());
+    pm.addNestedPass<FuncOp>(mlir::CreateShapeSimplification());
     pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
     pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
     pm.addNestedPass<FuncOp>(
@@ -401,8 +405,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
@@ -512,7 +515,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
-  registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::chlo::ChloDialect, mlir::mhlo::MhloDialect>();
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);

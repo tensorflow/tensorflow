@@ -22,6 +22,8 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/load_proto.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 using mlir::MLIRContext;
 using mlir::tfg::ImportGraphDefToMlir;
@@ -78,6 +81,19 @@ int main(int argc, char **argv) {
     }
     module = std::move(new_module);
   }
+
+  {
+    // Run the reify attributes roundtrip to ensure that the passes are
+    // perfectly roundtrippable.
+    mlir::PassManager mgr(&context);
+    mgr.addPass(mlir::tfg::CreateConsolidateAttributesPass());
+    mgr.addPass(mlir::tfg::CreatePrepareAttributesForExportPass());
+    if (mlir::failed(mgr.run(*module))) {
+      llvm ::errs() << "Reify attributes roundtrip failed\n";
+      return 4;
+    }
+  }
+
   GraphDef new_graphdef;
   status = tensorflow::ExportMlirToGraphdef(*module, &new_graphdef);
   if (!status.ok()) {

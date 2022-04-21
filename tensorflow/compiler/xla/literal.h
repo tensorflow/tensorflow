@@ -1205,14 +1205,14 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](absl::Span<const int64_t> indexes) {
+    auto init_function = [&](absl::Span<const int64_t> indexes, int thread_id) {
       DimensionVector minor_scan_indexes(rank, 0);
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64_t i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;
-        literal_data.at(index + i) = generator(minor_scan_indexes);
+        literal_data.at(index + i) = generator(minor_scan_indexes, thread_id);
       }
     };
     if (parallel) {
@@ -1224,24 +1224,32 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
           [&init_function](absl::Span<const int64_t> indexes) {
-            init_function(indexes);
+            init_function(indexes, /*thread_id=*/-1);
             return true;
           });
     }
   } else {
     // For scalars.
-    literal_data.at(0) = generator({});
+    literal_data.at(0) = generator({}, /*thread_id=*/-1);
   }
   return Status::OK();
 }
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::Populate(const FnType& generator) {
-  return PopulateInternal<NativeT>(generator, /*parallel=*/false);
+  return PopulateInternal<NativeT>(
+      [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
+        return generator(indexes);
+      },
+      /*parallel=*/false);
 }
 
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
-  return PopulateInternal<NativeT>(generator, /*parallel=*/true);
+  return PopulateInternal<NativeT>(
+      [&](absl::Span<const int64_t> indexes, int thread_id) {
+        return generator(indexes, thread_id);
+      },
+      /*parallel=*/true);
 }
 
 template <typename NativeT>

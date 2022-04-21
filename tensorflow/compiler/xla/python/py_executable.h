@@ -56,6 +56,10 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
     return executable_->SizeOfGeneratedCodeInBytes();
   }
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    return executable_->GetCompiledMemoryStats();
+  }
+
   void Delete() { return executable_->Delete(); }
 
   bool is_deleted() { return executable_->IsDeleted(); }

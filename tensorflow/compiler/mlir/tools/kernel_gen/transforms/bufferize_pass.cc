@@ -193,8 +193,8 @@ struct ComputeOpAndFuncBufferizePass
         });
 
     CustomBufferizeTypeConverter converter;
-    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                             converter);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
@@ -205,9 +205,9 @@ struct ComputeOpAndFuncBufferizePass
                                                          target);
 
     // TODO(herhut): Move this legality configuration to bufferize itself?
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      auto inputs = op.getType().getInputs();
-      auto results = op.getType().getResults();
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      auto inputs = op.getFunctionType().getInputs();
+      auto results = op.getFunctionType().getResults();
       return converter.isLegal(inputs) && converter.isLegal(results) &&
              converter.isLegal(&op.getBody());
     });
@@ -339,7 +339,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
         lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
         vector::VectorDialect>();
-    target.addLegalOp<FuncOp, ModuleOp>();
+    target.addLegalOp<func::FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
@@ -373,7 +373,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTiledLoopBufferizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass() {
   return std::make_unique<TiledLoopBufferizePass>();
 }
 

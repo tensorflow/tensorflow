@@ -457,11 +457,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &HloPrintOptions::set_indent_amount)
       .def_property("is_in_nested_computation",
                     &HloPrintOptions::is_in_nested_computation,
-                    &HloPrintOptions::set_is_in_nested_computation)
-      .def_property(
-          "leading_and_trailing_instructions_number",
-          &HloPrintOptions::leading_and_trailing_instructions_number,
-          &HloPrintOptions::set_leading_and_trailing_instructions_number);
+                    &HloPrintOptions::set_is_in_nested_computation);
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
@@ -714,6 +710,14 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("use_auto_spmd_partitioning",
                     &ExecutableBuildOptions::use_auto_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
+      .def_property(
+          "auto_spmd_partitioning_mesh_shape",
+          &ExecutableBuildOptions::auto_spmd_partitioning_mesh_shape,
+          &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape)
+      .def_property(
+          "auto_spmd_partitioning_mesh_ids",
+          &ExecutableBuildOptions::auto_spmd_partitioning_mesh_ids,
+          &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,

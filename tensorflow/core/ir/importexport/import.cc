@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/import.h"
 
-#include <assert.h>
-
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -543,7 +542,7 @@ Value GraphImporter::GetOperand(const Edge& edge) {
   state.addAttribute("name", builder_.getStringAttr(input_node.name()));
   state.types.resize(input_node.num_outputs() + 1, placeholder_ty);
   state.types.back() = control_ty;
-  inst = builder_.createOperation(state);
+  inst = builder_.create(state);
   return getResult();
 }
 
@@ -588,10 +587,14 @@ Status GraphImporter::ConvertNode(const Node& node) {
 
   // Handle attributes, reserve `+3` for `device`, `name` and `fulltype`.
   result.attributes.reserve(node.attrs().size() + 3);
-  result.addAttribute(dialect_->getDeviceAttrIdentifier(),
-                      builder_.getStringAttr(node.requested_device()));
-  result.addAttribute(dialect_->getNameAttrIdentifier(),
-                      StringAttr::get(context_, node.name()));
+  if (!node.requested_device().empty()) {
+    result.addAttribute(dialect_->getDeviceAttrIdentifier(),
+                        builder_.getStringAttr(node.requested_device()));
+  }
+  if (!node.name().empty()) {
+    result.addAttribute(dialect_->getNameAttrIdentifier(),
+                        StringAttr::get(context_, node.name()));
+  }
   if (node.def().has_experimental_type()) {
     TF_ASSIGN_OR_RETURN(
         tf_type::FullTypeAttr type,
@@ -606,17 +609,20 @@ Status GraphImporter::ConvertNode(const Node& node) {
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
     result.addAttribute(PromoteToTFGAttribute(name), attr);
   }
-  Attribute assigned_device =
-      result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
-  if (!assigned_device ||
-      assigned_device.cast<StringAttr>().getValue().empty()) {
-    result.attributes.erase(dialect_->getAssignedDeviceAttrIdentifier());
-    result.addAttribute(dialect_->getAssignedDeviceAttrIdentifier(),
-                        builder_.getStringAttr(node.assigned_device_name()));
+
+  if (!node.assigned_device_name().empty()) {
+    Attribute assigned_device =
+        result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
+    if (!assigned_device ||
+        assigned_device.cast<StringAttr>().getValue().empty()) {
+      result.attributes.erase(dialect_->getAssignedDeviceAttrIdentifier());
+      result.addAttribute(dialect_->getAssignedDeviceAttrIdentifier(),
+                          builder_.getStringAttr(node.assigned_device_name()));
+    }
   }
 
   // Register the mapping between the TF node and the newly created operation.
-  Operation* operation = builder_.createOperation(result);
+  Operation* operation = builder_.create(result);
   Operation*& cached_operation = node_values_[node.id()];
   if (cached_operation) {
     // A placeholder was inserted for this op earlier to break a cycle in the
@@ -929,8 +935,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   }
 
   func_op->setAttrs(attrs);
-  func_op->setAttr(
-      "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
+  func_op->setAttr("function_type", TypeAttr::get(builder.getFunctionType(
+                                        arg_types, ret_types)));
 
   return func_op;
 }
@@ -959,11 +965,15 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
     Type dtype;
     TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
     TF_ASSIGN_OR_RETURN(
-        Attribute shape,
+        ShapeAttr shape,
         ConvertTensorShapeProto(handle.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+    TensorType handle_type;
+    if (shape.hasRank()) {
+      handle_type = RankedTensorType::get(shape.getShape(), dtype);
+    } else {
+      handle_type = UnrankedTensorType::get(dtype);
+    }
+    dtype_and_shape.push_back(TypeAttr::get(handle_type));
   }
   return builder.getArrayAttr(dtype_and_shape);
 }

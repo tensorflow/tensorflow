@@ -54,8 +54,10 @@ namespace TFL {
 namespace {
 
 struct LegalizeJaxRandomPass
-    : public PassWrapper<LegalizeJaxRandomPass, OperationPass<FuncOp>> {
+    : public PassWrapper<LegalizeJaxRandomPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
+
   StringRef getArgument() const final { return "tfl-legalize-random"; }
   StringRef getDescription() const final {
     return "Replace jax.random.uniform/normal with tfl.custom.";
@@ -76,11 +78,11 @@ inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
                                  StringRef(content.data(), content.size()));
 }
 
-inline bool IsJaxRandomUniform(mlir::FuncOp func) {
+inline bool IsJaxRandomUniform(mlir::func::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_uniform");
 }
 
-inline bool IsJaxRandomNormal(mlir::FuncOp func) {
+inline bool IsJaxRandomNormal(mlir::func::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_normal");
 }
 
@@ -88,7 +90,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
   auto func = getOperation();
   if (!IsJaxRandomUniform(func) && !IsJaxRandomNormal(func)) return;
   auto result_tuple_ty =
-      func.getType().getResult(0).dyn_cast_or_null<TupleType>();
+      func.getFunctionType().getResult(0).dyn_cast_or_null<TupleType>();
   if (!result_tuple_ty) return;
   if (result_tuple_ty.size() != 1) return;
   auto result_ty = result_tuple_ty.getType(0).dyn_cast<ShapedType>();
@@ -122,7 +124,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
 static PassRegistration<LegalizeJaxRandomPass> pass;
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeJaxRandomPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeJaxRandomPass() {
   return std::make_unique<LegalizeJaxRandomPass>();
 }
 

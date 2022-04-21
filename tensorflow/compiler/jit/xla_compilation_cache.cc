@@ -137,9 +137,10 @@ struct SignatureHashCombiner {
 
 std::string XlaSerializedCacheKeyToString(const XlaSerializedCacheKey& key) {
   return absl::StrCat(
-      kXlaSerializedCacheKeySeparator, key.signature_fingerprint(),
-      kXlaSerializedCacheKeySeparator, key.cluster_fingerprint(),
-      kXlaSerializedCacheKeySeparator, key.device_type());
+      key.prefix(), key.prefix().empty() ? "" : kXlaSerializedCacheKeySeparator,
+      key.signature_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.cluster_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.device_type());
 }
 
 }  // namespace
@@ -150,12 +151,14 @@ constexpr int64_t
 constexpr int64_t
     XlaCompilationCache::AsyncCompilationState::kMaxNumOngoingCompilations;
 
-XlaCompilationCache::XlaCompilationCache(
-    xla::LocalClient* client, DeviceType device_type,
-    absl::string_view persistent_cache_directory)
+XlaCompilationCache::XlaCompilationCache(Config config,
+                                         xla::LocalClient* client,
+                                         DeviceType device_type)
     : client_(client),
       device_type_(std::move(device_type)),
-      persistent_cache_directory_(persistent_cache_directory) {}
+      disable_strict_signature_checks_(config.disable_strict_signature_checks),
+      persistance_prefix_(config.persistance_prefix),
+      persistent_cache_directory_(config.persistent_cache_directory) {}
 
 XlaCompilationCache::~XlaCompilationCache() {
   // Ensure any use of our programs have completed by waiting for all stream
@@ -432,8 +435,7 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
       *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
       options.device_type.type_string(), compile_options.use_tuple_arg,
       /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-      options.shape_determination_fns.shape_representation_fn,
-      compilation_result);
+      options.shape_determination_fns, compilation_result);
 
   if (mlir_result.ok() || mlir_enabled) {
     return mlir_result;
@@ -821,6 +823,7 @@ XlaSerializedCacheKey XlaCompilationCache::BuildSerializedCacheKey(
   serialized_cache_key.set_cluster_fingerprint(
       DeterministicProtoHash64(hlo_module));
   serialized_cache_key.set_device_type(device_type_.type_string());
+  serialized_cache_key.set_prefix(persistance_prefix_);
   return serialized_cache_key;
 }
 
@@ -838,12 +841,16 @@ Status XlaCompilationCache::VerifyLoadedCacheEntry(
     return errors::InvalidArgument("Serialized cache key does not match.");
   }
 
-  if (!AreSerializedProtosEqual(hlo_module, entry.hlo_module())) {
-    VLOG(2) << "HLOs do not match:\n"
-            << "got:\n"
-            << hlo_module.DebugString() << "\nexpected:\n"
-            << entry.hlo_module().DebugString() << "\n";
-    return errors::InvalidArgument("Serialized HLO does not match.");
+  // Perform a stricter (slower) check of the snapshot to verify that they
+  // match exactly.
+  if (!disable_strict_signature_checks_) {
+    if (!AreSerializedProtosEqual(hlo_module, entry.hlo_module())) {
+      VLOG(2) << "HLOs do not match:\n"
+              << "got:\n"
+              << hlo_module.DebugString() << "\nexpected:\n"
+              << entry.hlo_module().DebugString() << "\n";
+      return errors::InvalidArgument("Serialized HLO does not match.");
+    }
   }
 
   if (entry.executable().empty()) {
