@@ -42,7 +42,7 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-*   When running on GPU (with cuDNN version 7.6.3 and newer),
+*   When running on GPU (with cuDNN version 7.6.3 or later),
     `tf.nn.depthwise_conv2d` backprop to `filter` (and therefore also
     `tf.keras.layers.DepthwiseConv2D`) now operate deterministically (and
     `tf.errors.UnimplementedError` is no longer thrown) when op-determinism has
