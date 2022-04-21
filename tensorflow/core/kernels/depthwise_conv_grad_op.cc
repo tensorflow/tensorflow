@@ -1103,9 +1103,9 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // plearning/sdk/cudnn-release-notes/rel_763.html#rel_763)
     //
     // Grouped convolution was added to cuDNN in version 7.0.1 but
-    // TensorFlow op-determinism has been retroactively added only for cuDNN
-    // version 7.6.3 onwards intentionally. This is to avoid potential issues
-    // with earlier versions of cuDNN.
+    // TensorFlow op-determinism has been added only for cuDNN versions 7.6.3
+    // and later intentionally. This is to avoid potential issues with earlier
+    // versions of cuDNN.
     use_cudnn_grouped_conv_ = OpDeterminismRequired() || dtype_ == DT_HALF;
 #else
     use_cudnn_grouped_conv_ = false;

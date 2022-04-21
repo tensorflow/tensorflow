@@ -311,6 +311,28 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "depthwise_conv_op_d9m_test",
+    size = "medium",  # http://b/30603882
+    timeout = "long",
+    srcs = ["depthwise_conv_op_d9m_test.py"],
+    shard_count = 8,
+    tags = [
+        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "manual",
+    ],
+    deps = [
+        ":depthwise_conv_op_test",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+cuda_py_test(
     name = "depthwise_conv_op_test",
     size = "medium",  # http://b/30603882
     timeout = "long",
@@ -326,8 +348,6 @@ cuda_py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
 )

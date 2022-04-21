@@ -1763,8 +1763,8 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   OP_REQUIRES(
       ctx, !OpDeterminismRequired(), errors::Unimplemented(
           "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
-          " not available with this version of cuDNN. Use version 7.6.3 or"
-          " newer."));
+          " not available with this version of cuDNN. Please build with cuDNN"
+          " version 7.6.3 or later."));
 
   // Initialize the results to 0.
   int num_filter_backprop =
