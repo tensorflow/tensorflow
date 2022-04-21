@@ -19,13 +19,13 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #define UNROLL
@@ -1761,7 +1761,8 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   // It's simpler to catch this here than in
   // DepthwiseConv2dNativeBackpropFilterOp
   OP_REQUIRES(
-      ctx, !OpDeterminismRequired(), errors::Unimplemented(
+      ctx, !OpDeterminismRequired(),
+      errors::Unimplemented(
           "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
           " not available with this version of cuDNN. Please build with cuDNN"
           " version 7.6.3 or later."));
