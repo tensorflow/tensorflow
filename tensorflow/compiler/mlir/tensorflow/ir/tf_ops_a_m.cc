@@ -3115,6 +3115,15 @@ void MaxOp::build(OpBuilder &builder, OperationState &result, Value input,
 }
 
 //===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+void MaximumOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<MaximumOfZeroToRelu>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // MaxPoolOp
 //===----------------------------------------------------------------------===//
 
