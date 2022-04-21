@@ -145,21 +145,24 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
 
 TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
+// The name of certain optional attributes.
+static std::array<StringRef, 3> keyword_attrs{
+    "_mlir_device", "_mlir_assigned_device", "_mlir_name"};
+
 static void PrintKeywordAttributes(Operation *op, OpAsmPrinter &printer,
                                    ArrayRef<StringRef> elided_attrs = {}) {
   // Handles the optional "device" and "name" attribute.
-  std::array<StringRef, 3> keywords{"_mlir_device", "_mlir_assigned_device",
-                                    "_mlir_name"};
-  for (StringRef keyword : keywords) {
-    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
-      if (!value_attr.getValue().empty())
-        printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
-                << value_attr.getValue() << "\")";
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword)) {
+      assert(!value_attr.getValue().empty());
+      printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
+              << value_attr.getValue() << "\")";
+    }
   }
 
   // Print attributes (other than name and device).
   SmallVector<StringRef> attrs_to_elide = llvm::to_vector(elided_attrs);
-  llvm::append_range(attrs_to_elide, keywords);
+  llvm::append_range(attrs_to_elide, keyword_attrs);
   printer.printOptionalAttrDict(op->getAttrs(), attrs_to_elide);
 }
 
@@ -334,6 +337,18 @@ static bool VerifyGenericTFGOperation(Operation &op) {
   };
   if (!check_ctl_at_end(op.getOperandTypes(), "input")) return false;
   if (!check_ctl_at_end(op.getResultTypes(), "result")) return false;
+
+  // Certain attributes are supposed to be inserted with non-empty value.
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op.getAttrOfType<StringAttr>(keyword)) {
+      if (value_attr.getValue().empty()) {
+        op.emitOpError() << keyword
+                         << " has empty value. Only insert this attribute when "
+                            "it has a value";
+      }
+    }
+  }
+
   return true;
 }
 

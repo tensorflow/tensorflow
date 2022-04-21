@@ -587,10 +587,14 @@ Status GraphImporter::ConvertNode(const Node& node) {
 
   // Handle attributes, reserve `+3` for `device`, `name` and `fulltype`.
   result.attributes.reserve(node.attrs().size() + 3);
-  result.addAttribute(dialect_->getDeviceAttrIdentifier(),
-                      builder_.getStringAttr(node.requested_device()));
-  result.addAttribute(dialect_->getNameAttrIdentifier(),
-                      StringAttr::get(context_, node.name()));
+  if (!node.requested_device().empty()) {
+    result.addAttribute(dialect_->getDeviceAttrIdentifier(),
+                        builder_.getStringAttr(node.requested_device()));
+  }
+  if (!node.name().empty()) {
+    result.addAttribute(dialect_->getNameAttrIdentifier(),
+                        StringAttr::get(context_, node.name()));
+  }
   if (node.def().has_experimental_type()) {
     TF_ASSIGN_OR_RETURN(
         tf_type::FullTypeAttr type,
@@ -605,13 +609,16 @@ Status GraphImporter::ConvertNode(const Node& node) {
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
     result.addAttribute(PromoteToTFGAttribute(name), attr);
   }
-  Attribute assigned_device =
-      result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
-  if (!assigned_device ||
-      assigned_device.cast<StringAttr>().getValue().empty()) {
-    result.attributes.erase(dialect_->getAssignedDeviceAttrIdentifier());
-    result.addAttribute(dialect_->getAssignedDeviceAttrIdentifier(),
-                        builder_.getStringAttr(node.assigned_device_name()));
+
+  if (!node.assigned_device_name().empty()) {
+    Attribute assigned_device =
+        result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
+    if (!assigned_device ||
+        assigned_device.cast<StringAttr>().getValue().empty()) {
+      result.attributes.erase(dialect_->getAssignedDeviceAttrIdentifier());
+      result.addAttribute(dialect_->getAssignedDeviceAttrIdentifier(),
+                          builder_.getStringAttr(node.assigned_device_name()));
+    }
   }
 
   // Register the mapping between the TF node and the newly created operation.

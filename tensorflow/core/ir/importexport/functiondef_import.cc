@@ -186,8 +186,10 @@ Status ImportNodes(ValueMapManager value_manager,
                           ConvertAttributeValue(tf_attr, builder, tfgDialect));
       state.addAttribute(name, attr);
     }
-    state.addAttribute(device_attr, StringAttr::get(context, node.device()));
-    state.addAttribute(name_attr, StringAttr::get(context, node.name()));
+    if (!node.device().empty())
+      state.addAttribute(device_attr, StringAttr::get(context, node.device()));
+    if (!node.name().empty())
+      state.addAttribute(name_attr, StringAttr::get(context, node.name()));
     if (node.has_experimental_type()) {
       TF_ASSIGN_OR_RETURN(
           tf_type::FullTypeAttr type,

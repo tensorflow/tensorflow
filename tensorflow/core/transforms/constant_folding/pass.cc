@@ -1104,7 +1104,8 @@ class MergeNodeFoldingBase : public FolderPatternBase {
       if (failed(const_index)) return failure();
 
       (*const_index).setName(Twine(TFOp(op).name(), "/_index"));
-      (*const_index).setRequestedDevice(TFOp(op).device());
+      if (!TFOp(op).device().empty())
+        (*const_index).setRequestedDevice(TFOp(op).device());
 
       for (OpOperand &user : op->getResults()[0].getUses()) {
         rewriter.startRootUpdate(user.getOwner());
