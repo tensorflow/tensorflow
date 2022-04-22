@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
@@ -700,8 +705,9 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
   LOG(WARNING) << logs;
 }
 
-Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
-                                    GraphDef* optimized_graph) {
+Status MetaOptimizer::OptimizeGraph(
+    const std::vector<std::unique_ptr<GraphOptimizer>>& optimizers,
+    Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
                                                     : cfg_.min_graph_nodes();
   if (item.graph.node_size() < min_graph_nodes) {
@@ -714,16 +720,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   tensorflow::metrics::ScopedCounter<2> timings(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {kGrapplerCategory, "OptimizeMainGraph"});
-
-  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  std::set<std::string> device_types;
-  TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, &device_types));
-  if (cfg_.optimizers().empty()) {
-    TF_RETURN_IF_ERROR(InitializeOptimizers(device_types, &optimizers));
-  } else {
-    TF_RETURN_IF_ERROR(InitializeOptimizersByName(device_types, &optimizers));
-  }
-  PrintUserAndPluginConfigs(device_types);
 
   // Initialize the configured verifiers.
   std::vector<std::unique_ptr<GraphVerifier>> inter_optimizer_verifiers;
@@ -853,6 +849,22 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   }
 
   return Status::OK();
+}
+
+Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
+                                    GraphDef* optimized_graph) {
+  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+  std::set<std::string> device_types;
+  TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, &device_types));
+  if (cfg_.optimizers().empty()) {
+    TF_RETURN_IF_ERROR(InitializeOptimizers(device_types, &optimizers));
+  } else {
+    TF_RETURN_IF_ERROR(InitializeOptimizersByName(device_types, &optimizers));
+  }
+  PrintUserAndPluginConfigs(device_types);
+
+  return OptimizeGraph(std::move(optimizers), cluster, std::move(item),
+                       optimized_graph);
 }
 
 Status MetaOptimizer::RunOptimizer(
@@ -1018,7 +1030,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   const auto producer = item.graph.versions().producer();
 
   // 1. Optimize main graph
-  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(item), optimized_graph));
+  TF_RETURN_IF_ERROR(
+      OptimizeGraph(cluster, GrapplerItem(item), optimized_graph));
   VLOG(1) << "Optimized main graph.";
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
@@ -1209,6 +1222,32 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       *optimized_graph->mutable_library() = flib.ToProto();
     }
   }
+
+  // Run module-level TFG optimizations at the end of the meta-optimizer.
+  // TODO(jeffniu): None of the TFG optimizations are meant to create new
+  // opportunities for other optimizers; they could, but it's unclear whether
+  // re-running all the other optimizers is worthwhile.
+#ifndef __Fuchsia__
+  {
+    // Create a Grappler optimization pipeline with only the TFG optimizer.
+    std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+    optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+        // For module-level optimizations, use multithreading to process
+        // functions in parallel.
+        mlir::tfg::DefaultModuleGrapplerPipeline, /*num_tfg_threads=*/4));
+    // Wrap the optimized GraphDef in a new GrapplerItem with copied
+    // configuration options from the provided item.
+    GrapplerItem tfg_item = item.WithGraph(std::move(*optimized_graph));
+    // Invoke the optimizers.
+    *optimized_graph = GraphDef();
+    TF_RETURN_IF_ERROR(OptimizeGraph(optimizers, cluster, std::move(tfg_item),
+                                     optimized_graph));
+    // Replace the output function library with a minimized one that strips
+    // functions with no references.
+    *optimized_graph->mutable_library() =
+        minimized_flib(*optimized_graph).ToProto();
+  }
+#endif
 
   VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << absl::StrJoin(optimized_funcs, ", ");
