@@ -70,6 +70,7 @@ add_mlir_library(MhloPasses
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
+  shape_reification_pass.cc
   sink_constants_to_control_flow.cc
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc

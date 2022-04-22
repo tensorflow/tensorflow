@@ -109,7 +109,6 @@ def OptimizeMhloPass : Pass<"mhlo-test-optimize", "func::FuncOp"> {
   let constructor = "createOptimizeMhloPass()";
 }
 
-
 def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "func::FuncOp"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
@@ -155,7 +154,6 @@ def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow",
   }];
 }
 
-
 def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods", "func::FuncOp"> {
   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
   let constructor = "createTestInferShapedTypeMethodsPass()";
@@ -173,6 +171,11 @@ def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
     "operations and broadcast the operands rather than the result. This will "
     "eventually allow for larger fusions.";
   let constructor = "createMergeAssumingOpsPass()";
+}
+
+def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
+  let summary = "Iteratively reify all shape computations.";
+  let constructor = "CreateShapeReificationPass()";
 }
 
 def GroupReductionDimensionsPass

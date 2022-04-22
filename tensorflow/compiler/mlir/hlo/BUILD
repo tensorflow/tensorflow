@@ -1030,6 +1030,26 @@ cc_library(
 )
 
 cc_library(
+    name = "shape_reification_pass",
+    srcs = ["lib/Dialect/mhlo/transforms/shape_reification_pass.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "group_reduction_dimensions",
     srcs = ["lib/Dialect/mhlo/transforms/group_reduction_dimensions.cc"],
     hdrs = [
@@ -1636,6 +1656,7 @@ cc_library(
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
+        ":shape_reification_pass",
         ":shape_simplification",
         ":sink_constants_to_control_flow",
         ":symbolic_shape_optimization",
