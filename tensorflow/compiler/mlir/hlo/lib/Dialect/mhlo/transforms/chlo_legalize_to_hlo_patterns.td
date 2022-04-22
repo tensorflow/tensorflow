@@ -31,7 +31,7 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
-// Expand acos to MHLO dialect as follows:
+// Expand acos for non-complex arguments to MHLO dialect as follows:
 //   acos(x) = 2 * atan2(sqrt(1 - x^2), (1 + x))  if x != -1
 //           = pi                                 if x == -1
 //
@@ -116,6 +116,33 @@ def : Pat<(CHLO_AcoshOp NonComplexElementType:$input),
     )
   )>;
 
+// Expand acosh for complex arguments to MHLO dialect as
+//   acosh(x) = log(x + sqrt((x+1)*(x-1)))
+//
+// Per tensorflow/compiler/xla/client/lib/math.cc at the time of writing:
+// "For now, we ignore the question of overflow if x is a
+// complex type, because we don't yet have exhaustive tests for complex trig
+// functions".
+def : Pat<(CHLO_AcoshOp ComplexElementType:$input),
+  (HLO_LogOp
+    (HLO_AddOp
+      $input,
+      (HLO_SqrtOp
+        (HLO_MulOp
+          (HLO_AddOp
+            $input,
+            (HLO_ConstantLike<"1"> $input)
+          ),
+          (HLO_SubOp
+            $input,
+            (HLO_ConstantLike<"1"> $input)
+          )
+        )
+      )
+    )
+  )>;
+
+
 // Expand asin to MHLO dialect as follows:
 //   asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
 def : Pat<(CHLO_AsinOp NonComplexElementType:$input),
@@ -135,7 +162,7 @@ def : Pat<(CHLO_AsinOp NonComplexElementType:$input),
     )
   )>;
 
-// Expand asinh to MHLO dialect as
+// Expand asinh for non-complex arguments to MHLO dialect as
 //   asinh(x) = log(x + sqrt(x^2 + 1))
 //
 // If x^2 will overflow and x is positive, we can approximate x + sqrt(x^2 + 1)
@@ -223,6 +250,26 @@ def : Pat<(CHLO_AsinhOp NonComplexElementType:$input),
     )
   )>;
 
+// Expand asinh for complex arguments to MHLO dialect as
+//   asinh(x) = log(x + sqrt(x^2 + 1))
+//
+// Per tensorflow/compiler/xla/client/lib/math.cc at the time of writing:
+// "For now, we ignore the question of overflow if x is a
+// complex type, because we don't yet have exhaustive tests for complex trig
+// functions".
+def : Pat<(CHLO_AsinhOp ComplexElementType:$input),
+  (HLO_LogOp
+    (HLO_AddOp
+      $input,
+      (HLO_SqrtOp
+        (HLO_AddOp
+          (HLO_MulOp $input, $input),
+          (HLO_ConstantLike<"1"> $input)
+        )
+      )
+    )
+  )>;
+
 // Express `atan` as
 //   atan(x) = atan2(x, 1)
 def : Pat<(CHLO_AtanOp $input),
@@ -231,7 +278,7 @@ def : Pat<(CHLO_AtanOp $input),
     (HLO_ConstantLike<"1"> $input)
   )>;
 
-// Express `atanh` as follows:
+// Express `atanh` for non-complex arguments as follows:
 //   atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
 //   atanh(x) = nan                          otherwise
 def : Pat<(CHLO_AtanhOp NonComplexElementType:$input),
@@ -252,6 +299,23 @@ def : Pat<(CHLO_AtanhOp NonComplexElementType:$input),
       ),
       (HLO_ConstantLike<"0.5"> $input)
     )
+  )>;
+
+// Express `atanh` for complex arguments as follows:
+//   atanh(x) = (log(1 + x) - log(1 + (-x))) * 0.5
+//
+// Per tensorflow/compiler/xla/client/lib/math.cc at the time of writing:
+// "For now, we ignore the nan edge case for complex inputs,
+// because we don't yet have exhaustive tests for complex trig functions".
+def : Pat<(CHLO_AtanhOp ComplexElementType:$input),
+  (HLO_MulOp
+    (HLO_SubOp
+      (HLO_Log1pOp $input),
+      (HLO_Log1pOp
+        (HLO_NegOp $input)
+      )
+    ),
+    (HLO_ConstantLike<"0.5"> $input)
   )>;
 
 // Express `conj` as

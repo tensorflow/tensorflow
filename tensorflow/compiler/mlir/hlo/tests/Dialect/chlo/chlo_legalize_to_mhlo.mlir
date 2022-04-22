@@ -83,6 +83,22 @@ func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
 
 // -----
 
+// CHECK-LABEL: @asinh_complex_f32
+// CHECK-SAME: %[[ARG:.*]]: tensor<complex<f32>>
+func.func @asinh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
+  // CHECK: %[[TMP_0:.*]] = mhlo.multiply %[[ARG]], %[[ARG]]
+  // CHECK: %[[TMP_1:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+  // CHECK: %[[TMP_2:.*]] = mhlo.add %[[TMP_0]], %[[TMP_1]]
+  // CHECK: %[[TMP_3:.*]] = mhlo.sqrt %[[TMP_2]]
+  // CHECK: %[[TMP_4:.*]] = mhlo.add %[[ARG]], %[[TMP_3]]
+  // CHECK: %[[TMP_5:.*]] = mhlo.log %[[TMP_4]]
+  // CHECK: return %[[TMP_5]]
+  %result = "chlo.asinh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
+  func.return %result : tensor<complex<f32>>
+}
+
+// -----
+
 // Lower statically shaped `constant_like` to constant.
 // CHECK-LABEL: @constant_like_static_shape
 func.func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
@@ -384,6 +400,24 @@ func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK: return %[[RESULT]]
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
+}
+
+// -----
+
+// CHECK-LABEL: @acosh_complex_f32
+// CHECK-SAME: %[[ARG:.*]]: tensor<complex<f32>>
+func.func @acosh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
+  // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+  // CHECK-NEXT: %[[TMP_1:.*]] = mhlo.add %[[ARG]], %[[TMP_0]]
+  // CHECK-NEXT: %[[TMP_2:.*]] = mhlo.constant dense<(1.000000e+00,0.000000e+00)>
+  // CHECK-NEXT: %[[TMP_3:.*]] = mhlo.subtract %[[ARG]], %[[TMP_2]]
+  // CHECK-NEXT: %[[TMP_4:.*]] = mhlo.multiply %[[TMP_1]], %[[TMP_3]]
+  // CHECK-NEXT: %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]]
+  // CHECK-NEXT: %[[TMP_6:.*]] = mhlo.add %[[ARG]], %[[TMP_5]]
+  // CHECK-NEXT: %[[TMP_7:.*]] = mhlo.log %[[TMP_6]]
+  // CHECK-NEXT: return %[[TMP_7]]
+  %result = "chlo.acosh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
+  func.return %result : tensor<complex<f32>>
 }
 
 // -----
@@ -2230,6 +2264,43 @@ func.func @cosh_complex_f32(%x : tensor<complex<f32>>) -> tensor<complex<f32>> {
   // CHECK: return %[[RESULT]] : tensor<complex<f32>>
   %1 = chlo.cosh %x : tensor<complex<f32>> -> tensor<complex<f32>>
   func.return %1 : tensor<complex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: @atanh_f32
+// CHECK-SAME: %[[ARG:.*]]: tensor<f32>
+func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.abs %[[ARG]]
+  // CHECK-NEXT: %[[TMP_1:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK-NEXT: %[[TMP_2:.*]] = "mhlo.compare"(%[[TMP_0]], %[[TMP_1]]) {comparison_direction = #mhlo<"comparison_direction GT">}
+  // CHECK-NEXT: %[[TMP_3:.*]] = mhlo.constant dense<0x7FC00000>
+  // CHECK-NEXT: %[[TMP_4:.*]] = mhlo.log_plus_one %[[ARG]]
+  // CHECK-NEXT: %[[TMP_5:.*]] = mhlo.negate %[[ARG]]
+  // CHECK-NEXT: %[[TMP_6:.*]] = mhlo.log_plus_one %[[TMP_5]]
+  // CHECK-NEXT: %[[TMP_7:.*]] = mhlo.subtract %[[TMP_4]], %[[TMP_6]]
+  // CHECK-NEXT: %[[TMP_8:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK-NEXT: %[[TMP_9:.*]] = mhlo.multiply %[[TMP_7]], %[[TMP_8]]
+  // CHECK-NEXT: %[[TMP_10:.*]] = "mhlo.select"(%[[TMP_2]], %[[TMP_3]], %[[TMP_9]])
+  // CHECK-NEXT: return %[[TMP_10]]
+  %result = "chlo.atanh"(%arg) : (tensor<f32>) -> tensor<f32>
+  func.return %result : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: @atanh_complex_f32
+// CHECK-SAME: %[[ARG:.*]]: tensor<complex<f32>>
+func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
+  // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.log_plus_one %[[ARG]]
+  // CHECK-NEXT: %[[TMP_1:.*]] = mhlo.negate %[[ARG]]
+  // CHECK-NEXT: %[[TMP_2:.*]] = mhlo.log_plus_one %[[TMP_1]]
+  // CHECK-NEXT: %[[TMP_3:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_2]]
+  // CHECK-NEXT: %[[TMP_4:.*]] = mhlo.constant dense<(5.000000e-01,0.000000e+00)>
+  // CHECK-NEXT: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_3]], %[[TMP_4]]
+  // CHECK-NEXT: return %[[TMP_5]]
+  %result = "chlo.atanh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
+  func.return %result : tensor<complex<f32>>
 }
 
 // -----
