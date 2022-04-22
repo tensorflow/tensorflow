@@ -764,6 +764,8 @@ def tf_cc_shared_library(
         dynamic_deps = [],
         static_deps = [],
         deps = [],
+        roots = [],
+        exports_filter = [],
         data = [],
         copts = [],
         linkopts = lrt_if_needed(),
@@ -823,7 +825,8 @@ def tf_cc_shared_library(
         cc_shared_library_name = get_cc_shared_library_target_name(name_os_full)
         cc_shared_library(
             name = cc_shared_library_name,
-            roots = [cc_library_name],
+            roots = [cc_library_name] + roots,
+            exports_filter = exports_filter,
             dynamic_deps = dynamic_deps,
             static_deps = static_deps,
             shared_lib_name = name_os_full,
@@ -3072,7 +3075,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@com_googlesource_code_re2//:__subpackages__",
         "@compute_library//:__subpackages__",
         "@cpuinfo//:__subpackages__",
-        "@cudnn_frontend_archive//:__subpackages__",
+        "@cudnn_frontend_archive//:__subpackages__",  #  TFRT integration for TensorFlow.
         "@curl//:__subpackages__",
         "@dlpack//:__subpackages__",
         "@double_conversion//:__subpackages__",

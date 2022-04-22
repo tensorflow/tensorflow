@@ -149,6 +149,9 @@ build --define=no_hdfs_support=true
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
 build --experimental_cc_shared_library
 
+# cc_shared_library ensures no library is linked statically more than once.
+build --experimental_link_static_libraries_once=true
+
 # Default options should come above this line.
 
 # Allow builds using libc++ as a linker library
