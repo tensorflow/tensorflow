@@ -47,28 +47,31 @@ from tensorflow.python.training.tracking import util as trackable_utils
 def strategy_and_run_tf_function_combinations():
   # Test the combination of different strategies and whether a tf.function
   # is passed into strategy.run."""
+  # TODO(b/197981388): re-enable MWMS test
+  # return combinations.combine(
+  #     distribution=[
+  #         strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+  #     ],
+  #     mode=["graph", "eager"],
+  #     experimental_run_tf_function=[True, False],
+  #     use_var_policy=[True, False]) +
   return combinations.combine(
       distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+          strategy_combinations.tpu_strategy_packed_var,
       ],
       mode=["graph", "eager"],
-      experimental_run_tf_function=[True, False],
-      use_var_policy=[True, False]) + combinations.combine(
-          distribution=[
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"],
-          experimental_run_tf_function=[True],
-          use_var_policy=[True, False])
+      experimental_run_tf_function=[True],
+      use_var_policy=[True, False])
 
 
 def strategy_with_var_policy():
   return combinations.combine(
       distribution=[
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          strategy_combinations.multi_worker_mirrored_2x1_cpu,
-          strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          # TODO(b/197981388): re-enable MWMS test
+          # strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          # strategy_combinations.multi_worker_mirrored_2x1_gpu,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
       ],
