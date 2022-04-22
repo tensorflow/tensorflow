@@ -826,7 +826,7 @@ def tf_cc_shared_library(
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name] + roots,
-            exports_filter = exports_filter,
+            exports_filter = if_rocm(None, exports_filter),  # b/230048163
             dynamic_deps = dynamic_deps,
             static_deps = static_deps,
             shared_lib_name = name_os_full,
