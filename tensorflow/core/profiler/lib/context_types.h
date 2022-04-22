@@ -32,7 +32,8 @@ enum class ContextType : int {
   kTpuEmbeddingEngine,
   kGpuLaunch,
   kBatcher,
-  kLastContextType = ContextType::kBatcher,
+  kTpuStream,
+  kLastContextType = ContextType::kTpuStream,
 };
 
 // In XFlow we encode context type as flow category as 6 bits.

@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "ConfigureAndInitializeGlobalTPU"
+  out_arg {
+    name: "output"
+    description: <<END
+A vector containing the global TPU id of each TPU on the host.
+END
+  }
+  summary: "An op that sets up the centralized structures for a distributed TPU system."
+  description: <<END
+END
+}

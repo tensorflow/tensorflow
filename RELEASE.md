@@ -23,11 +23,13 @@
     * `EinsumDense` layer moved from experimental to core. Its import path moved
       from `tf.keras.layers.experimental.EinsumDense` to
       `tf.keras.layers.EinsumDense`.
+    * Added `tf.keras.utils.audio_dataset_from_directory` utility to easily
+      generate audio classification datasets from directories of `.wav` files.
     * Added `subset="both"` support in
-      `tf.keras.utils.image_dataset_from_directory` and
-      `tf.keras.utils.text_dataset_from_directory`, to be used with the
-      `validation_split` argument, for returning both dataset splits at once,
-      as a tuple.
+      `tf.keras.utils.image_dataset_from_directory`,
+      `tf.keras.utils.text_dataset_from_directory`, and
+      `audio_dataset_from_directory`, to be used with the `validation_split`
+      argument, for returning both dataset splits at once, as a tuple.
 
 *   `tf.math`:
 

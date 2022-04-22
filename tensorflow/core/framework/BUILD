@@ -1373,6 +1373,7 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/profiler/lib:profiler_session",

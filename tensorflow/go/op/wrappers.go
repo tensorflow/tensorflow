@@ -6258,6 +6258,20 @@ func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset t
 	return op.Output(0)
 }
 
+// An op that sets up the centralized structures for a distributed TPU system.
+//
+// Returns A vector containing the global TPU id of each TPU on the host.
+func ConfigureAndInitializeGlobalTPU(scope *Scope) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConfigureAndInitializeGlobalTPU",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ConfigureDistributedTPUAttr is an optional argument to ConfigureDistributedTPU.
 type ConfigureDistributedTPUAttr func(optionalAttr)
 
@@ -40549,6 +40563,20 @@ func ShutdownDistributedTPU(scope *Scope) (o *tf.Operation) {
 		Type: "ShutdownDistributedTPU",
 	}
 	return scope.AddOperation(opspec)
+}
+
+// An op that shuts down the TPU system.
+//
+// Returns A boolean that indicates if the shut down process succeeds.
+func ShutdownTPUSystem(scope *Scope) (success tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ShutdownTPUSystem",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Computes sigmoid of `x` element-wise.

@@ -135,6 +135,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -148,6 +149,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -162,6 +164,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -174,6 +177,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -186,6 +190,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -198,6 +203,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -210,6 +216,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -222,6 +229,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -234,6 +242,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
     tfcompile_flags = "--gen_name_to_index --gen_program_shape",
 )
@@ -248,6 +257,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -260,6 +270,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -272,6 +283,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -284,6 +296,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -296,6 +309,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -308,6 +322,7 @@ tf_library(
     mlir_components = "None",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -316,6 +331,7 @@ tf_cc_test(
     srcs = ["tfcompile_test.cc"],
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
     deps = [
         ":test_graph_tfadd",
@@ -357,6 +373,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -370,6 +387,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -384,6 +402,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -396,6 +415,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -408,6 +428,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -420,6 +441,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -432,6 +454,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -444,6 +467,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -456,6 +480,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
     tfcompile_flags = "--gen_name_to_index --gen_program_shape",
 )
@@ -470,6 +495,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -482,6 +508,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -494,6 +521,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -506,6 +534,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -518,6 +547,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 
@@ -530,6 +560,7 @@ tf_library(
     mlir_components = "Bridge",
     tags = [
         "manual",
+        "no_mac",  # TODO(b/228273415)
     ],
 )
 

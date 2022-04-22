@@ -10024,6 +10024,47 @@ ENTRY entry {
               op::Copy(op::AllReduce(op::Select(
                   _, _, op::Gather(op::Shape("bf16[7816,4096]"), _)))));
 }
+
+TEST_F(SpmdPartitioningTest, SliceTo1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[512] parameter(0), sharding={devices=[4]0,1,2,3}
+  ROOT slice.134 = f32[1] slice(input), slice={[0:1]},
+    sharding={devices=[4]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Slice(op::Parameter()), op::Shape("f32[1]")));
+}
+
+TEST_F(SpmdPartitioningTest, SliceTo2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[512] parameter(0), sharding={devices=[4]0,1,2,3}
+  ROOT slice.134 = f32[2] slice(input), slice={[0:2]},
+    sharding={devices=[4]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto slice1 = AllOf(op::Slice(op::Parameter()), op::Shape("f32[2]"));
+  auto halo =
+      op::CollectivePermute(AllOf(op::Slice(slice1), op::Shape("f32[1]")));
+  auto slice_self = AllOf(op::Slice(slice1), op::Shape("f32[1]"));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(AllOf(op::DynamicSlice(op::Concatenate(halo, slice_self), _),
+                     op::Shape("f32[1]"))));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

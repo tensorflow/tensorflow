@@ -431,6 +431,13 @@ class Mesh(object):
     return self.as_proto().SerializeToString() == other.as_proto(
     ).SerializeToString()
 
+  def __repr__(self) -> str:
+    dims = [tuple(self[dim_name]) for dim_name in self.dim_names]
+    return (
+        f'<Mesh object with dims={dims}, device_type="{self.device_type()}", '
+        f'num_local_devices={self.num_local_devices()}), '
+        f'size={self.size}>')
+
 
 # TODO(hthu): Consider making this class immutable.
 @tf_export('experimental.dtensor.Layout', v1=[])
@@ -625,7 +632,7 @@ class Layout(object):
     return self.serialized_string() == other.serialized_string()
 
   def __repr__(self) -> str:
-    return str(self.as_proto())
+    return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
 
   @staticmethod
   def replicated(mesh: Mesh, rank: int) -> 'Layout':

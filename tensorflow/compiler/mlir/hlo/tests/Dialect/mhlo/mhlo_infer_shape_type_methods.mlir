@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --mhlo-test-infer-shaped-type-methods --allow-unregistered-dialect --split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt --mhlo-test-infer-shaped-type-methods --allow-unregistered-dialect --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @select
 // CHECK-SAME: (%{{.*}}: tensor<i1>, %[[SHAPED_ARG:.*]]: tensor<2x?xf32>, %{{.*}}: tensor<2x?xf32>
@@ -50,4 +50,25 @@ func.func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xind
       : (tensor<2x2xi1>) -> tensor<2x2xindex>
 // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 2], element_type0 = i1} : (tensor<2x2xi1>) -> tensor<2x2xindex>
   func.return %1 : tensor<2x2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @broadcast
+func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xindex> {
+  %0 = "mhlo.broadcast"(%a) {broadcast_sizes = dense<[1, 2]> : tensor<2xi64>}
+      : (tensor<3xi32>) -> tensor<1x2x3xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x2x3xi32>) -> tensor<1x2x3xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 2, 3], element_type0 = i32} : (tensor<1x2x3xi32>) -> tensor<1x2x3xindex>
+  func.return %1 : tensor<1x2x3xindex>
+}
+
+// -----
+
+func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xi32> {
+  // expected-error@+1 {{Broadcast with negative dimension size -2}}
+  %0 = "mhlo.broadcast"(%a) {broadcast_sizes = dense<[1, -2]> : tensor<2xi64>}
+      : (tensor<3xi32>) -> tensor<1x2x3xi32>
+  func.return %0 : tensor<1x2x3xi32>
 }
