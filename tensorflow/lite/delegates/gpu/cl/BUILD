@@ -20,9 +20,7 @@ cc_library(
     srcs = ["api.cc"],
     hdrs = ["api.h"],
     deps = select({
-        ":opencl_delegate_no_gl": [
-            "//third_party/opencl_icd_loader",
-        ],
+        ":opencl_delegate_no_gl": [],
         "//conditions:default": [
             ":egl_sync",
             ":gl_interop",
