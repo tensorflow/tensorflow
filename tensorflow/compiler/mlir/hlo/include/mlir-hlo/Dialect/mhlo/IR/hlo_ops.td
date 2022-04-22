@@ -1308,7 +1308,7 @@ def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
 }
 
 def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+    [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Broadcast a tensor to a higher rank by prepending dimensions";
   let description = [{
     Broadcasts the operand tensor to a higher rank by prepending
