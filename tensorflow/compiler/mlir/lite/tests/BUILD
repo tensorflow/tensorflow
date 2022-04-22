@@ -11,8 +11,6 @@ glob_lit_tests(
         "legalize-tf.mlir": ["no_rocm"],
         "optimize.mlir": ["no_rocm"],
         "prepare-tf.mlir": ["no_rocm"],
-        # TODO(b/230047019): Re-enable this test after the timed out issue is fixed.
-        "post-quantize-dynamic-range.mlir": ["notap"],
     },
     test_file_exts = ["mlir"],
 )
