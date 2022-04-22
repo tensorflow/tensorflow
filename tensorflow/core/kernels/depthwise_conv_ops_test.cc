@@ -90,10 +90,11 @@ class DepthwiseConvOpTest : public OpsTestBase {
     const Tensor& output = *GetOutput(0);
     // TODO(csigg): This should happen as part of GetOutput.
     TF_EXPECT_OK(device_->Sync());
-    if (dtype == DT_BFLOAT16)
+    if (dtype == DT_BFLOAT16) {
       test::ExpectClose(expected, output, 1e-2, 1e-2);
-    else
+    } else {
       test::ExpectTensorNear<T>(expected, output, 1e-5);
+    }
   }
 };
 
