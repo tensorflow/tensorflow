@@ -349,11 +349,3 @@ def : Pat<(CHLO_IsNegInfOp NonComplexElementType:$input),
     HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
-
-// Express tan in MHLO dialect as
-//   tan(x) = sin(x) / cos(x).
-def : Pat<(CHLO_TanOp NonComplexElementType:$input),
-  (HLO_DivOp
-    (HLO_SinOp $input),
-    (HLO_CosOp $input)
-  )>;

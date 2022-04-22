@@ -1199,6 +1199,26 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
   }
 };
 
+Value MaterializeTan(ConversionPatternRewriter &rewriter, Location loc,
+                     ValueRange operands) {
+  TanOp::Adaptor transformed(operands);
+  return rewriter.create<mhlo::DivOp>(
+      loc, rewriter.create<mhlo::SinOp>(loc, transformed.operand()),
+      rewriter.create<mhlo::CosOp>(loc, transformed.operand()));
+}
+
+struct ConvertTanOp : public OpConversionPattern<TanOp> {
+  using OpConversionPattern<TanOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      TanOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                  rewriter.getF32Type(), &MaterializeTan));
+    return success();
+  }
+};
+
 struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
   using OpConversionPattern<ZetaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1491,6 +1511,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
+                   ConvertTanOp,
                    ConvertZetaOp>(context);
   // clang-format on
 }

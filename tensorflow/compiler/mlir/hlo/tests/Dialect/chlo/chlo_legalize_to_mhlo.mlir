@@ -2342,3 +2342,31 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
   %1 = chlo.broadcast_next_after %x, %y : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   func.return %1 : tensor<2xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @tan_f16
+// CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
+func.func @tan_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // %[[TMP_0:.*]] = mhlo.convert([[ARG]]) : (tensor<f16>) -> tensor<f32>
+  // %[[TMP_1:.*]] = mhlo.sine %[[TMP_0]]
+  // %[[TMP_2:.*]] = mhlo.cosine %[[TMP_0]]
+  // %[[TMP_3:.*]] = mhlo.divide %[[TMP_1]], %[[TMP_2]]
+  // %[[TMP_4:.*]] = mhlo.convert(%[[TMP_3]]) : (tensor<f32>) -> tensor<f16>
+  // return %[[TMP_4]] : tensor<f16>
+  %1 = chlo.tan %arg : tensor<f16> -> tensor<f16>
+  func.return %1 : tensor<f16>
+}
+
+// -----
+
+// CHECK-LABEL: @tan_f32
+// CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
+func.func @tan_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // %[[TMP_0:.*]] = mhlo.sine %[[ARG]]
+  // %[[TMP_1:.*]] = mhlo.cosine %[[ARG]]
+  // %[[TMP_2:.*]] = mhlo.divide %[[TMP_0]], %[[TMP_1]]
+  // return %[[TMP_2]] : tensor<f32>
+  %1 = chlo.tan %arg : tensor<f32> -> tensor<f32>
+  func.return %1 : tensor<f32>
+}
