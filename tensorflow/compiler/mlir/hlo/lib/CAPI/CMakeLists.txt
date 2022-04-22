@@ -3,8 +3,16 @@ add_mlir_public_c_api_library(MLIRHLOCAPIDialects
   Dialects.cpp
   Types.cpp
   Passes.cpp
+
   LINK_LIBS PUBLIC
   ChloDialect
   MhloDialect
+  ChloPasses
+  MhloPasses
+  MhloToLhloConversion
+  MhloToArithmeticConversion
+  MhloToMemrefConversion
+  MhloToStandard
+  MhloToLinalg
+  MhloShapeOpsToStandard
 )
-target_link_libraries(MLIRHLOCAPIDialects PRIVATE AllMhLoPasses)
