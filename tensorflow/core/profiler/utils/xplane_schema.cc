@@ -151,6 +151,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"CustomWait", kCustomWait},
       {"OnDeviceSendRequestMulti", kOnDeviceSendRequestMulti},
       {"OnDeviceRecvRequestMulti", kOnDeviceRecvRequestMulti},
+      {"PjrtAsyncWait", kPjrtAsyncWait},
       {"DoEnqueueProgram", kDoEnqueueProgram},
       {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
       {"WriteHbm", kWriteHbm},

@@ -149,6 +149,7 @@ enum HostEventType {
   kCustomWait,
   kOnDeviceSendRequestMulti,
   kOnDeviceRecvRequestMulti,
+  kPjrtAsyncWait,
   kDoEnqueueProgram,
   kDoEnqueueContinuationProgram,
   kWriteHbm,
