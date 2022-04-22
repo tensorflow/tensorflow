@@ -1141,6 +1141,7 @@ TEST(SaveModelTest, Model) {
               restored_current->TotalBufferedBytes());
     EXPECT_EQ(current->TotalMaximumBufferedBytes(),
               restored_current->TotalMaximumBufferedBytes());
+    EXPECT_EQ(current->Ratio(), restored_current->Ratio());
     EXPECT_NE(current.get(), restored_current.get());
 
     current = current->inputs().front();
