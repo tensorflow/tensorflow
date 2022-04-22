@@ -57,9 +57,6 @@ std::string PrintMemory(const char* ptr, size_t n);
 // "tensor", "tensor[i]", "tensor[i, j]", etc.
 std::string SliceDebugString(const TensorShape& shape, const int64_t flat);
 
-// Check if MKL is enabled in runtime
-bool IsMKLEnabled();
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_UTIL_H_
