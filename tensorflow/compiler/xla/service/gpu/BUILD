@@ -1662,6 +1662,7 @@ cc_library(
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:bef",
+            "@tf_runtime//backends/gpu:gpu_executor",
         ],
         "//conditions:default": [],
     }),
