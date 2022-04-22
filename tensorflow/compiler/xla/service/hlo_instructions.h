@@ -171,6 +171,12 @@ class HloAsyncInstruction : public HloInstruction {
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       HloInstruction* operand,
                       HloComputation* async_computation);
+
+  ~HloAsyncInstruction() override;
+  // When an async instruction is being destructed, remove it from the vector of
+  // pointers of its called computation, to avoid referencing freed memory.
+  void ClearAsyncComputationInstruction();
+
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
 
