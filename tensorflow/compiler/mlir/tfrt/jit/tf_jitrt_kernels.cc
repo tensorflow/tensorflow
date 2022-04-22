@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_kernels_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
@@ -442,6 +443,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
     opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+      SetCrashReproducer(pm, kCrashReproducerStdErr);
+
       TfJitRtPipelineOptions opts;
       if (tf_jitrt_opts) {
         opts.vectorize = tf_jitrt_opts->vectorize;
@@ -458,7 +461,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
+      SetCrashReproducer(pm, kCrashReproducerStdErr);
+      CreateJitRtSpecializationPipeline(pm);
+    };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.

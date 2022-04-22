@@ -196,6 +196,7 @@ tfrt_cc_library(
         ":tf_jitrt_request_context",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
