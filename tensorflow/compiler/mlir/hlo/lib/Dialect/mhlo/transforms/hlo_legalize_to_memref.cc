@@ -211,7 +211,7 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   for (int i = 0; i < result_rank; ++i) {
     Value i_val = b->create<arith::ConstantIndexOp>(loc, i);
     Value result_dim_size =
-        b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
+        b->createOrFold<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
     if (!result_dim_size.getType().isIndex()) {
       result_dim_size = b->create<arith::IndexCastOp>(loc, b->getIndexType(),
                                                       result_dim_size);
@@ -267,7 +267,7 @@ Value CreateCopy(mhlo::DynamicBroadcastInDimOp op, Value broadcasted,
     if (!result_type.isDynamicDim(i)) continue;
     auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
     Value size =
-        b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
+        b->createOrFold<tensor::ExtractOp>(loc, op.output_dimensions(), index);
     if (!size.getType().isIndex()) {
       size = b->create<arith::IndexCastOp>(loc, b->getIndexType(), size);
     }
