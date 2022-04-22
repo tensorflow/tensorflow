@@ -3,7 +3,7 @@
 // RUN: | FileCheck %s
 
 // Performs while(cond) { dst = src; cond = val; }
-func @while(
+func.func @while(
   %dst : memref<8xf32>,
   %src : memref<8xf32>,
   %cond : memref<i1>,
