@@ -151,7 +151,6 @@ enum HostEventType {
   kOnDeviceRecvRequestMulti,
   kDoEnqueueProgram,
   kDoEnqueueContinuationProgram,
-  kStartProgram,
   kWriteHbm,
   kReadHbm,
   kTpuExecuteOp,

@@ -153,7 +153,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"OnDeviceRecvRequestMulti", kOnDeviceRecvRequestMulti},
       {"DoEnqueueProgram", kDoEnqueueProgram},
       {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
-      {"StartProgram", kStartProgram},
       {"WriteHbm", kWriteHbm},
       {"ReadHbm", kReadHbm},
       {"TpuExecuteOp", kTpuExecuteOp},
