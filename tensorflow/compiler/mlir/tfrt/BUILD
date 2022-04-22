@@ -1,7 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_platform_deps",
+    "tf_proto_library",
+)
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 # TF to TFRT kernels conversion.
 package(
@@ -168,6 +173,18 @@ tfrt_cc_library(
 # copybara:uncomment_end
 
 tfrt_cc_library(
+    name = "tf_jitrt_query_of_death",
+    hdrs = ["jit/tf_jitrt_query_of_death.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core/platform",
+    ] + tf_platform_deps(
+        "tf_jitrt_query_of_death",
+        platform_dir = "//tensorflow/compiler/mlir/tfrt/jit/",
+    ),
+)
+
+tfrt_cc_library(
     name = "tf_jitrt_kernels",
     srcs = ["jit/tf_jitrt_kernels.cc"],
     hdrs = ["jit/tf_jitrt_kernels_registration.h"],
@@ -175,6 +192,7 @@ tfrt_cc_library(
     deps = [
         ":tf_jitrt",
         ":tf_jitrt_pipeline",
+        ":tf_jitrt_query_of_death",
         ":tf_jitrt_request_context",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
