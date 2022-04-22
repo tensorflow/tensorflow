@@ -279,9 +279,10 @@ com.google.android.gms.dynamite.DynamiteModule$LoadingException:
 
 This error means that the TensorFlow Lite in Google Play services API is not yet
 available on your test device. You can resolve this exception by joining this
-Google group [tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access)
-with *the user account you are using to test on your device.* Once you have
-been added to the beta access group, this exception should be resolved.
+Google group
+[tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access/about)
+with *the user account you are using to test on your device.* Once you have been
+added to the beta access group, this exception should be resolved.
 
 Allow at least one business day after you join this group for access to be
 granted and the error to clear. If you continue to experience this error, report
