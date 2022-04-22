@@ -800,14 +800,16 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
   while (!worklist.empty()) {
     const HloInstruction* user = worklist.back();
     worklist.pop_back();
+    if (visits.count(user->unique_id()) != 0) {
+      continue;
+    }
+    visits.insert(user->unique_id());
     if (operands.count(user->unique_id()) != 0) {
       return true;
     }
-    if (visits.count(user->unique_id()) == 0) {
-      visits.insert(user->unique_id());
-      worklist.insert(worklist.end(), user->users().begin(),
-                      user->users().end());
-    }
+    // If our graph is topologically sorted, we do not need to push users that
+    // appear after operands onto the stack.
+    worklist.insert(worklist.end(), user->users().begin(), user->users().end());
   }
   return false;
 }
