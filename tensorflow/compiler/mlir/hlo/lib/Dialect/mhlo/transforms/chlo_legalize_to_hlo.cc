@@ -439,8 +439,9 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
     Value x = adaptor.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
-    // For now, we support only f64, f32, and f16.
-    if (!ty.isF64() && !ty.isF32() && !ty.isF16()) return failure();
+    // For now, we support only f64, f32, f16 and bf16.
+    if (!ty.isF64() && !ty.isF32() && !ty.isF16() && !ty.isBF16())
+      return failure();
 
     if (ty.isF64()) {
       rewriter.replaceOp(op, MaterializeErfApproximationF64(rewriter, loc, x));
@@ -464,8 +465,9 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
     Value x = adaptor.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
-    // For now, we support only f64, f32, and f16.
-    if (!ty.isF64() && !ty.isF32() && !ty.isF16()) return failure();
+    // For now, we support only f64, f32, f16 and bf16.
+    if (!ty.isF64() && !ty.isF32() && !ty.isF16() && !ty.isBF16())
+      return failure();
 
     if (ty.isF64()) {
       rewriter.replaceOp(op, MaterializeErfcApproximationF64(rewriter, loc, x));

@@ -374,6 +374,18 @@ func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
 
 // -----
 
+// CHECK-LABEL: @erf_bf16
+// CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
+func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
+  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<bf16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<bf16>
+  // CHECK: return %[[RESULT]]
+  %1 = "chlo.erf"(%arg) : (tensor<bf16>) -> tensor<bf16>
+  func.return %1 : tensor<bf16>
+}
+
+// -----
+
 // CHECK-LABEL: @acosh
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
@@ -710,6 +722,18 @@ func.func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
+}
+
+// -----
+
+// CHECK-LABEL: @erfc_bf16
+// CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
+func.func @erfc_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
+  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<bf16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<bf16>
+  // CHECK: return %[[RESULT]]
+  %1 = "chlo.erfc"(%arg) : (tensor<bf16>) -> tensor<bf16>
+  func.return %1 : tensor<bf16>
 }
 
 // -----
