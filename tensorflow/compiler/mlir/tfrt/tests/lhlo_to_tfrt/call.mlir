@@ -24,8 +24,9 @@ func.func @main(%arg0: memref<8xf32>) {
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain {
 func.func @memcpy(%arg0: memref<8xf32>) {
+  // CHECK: %[[ch:.*]] = tfrt_gpu.mem.copy %arg2, %arg2, %arg1, %arg0
   gpu.memcpy %arg0, %arg0 : memref<8xf32>, memref<8xf32>
-  // CHECK: tfrt.return %arg0 : !tfrt.chain
+  // CHECK: tfrt.return %[[ch]] : !tfrt.chain
   return
 }
 
