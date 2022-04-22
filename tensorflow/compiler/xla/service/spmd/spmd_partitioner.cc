@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -519,11 +520,22 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
 PartitionedHlo PartitionedHlo::PadWithValue(
     HloInstruction* pad_value, absl::Span<const int64_t> left_padded_dims,
     absl::Span<const int64_t> skipped_dims) const {
+  HloInstruction* result =
+      PadWithValueHlo(pad_value, left_padded_dims, skipped_dims);
+  if (hlo_ != result) {
+    result->set_sharding(hlo_->sharding());
+  }
+  return PartitionedHlo(result, base_shape_, state_);
+}
+
+HloInstruction* PartitionedHlo::PadWithValueHlo(
+    HloInstruction* pad_value, absl::Span<const int64_t> left_padded_dims,
+    absl::Span<const int64_t> skipped_dims) const {
   const HloSharding& sharding = hlo_->sharding();
   const Shape& shape = hlo_->shape();
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
   if (sharding.IsReplicated() || EvenlyPartitions(base_shape_, sharding)) {
-    return *this;
+    return hlo_;
   }
   CHECK(!sharding.IsTileMaximal());
   auto index_shape = ShapeUtil::ChangeElementType(shape, S32);
@@ -571,15 +583,13 @@ PartitionedHlo PartitionedHlo::PadWithValue(
   }
 
   if (mask == nullptr) {
-    return *this;
+    return hlo_;
   }
 
   auto broadcast_pad_value = state_.b->AddInstruction(
       HloInstruction::CreateBroadcast(shape, pad_value, {}));
-  auto result = state_.b->AddInstruction(HloInstruction::CreateTernary(
+  return state_.b->AddInstruction(HloInstruction::CreateTernary(
       shape, HloOpcode::kSelect, mask, hlo_, broadcast_pad_value));
-  result->set_sharding(sharding);
-  return PartitionedHlo(result, base_shape_, state_);
 }
 
 PartitionedHlo PartitionedHlo::PadWithZero(
@@ -627,26 +637,71 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   std::vector<HloInstruction*> offsets_on_padded_shape(base_shape_.rank());
   std::vector<int64_t> per_shard_window_counts(base_shape_.rank());
   std::vector<int64_t> explicit_left_padding(base_shape_.rank());
+  // Track if any shards can be skipped.
+  std::vector<int64_t> trimmed_target_sharding_tile_shape(base_shape_.rank());
+  bool trimmed = false;
+  std::vector<int64_t> dims_needs_pre_masking;
+  Shape halo_exchange_base_shape = base_shape_;
   for (int64_t i = 0; i < base_shape_.rank(); ++i) {
     // Do not pad non-partitioned dimensions.
     int64_t shard_count = target.tile_assignment().dim(i);
+    trimmed_target_sharding_tile_shape[i] = shard_count;
     if (shard_count == 1) {
       offsets_on_padded_shape[i] = state_.b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
       continue;
     }
     const WindowDimension& wd = window.dimensions(i);
+    WindowDimension* swd = shard_window.mutable_dimensions(i);
     const int64_t dilated_size = 1 + (wd.size() - 1) * wd.window_dilation();
     const int64_t full_size =
         1 + (base_shape_.dimensions(i) - 1) * wd.base_dilation() +
         wd.padding_high() + wd.padding_low();
+    int64_t window_count = (full_size - dilated_size) / wd.stride() + 1;
+    per_shard_window_counts[i] = CeilOfRatio(window_count, shard_count);
+    // Find skippable shards on the right side. This could only happen when
+    // window_count < shard_count so that the right-most shard does not have any
+    // output.
+    int64_t input_shard_size = hlo_->shape().dimensions(i);
+    if (window_count < shard_count && wd.window_dilation() == 1 &&
+        wd.base_dilation() == 1) {
+      // Test if some shards do not have any useful input (all uneven padding or
+      // window negative padding).
+      int64_t useful_input_shards = CeilOfRatio(
+          base_shape_.dimensions(i) + wd.padding_high(), input_shard_size);
+      if (useful_input_shards < shard_count) {
+        shard_count = std::max<int64_t>(useful_input_shards, window_count);
+        trimmed = true;
+        trimmed_target_sharding_tile_shape[i] = shard_count;
+        if (shard_count == 1) {
+          offsets_on_padded_shape[i] = state_.b->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+          swd->set_padding_high(base_shape_.dimensions(i) + wd.padding_high() -
+                                hlo_->shape().dimensions(i));
+          continue;
+        }
+        // Make sure the halo-exchange base shape is evenly sharded on the new
+        // shard count.
+        halo_exchange_base_shape.set_dimensions(i,
+                                                input_shard_size * shard_count);
+        if (input_shard_size * shard_count > base_shape_.dimensions(i) &&
+            wd.padding_high() > 0) {
+          // The new shape has paddings, make sure it's masked.
+          dims_needs_pre_masking.push_back(i);
+        } else if (wd.padding_high() < 0 &&
+                   full_size - wd.padding_low() < input_shard_size) {
+          // If the useful input is smaller than a shard, we treat the shard
+          // size as the useful input size and slice later.
+          halo_exchange_base_shape.set_dimensions(
+              i, (full_size - wd.padding_low()) * shard_count);
+        }
+      }
+    }
     if (full_size < dilated_size) {
       VLOG(2) << "Failed to reshard window operand because the window size is "
                  "larger than padded base size";
       return absl::nullopt;
     }
-    int64_t window_count = (full_size - dilated_size) / wd.stride() + 1;
-    per_shard_window_counts[i] = CeilOfRatio(window_count, shard_count);
     if (wd.stride() != 1 &&
         (wd.stride() * per_shard_window_counts[i]) % wd.base_dilation() != 0) {
       // TODO(yuanzx): Support this case.
@@ -658,7 +713,6 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     // padding_high on the sharded op for the remaining. padding_low and
     // padding_high are now given initial values, which will be later updated if
     // dilation is not 1.
-    WindowDimension* swd = shard_window.mutable_dimensions(i);
     explicit_left_padding[i] = wd.padding_low() / wd.base_dilation();
     swd->set_padding_low(wd.padding_low() % wd.base_dilation());
     swd->set_padding_high(0);
@@ -817,9 +871,66 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     return Reshard(target).ReshardAsWindowedInput(window, target, pad_value);
   }
 
+  if (target.ReplicateOnLastTileDim()) {
+    trimmed_target_sharding_tile_shape.push_back(
+        target.tile_assignment().dimensions().back());
+  }
+  absl::optional<HloSharding> trimmed_target;
+  const HloSharding* halo_exchange_target = &target;
+  if (trimmed) {
+    // Remove devices on the right side.
+    Array<int64_t> trimmed_devices(trimmed_target_sharding_tile_shape);
+    trimmed_devices.Each([&](absl::Span<const int64_t> indices, int64_t* d) {
+      *d = target.tile_assignment()(indices);
+    });
+    trimmed_target = target.ReplicateOnLastTileDim()
+                         ? HloSharding::PartialTile(trimmed_devices)
+                         : HloSharding::Tile(trimmed_devices);
+    halo_exchange_target = &*trimmed_target;
+  }
+
   // Halo exchange.
   HloInstruction* visiting_hlo = hlo_;
-  auto original_shard_shape = MakePartitionedShape(base_shape_, target);
+
+  if (!dims_needs_pre_masking.empty()) {
+    std::vector<int64_t> skipped_dims;
+    for (int dim = 0; dim < base_shape_.rank(); ++dim) {
+      if (!absl::c_linear_search(dims_needs_pre_masking, dim)) {
+        skipped_dims.push_back(dim);
+      }
+    }
+    visiting_hlo = PadWithValueHlo(pad_value, /*left_padded_dims=*/{},
+                                   /*skipped_dims=*/skipped_dims);
+  }
+
+  // If we skipped unused data in halo_exchange_base_shape, we need to slice the
+  // input shard.
+  Shape halo_exchange_input_shard_shape =
+      MakePartitionedShape(halo_exchange_base_shape, *halo_exchange_target);
+  if (halo_exchange_input_shard_shape.dimensions() !=
+      hlo_->shape().dimensions()) {
+    std::vector<int64_t> slice_limits(
+        halo_exchange_input_shard_shape.dimensions().begin(),
+        halo_exchange_input_shard_shape.dimensions().end());
+    bool needs_slicing = false;
+    for (int64_t i = 0; i < slice_limits.size(); ++i) {
+      if (halo_exchange_target->tile_assignment().dim(i) == 1) {
+        // Single-shard case is handled by shard window high padding.
+        slice_limits[i] = hlo_->shape().dimensions(i);
+      } else {
+        needs_slicing = true;
+      }
+    }
+    if (needs_slicing) {
+      visiting_hlo = state_.b->AddInstruction(HloInstruction::CreateSlice(
+          halo_exchange_input_shard_shape, visiting_hlo,
+          /*start_indices=*/
+          std::vector<int64_t>(halo_exchange_input_shard_shape.rank(), 0),
+          /*limit_indices=*/slice_limits,
+          /*strides=*/
+          std::vector<int64_t>(halo_exchange_input_shard_shape.rank(), 1)));
+    }
+  }
 
   std::vector<OffsetCalculation> left_halo_size_functions(base_shape_.rank());
   std::vector<OffsetCalculation> right_halo_size_functions(base_shape_.rank());
@@ -828,12 +939,12 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   // concat in the previous dimension, which is not optimal. We should generate
   // halos only concating slices, instead of slicing concats.
   for (int dim = 0; dim < base_shape_.rank(); ++dim) {
-    int64_t shard_count = target.tile_assignment().dim(dim);
+    int64_t shard_count = halo_exchange_target->tile_assignment().dim(dim);
     if (shard_count == 1) {
       continue;
     }
     int64_t input_shard_size =
-        CeilOfRatio(base_shape_.dimensions(dim), shard_count);
+        CeilOfRatio(halo_exchange_base_shape.dimensions(dim), shard_count);
 
     // Left halo. The size of the halo is derived by subtracting the first read
     // element offset of the i'th partition from the limit of the (i-1)'th
@@ -850,12 +961,12 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         limit_on_padded_calculations[dim] - shard_start_of_next_on_padded;
 
     auto resharded = ExchangeHaloAndGetValidData(
-        visiting_hlo, base_shape_, left_halo_size_functions[dim],
+        visiting_hlo, halo_exchange_base_shape, left_halo_size_functions[dim],
         right_halo_size_functions[dim], explicit_left_padding[dim],
-        padded_shape.dimensions(dim), shard_shape.dimensions(dim), dim, target,
-        offsets_on_padded_shape[dim], pad_value, partition_ordinals[dim],
-        state_.collective_ops_creator, state_.next_channel_id, state_.b,
-        mask_invalid_region);
+        padded_shape.dimensions(dim), shard_shape.dimensions(dim), dim,
+        *halo_exchange_target, offsets_on_padded_shape[dim], pad_value,
+        partition_ordinals[dim], state_.collective_ops_creator,
+        state_.next_channel_id, state_.b, mask_invalid_region);
     if (!resharded) {
       VLOG(1) << "ReshardAsWindowedInput failed without replicate first: halo "
                  "is beyond the neighbor.";
@@ -4108,7 +4219,6 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
             merged_dim->set_edge_padding_low(dim.edge_padding_low() -
                                              hlo->slice_starts(i));
             merged_dim->set_edge_padding_high(hlo->slice_limits(i) -
-                                              dim.edge_padding_low() -
                                               operand->shape().dimensions(i));
           }
           if (merged_padding.has_value() && may_have_multi_halo_exchanges) {
