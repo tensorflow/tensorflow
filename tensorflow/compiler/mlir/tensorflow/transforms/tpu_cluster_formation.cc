@@ -51,14 +51,16 @@ namespace TFTPU {
 
 namespace {
 
-constexpr char kDeviceAttr[] = "device";
-constexpr char kNameAttr[] = "name";
-constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
-constexpr char kNumReplicasAttr[] = "num_replicas";
-constexpr char kReplicatedInputIndicesAttr[] = "_replicated_input_indices";
-constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
+constexpr llvm::StringRef kDeviceAttr = "device";
+constexpr llvm::StringRef kNameAttr = "name";
+constexpr llvm::StringRef kNumCoresPerReplicaAttr = "num_cores_per_replica";
+constexpr llvm::StringRef kNumReplicasAttr = "num_replicas";
+constexpr llvm::StringRef kReplicatedInputIndicesAttr =
+    "_replicated_input_indices";
+constexpr llvm::StringRef kMirroredVariableIndicesAttr =
+    "_mirrored_variable_indices";
 
-constexpr char kBadReplicateInfoAttrMsg[] =
+constexpr llvm::StringRef kBadReplicateInfoAttrMsg =
     "requires '_replication_info' string attribute";
 
 // Mapping for `_replication_info` attribute to TPUReplicateMetadata attributes.
@@ -93,18 +95,20 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
     NamedAttrList attrs(metadata_op->getAttrDictionary());
 
     // Missing or bad `_replication_info` attribute.
-    auto tpu_replicate_attr = attrs.get(TF::kReplicationInfoAttr);
-    if (!tpu_replicate_attr)
+    auto replication_info_attr = attrs.get(TF::kReplicationInfoAttr);
+    if (!replication_info_attr)
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
-    auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
-    if (!tpu_replicate_attr_str || tpu_replicate_attr_str.getValue().empty())
+    auto replication_info_attr_str =
+        replication_info_attr.dyn_cast<StringAttr>();
+    if (!replication_info_attr_str ||
+        replication_info_attr_str.getValue().empty())
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
     // Remove `name` attribute.
     attrs.erase(StringAttr::get(metadata_op.getContext(), kNameAttr));
 
-    auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
+    auto it = metadata_map->try_emplace(replication_info_attr_str.getValue(),
                                         std::move(attrs));
 
     // There are multiple TPUReplicateMetadata ops with the same
@@ -113,7 +117,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError()
              << "multiple TPUReplicateMetadata ops with the same '"
              << TF::kReplicationInfoAttr << "' attribute '"
-             << tpu_replicate_attr_str.getValue() << "' found";
+             << replication_info_attr_str.getValue() << "' found";
     }
     metadata_op.erase();
   }
