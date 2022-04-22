@@ -2944,9 +2944,8 @@ def pybind_extension(
             visibility = visibility,
         )
 
-        cc_shared_library_name = get_cc_shared_library_target_name(name)
         cc_shared_library(
-            name = cc_shared_library_name,
+            name = so_file,
             roots = [cc_library_name],
             static_deps = static_deps,
             additional_linker_inputs = [exported_symbols_file, version_script_file],
@@ -2976,10 +2975,23 @@ def pybind_extension(
 
         # cc_shared_library can generate more than one file.
         # Solution to avoid the error "variable '$<' : more than one input file."
+        filegroup_name = name + "_filegroup"
         filegroup(
-            name = so_file,
-            srcs = [cc_shared_library_name],
+            name = filegroup_name,
+            srcs = [so_file],
             output_group = "main_shared_library_output",
+            testonly = testonly,
+        )
+        native.genrule(
+            name = name + "_pyd_copy",
+            srcs = [filegroup_name],
+            outs = [pyd_file],
+            cmd = "cp $< $@",
+            output_to_bindir = True,
+            visibility = visibility,
+            deprecation = deprecation,
+            restricted_to = restricted_to,
+            compatible_with = compatible_with,
             testonly = testonly,
         )
     else:
@@ -3026,19 +3038,19 @@ def pybind_extension(
             restricted_to = restricted_to,
             compatible_with = compatible_with,
         )
+        native.genrule(
+            name = name + "_pyd_copy",
+            srcs = [so_file],
+            outs = [pyd_file],
+            cmd = "cp $< $@",
+            output_to_bindir = True,
+            visibility = visibility,
+            deprecation = deprecation,
+            restricted_to = restricted_to,
+            compatible_with = compatible_with,
+            testonly = testonly,
+        )
 
-    native.genrule(
-        name = name + "_pyd_copy",
-        srcs = [so_file],
-        outs = [pyd_file],
-        cmd = "cp $< $@",
-        output_to_bindir = True,
-        visibility = visibility,
-        deprecation = deprecation,
-        restricted_to = restricted_to,
-        compatible_with = compatible_with,
-        testonly = testonly,
-    )
     native.py_library(
         name = name,
         data = select({
