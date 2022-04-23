@@ -2400,6 +2400,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   };
 
   Status HandleScatter(HloInstruction* scatter) override {
+    // TODO(b/227486631): Support variadic scatter.
+    if (!scatter->shape().IsArray()) {
+      return Unimplemented(
+          "Variadic scatter is not yet supported by the Evaluator");
+    }
     const ScatterDimensionNumbers& dim_numbers =
         scatter->scatter_dimension_numbers();
     const Literal& operand =

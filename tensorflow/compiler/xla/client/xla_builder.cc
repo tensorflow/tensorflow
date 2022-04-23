@@ -2399,10 +2399,10 @@ XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
     TF_ASSIGN_OR_RETURN(const Shape* updates_shape, GetShapePtr(updates));
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         update_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferScatterShape(
-                         *input_shape, *scatter_indices_shape, *updates_shape,
-                         to_apply_shape, dimension_numbers));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferScatterShape(
+                            {input_shape, scatter_indices_shape, updates_shape},
+                            to_apply_shape, dimension_numbers));
     return ScatterInternal(shape, input, scatter_indices, updates,
                            update_computation, dimension_numbers,
                            indices_are_sorted, unique_indices);

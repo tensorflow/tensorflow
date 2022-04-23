@@ -3655,21 +3655,24 @@ Status ValidateScatterDimensionNumbers(
 }  // namespace
 
 /*static*/ StatusOr<Shape> ShapeInference::InferScatterShape(
-    const Shape& operand_shape, const Shape& scatter_indices_shape,
-    const Shape& updates_shape, const ProgramShape& to_apply_shape,
+    absl::Span<const Shape* const> arg_shapes,
+    const ProgramShape& to_apply_shape,
     const ScatterDimensionNumbers& scatter_dim_numbers) {
-  TF_RETURN_IF_ERROR(
-      ExpectArray(operand_shape, "operand tensor of scatter op"));
+  const int64_t operand_count = arg_shapes.size() / 2;
+  if (operand_count * 2 + 1 != arg_shapes.size()) {
+    return InvalidArgument(
+        "Invalid argument count of scatter op: Expected %d, saw %d",
+        operand_count * 2 + 1, arg_shapes.size());
+  }
+
+  const Shape& scatter_indices_shape = *arg_shapes[operand_count];
   TF_RETURN_IF_ERROR(
       ExpectArray(scatter_indices_shape, "scatter indices of scatter op"));
-  TF_RETURN_IF_ERROR(ExpectArray(updates_shape, "updates of scatter op"));
-
   if (!ShapeUtil::ElementIsIntegral(scatter_indices_shape)) {
     return InvalidArgument(
         "Scatter indices parameter must be an integral tensor; got %s.",
         ShapeUtil::HumanString(scatter_indices_shape));
   }
-
   if (scatter_indices_shape.dimensions_size() <
           scatter_dim_numbers.index_vector_dim() ||
       scatter_dim_numbers.index_vector_dim() < 0) {
@@ -3681,13 +3684,6 @@ Status ValidateScatterDimensionNumbers(
         scatter_dim_numbers.index_vector_dim());
   }
 
-  // Check if the update computation has a proper shape as a reduction.
-  const Shape init_value_shape =
-      ShapeUtil::MakeShape(operand_shape.element_type(), {});
-  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
-                                        {updates_shape.element_type()},
-                                        /*inputs=*/1));
-
   std::vector<int64_t> expanded_scatter_indices_shape =
       SpanToVector(scatter_indices_shape.dimensions());
   if (expanded_scatter_indices_shape.size() ==
@@ -3695,66 +3691,96 @@ Status ValidateScatterDimensionNumbers(
     expanded_scatter_indices_shape.push_back(1);
   }
 
-  int64_t expected_updates_rank = expanded_scatter_indices_shape.size() - 1 +
-                                  scatter_dim_numbers.update_window_dims_size();
-  if (updates_shape.rank() != expected_updates_rank) {
-    return InvalidArgument("Updates tensor must be of rank %d; got %d.",
-                           expected_updates_rank, updates_shape.rank());
-  }
+  auto operand_shapes = arg_shapes.first(operand_count);
+  auto updates_shapes = arg_shapes.last(operand_count);
+  for (int64_t operand_i = 0; operand_i < operand_count; ++operand_i) {
+    const Shape& operand_shape = *operand_shapes[operand_i];
+    const Shape& updates_shape = *updates_shapes[operand_i];
+    TF_RETURN_IF_ERROR(ExpectArray(
+        operand_shape, absl::StrCat("operand ", operand_i, " of scatter op")));
+    TF_RETURN_IF_ERROR(ExpectArray(
+        updates_shape, absl::StrCat("updates ", operand_i, " of scatter op")));
 
-  TF_RETURN_IF_ERROR(ValidateScatterDimensionNumbers(
-      operand_shape, expanded_scatter_indices_shape, updates_shape,
-      scatter_dim_numbers));
+    int64_t inserted_dims_seen = 0;
+    std::vector<int64_t> max_update_slice_sizes;
+    const auto dimensions_size = operand_shape.dimensions_size();
+    max_update_slice_sizes.reserve(dimensions_size);
+    for (int i = 0; i < dimensions_size; ++i) {
+      if (inserted_dims_seen <
+              scatter_dim_numbers.inserted_window_dims_size() &&
+          scatter_dim_numbers.inserted_window_dims(inserted_dims_seen) == i) {
+        ++inserted_dims_seen;
+      } else {
+        max_update_slice_sizes.push_back(operand_shape.dimensions(i));
+      }
+    }
+    int64_t expected_updates_rank =
+        expanded_scatter_indices_shape.size() - 1 +
+        scatter_dim_numbers.update_window_dims_size();
+    if (updates_shape.rank() != expected_updates_rank) {
+      return InvalidArgument("Updates tensor must be of rank %d; got %d.",
+                             expected_updates_rank, updates_shape.rank());
+    }
 
-  int64_t inserted_dims_seen = 0;
-  std::vector<int64_t> max_update_slice_sizes;
-  const auto dimensions_size = operand_shape.dimensions_size();
-  max_update_slice_sizes.reserve(dimensions_size);
-  for (int i = 0; i < dimensions_size; ++i) {
-    if (inserted_dims_seen < scatter_dim_numbers.inserted_window_dims_size() &&
-        scatter_dim_numbers.inserted_window_dims(inserted_dims_seen) == i) {
-      ++inserted_dims_seen;
-    } else {
-      max_update_slice_sizes.push_back(operand_shape.dimensions(i));
-    }
-  }
-  for (int i = 0; i < scatter_dim_numbers.update_window_dims_size(); ++i) {
-    auto update_window_dim = scatter_dim_numbers.update_window_dims(i);
-    if (updates_shape.dimensions(update_window_dim) >
-        max_update_slice_sizes[i]) {
-      return InvalidArgument(
-          "Bounds of the window dimensions of updates must not exceed the "
-          "bounds of the corresponding dimensions of operand. For dimension "
-          "%d, updates bound is %d, operand bound is %d.",
-          update_window_dim, updates_shape.dimensions(update_window_dim),
-          max_update_slice_sizes[i]);
-    }
-  }
+    TF_RETURN_IF_ERROR(ValidateScatterDimensionNumbers(
+        operand_shape, expanded_scatter_indices_shape, updates_shape,
+        scatter_dim_numbers));
 
-  int64_t scatter_dims_seen = 0;
-  for (int64_t i = 0; i < updates_shape.rank(); ++i) {
-    bool is_update_window_dim =
-        absl::c_binary_search(scatter_dim_numbers.update_window_dims(), i);
-    if (is_update_window_dim) {
-      continue;
+    for (int i = 0; i < scatter_dim_numbers.update_window_dims_size(); ++i) {
+      auto update_window_dim = scatter_dim_numbers.update_window_dims(i);
+      if (updates_shape.dimensions(update_window_dim) >
+          max_update_slice_sizes[i]) {
+        return InvalidArgument(
+            "Bounds of the window dimensions of updates must not exceed the "
+            "bounds of the corresponding dimensions of operand. For dimension "
+            "%d, updates bound is %d, operand bound is %d.",
+            update_window_dim, updates_shape.dimensions(update_window_dim),
+            max_update_slice_sizes[i]);
+      }
     }
-    if (scatter_dims_seen == scatter_dim_numbers.index_vector_dim()) {
+
+    int64_t scatter_dims_seen = 0;
+    for (int64_t i = 0; i < updates_shape.rank(); ++i) {
+      bool is_update_window_dim =
+          absl::c_binary_search(scatter_dim_numbers.update_window_dims(), i);
+      if (is_update_window_dim) {
+        continue;
+      }
+      if (scatter_dims_seen == scatter_dim_numbers.index_vector_dim()) {
+        ++scatter_dims_seen;
+      }
+      if (updates_shape.dimensions(i) !=
+          expanded_scatter_indices_shape[scatter_dims_seen]) {
+        return InvalidArgument(
+            "Bounds of the scatter dimensions of updates must be same as the "
+            "bounds of the corresponding dimensions of scatter indices. For "
+            "scatter dimension %d, updates bound is %d, scatter_indices "
+            "bound is %d.",
+            i, updates_shape.dimensions(i),
+            expanded_scatter_indices_shape[scatter_dims_seen]);
+      }
       ++scatter_dims_seen;
     }
-    if (updates_shape.dimensions(i) !=
-        expanded_scatter_indices_shape[scatter_dims_seen]) {
-      return InvalidArgument(
-          "Bounds of the scatter dimensions of updates must be same as the "
-          "bounds of the corresponding dimensions of scatter indices. For "
-          "scatter dimension %d, updates bound is %d, scatter_indices "
-          "bound is %d.",
-          i, updates_shape.dimensions(i),
-          expanded_scatter_indices_shape[scatter_dims_seen]);
-    }
-    ++scatter_dims_seen;
   }
 
-  return operand_shape;
+  // Check if the update computation has a proper shape as a reduction.
+  absl::InlinedVector<Shape, 1> init_element_shapes;
+  absl::InlinedVector<const Shape*, 1> init_element_shape_ptrs;
+  absl::InlinedVector<PrimitiveType, 1> updates_element_types;
+  init_element_shapes.reserve(operand_count);
+  init_element_shape_ptrs.reserve(operand_count);
+  updates_element_types.reserve(operand_count);
+  for (int64_t i = 0; i < operand_count; ++i) {
+    init_element_shapes.push_back(
+        ShapeUtil::MakeShape(operand_shapes[i]->element_type(), {}));
+    init_element_shape_ptrs.push_back(&init_element_shapes.back());
+    updates_element_types.push_back(updates_shapes[i]->element_type());
+  }
+  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_element_shape_ptrs,
+                                        updates_element_types, operand_count));
+
+  return operand_count == 1 ? *operand_shapes[0]
+                            : ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 }
 
 }  // namespace xla
