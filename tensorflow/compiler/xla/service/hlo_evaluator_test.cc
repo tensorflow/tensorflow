@@ -4677,6 +4677,30 @@ TEST_F(HloEvaluatorTest, MapU16) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, MapMixed) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  map_computation {
+    p0 = u16[] parameter(0)
+    p1 = f32[] parameter(1)
+    c0 = f32[] convert(p0)
+    ROOT add = f32[] add(c0, p1)
+  }
+
+  ENTRY CopyStartCopyDone {
+    c0 = u16[3] constant({1, 2, 3})
+    c1 = f32[3] constant({1.5, 2.5, 3.5})
+    ROOT map = f32[3] map(c0, c1), to_apply=map_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({2.5f, 4.5f, 6.5f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, DotUpcast) {
   const absl::string_view hlo_text = R"(
   HloModule test

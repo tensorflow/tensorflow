@@ -1066,6 +1066,17 @@ TEST_F(ShapeInferenceTest, Map) {
               HasSubstr("parameter type has to match argument"));
 }
 
+TEST_F(ShapeInferenceTest, MapWithDifferentInputTypes) {
+  Shape arg0 = ShapeUtil::MakeShape(F32, {20});
+  Shape arg1 = ShapeUtil::MakeShape(S32, {20});
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, s32_}, s32_);
+  auto inferred_status =
+      ShapeInference::InferMapShape({&arg0, &arg1}, to_apply, {0});
+  EXPECT_IS_OK(inferred_status.status());
+  Shape expected = ShapeUtil::MakeShape(S32, {20});
+  EXPECT_TRUE(ShapeUtil::Equal(expected, inferred_status.ValueOrDie()));
+}
+
 TEST_F(ReduceShapeInferenceTest, ReduceVectorToScalar) {
   ExpectInferredReduceShape(f32_, ShapeUtil::MakeShape(F32, {128}),
                             /*dimensions_to_reduce=*/{0});

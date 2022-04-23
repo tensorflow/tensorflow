@@ -1126,12 +1126,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument("Map expects at least one argument.");
   }
 
-  // All arguments must have the same shape.
+  // All arguments must have the same shape ignoring the element types.
   const Shape* arg_shape = arg_shapes[0];
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
     TF_RETURN_IF_ERROR(ExpectArray(*arg_shapes[i], "operand of map"));
 
-    if (ShapeUtil::CompatibleIgnoringFpPrecision(*arg_shapes[i], *arg_shape)) {
+    if (ShapeUtil::CompatibleIgnoringElementType(*arg_shapes[i], *arg_shape)) {
       continue;
     }
     if (ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shapes[i],
@@ -1201,7 +1201,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
 
     if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(parameter_shape,
-                                                       *arg_shape)) {
+                                                       *arg_shapes[i])) {
       return InvalidArgument(
           "Mapped computation's parameter type has to match argument element "
           "type; got parameter %d shape: %s, argument shape: %s.",

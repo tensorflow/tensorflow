@@ -1763,6 +1763,53 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  template <PrimitiveType kType>
+  Literal GetScalarAtIndexImpl(const Literal& literal,
+                               absl::Span<const int64_t> index) {
+    DCHECK_EQ(literal.shape().element_type(), kType);
+    using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
+    return LiteralUtil::CreateR0<NativeT>(literal.Get<NativeT>(index));
+  }
+
+  Literal GetScalarAtIndex(const Literal& literal,
+                           absl::Span<const int64_t> index) {
+    switch (literal.shape().element_type()) {
+      case PRED:
+        return GetScalarAtIndexImpl<PRED>(literal, index);
+      case U8:
+        return GetScalarAtIndexImpl<U8>(literal, index);
+      case U16:
+        return GetScalarAtIndexImpl<U16>(literal, index);
+      case U32:
+        return GetScalarAtIndexImpl<U32>(literal, index);
+      case U64:
+        return GetScalarAtIndexImpl<U64>(literal, index);
+      case S8:
+        return GetScalarAtIndexImpl<S8>(literal, index);
+      case S16:
+        return GetScalarAtIndexImpl<S16>(literal, index);
+      case S32:
+        return GetScalarAtIndexImpl<S32>(literal, index);
+      case S64:
+        return GetScalarAtIndexImpl<S64>(literal, index);
+      case F16:
+        return GetScalarAtIndexImpl<F16>(literal, index);
+      case BF16:
+        return GetScalarAtIndexImpl<BF16>(literal, index);
+      case F32:
+        return GetScalarAtIndexImpl<F32>(literal, index);
+      case F64:
+        return GetScalarAtIndexImpl<F64>(literal, index);
+      case C64:
+        return GetScalarAtIndexImpl<C64>(literal, index);
+      case C128:
+        return GetScalarAtIndexImpl<C128>(literal, index);
+      default:
+        LOG(FATAL) << "Unsupported element type: "
+                   << literal.shape().element_type();
+    }
+  }
+
   template <typename NativeT>
   StatusOr<Literal> MapImpl(HloInstruction* map) {
     auto operands = map->operands();
@@ -1781,11 +1828,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           for (auto operand : operands) {
             const Literal& arg_literal =
                 parent_->GetEvaluatedLiteralFor(operand);
-
-            auto curr_val = arg_literal.Get<NativeT>(multi_index);
-            auto curr_val_literal = LiteralUtil::CreateR0<NativeT>(curr_val);
-
-            arg_literals.push_back(std::move(curr_val_literal));
+            arg_literals.push_back(GetScalarAtIndex(arg_literal, multi_index));
           }
 
           Literal computed_result =
