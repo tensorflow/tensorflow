@@ -3005,17 +3005,17 @@ std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
 }
 
 HloScatterInstruction::HloScatterInstruction(
-    const Shape& shape, HloInstruction* operand,
-    HloInstruction* scatter_indices, HloInstruction* updates,
+    const Shape& shape, absl::Span<HloInstruction* const> args,
     HloComputation* update_computation,
     const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
     bool unique_indices)
     : HloInstruction(HloOpcode::kScatter, shape),
       indices_are_sorted_(indices_are_sorted),
       unique_indices_(unique_indices) {
-  AppendOperand(operand);
-  AppendOperand(scatter_indices);
-  AppendOperand(updates);
+  mutable_operands().reserve(args.size());
+  for (HloInstruction* arg : args) {
+    AppendOperand(arg);
+  }
   AppendComputation(update_computation);
   scatter_dimension_numbers_ =
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
@@ -3100,10 +3100,9 @@ bool HloScatterInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloScatterInstruction>(
-      shape, new_operands[0], new_operands[1], new_operands[2], to_apply(),
-      scatter_dimension_numbers(), indices_are_sorted(), unique_indices());
+      shape, new_operands, to_apply(), scatter_dimension_numbers(),
+      indices_are_sorted(), unique_indices());
 }
 
 HloIotaInstruction::HloIotaInstruction(const Shape& shape,

@@ -119,11 +119,16 @@ void TFGraphDialect::initialize() {
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
-  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
-  control_ty_ = ControlType::get(getContext());
-  tfg_tpu_replicate_key_ =
-      StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
+  tfg_description_key_ =
+      StringAttr::get(getContext(), getTfgDescriptionAttrKey());
+  tfg_is_ref_key_ = StringAttr::get(getContext(), getTfgIsRefAttrKey());
+  tfg_handle_data_key_ =
+      StringAttr::get(getContext(), getTfgHandleDataAttrKey());
+  tfg_full_type_key_ = StringAttr::get(getContext(), getTfgFullTypeAttrKey());
+
+  control_ty_ = ControlType::get(getContext());
 }
 
 // Provides a hook for op interface.

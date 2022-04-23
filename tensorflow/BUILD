@@ -7,7 +7,6 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
-    "get_cc_shared_library_target_name",
     "if_google",
     "if_oss",
     "tf_custom_op_library_additional_deps_impl",
@@ -1119,8 +1118,7 @@ tf_cc_shared_library(
         "//tensorflow:tf_version_script.lds",
     ],
     dynamic_deps = [
-        # TODO(b/229550590): Replace the following target name with libtensorflow_framework.so.2.
-        get_cc_shared_library_target_name("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
+        "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
     ],
     framework_so = [],
     linkopts = select({

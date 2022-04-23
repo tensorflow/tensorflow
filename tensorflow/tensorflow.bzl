@@ -753,10 +753,6 @@ def tf_cc_shared_object(
             visibility = visibility,
         )
 
-# TODO(b/229550590): Remove. Labels should be string literals (go/build-style#other-conventions).
-def get_cc_shared_library_target_name(name):
-    return name + "_st"  # Keep short. See b/221093790
-
 # buildozer: disable=function-docstring-args
 def tf_cc_shared_library(
         name,
@@ -822,9 +818,8 @@ def tf_cc_shared_library(
             linkstatic = linkstatic,
         )
 
-        cc_shared_library_name = get_cc_shared_library_target_name(name_os_full)
         cc_shared_library(
-            name = cc_shared_library_name,
+            name = name_os_full,
             roots = [cc_library_name] + roots,
             exports_filter = if_rocm(None, exports_filter),  # b/230048163
             dynamic_deps = dynamic_deps,
@@ -846,9 +841,10 @@ def tf_cc_shared_library(
             visibility = visibility,
             win_def_file = if_windows(win_def_file, otherwise = None),
         )
+        filegroup_name = name_os_full + "_filegroup"
         filegroup(
-            name = name_os_full,
-            srcs = [cc_shared_library_name],
+            name = filegroup_name,
+            srcs = [name_os_full],
             output_group = "main_shared_library_output",
         )
 
@@ -863,7 +859,7 @@ def tf_cc_shared_library(
             native.genrule(
                 name = name_os_major + "_sym",
                 outs = [name_os_major],
-                srcs = [name_os_full],
+                srcs = [filegroup_name],
                 output_to_bindir = 1,
                 cmd = "ln -sf $$(basename $<) $@",
             )
@@ -987,9 +983,8 @@ def tf_native_cc_shared_library(
         copts = copts,
         defines = defines,
     )
-    cc_shared_library_name = get_cc_shared_library_target_name(name)
     cc_shared_library(
-        name = cc_shared_library_name,
+        name = name,
         roots = [cc_library_name],
         static_deps = static_deps,
         shared_lib_name = name,
@@ -1003,11 +998,6 @@ def tf_native_cc_shared_library(
                 "-lm",
             ],
         }) + linkopts + _rpath_user_link_flags(name) + lrt_if_needed(),
-        visibility = visibility,
-    )
-    native.alias(
-        name = name,
-        actual = cc_shared_library_name,
         visibility = visibility,
     )
 

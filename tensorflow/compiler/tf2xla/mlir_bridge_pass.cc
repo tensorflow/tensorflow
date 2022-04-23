@@ -55,13 +55,27 @@ bool HasTPUDevice(mlir::ModuleOp module) {
 
 bool HasTPUOp(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
-    // TODO(b/223677572): We should check `_replication_info` attribute here
-    // instead once the migration to unified compilation and replication markers
-    // is done.
+    // Check for ops with compile device type "TPU". This allows us to support
+    // TPU compilation without replication. Note that currently the compile
+    // device type is not set by default before bridge, only if eager context
+    // attribute `jit_compile_rewrite` is true.
     // TODO(b/229028654): Remove string conversion once we have C++17.
-    const llvm::StringRef str(kTpuReplicateAttr.data(),
-                              kTpuReplicateAttr.size());
-    auto replicate_attr = op->getAttrOfType<mlir::StringAttr>(str);
+    const llvm::StringRef compile_device_type_attr_name(
+        kCompileDeviceTypeAttr.data(), kCompileDeviceTypeAttr.size());
+    auto compilation_attr =
+        op->getAttrOfType<mlir::StringAttr>(compile_device_type_attr_name);
+    if (compilation_attr && compilation_attr.getValue().str() == kTpuDevice) {
+      return mlir::WalkResult::interrupt();
+    }
+    // TODO(b/223677572): Once the scope for new compilation and replication
+    // markers is expanded beyond bridge we can remove this check for
+    // `kTPUReplicateAttr`, we will then always have a `kCompileDeviceTypeAttr`
+    // in such cases (see above).
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    const llvm::StringRef tpu_replicate_attr_name(kTpuReplicateAttr.data(),
+                                                  kTpuReplicateAttr.size());
+    auto replicate_attr =
+        op->getAttrOfType<mlir::StringAttr>(tpu_replicate_attr_name);
     if (replicate_attr) return mlir::WalkResult::interrupt();
     return mlir::WalkResult::advance();
   });
