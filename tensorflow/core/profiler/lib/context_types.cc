@@ -42,6 +42,8 @@ const char* GetContextTypeString(ContextType context_type) {
       return "batcher";
     case ContextType::kTpuStream:
       return "tpu_stream";
+    case ContextType::kTpuLaunch:
+      return "tpu_launch";
   }
 }
 
