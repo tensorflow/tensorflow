@@ -38,6 +38,12 @@
       difference range from 8 to 100 times depending on the size of k.
       When running on CPU and GPU, a non-optimized XLA kernel is used.
 
+*   `tf.vectorized_map`:
+
+    * Added an optional parameter: `warn`.  This parameter controls whether or
+      not warnings will be printed when operations in the provided `fn` fall
+      back to a while loop.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
