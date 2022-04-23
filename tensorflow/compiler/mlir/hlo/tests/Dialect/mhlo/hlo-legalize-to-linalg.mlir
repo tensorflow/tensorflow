@@ -4262,3 +4262,41 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
 // CHECK:     linalg.yield %[[SUM]] : f32
 // CHECK: } -> tensor<?x?x?xf32>
+
+// -----
+
+func.func @dot_general_two_batch(%arg0: tensor<64x16x128x32xf32>,
+                  %arg1: tensor<16x256x32x128xf32>) -> tensor<16x32x64x256xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1, 3],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0, 2],
+      rhs_contracting_dimensions = [3]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<64x16x128x32xf32>, tensor<16x256x32x128xf32>) -> tensor<16x32x64x256xf32>
+  func.return %0 : tensor<16x32x64x256xf32>
+}
+// The iterations are (Batch Dim, Batch Dim, LHS Other Dim, RHS Other dim, Contracting Dim)
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d2, d0, d4, d1)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d3, d1, d4)>
+// Output is the iterators excluding contracting
+// CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3)>
+// CHECK: func @dot_general_two_batch(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<64x16x128x32xf32>, %[[ARG1:.*]]: tensor<16x256x32x128xf32>)
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [16, 32, 64, 256]
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
+// Only contracting dims are reductions
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel", "reduction"]
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<64x16x128x32xf32>, tensor<16x256x32x128xf32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<16x32x64x256xf32>)
+// CHECK-SAME: {someattr}
+// CHECK:   ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
+// CHECK:     %[[MUL:.*]] = arith.mulf %[[ARG2]], %[[ARG3]] : f32
+// CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
+// CHECK:     linalg.yield %[[SUM]] : f32
+// CHECK: } -> tensor<16x32x64x256xf32>

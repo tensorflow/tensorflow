@@ -2946,10 +2946,11 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
         lhs_indices[i.value()] =
             rewriter.getAffineDimExpr(i.index() + target_rank);
       }
-      for (int i = 0; i < lhs_rank; ++i) {
+      for (int i = 0, j = 0; i < lhs_rank; ++i) {
         if (!assigned_dims[i]) {
           lhs_indices[i] =
-              rewriter.getAffineDimExpr(i + lhs_batching_dims.size());
+              rewriter.getAffineDimExpr(j + lhs_batching_dims.size());
+          j++;
         }
       }
       indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
@@ -2971,10 +2972,11 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
         rhs_indices[i.value()] =
             rewriter.getAffineDimExpr(i.index() + target_rank);
       }
-      for (int i = 0; i < rhs_rank; ++i) {
+      for (int i = 0, j = 0; i < rhs_rank; ++i) {
         if (!assigned_dims[i]) {
           rhs_indices[i] = rewriter.getAffineDimExpr(
-              i + rhs_batching_dims.size() + lhs_extra_dims);
+              j + rhs_batching_dims.size() + lhs_extra_dims);
+          j++;
         }
       }
       indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
