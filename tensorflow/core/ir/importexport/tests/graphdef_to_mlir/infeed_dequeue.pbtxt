@@ -1,9 +1,9 @@
 # RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
 
 # CHECK: InfeedDequeue
-# CHECK-SAME: tensor<?x8x?xi8>
+# CHECK-SAME: tensor<*xi8>
 # CHECK: InfeedDequeueTuple
-# CHECK-SAME: -> (tensor<?x?x?xui16>, tensor<*xui32>, tensor<7x56xui64>)
+# CHECK-SAME: -> (tensor<*xui16>, tensor<*xui32>, tensor<*xui64>)
 
 node {
   name: "InfeedDequeue_0"

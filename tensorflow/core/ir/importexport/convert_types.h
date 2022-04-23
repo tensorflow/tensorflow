@@ -26,7 +26,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
-tensorflow::Status ConvertDataType(tensorflow::DataType dtype, Builder builder,
+tensorflow::Status ConvertDataType(tensorflow::DataType dtype, Builder& builder,
                                    Type* type);
 
 // Converts a scalar MLIR type to a TensorFlow Datatype.

@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
@@ -57,7 +59,8 @@ int main(int argc, char **argv) {
   }
   tensorflow::GraphDebugInfo debug_info;
   MLIRContext context;
-  auto errorOrModule = ImportGraphDefToMlir(&context, debug_info, graphdef);
+  auto errorOrModule =
+      mlir::tfg::ImportGraphDef(&context, debug_info, graphdef);
   if (!errorOrModule.ok()) {
     LOG(ERROR) << errorOrModule.status();
     return 3;
@@ -95,7 +98,7 @@ int main(int argc, char **argv) {
   }
 
   GraphDef new_graphdef;
-  status = tensorflow::ExportMlirToGraphdef(*module, &new_graphdef);
+  status = mlir::tfg::ConvertToGraphDef(*module, &new_graphdef);
   if (!status.ok()) {
     llvm::errs()
         << "\n\n=========\n=========\n=========\n=========\n=========\n"
