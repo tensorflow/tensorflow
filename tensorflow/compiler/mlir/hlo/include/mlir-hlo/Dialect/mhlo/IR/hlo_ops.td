@@ -25,7 +25,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
 class HLO_Op<string mnemonic, list<Trait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
@@ -121,8 +120,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
-    InferShapedTypeOpInterface, InferShapeEqualityOpInterface,
-    SameOperandsAndResultShape]> {
+    InferShapedTypeOpInterface, SameOperandsAndResultShape]> {
   let arguments = (ins TensorType:$operand);
   let results = (outs TensorType:$result);
   let extraClassDeclaration = [{
@@ -451,7 +449,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 
 class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
-    InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
+    SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -1027,8 +1025,7 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
 def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">,
-      InferShapeEqualityOpInterface
+      SingleBlockImplicitTerminator<"ReturnOp">
     ]> {
   let summary = "Reduce operator";
   let description = [{

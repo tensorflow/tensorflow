@@ -450,41 +450,6 @@ gentbl_cc_library(
     deps = [":hlo_ops_td_files"],
 )
 
-gentbl_cc_library(
-    name = "infer_shape_equality_op_interface_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.cpp.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td",
-    deps = [":hlo_ops_td_files"],
-)
-
-cc_library(
-    name = "infer_shape_equality_op_interface",
-    srcs = [
-        "lib/Dialect/mhlo/IR/infer_shape_equality_op_interface.cc",
-    ],
-    hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h.inc",
-    ],
-    includes = ["include"],
-    deps = [
-        ":infer_shape_equality_op_interface_gen",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
 td_library(
     name = "lhlo_ops_td_files",
     srcs = glob(["include/mlir-hlo/Dialect/lhlo/IR/*.td"]),
@@ -621,7 +586,6 @@ cc_library(
         ":hlo_ops_common",
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_gen",
-        ":infer_shape_equality_op_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -695,7 +659,6 @@ cc_library(
         ":hlo_ops_base_enums",
         ":hlo_ops_base_structs",
         ":hlo_ops_common",
-        ":infer_shape_equality_op_interface",
         ":lhlo",
         ":lhlo_gpu_ops_attrdefs_inc_gen",
         ":lhlo_gpu_ops_dialect_inc_gen",

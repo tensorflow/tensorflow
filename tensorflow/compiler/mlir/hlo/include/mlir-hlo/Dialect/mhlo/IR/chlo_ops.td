@@ -34,7 +34,6 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
 def CHLO_Dialect : Dialect {
   let name = "chlo";
@@ -449,8 +448,8 @@ def CHLO_BroadcastComplexOp : CHLO_BroadcastBinaryElementwiseOp<
 
 class CHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type ArgTensorType, Type ResultTensorType> : CHLO_Op<mnemonic,
-    traits # [InferShapeEqualityOpInterface, NoSideEffect, Elementwise,
-    SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
+    traits # [NoSideEffect, Elementwise, SameOperandsAndResultShape,
+    InferShapedTypeOpInterface]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);
 
