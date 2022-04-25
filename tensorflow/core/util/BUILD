@@ -406,7 +406,6 @@ tf_mkl_kernel_library(
     srcs = ["onednn_env_vars.cc"],
     hdrs = ["onednn_env_vars.h"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
