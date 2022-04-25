@@ -2553,6 +2553,7 @@ test_suite(
 test_suite(
     name = "bef_executable_tests",
     tests = [
+        "//tensorflow/compiler/tests:fft_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         "//tensorflow/compiler/xla/service/gpu/tests:add_preds.hlo.test",
@@ -2700,6 +2701,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:convolution_test_gpu_alternative_layout_gpu",
         "//tensorflow/compiler/xla/tests:convolution_variants_test_gpu",
         "//tensorflow/compiler/xla/tests:grouped_convolution_test_gpu",
+        "//tensorflow/python/kernel_tests/signal:fft_ops_test_xla_gpu",
     ]),
 )
 
