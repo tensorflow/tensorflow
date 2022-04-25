@@ -16,16 +16,22 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
 namespace model {
 namespace {
+
+using ::tensorflow::monitoring::testing::CellReader;
+using ::testing::AllOf;
+using ::testing::HasSubstr;
 
 int64_t CountParametersOnNode(const string& node_name,
                               const Model::ModelParameters& parameters) {
@@ -1135,6 +1141,7 @@ TEST(SaveModelTest, Model) {
               restored_current->TotalBufferedBytes());
     EXPECT_EQ(current->TotalMaximumBufferedBytes(),
               restored_current->TotalMaximumBufferedBytes());
+    EXPECT_EQ(current->Ratio(), restored_current->Ratio());
     EXPECT_NE(current.get(), restored_current.get());
 
     current = current->inputs().front();
@@ -1765,6 +1772,18 @@ TEST_F(ModelTimingTest, ParallelInterleave_With_InactiveNodes) {
   EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_4.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
       0, model_timing.GetTiming(parallel_map_1.get())->total_time_nsec);
+}
+
+TEST(ModelTest, ModelMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  std::string model_id = strings::StrCat(reinterpret_cast<uint64>(&model));
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true")));
 }
 
 }  // namespace

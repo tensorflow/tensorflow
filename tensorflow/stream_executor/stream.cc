@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/blas.h"
@@ -259,17 +262,22 @@ Stream::Stream(StreamExecutor *parent)
 }
 
 Stream::Stream(StreamExecutor *parent,
-               internal::StreamInterface *implementation)
+               std::unique_ptr<internal::StreamInterface> implementation)
     : parent_(parent),
-      implementation_(implementation),
-      allocated_(false),
-      status_(port::InternalError("Uninitialized stream")),
-      temporary_memory_manager_(this) {
-  VLOG_CALL(PARAM(parent), PARAM(implementation));
+      implementation_(std::move(implementation)),
+      allocated_(true),
+      status_(port::Status::OK()),
+      temporary_memory_manager_(this),
+      managed_externally_(true) {
+  VLOG_CALL(PARAM(parent), PARAM(implementation.get()));
 }
 
 Stream::~Stream() {
   VLOG_CALL();
+
+  if (managed_externally_) {
+    return;
+  }
 
   // Ensure the stream is completed.
   auto status = BlockHostUntilDone();
@@ -4236,6 +4244,14 @@ Stream &Stream::ThenRunAfterNextBlockHostUntilDone(
   absl::MutexLock lock(&mu_);
   after_block_host_until_done_callbacks_.push_back(std::move(callback));
   return *this;
+}
+
+void Stream::CheckError(bool operation_retcode) {
+  if (operation_retcode) {
+    return;
+  }
+  absl::MutexLock lock(&mu_);
+  status_ = port::InternalError("Unknown error");
 }
 
 Stream &Stream::ThenFft(fft::Plan *plan,

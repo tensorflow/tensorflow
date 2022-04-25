@@ -73,10 +73,8 @@ class ConvertFill : public OpConverterBase<ConvertFill> {
 
   Status Convert() {
     const auto& params = *this->params_;
+    auto* network = params.converter->network();
     const auto& inputs = params.inputs;
-    auto* converter = params.converter;
-    auto* network = converter->network();
-    const auto& node_def = params.node_def;
 
     const bool is_dims_static = inputs[0].is_weights();
     const bool is_value_static = inputs[1].is_weights();
@@ -93,38 +91,12 @@ class ConvertFill : public OpConverterBase<ConvertFill> {
       dims_adapter.TrtDims(&trt_dims);
     }
 
-    // TensorRT IFillLayer requires a rank 0 scalar.
-    ITensorProxyPtr scalar_tensor;
-    nvinfer1::Dims scalar_dims;
-    scalar_dims.nbDims = 0;
-    nvinfer1::DataType value_type = value_input.TrtDType();
-    if (is_value_static) {
-      scalar_tensor =
-          converter->CreateConstantLayer(value_input.weights(), scalar_dims);
-    } else {
-      TF_RETURN_IF_ERROR(PrepareTensorForShape(
-          converter, value_input, scalar_dims, params.validation_only,
-          &scalar_tensor, node_def));
-    }
-
     auto builder = TRTNetworkBuilder::Create(network, params.weight_store);
-    nvinfer1::Dims beta_shape{1, {nbDims}};
-    StatusOr<nvinfer1::IConstantLayer*> const_layer =
-        builder->Constant(0, beta_shape, value_type);
-    TF_RETURN_IF_ERROR(const_layer.status());
-    ITensorProxyPtr empty_beta_tensor = (*const_layer)->getOutput(0);
-
-    nvinfer1::IFillLayer* layer =
-        network->addFill(trt_dims, nvinfer1::FillOperation::kLINSPACE);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-    if (!is_dims_static) {
-      layer->setInput(0, *dims_input.tensor()->trt_tensor());
-    }
-    layer->setInput(1, *scalar_tensor->trt_tensor());
-    layer->setInput(2, *empty_beta_tensor->trt_tensor());
-    converter->SetLayerName(layer, node_def, "fill");
-    ITensorProxyPtr output_tensor = layer->getOutput(0);
-    AddOutput(TRT_TensorOrWeights(output_tensor));
+    StatusOr<nvinfer1::ILayer*> layer =
+        builder->AddFill(value_input, dims_input, is_value_static,
+                         is_dims_static, nbDims, trt_dims);
+    ITensorProxyPtr output_tensor = (*layer)->getOutput(0);
+    this->AddOutput(TRT_TensorOrWeights(output_tensor));
     return Status::OK();
   }
 };

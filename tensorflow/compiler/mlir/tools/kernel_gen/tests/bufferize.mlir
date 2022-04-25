@@ -24,8 +24,8 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-  // ALLOC: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
-  // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
+  // ALLOC-DAG: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
+  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
@@ -42,9 +42,9 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
 func.func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
-  // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
-  // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
+  // CHECK-DAG: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
+  // ALLOC-DAG: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
+  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
@@ -285,4 +285,30 @@ func.func @arith_select(%c : tensor<i1>, %lhs: tensor<1xf32>, %rhs: tensor<1xf32
   %cond = tensor.extract %c[] : tensor<i1>
   %result = arith.select %cond, %lhs, %rhs : tensor<1xf32>
   func.return %result : tensor<1xf32>
+}
+
+
+#map = affine_map<(d0) -> (d0)>
+func.func @init_tensor_multiple_users(%lhs: tensor<10xf32>,
+    %rhs: tensor<10xf32>) -> (tensor<10xf32>, tensor<10xf32>) {
+  %init = linalg.init_tensor [10] : tensor<10xf32>
+  %add = linalg.generic {
+    indexing_maps = [#map, #map, #map],
+    iterator_types = ["parallel"]}
+    ins(%lhs, %rhs : tensor<10xf32>, tensor<10xf32>)
+    outs(%init : tensor<10xf32>) {
+  ^bb0(%l: f32, %r: f32, %o: f32):
+    %a = arith.addf %l, %r : f32
+    linalg.yield %a : f32
+  } -> tensor<10xf32>
+  %sub = linalg.generic {
+    indexing_maps = [#map, #map, #map],
+    iterator_types = ["parallel"]}
+    ins(%lhs, %rhs : tensor<10xf32>, tensor<10xf32>)
+    outs(%init : tensor<10xf32>) {
+  ^bb0(%l: f32, %r: f32, %o: f32):
+    %s = arith.subf %l, %r : f32
+    linalg.yield %s : f32
+  } -> tensor<10xf32>
+  func.return %add, %sub : tensor<10xf32>, tensor<10xf32>
 }

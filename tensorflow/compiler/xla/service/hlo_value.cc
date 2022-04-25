@@ -115,13 +115,6 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
       // transparently.
       CHECK_EQ(operand_number, 0);
       return index.empty();
-    case HloOpcode::kTupleSelect:
-      // Select does not use any nested elements of its selected-from operands
-      // (operand 1 and 2)
-      CHECK_GE(operand_number, 0);
-      CHECK_LE(operand_number, 2);
-      return operand_number == 0 || index.empty();
-
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.

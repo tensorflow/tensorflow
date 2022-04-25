@@ -257,6 +257,7 @@ Status CoordinationServiceAgentImpl::Connect() {
     }
   }
 
+  LOG(INFO) << "Coordination agent has successfully connected.";
   heartbeat_thread_.reset(
       env_->StartThread(ThreadOptions(), kHeartbeatThread, [this]() -> void {
         HeartbeatRequest request;
@@ -397,7 +398,9 @@ Status CoordinationServiceAgentImpl::Shutdown() {
                                         n.Notify();
                                       });
     n.WaitForNotification();
-    if (!status.ok()) {
+    if (status.ok()) {
+      LOG(INFO) << "Coordination agent has successfully shut down.";
+    } else {
       LOG(ERROR)
           << "Failed to disconnect from coordination service with status: "
           << status << ". Proceeding with agent shutdown anyway.";
@@ -454,6 +457,8 @@ Status CoordinationServiceAgentImpl::Reset() {
     mutex_lock l(heartbeat_thread_shutdown_mu_);
     shutting_down_ = false;
   }
+
+  LOG(INFO) << "Coordination agent has been reset.";
   return status;
 }
 
@@ -552,6 +557,8 @@ void CoordinationServiceAgentImpl::SetError(const Status& error) {
   assert(!error.ok());
   mutex_lock l(state_mu_);
   if (state_ == State::ERROR) return;
+
+  LOG(ERROR) << "Coordination agent is in ERROR: " << error;
   state_ = State::ERROR;
   status_ = error;
   error_fn_(error);

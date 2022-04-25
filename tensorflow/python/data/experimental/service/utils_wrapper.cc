@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "Python.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/core/data/service/py_utils.h"

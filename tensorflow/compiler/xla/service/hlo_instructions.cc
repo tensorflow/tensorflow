@@ -225,7 +225,7 @@ HloAsyncInstruction::HloAsyncInstruction(
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->SetAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(this);
 }
 
 HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
@@ -236,7 +236,26 @@ HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->SetAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(this);
+}
+
+HloAsyncInstruction::~HloAsyncInstruction() {
+  ClearAsyncComputationInstruction();
+  ClearCalledComputations();
+}
+
+void HloAsyncInstruction::ClearAsyncComputationInstruction() {
+  // Each async instruction calls a single computation, but we use
+  // called_computations() instead of async_wrapped_instruction(), because the
+  // order in which things get destructed can vary; the async computation's
+  // back-pointer may already be null, which violates a check in
+  // async_wrapped_instruction.
+  for (HloComputation* computation : called_computations()) {
+    CHECK(computation != nullptr);
+    if (computation->IsAsyncComputation()) {
+      computation->RemoveAsyncInstruction(this);
+    }
+  }
 }
 
 HloInstruction* HloAsyncInstruction::async_wrapped_instruction() const {
@@ -2986,17 +3005,17 @@ std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
 }
 
 HloScatterInstruction::HloScatterInstruction(
-    const Shape& shape, HloInstruction* operand,
-    HloInstruction* scatter_indices, HloInstruction* updates,
+    const Shape& shape, absl::Span<HloInstruction* const> args,
     HloComputation* update_computation,
     const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
     bool unique_indices)
     : HloInstruction(HloOpcode::kScatter, shape),
       indices_are_sorted_(indices_are_sorted),
       unique_indices_(unique_indices) {
-  AppendOperand(operand);
-  AppendOperand(scatter_indices);
-  AppendOperand(updates);
+  mutable_operands().reserve(args.size());
+  for (HloInstruction* arg : args) {
+    AppendOperand(arg);
+  }
   AppendComputation(update_computation);
   scatter_dimension_numbers_ =
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
@@ -3081,10 +3100,9 @@ bool HloScatterInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloScatterInstruction>(
-      shape, new_operands[0], new_operands[1], new_operands[2], to_apply(),
-      scatter_dimension_numbers(), indices_are_sorted(), unique_indices());
+      shape, new_operands, to_apply(), scatter_dimension_numbers(),
+      indices_are_sorted(), unique_indices());
 }
 
 HloIotaInstruction::HloIotaInstruction(const Shape& shape,

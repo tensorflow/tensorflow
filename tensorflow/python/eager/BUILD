@@ -1251,6 +1251,15 @@ py_library(
     ],
 )
 
+py_binary(
+    name = "gen_gradient_input_output_exclusions",
+    srcs = ["gen_gradient_input_output_exclusions.py"],
+    deps = [
+        ":gradient_input_output_exclusions",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 # Needed for the test below.
 exports_files([
     "pywrap_gradient_exclusions.cc",

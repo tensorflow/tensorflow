@@ -7,10 +7,8 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
-    "get_cc_shared_library_target_name",
     "if_google",
     "if_oss",
-    "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
     "tf_native_cc_binary",
 )
@@ -445,6 +443,16 @@ config_setting(
 config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
+
+# This condition takes precedence over :linux_x86_64
+config_setting(
+    name = "linux_x86_64_no_sse",
+    values = {
+        "cpu": "k8",
+        "copt": "-mno-sse4.2",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -986,6 +994,7 @@ tf_cc_shared_library(
         "//tensorflow:tf_framework_version_script.lds",
         "//tensorflow:tf_private_symbols.lds",
     ],
+    exports_filter = PACKAGE_STATIC_DEPS,
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1003,10 +1012,7 @@ tf_cc_shared_library(
     }),
     linkstatic = 1,
     per_os_targets = True,
-    soversion = VERSION,
-    static_deps = PACKAGE_STATIC_DEPS,
-    visibility = ["//visibility:public"],
-    deps = [
+    roots = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
@@ -1016,6 +1022,7 @@ tf_cc_shared_library(
         "//tensorflow/c:ops",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
@@ -1027,6 +1034,9 @@ tf_cc_shared_library(
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/stream_executor:stream_executor_impl",
     ] + tf_additional_binary_deps(),
+    soversion = VERSION,
+    static_deps = PACKAGE_STATIC_DEPS,
+    visibility = ["//visibility:public"],
 )
 
 # This is intended to be the same as tf_binary_additional_srcs:
@@ -1055,8 +1065,12 @@ cc_import(
 # an "-exported_symbols_list" command.  -z defs disallows undefined
 # symbols in object files.
 
-tf_cc_shared_object(
+tf_cc_shared_library(
     name = "tensorflow",
+    additional_linker_inputs = [
+        "//tensorflow/c:exported_symbols.lds",
+        "//tensorflow/c:version_script.lds",
+    ],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
@@ -1081,18 +1095,14 @@ tf_cc_shared_object(
     }),
     per_os_targets = True,
     soversion = VERSION,
+    static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
     # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
-    win_def_file = select({
-        "//tensorflow:windows": ":tensorflow_filtered_def_file",
-        "//conditions:default": None,
-    }),
+    win_def_file = ":tensorflow_filtered_def_file",
     # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c:exported_symbols.lds",
-        "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
@@ -1108,8 +1118,7 @@ tf_cc_shared_library(
         "//tensorflow:tf_version_script.lds",
     ],
     dynamic_deps = [
-        # TODO(b/229550590): Replace the following target name with libtensorflow_framework.so.2.
-        get_cc_shared_library_target_name("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
+        "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
     ],
     framework_so = [],
     linkopts = select({

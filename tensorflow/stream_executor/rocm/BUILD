@@ -414,6 +414,7 @@ cc_library(
 )
 
 cc_library(
+<<<<<<< HEAD
         name = "rocm_helpers",
         srcs = ["rocm_helpers.cu.cc"],
         deps = 
@@ -422,6 +423,16 @@ cc_library(
         copts = rocm_copts(),
         alwayslink = True,
     )
+=======
+    name = "rocm_helpers",
+    srcs = if_rocm_is_configured(["rocm_helpers.cu.cc"]),
+    copts = rocm_copts(),
+    deps = if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+    alwayslink = True,
+)
+>>>>>>> upstream/master
 
 cc_library(
     name = "all_runtime",
@@ -434,7 +445,11 @@ cc_library(
         ":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
+<<<<<<< HEAD
         ":rocm_helpers"
+=======
+        ":rocm_helpers",
+>>>>>>> upstream/master
     ]),
     alwayslink = 1,
 )

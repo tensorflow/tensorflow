@@ -171,6 +171,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TensorDialect",
     ],
     alwayslink = 1,
 )

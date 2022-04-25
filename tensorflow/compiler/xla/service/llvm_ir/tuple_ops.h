@@ -26,42 +26,6 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
-// Selection among tuples is special in how it's lowered, because a tuple is not
-// an HLO array.
-//
-//      tuple_on_true                     tuple_on_false
-//           |                                 |
-//           V                                 V
-// ------------------------          ------------------------
-// | address of element 0 |          | address of element 0 |
-// |----------------------|          |----------------------|
-// | address of element 1 |          | address of element 1 |
-// |----------------------|          |----------------------|
-// | address of element 2 |          | address of element 2 |
-// ------------------------          ------------------------
-//                       \            /
-//                        \          /
-//                         ----------
-//         pred ---------> | select |
-//                         ----------
-//                             |
-//                             V
-//      output ----> ------------------------
-//                   | address of element 0 |
-//                   |----------------------|
-//                   | address of element 1 |
-//                   |----------------------|
-//                   | address of element 2 |
-//                   ------------------------
-//
-// Only the addresses are copied to the output. For each element, we emit a copy
-// of the address from the corresponding element in either
-// tuple_on_true or tuple_on_false:
-//   output[i] = pred ? tuple_on_true[i] : tuple_on_false[i]
-void EmitTupleSelect(const IrArray& select, const IrArray& pred,
-                     llvm::Value* on_true, llvm::Value* on_false,
-                     llvm::IRBuilder<>* b);
-
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand.
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,

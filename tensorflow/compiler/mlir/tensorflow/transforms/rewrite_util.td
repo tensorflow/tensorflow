@@ -24,4 +24,9 @@ include "mlir/IR/PatternBase.td"
 class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+// Here, the element type can be any integer or float type. But, note that only
+// 32 bit integers are supported for the values.
+class IsConstantValueOf<int value> : Constraint<CPred<
+  "IsConstantValueOf($0," # value # ")">>;
+
 #endif // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL

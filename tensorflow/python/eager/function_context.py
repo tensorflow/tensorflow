@@ -125,9 +125,9 @@ def make_cache_key(
     include_tensor_ranks_only: bool = False
 ) -> Tuple[function_cache.FunctionCacheKey, trace_type.WeakrefDeletionObserver]:
   """Computes the cache key given the function arguments."""
-  signature_context = trace_type.SignatureContext(
+  signature_context = trace_type.InternalTracingContext(
       include_tensor_ranks_only)
-  function_signature = trace_type.make_function_signature(
+  function_signature = trace_type.from_object(
       args, signature_context)
   return function_cache.FunctionCacheKey(
       function_signature,

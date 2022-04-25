@@ -558,7 +558,8 @@ class DistributedTable(lookup_ops.StaticHashTable):
   """
 
   def __init__(self, strategy, wrapped_creator):
-
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "PSSDistributedLookupTable").increase_by(1)
     self._coordinator_instance = wrapped_creator()
     self._wrapped_creator = wrapped_creator
     self._coordinator = strategy._cluster_coordinator

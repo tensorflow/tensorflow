@@ -210,6 +210,9 @@ struct BufferizeLinalgYieldOp : public OpConversionPattern<gml_st::YieldOp> {
 
 // FuncOp-like bufferization pattern for `gml_st.loop` that inserts
 // `memref.tensor_load` ops for every memref block argument.
+//
+// TODO(b/230082413): This code has to go away if we migrate to one-shot
+// bufferization.
 struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -218,12 +221,30 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
       ConversionPatternRewriter &rewriter) const override {
     if (op.getNumResults() == 0) return failure();
 
+    // Allocate new buffers for results if it is used by multiple uses.
+    SmallVector<Value, 4> operands = adaptor.getOperands();
+    for (auto &en : llvm::enumerate(op.outputs())) {
+      Value output = en.value();
+
+      auto to_tensor = output.getDefiningOp<bufferization::ToTensorOp>();
+      if (!to_tensor || to_tensor->hasOneUse()) continue;
+
+      auto alloc = to_tensor.memref().getDefiningOp<memref::AllocOp>();
+      if (!alloc) continue;
+
+      OpBuilder::InsertionGuard g(rewriter);
+      rewriter.setInsertionPoint(op);
+      auto new_alloc = rewriter.clone(*alloc.getOperation());
+      operands[op.getNumControlOperands() + op.getNumInputs() + en.index()] =
+          new_alloc->getResult(0);
+    }
+
     SmallVector<NamedAttribute> attr_list;
     for (auto &item : adaptor.getAttributes()) {
       attr_list.push_back(item);
     }
     auto newOp = rewriter.create<LoopOp>(op.getLoc(), mlir::TypeRange{},
-                                         adaptor.getOperands(), attr_list);
+                                         operands, attr_list);
     // Take the region from the old op and put it in the new op.
     rewriter.inlineRegionBefore(op.getLoopBody(), newOp.getLoopBody(),
                                 newOp.getLoopBody().end());
@@ -233,10 +254,6 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
                                            *getTypeConverter()))) {
       return rewriter.notifyMatchFailure(op, "could not convert body types");
     }
-
-    // Change the clone to use the updated operands. We could have cloned with
-    // a BlockAndValueMapping, but this seems a bit more direct.
-    newOp->setOperands(adaptor.getOperands());
 
     rewriter.replaceOp(op, newOp.outputs());
     return success();

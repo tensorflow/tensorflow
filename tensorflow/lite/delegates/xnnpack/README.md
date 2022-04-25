@@ -459,6 +459,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
+#### `CEIL`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `CONV_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -480,6 +484,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `FLOOR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `HARD_SWISH`
 
@@ -545,6 +553,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `RESIZE_BILINEAR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `ROUND`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 

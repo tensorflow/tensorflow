@@ -57,12 +57,10 @@ TEST(TFGOptimizerTest, TestCustomPipeline) {
 
   // This is testing that we can invoke an arbitrary pipeline, here the pass
   // registered above.
-  mlir::tfg::TFGGrapplerOptimizer optimizer(
-      [](mlir::PassManager &mgr) {
-        mgr.addNestedPass<mlir::tfg::GraphOp>(
-            std::make_unique<mlir::tfg::TestPass>());
-      },
-      /*num_tfg_threads=*/0);
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addNestedPass<mlir::tfg::GraphOp>(
+        std::make_unique<mlir::tfg::TestPass>());
+  });
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_ASSERT_OK(status);
@@ -72,12 +70,10 @@ TEST(TFGOptimizerTest, TestCustomPipeline) {
 
 TEST(TFGOptimizerTest, TestCustomPipelineName) {
   // Test printing the name of a custom pipeline.
-  mlir::tfg::TFGGrapplerOptimizer optimizer(
-      [](mlir::PassManager &mgr) {
-        mgr.addNestedPass<mlir::tfg::GraphOp>(
-            std::make_unique<mlir::tfg::TestPass>());
-      },
-      /*num_tfg_threads=*/0);
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addNestedPass<mlir::tfg::GraphOp>(
+        std::make_unique<mlir::tfg::TestPass>());
+  });
   EXPECT_EQ(optimizer.name(),
             "tfg_optimizer{tfg.graph(grappler-hook-test-pass)}");
 }

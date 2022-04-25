@@ -6258,6 +6258,20 @@ func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset t
 	return op.Output(0)
 }
 
+// An op that sets up the centralized structures for a distributed TPU system.
+//
+// Returns A vector containing the global TPU id of each TPU on the host.
+func ConfigureAndInitializeGlobalTPU(scope *Scope) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConfigureAndInitializeGlobalTPU",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ConfigureDistributedTPUAttr is an optional argument to ConfigureDistributedTPU.
 type ConfigureDistributedTPUAttr func(optionalAttr)
 
@@ -40551,6 +40565,20 @@ func ShutdownDistributedTPU(scope *Scope) (o *tf.Operation) {
 	return scope.AddOperation(opspec)
 }
 
+// An op that shuts down the TPU system.
+//
+// Returns A boolean that indicates if the shut down process succeeds.
+func ShutdownTPUSystem(scope *Scope) (success tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ShutdownTPUSystem",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes sigmoid of `x` element-wise.
 //
 // Specifically, `y = 1 / (1 + exp(-x))`.
@@ -51354,72 +51382,6 @@ func UnravelIndex(scope *Scope, indices tf.Output, dims tf.Output) (output tf.Ou
 		Input: []tf.Input{
 			indices, dims,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// UnsortedSegmentJoinAttr is an optional argument to UnsortedSegmentJoin.
-type UnsortedSegmentJoinAttr func(optionalAttr)
-
-// UnsortedSegmentJoinSeparator sets the optional separator attribute to value.
-//
-// value: The separator to use when joining.
-// If not specified, defaults to ""
-func UnsortedSegmentJoinSeparator(value string) UnsortedSegmentJoinAttr {
-	return func(m optionalAttr) {
-		m["separator"] = value
-	}
-}
-
-// Joins the elements of `inputs` based on `segment_ids`.
-//
-// Computes the string join along segments of a tensor.
-// Given `segment_ids` with rank `N` and `data` with rank `N+M`:
-//
-//     `output[i, k1...kM] = strings.join([data[j1...jN, k1...kM])`
-//
-// where the join is over all [j1...jN] such that segment_ids[j1...jN] = i.
-// Strings are joined in row-major order.
-//
-// For example:
-//
-// ```python
-// inputs = [['Y', 'q', 'c'], ['Y', '6', '6'], ['p', 'G', 'a']]
-// output_array = string_ops.unsorted_segment_join(inputs=inputs,
-//                                                 segment_ids=[1, 0, 1],
-//                                                 num_segments=2,
-//                                                 separator=':'))
-// # output_array ==> [['Y', '6', '6'], ['Y:p', 'q:G', 'c:a']]
-//
-//
-// inputs = ['this', 'is', 'a', 'test']
-// output_array = string_ops.unsorted_segment_join(inputs=inputs,
-//                                                 segment_ids=[0, 0, 0, 0],
-//                                                 num_segments=1,
-//                                                 separator=':'))
-// # output_array ==> ['this:is:a:test']
-// ```
-//
-// Arguments:
-//	inputs: The input to be joined.
-//	segment_ids: A tensor whose shape is a prefix of data.shape.  Negative segment ids are not
-// supported.
-//	num_segments: A scalar.
-func UnsortedSegmentJoin(scope *Scope, inputs tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...UnsortedSegmentJoinAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "UnsortedSegmentJoin",
-		Input: []tf.Input{
-			inputs, segment_ids, num_segments,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

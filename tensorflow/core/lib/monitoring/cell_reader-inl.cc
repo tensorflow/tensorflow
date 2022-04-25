@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -35,6 +36,7 @@ namespace {
 // Returns the labels of `point` as a vector of strings.
 std::vector<std::string> GetLabels(const monitoring::Point& point) {
   std::vector<std::string> labels;
+  labels.reserve(point.labels.size());
   for (const monitoring::Point::Label& label : point.labels) {
     labels.push_back(label.value);
   }
@@ -107,13 +109,40 @@ StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
 }
 
 template <>
-int64_t GetValue(const monitoring::Point& point) {
+int64_t GetValue(const Point& point) {
   return point.int64_value;
+}
+
+template <>
+std::string GetValue(const Point& point) {
+  return point.string_value;
+}
+
+template <>
+Histogram GetValue(const Point& point) {
+  return Histogram(point.histogram_value);
 }
 
 template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b) {
   return a - b;
+}
+
+template <>
+std::string GetDelta(const std::string& a, const std::string& b) {
+  // String gauges do not support `CellReader::Delta`. This is called by `Read`
+  // to ignore the initial snapshot collected at the time of construction.
+  return a;
+}
+
+template <>
+Histogram GetDelta(const Histogram& a, const Histogram& b) {
+  StatusOr<Histogram> result = a.Subtract(b);
+  if (!result.ok()) {
+    LOG(FATAL) << "Failed to compute the delta between histograms: "
+               << result.status();
+  }
+  return *result;
 }
 
 }  // namespace internal

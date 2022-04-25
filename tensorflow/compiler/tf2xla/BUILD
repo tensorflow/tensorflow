@@ -644,6 +644,7 @@ cc_library(
     hdrs = ["frontend_attributes_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tf2xla_defs",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
@@ -687,13 +688,23 @@ tf_cc_test(
 # Internal targets below this point.
 
 cc_library(
+    name = "tf2xla_defs",
+    srcs = ["tf2xla_defs.cc"],
+    hdrs = ["tf2xla_defs.h"],
+    visibility = [":friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
     visibility = [":friends"],
     deps = [
-        ":frontend_attributes_util",
         ":sharding_util",
+        ":tf2xla_defs",
         ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -935,6 +946,7 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        ":tf2xla_defs",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(skye): this is largely a copy of tpu_api_dlsym_initializer.cc. Figure
-// out how to deduplicate these files a little.
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_INTERNAL_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_INTERNAL_H_
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
+#include "tensorflow/lite/tools/verifier_internal.h"
 
-namespace tensorflow {
-namespace tpu {
+namespace tflite_shims {
+namespace internal {
 
-Status InitializeTpuLibrary(void* library_handle) {
-  return errors::Unimplemented(
-      "Loading TPU library is not supported on Windows.");
-}
+using ::tflite::internal::VerifyFlatBufferAndGetModel;  // NOLINT
 
-}  // namespace tpu
-}  // namespace tensorflow
+}  // namespace internal
+}  // namespace tflite_shims
+
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_INTERNAL_H_

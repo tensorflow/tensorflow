@@ -1007,6 +1007,31 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
 )"
 },
 {
+"TupleScatter",
+R"(HloModule TupleScatter
+
+%add_F32_mul_BF16 (lhs_0: f32[], lhs_1: bf16[], rhs_0: f32[], rhs_1: bf16[]) -> (f32[], bf16[]) {
+  %lhs_0 = f32[] parameter(0)
+  %rhs_0 = f32[] parameter(2)
+  %add = f32[] add(f32[] %lhs_0, f32[] %rhs_0)
+  %lhs_1 = bf16[] parameter(1)
+  %rhs_1 = bf16[] parameter(3)
+  %mul = bf16[] multiply(bf16[] %lhs_1, bf16[] %rhs_1)
+  ROOT %tuple = (f32[], bf16[]) tuple(f32[] %add, bf16[] %mul)
+}
+
+ENTRY %Scatter (input_0: f32[50,49,48,47,46], input_1: bf16[50,49,48,47,46], scatter_indices: s64[10,9,8,7,5], updates_0: f32[10,9,8,7,30,29,28,27,26], updates_1: bf16[10,9,8,7,30,29,28,27,26]) -> (f32[50,49,48,47,46], bf16[50,49,48,47,46]) {
+  %input_0 = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
+  %input_1 = bf16[50,49,48,47,46]{4,3,2,1,0} parameter(1)
+  %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(2)
+  %updates_0 = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(3)
+  %updates_1 = bf16[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(4)
+  ROOT %scatter = (f32[50,49,48,47,46]{4,3,2,1,0}, bf16[50,49,48,47,46]{4,3,2,1,0}) scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_0, bf16[50,49,48,47,46]{4,3,2,1,0} %input_1, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates_0, bf16[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates_1), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, to_apply=%add_F32_mul_BF16
+}
+
+)"
+},
+{
 "SortedScatter",
 R"(HloModule StringifySortedScatter
 

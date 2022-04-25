@@ -118,7 +118,10 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/master
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator));
 

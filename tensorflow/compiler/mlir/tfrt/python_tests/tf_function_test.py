@@ -74,7 +74,7 @@ class TfFunction(test.TestCase):
         np.testing.assert_allclose(res, v4, atol=1e-06)
 
   def test_func_1(self):
-    for vectorize in [False]:  # TODO(ezhulenev): Enable vectorization
+    for vectorize in vectorization:
       mlir_function = """
         func @test(%arg0: tensor<*xf32> {jitrt.constraint = "rank"})
             -> (tensor<*xf32>, tensor<*xf32>) {

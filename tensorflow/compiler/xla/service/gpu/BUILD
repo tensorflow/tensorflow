@@ -842,6 +842,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:ArithmeticDialect",
     ],
 )
 
@@ -1663,6 +1664,7 @@ cc_library(
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:bef",
+            "@tf_runtime//backends/gpu:gpu_executor",
         ],
         "//conditions:default": [],
     }),
@@ -1830,7 +1832,11 @@ cc_library(
         ":reduction_layout_normalizer",
         ":target_constants",
         ":tree_reduction_rewriter",
+<<<<<<< HEAD
 	":triangular_solve_rewriter",
+=======
+        ":triangular_solve_rewriter",
+>>>>>>> upstream/master
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",

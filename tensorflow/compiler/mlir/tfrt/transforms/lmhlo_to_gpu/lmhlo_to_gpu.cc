@@ -112,8 +112,12 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   target.addDynamicallyLegalOp<tfrt::gpu::StreamifyOp>(
       [&](tfrt::gpu::StreamifyOp op) { return converter.isLegal(&op.body()); });
   target.addDynamicallyLegalOp<tfrt::compiler::CallOp, tfrt::compiler::ReturnOp,
-                               func::CallOp, func::ReturnOp>(
+                               tfrt::compiler::WhileOp, func::CallOp,
+                               func::ReturnOp>(
       [&](Operation* op) { return converter.isLegal(op); });
+  target.addDynamicallyLegalOp<memref::LoadOp>([](Operation* op) {
+    return isa<tfrt::gpu::StreamifyOp>(op->getParentOp());
+  });
   target.markUnknownOpDynamicallyLegal([&](Operation* op) {
     return !wrap_target.isLegal(op);  // Wrapped ops are immediately lowered.
   });

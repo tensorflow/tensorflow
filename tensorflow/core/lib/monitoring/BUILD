@@ -63,6 +63,7 @@ cc_library(
     deps = [
         ":collected_metrics",
         ":collection_registry",
+        ":test_utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -178,6 +179,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_utils",
+    testonly = 1,
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_only_runtime",
@@ -189,6 +205,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "test_utils.h",
         "timed.h",
         "types.h",
     ],
@@ -206,6 +223,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "test_utils.h",
         "timed.h",
         "types.h",
     ],
@@ -223,6 +241,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "test_utils.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -243,6 +262,7 @@ exports_files(
         "metric_def_test.cc",
         "percentile_sampler_test.cc",
         "sampler_test.cc",
+        "test_utils_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
