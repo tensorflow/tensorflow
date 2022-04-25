@@ -107,6 +107,63 @@ struct WhilePattern : OpRewritePattern<lmhlo::WhileOp> {
   SymbolTable& symbol_table;
 };
 
+// Replaces lmhlo.case ops within a module with tfrt.case ops.
+//
+//   "lmhlo.case"(%index_memref) ({
+//     region-0
+//   }, {
+//   ...
+//     region-N-1
+//   }) : (memref<value_type>) -> ()
+//
+// is rewritten to
+//
+//   func.func @case_func_0(<captures>) : (capture_types) -> () {
+//   }
+//   ...
+//   func.func @case_func_N-1(<captures>) : (capture_types) -> () {
+//   }
+//   %index_value = memref.load %index_memref
+//
+// and (when value_type == i32)
+//   tfrt.case %index_value [@case_func_0, ... @case_func_N-1] <captures>
+//             : (capture_types) -> ()
+//
+// or (when value_type == i1)
+//   tfrt.cond %index_value @case_func_1, @case_func_0, <captures>
+//             : (capture_types) -> ()
+//
+struct CasePattern : OpRewritePattern<lmhlo::CaseOp> {
+  CasePattern(MLIRContext* context, SymbolTable& symbol_table)
+      : OpRewritePattern(context), symbol_table(symbol_table) {}
+
+  LogicalResult matchAndRewrite(lmhlo::CaseOp case_op,
+                                PatternRewriter& rewriter) const override;
+
+  SymbolTable& symbol_table;
+};
+
+}  // namespace
+
+// Clones region to func, with values in args replaced by the corresponding
+// arguments of the function. Returns the terminator of the function, which is
+// a ReturnOp without any value.
+//
+static func::ReturnOp CloneRegionToFunc(PatternRewriter& rewriter,
+                                        Region& region, func::FuncOp func,
+                                        const llvm::SetVector<Value>& args) {
+  Block* block = func.addEntryBlock();
+  BlockAndValueMapping mapping;
+  for (auto pair : llvm::zip_first(args, block->getArguments()))
+    mapping.map(std::get<0>(pair), std::get<1>(pair));
+  rewriter.cloneRegionBefore(region, func.getRegion(), func.end(), mapping);
+  // Merge cloned block into entry block.
+  rewriter.mergeBlocks(&func.back(), block);
+  rewriter.setInsertionPointToEnd(block);
+  Operation* terminator = block->getTerminator();
+  return rewriter.replaceOpWithNewOp<func::ReturnOp>(terminator);
+}
+
 LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
                                             PatternRewriter& rewriter) const {
   if (while_op->getNumOperands() != 1)
@@ -123,27 +180,14 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
   return_types.push_back(i1_type);
   auto argument_types = TypeRange(return_types).drop_back();
 
-  // Clones single-block 'region' into 'func' and returns the `func.return` op.
-  auto clone_region = [&](Region& region, func::FuncOp func) {
-    Block* block = func.addEntryBlock();
-    BlockAndValueMapping mapping;
-    for (auto pair : llvm::zip_first(while_args, block->getArguments()))
-      mapping.map(std::get<0>(pair), std::get<1>(pair));
-    rewriter.cloneRegionBefore(region, func.getRegion(), func.end(), mapping);
-    // Merge cloned block into entry block.
-    rewriter.mergeBlocks(&func.back(), block);
-    rewriter.setInsertionPointToEnd(block);
-    Operation* terminator = block->getTerminator();
-    return rewriter.replaceOpWithNewOp<func::ReturnOp>(terminator);
-  };
-
   // Insert while_cond function.
   rewriter.setInsertionPoint(while_op->getParentOfType<func::FuncOp>());
   auto cond_func_type = rewriter.getFunctionType(argument_types, i1_type);
   auto cond_func = rewriter.create<func::FuncOp>(while_op.cond().getLoc(),
                                                  "while_cond", cond_func_type);
   symbol_table.insert(cond_func);
-  auto cond_return = clone_region(while_op.cond(), cond_func);
+  auto cond_return =
+      CloneRegionToFunc(rewriter, while_op.cond(), cond_func, while_args);
   rewriter.setInsertionPoint(cond_return);
   Value cond_result = rewriter.create<memref::LoadOp>(cond_return.getLoc(),
                                                       cond_func.getArgument(0));
@@ -155,7 +199,8 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
   auto body_func = rewriter.create<func::FuncOp>(while_op.body().getLoc(),
                                                  "while_body", body_func_type);
   symbol_table.insert(body_func);
-  auto body_return = clone_region(while_op.body(), body_func);
+  auto body_return =
+      CloneRegionToFunc(rewriter, while_op.body(), body_func, while_args);
   rewriter.setInsertionPoint(body_return);
   auto body_call = rewriter.create<tfrt::compiler::CallOp>(
       body_return.getLoc(), i1_type, cond_func.getSymName(),
@@ -175,12 +220,79 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
   return success();
 }
 
-}  // namespace
+LogicalResult CasePattern::matchAndRewrite(lmhlo::CaseOp case_op,
+                                           PatternRewriter& rewriter) const {
+  mlir::Value index_memref = case_op.index();
+  auto int_type = index_memref.getType()
+                      .cast<mlir::ShapedType>()
+                      .getElementType()
+                      .dyn_cast<IntegerType>();
+
+  if (!int_type)
+    return rewriter.notifyMatchFailure(case_op, "expected integer index value");
+
+  int bitwidth = int_type.getWidth();
+  // TODO(b/230355363): Support other integer types through enhancing tfrt.case.
+  if (bitwidth != 1 && bitwidth != 32)
+    return rewriter.notifyMatchFailure(case_op,
+                                       "expected i1 or i32 index value");
+
+  Location loc = case_op.getLoc();
+
+  // Load the index value.
+  rewriter.setInsertionPoint(case_op);
+  mlir::Value index_value = rewriter.create<memref::LoadOp>(loc, index_memref);
+
+  // Collect implicit captures for the branching regions.
+  llvm::SetVector<Value> case_args;
+  getUsedValuesDefinedAbove(case_op.getOperation()->getRegions(), case_args);
+  ArrayRef<Value> args = case_args.getArrayRef();
+  auto arg_types = llvm::to_vector<4>(TypeRange(args));
+
+  // Outline each branching region as a function and record the FuncOp.
+  size_t branch_count = case_op.branches().size();
+  SmallVector<func::FuncOp, 4> branch_funcs;
+  branch_funcs.reserve(branch_count);
+  auto func_type = rewriter.getFunctionType(arg_types, {});
+  for (size_t i = 0; i < branch_count; ++i) {
+    Region* region = &case_op.branches()[i];
+    rewriter.setInsertionPoint(case_op->getParentOfType<func::FuncOp>());
+    auto func =
+        rewriter.create<func::FuncOp>(region->getLoc(), "case_func", func_type);
+    branch_funcs.push_back(func);
+    symbol_table.insert(func);
+    CloneRegionToFunc(rewriter, *region, func, case_args);
+  }
+
+  // Convert the operation to either a tfrt.cond or a tfrt.case.
+  rewriter.setInsertionPoint(case_op);
+  MLIRContext* context = case_op.getContext();
+  if (bitwidth == 1) {
+    auto else_branch =
+        mlir::SymbolRefAttr::get(context, branch_funcs[0].getSymName());
+    auto then_branch =
+        mlir::SymbolRefAttr::get(context, branch_funcs[1].getSymName());
+    rewriter.create<tfrt::compiler::CondOp>(loc, llvm::None, index_value,
+                                            then_branch, else_branch, args);
+  } else {
+    SmallVector<Attribute, 4> branch_attrs;
+    branch_attrs.reserve(branch_count);
+    llvm::transform(branch_funcs, std::back_inserter(branch_attrs),
+                    [&](func::FuncOp func) { return func.getSymNameAttr(); });
+    auto branches = ArrayAttr::get(context, branch_attrs);
+    rewriter.create<tfrt::compiler::CaseOp>(loc, llvm::None, index_value,
+                                            branches, args);
+  }
+
+  rewriter.eraseOp(case_op);
+  return success();
+}
 
 void ConvertLmhloToTfrtBranchPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   SymbolTable symbol_table(getOperation());
   patterns.add<WhilePattern>(&getContext(), symbol_table);
+  patterns.add<CasePattern>(&getContext(), symbol_table);
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     signalPassFailure();
 }
