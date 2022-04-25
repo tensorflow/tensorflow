@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::mhlo::MhloDialect, tfrt::gpu::GpuDialect>();
   tfrt::RegisterTFRTDialects(registry);
-  tensorflow::registerConvertLmhloToGpuWhilePass();
+  tensorflow::registerConvertLmhloToGpuBranchPass();
   tensorflow::registerConvertLmhloToGpuBinaryPass();
   tensorflow::registerConvertLmhloToGpuPass();
   tensorflow::registerLmhloToTfrtGpuPass();

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering lmhlo.while to tfrt.while.
+// This file implements logic to convert lmhlo branch operations to tfrt.
 
 #include <utility>
 
@@ -49,15 +49,18 @@ namespace tensorflow {
 
 namespace {
 
-class ConvertLmhloToTfrtWhilePass
-    : public PassWrapper<ConvertLmhloToTfrtWhilePass, OperationPass<ModuleOp>> {
+class ConvertLmhloToTfrtBranchPass
+    : public PassWrapper<ConvertLmhloToTfrtBranchPass,
+                         OperationPass<ModuleOp>> {
  public:
-  ConvertLmhloToTfrtWhilePass() = default;
-  ConvertLmhloToTfrtWhilePass(const ConvertLmhloToTfrtWhilePass&) {}
+  ConvertLmhloToTfrtBranchPass() = default;
+  ConvertLmhloToTfrtBranchPass(const ConvertLmhloToTfrtBranchPass&) {}
 
-  llvm::StringRef getArgument() const override { return "lmhlo-to-tfrt-while"; }
+  llvm::StringRef getArgument() const override {
+    return "lmhlo-to-tfrt-branch";
+  }
   llvm::StringRef getDescription() const override {
-    return "Convert lmhlo.while to tfrt.while.";
+    return "Convert lmhlo branch operations to tfrt.";
   }
 
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -68,7 +71,7 @@ class ConvertLmhloToTfrtWhilePass
   void runOnOperation() override;
 };
 
-// Replaces lmhlo ops within a module with tfrt.while ops.
+// Replaces lmhlo.while ops within a module with tfrt.while ops.
 //
 //   "lmhlo.while"(%cond) ({
 //     <cond_ops>
@@ -174,7 +177,7 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
 
 }  // namespace
 
-void ConvertLmhloToTfrtWhilePass::runOnOperation() {
+void ConvertLmhloToTfrtBranchPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   SymbolTable symbol_table(getOperation());
   patterns.add<WhilePattern>(&getContext(), symbol_table);
@@ -182,12 +185,12 @@ void ConvertLmhloToTfrtWhilePass::runOnOperation() {
     signalPassFailure();
 }
 
-std::unique_ptr<Pass> createConvertLmhloToGpuWhilePass() {
-  return std::make_unique<ConvertLmhloToTfrtWhilePass>();
+std::unique_ptr<Pass> createConvertLmhloToGpuBranchPass() {
+  return std::make_unique<ConvertLmhloToTfrtBranchPass>();
 }
 
-void registerConvertLmhloToGpuWhilePass() {
-  ::registerPass([] { return createConvertLmhloToGpuWhilePass(); });
+void registerConvertLmhloToGpuBranchPass() {
+  ::registerPass([] { return createConvertLmhloToGpuBranchPass(); });
 }
 
 }  // namespace tensorflow

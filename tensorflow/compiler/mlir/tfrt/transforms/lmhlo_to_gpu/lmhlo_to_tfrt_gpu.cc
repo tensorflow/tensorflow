@@ -26,7 +26,7 @@
 namespace tensorflow {
 
 void populateLmhloToTfrtGpuPasses(mlir::OpPassManager &pm) {
-  pm.addPass(tensorflow::createConvertLmhloToGpuWhilePass());
+  pm.addPass(tensorflow::createConvertLmhloToGpuBranchPass());
   pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);

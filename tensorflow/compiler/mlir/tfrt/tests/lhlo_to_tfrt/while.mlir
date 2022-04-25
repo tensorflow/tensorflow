@@ -16,7 +16,7 @@ func.func @while(
 }
 
 // RUN: lhlo-tfrt-opt %s \
-// RUN:   -lmhlo-to-tfrt-while \
+// RUN:   -lmhlo-to-tfrt-branch \
 // RUN: | FileCheck %s --check-prefix=WHILE
 
 // WHILE-LABEL: func @while_cond(
