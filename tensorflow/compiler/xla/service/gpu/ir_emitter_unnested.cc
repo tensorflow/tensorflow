@@ -2294,7 +2294,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                             /*is_fusion=*/false));
 
     return EmitAtomicOperationForNestedComputation(
-        *scatter_computation, output_value_address, source_value_address);
+        *scatter_computation, output_value_address, source_value_address,
+        source_array.GetElementLlvmType());
   };
 
   AddThunkToThunkSequence(std::move(select_and_scatter_thunk));
@@ -2576,7 +2577,8 @@ Status IrEmitterUnnested::EmitScatter(
 
     if (!desc.unique_indices) {
       return EmitAtomicOperationForNestedComputation(
-          *desc.update_computation, output_address, input_address);
+          *desc.update_computation, output_address, input_address,
+          desc.output.GetElementLlvmType());
     } else {
       return EmitCallToNestedComputation(*desc.update_computation,
                                          {output_address, input_address},
@@ -4131,7 +4133,8 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
         } else {
           CHECK_EQ(num_outputs, 1);
           TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-              *reducer, output_address, selected_values[oidx].first));
+              *reducer, output_address, selected_values[oidx].first,
+              selected_values[oidx].second));
         }
       }
     });
@@ -4211,23 +4214,23 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
       b_.CreateICmpULT(thread_id_info.thread_id_x,
                        tiling_kernel_info.output_tile_bounds[kDimY]));
 
-  ksl.If(
-      "reduction_write_output",
-      b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-        for (int oidx = 0; oidx < num_outputs; oidx++) {
-          llvm::Value* output_address = GetOutputAddressForReduction(
-              partial_result_idx, index_ty, reduction_codegen_state,
-              tiling_kernel_info, output_arrays, reduction, oidx);
-          if (reduction_codegen_state.IsRaceFree()) {
-            Store(Load(shmem_transposed_addrs[oidx].first, "output_value"),
-                  output_address);
-          } else {
-            CHECK_EQ(num_outputs, 1);
-            TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                *reducer, output_address, shmem_transposed_addrs[oidx].first));
-          }
-        }
-      });
+  ksl.If("reduction_write_output",
+         b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
+           for (int oidx = 0; oidx < num_outputs; oidx++) {
+             llvm::Value* output_address = GetOutputAddressForReduction(
+                 partial_result_idx, index_ty, reduction_codegen_state,
+                 tiling_kernel_info, output_arrays, reduction, oidx);
+             if (reduction_codegen_state.IsRaceFree()) {
+               Store(Load(shmem_transposed_addrs[oidx].first, "output_value"),
+                     output_address);
+             } else {
+               CHECK_EQ(num_outputs, 1);
+               TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                   *reducer, output_address, shmem_transposed_addrs[oidx].first,
+                   shmem_transposed_addrs[oidx].second));
+             }
+           }
+         });
 }
 
 llvm::Value* IrEmitterUnnested::EmitThreadId(int64_t threads_per_block,

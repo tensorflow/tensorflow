@@ -53,8 +53,8 @@ static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type =
-        arg_type->getPointerElementType()->getPointerTo(0);
+    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
+        llvm::cast<llvm::PointerType>(arg_type), 0);
     llvm::Value* addrspacecast_arg =
         b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
@@ -116,7 +116,8 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           get_tuple_element->shape(), get_tuple_element->tuple_index(),
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
-          /*alignment=*/1, GetBasePointer(*operand), &b_));
+          /*alignment=*/1, GetBasePointer(*operand),
+          llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
   return Status::OK();
 }
 
@@ -328,13 +329,13 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //
 Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
                                               llvm::Value* output_address,
-                                              llvm::Value* source_address) {
+                                              llvm::Value* source_address,
+                                              llvm::Type* element_type) {
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
+  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
 
-  // element_type is the data type for the binary operation.
-  llvm::Type* element_type = output_address_type->getPointerElementType();
   int element_size = llvm_ir::GetSizeInBits(element_type);
 
   int atomic_size = (element_size < 32) ? 32 : element_size;
@@ -442,7 +443,7 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
 
 Status IrEmitter::EmitAtomicOperationForNestedComputation(
     const HloComputation& computation, llvm::Value* output_address,
-    llvm::Value* source_address) {
+    llvm::Value* source_address, llvm::Type* element_type) {
   if (computation.num_parameters() != 2) {
     // TODO(b/30258929): We only accept binary computations so far.
     return Unimplemented(
@@ -457,7 +458,7 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
   }
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
-                                     source_address);
+                                     source_address, element_type);
 }
 
 bool IrEmitter::IsEmittingForAMDGPU() const {
@@ -478,9 +479,9 @@ void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
           // the compiler will only generate a global_atomic_fadd if the pointer
           // is in global addrspace (1)
           b_.CreateAddrSpaceCast(
-              output_address, llvm::PointerType::get(
-                                  output_address_type->getPointerElementType(),
-                                  /*AddressSpace=*/1))
+              output_address,
+              llvm::PointerType::getWithSamePointeeType(output_address_type,
+                                                        /*AddressSpace=*/1))
           :
           // adds to shared memory are always atomic.
           output_address;

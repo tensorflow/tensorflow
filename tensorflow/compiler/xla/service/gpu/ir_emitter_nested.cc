@@ -151,14 +151,15 @@ Status IrEmitterNested::CodegenNestedComputation() {
 
       for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
-        llvm::Value* destination =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, tuple_ptr, &b_);
-        llvm::Value* source =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, root_value, &b_);
+        llvm::Value* destination = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, tuple_ptr, tuple_type, &b_);
+        llvm::Value* source = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, root_value,
+            llvm_ir::ShapeToIrType(root_instruction->shape(), module_), &b_);
         Store(Load(source), destination);
       }
     }

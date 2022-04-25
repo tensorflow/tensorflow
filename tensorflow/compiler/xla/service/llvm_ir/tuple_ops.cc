@@ -42,9 +42,9 @@ void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
     auto* cast =
         b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module));
     auto* store = b->CreateStore(
-        cast, b->CreateInBoundsGEP(
-                  tuple.GetBasePointer()->getType()->getPointerElementType(),
-                  tuple.GetBasePointer(), {b->getInt64(0), b->getInt64(i)}));
+        cast,
+        b->CreateInBoundsGEP(tuple.GetBasePointeeType(), tuple.GetBasePointer(),
+                             {b->getInt64(0), b->getInt64(i)}));
     tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
 }
@@ -87,13 +87,18 @@ std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
 
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  int alignment, llvm::Value* operand,
+                                 llvm::Type* operand_pointee_type,
                                  llvm::IRBuilder<>* b) {
+  CHECK(llvm::cast<llvm::PointerType>(operand->getType())
+            ->isOpaqueOrPointeeTypeMatches(operand_pointee_type));
   llvm::Module* module = getModuleFromBuilder(b);
+  const std::vector<llvm::Value*> gep_index = {b->getInt64(0),
+                                               b->getInt64(index)};
   llvm::Value* element_ptr =
-      b->CreateInBoundsGEP(operand->getType()->getPointerElementType(), operand,
-                           {b->getInt64(0), b->getInt64(index)});
-  llvm::LoadInst* src_buffer = b->CreateLoad(
-      element_ptr->getType()->getPointerElementType(), element_ptr);
+      b->CreateInBoundsGEP(operand_pointee_type, operand, gep_index);
+  llvm::Type* element_pointee_type =
+      llvm::GetElementPtrInst::getIndexedType(operand_pointee_type, gep_index);
+  llvm::LoadInst* src_buffer = b->CreateLoad(element_pointee_type, element_ptr);
 
   // Mark the loaded pointer as dereferenceable if we know its shape.
   if (!target_shape.IsOpaque()) {

@@ -148,13 +148,13 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
           element_shape,
           /*index=*/i,
           /*alignment=*/MinimumAlignmentForShape(element_shape), tuple_lvalue,
-          &b_);
+          tuple_type, &b_);
 
       llvm::Value* source = llvm_ir::EmitGetTupleElement(
           element_shape,
           /*index=*/i,
           /*alignment=*/MinimumAlignmentForShape(element_shape),
-          root_value.GetBasePointer(), &b_);
+          root_value.GetBasePointer(), root_value.GetBasePointeeType(), &b_);
 
       Store(Load(source), destination);
     }
@@ -387,7 +387,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   const Shape& shape = get_tuple_element->shape();
   emitted_value_[get_tuple_element] = llvm_ir::EmitGetTupleElement(
       shape, get_tuple_element->tuple_index(), MinimumAlignmentForShape(shape),
-      GetEmittedValueFor(operand), &b_);
+      GetEmittedValueFor(operand), IrShapeType(operand->shape()), &b_);
   return Status::OK();
 }
 
@@ -546,7 +546,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
         ShapeUtil::GetTupleElementShape(operand_shape, i);
     llvm::Value* tuple_element = llvm_ir::EmitGetTupleElement(
         tuple_element_shape, i, MinimumAlignmentForShape(tuple_element_shape),
-        value, &b_);
+        value, IrShapeType(operand_shape), &b_);
     TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kOutfeed,
                                          tuple_element_shape, tuple_element));
   }
