@@ -1177,6 +1177,12 @@ filegroup(
     compatible_with = get_compatible_with_portable(),
 )
 
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
+    compatible_with = get_compatible_with_portable(),
+)
+
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
