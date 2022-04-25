@@ -881,7 +881,9 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   for (int64_t i = 1; i < slice_to_dynamic.args().size(); ++i) {
     // const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
-    llvm::LoadInst* dyn_dim_size = Load(source_buffer, "dyn_dim_size");
+    llvm::Type* source_buffer_pointee_type = ir_arrays[i].GetBasePointeeType();
+    llvm::LoadInst* dyn_dim_size =
+        Load(source_buffer_pointee_type, source_buffer, "dyn_dim_size");
     dynamic_dims.push_back(dyn_dim_size);
   }
 
@@ -2158,8 +2160,9 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
             index_type, index_typed_constant(rank), "selected_index_address",
             &b_);
 
-    llvm::Value* initialized_flag_address = llvm_ir::EmitAllocaAtFunctionEntry(
-        b_.getInt1Ty(), "initialized_flag_address", &b_);
+    llvm::AllocaInst* initialized_flag_address =
+        llvm_ir::EmitAllocaAtFunctionEntry(b_.getInt1Ty(),
+                                           "initialized_flag_address", &b_);
     Store(b_.getInt1(false), initialized_flag_address);
 
     // Create the inner loop to iterate over the window.
@@ -2211,7 +2214,9 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
         llvm_ir::EmitIfThenElse(in_bounds_condition, "in-bounds", &b_);
     llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, &b_);
     llvm_ir::LlvmIfData if_initialized = llvm_ir::EmitIfThenElse(
-        Load(initialized_flag_address), "initialized", &b_);
+        Load(initialized_flag_address->getAllocatedType(),
+             initialized_flag_address),
+        "initialized", &b_);
 
     // If the initialized_flag is false, initialize the selected value and index
     // with the currently visiting operand.
@@ -2238,7 +2243,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
     llvm_ir::SetToFirstInsertPoint(if_initialized.true_block, &b_);
     llvm::Value* operand_address =
         operand_array.EmitArrayElementAddress(operand_index, &b_);
-    llvm::Value* select_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+    llvm::AllocaInst* select_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
         llvm_ir::PrimitiveTypeToIrType(PRED,
                                        ir_emitter_context_->llvm_module()),
         "select_return_buffer", &b_);
@@ -2251,7 +2256,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
     TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
         *select_computation, {selected_value_address, operand_address},
         select_return_buffer));
-    llvm::Value* result = Load(select_return_buffer);
+    llvm::Value* result =
+        Load(select_return_buffer->getAllocatedType(), select_return_buffer);
 
     // If the 'select' function returns false, update the selected value and the
     // index to the currently visiting operand.
@@ -2264,7 +2270,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
     llvm_ir::LlvmIfData if_select_lhs =
         llvm_ir::EmitIfThenElse(cond, "if-select-lhs", &b_);
     llvm_ir::SetToFirstInsertPoint(if_select_lhs.false_block, &b_);
-    Store(Load(operand_address), selected_value_address);
+    Store(Load(operand_array.GetElementLlvmType(), operand_address),
+          selected_value_address);
     save_operand_index(operand_index);
 
     // After iterating over the window elements, scatter the source element to
@@ -2278,7 +2285,9 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
       llvm::Value* selected_index_address_slot =
           InBoundsGEP(selected_index_address->getAllocatedType(),
                       selected_index_address, {b_.getInt32(i)});
-      selected_multi_index.push_back(Load(selected_index_address_slot));
+      selected_multi_index.push_back(
+          Load(selected_index_address->getAllocatedType(),
+               selected_index_address_slot));
     }
     const Shape output_shape = GetShape(select_and_scatter_op.out());
     llvm::Value* source_value_address =
@@ -3750,9 +3759,12 @@ void IrEmitterUnnested::EmitTileElementForFusion(
         // spaces are inferred (which is pretty late in the pipeline), so
         // even if we had address-space-based AA in LLVM, it wouldn't help
         // us much here.
-        return Load(thread_id_info.GEPIntoSharedMemory(&b_, param_tile_buffer,
-                                                       {x_loc, y_loc}),
-                    "tiled_buffer");
+        std::vector<llvm::Value*> idx = {x_loc, y_loc};
+        auto gep =
+            thread_id_info.GEPIntoSharedMemory(&b_, param_tile_buffer, idx);
+        auto type =
+            thread_id_info.GEPIntoSharedMemoryType(param_tile_buffer, idx);
+        return Load(type, gep, "tiled_buffer");
       };
     } else {
       auto array = operand_arrays[i];
@@ -4081,7 +4093,8 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
           reduction_codegen_state.GetCalculationStateFor(reduction, oidx);
       llvm::Value* shmem_output_addr = thread_id_info.GEPIntoSharedMemory(
           &b_, state.shared_cache, {constant(partial_result_idx), warp_id});
-      Store(Load(current_outputs[oidx].first), shmem_output_addr);
+      Store(Load(current_outputs[oidx].second, current_outputs[oidx].first),
+            shmem_output_addr);
     }
   });
 
@@ -4129,7 +4142,9 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
             tiling_kernel_info, output_arrays, reduction, oidx);
 
         if (reduction_codegen_state.IsRaceFree()) {
-          Store(Load(selected_values[oidx].first, "output"), output_address);
+          Store(Load(selected_values[oidx].second, selected_values[oidx].first,
+                     "output"),
+                output_address);
         } else {
           CHECK_EQ(num_outputs, 1);
           TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
@@ -4175,7 +4190,8 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
                     state.partial_result_address,
                     {constant(partial_result_idx)}, "current_output");
 
-    llvm::Value* current_output_value = Load(current_output);
+    llvm::Value* current_output_value =
+        Load(state.partial_result_address->getAllocatedType(), current_output);
     b_.CreateStore(current_output_value, shmem_output_addr);
   }
 
@@ -4221,7 +4237,8 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
                  partial_result_idx, index_ty, reduction_codegen_state,
                  tiling_kernel_info, output_arrays, reduction, oidx);
              if (reduction_codegen_state.IsRaceFree()) {
-               Store(Load(shmem_transposed_addrs[oidx].first, "output_value"),
+               Store(Load(shmem_transposed_addrs[oidx].second,
+                          shmem_transposed_addrs[oidx].first, "output_value"),
                      output_address);
              } else {
                CHECK_EQ(num_outputs, 1);
@@ -4884,6 +4901,18 @@ static int CalculateVirtualThreadScalingFactorForReduction(
     return 5;
   }
   return 1;
+}
+
+llvm::Type* IrEmitterUnnested::ThreadIdInfo::GEPIntoSharedMemoryType(
+    llvm::GlobalVariable* shared,
+    absl::Span<llvm::Value* const> idx_major_to_minor) const {
+  std::vector<llvm::Value*> idxs_scaled;
+  idxs_scaled.push_back(llvm::ConstantInt::get(scaling->getType(), 0));
+  idxs_scaled.push_back(scaling);
+  idxs_scaled.insert(idxs_scaled.end(), idx_major_to_minor.begin(),
+                     idx_major_to_minor.end());
+  return llvm::GetElementPtrInst::getIndexedType(shared->getValueType(),
+                                                 idxs_scaled);
 }
 
 llvm::Value* IrEmitterUnnested::ThreadIdInfo::GEPIntoSharedMemory(

@@ -132,7 +132,8 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 
   if (ShapeUtil::IsScalar(return_shape)) {
     llvm::Value* ret_value =
-        Load(root_value.GetBasePointer(), "load_ret_value");
+        Load(root_value.GetBasePointeeType(), root_value.GetBasePointer(),
+             "load_ret_value");
     Store(ret_value,
           BitCast(out_parameter, root_value.GetBasePointer()->getType()));
   } else {
@@ -156,7 +157,7 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
           /*alignment=*/MinimumAlignmentForShape(element_shape),
           root_value.GetBasePointer(), root_value.GetBasePointeeType(), &b_);
 
-      Store(Load(source), destination);
+      Store(Load(IrShapeType(element_shape), source), destination);
     }
   }
 }
@@ -721,7 +722,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       select_and_scatter, /*desc=*/IrName(select_and_scatter, "init"),
       [this, init_value](const llvm_ir::IrArray::Index& target_index) {
         llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
-        return Load(init_value_addr);
+        return Load(IrShapeType(init_value->shape()), init_value_addr);
       }));
 
   // Create a loop to iterate over the source array to scatter to the output.
@@ -732,15 +733,16 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
 
   // Allocate space to keep the currently selected value, its index, and
   // the boolean initialized_flag, which is initially set to false.
-  llvm::Value* selected_value_address = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* selected_value_address = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
       "selected_value_address", &b_,
       MinimumAlignmentForPrimitiveType(operand_element_type));
   llvm::AllocaInst* selected_index_address =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
           b_.getInt64Ty(), b_.getInt32(rank), "selected_index_address", &b_);
-  llvm::Value* initialized_flag_address = llvm_ir::EmitAllocaAtFunctionEntry(
-      b_.getInt1Ty(), "initialized_flag_address", &b_);
+  llvm::AllocaInst* initialized_flag_address =
+      llvm_ir::EmitAllocaAtFunctionEntry(b_.getInt1Ty(),
+                                         "initialized_flag_address", &b_);
   Store(b_.getInt1(false), initialized_flag_address);
 
   // Create the inner loop to iterate over the window.
@@ -776,8 +778,10 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   llvm_ir::LlvmIfData if_in_bounds =
       llvm_ir::EmitIfThenElse(in_bounds_condition, "in-bounds", &b_);
   SetToFirstInsertPoint(if_in_bounds.true_block, &b_);
-  llvm_ir::LlvmIfData if_initialized = llvm_ir::EmitIfThenElse(
-      Load(initialized_flag_address), "initialized", &b_);
+  llvm_ir::LlvmIfData if_initialized =
+      llvm_ir::EmitIfThenElse(Load(initialized_flag_address->getAllocatedType(),
+                                   initialized_flag_address),
+                              "initialized", &b_);
 
   // If the initialized_flag is false, initialize the selected value and index
   // with the currently visiting operand.
@@ -805,10 +809,13 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   SetToFirstInsertPoint(if_initialized.true_block, &b_);
   llvm::Value* operand_address =
       operand_array.EmitArrayElementAddress(operand_index, &b_);
-  llvm::Value* operand_element = Load(operand_address);
+  llvm::Value* operand_element =
+      Load(operand_array.GetElementLlvmType(), operand_address);
   llvm::Value* result = EmitScalarReturningThreadLocalCall(
       *select_and_scatter->select(),
-      {Load(selected_value_address), operand_element}, "select_function");
+      {Load(selected_value_address->getAllocatedType(), selected_value_address),
+       operand_element},
+      "select_function");
 
   // If the 'select' function returns false, update the selected value and the
   // index to the currently visiting operand.
@@ -819,7 +826,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   llvm_ir::LlvmIfData if_select_lhs =
       llvm_ir::EmitIfThenElse(cond, "if-select-lhs", &b_);
   SetToFirstInsertPoint(if_select_lhs.false_block, &b_);
-  Store(Load(operand_address), selected_value_address);
+  Store(Load(operand_array.GetElementLlvmType(), operand_address),
+        selected_value_address);
   save_operand_index(operand_index);
 
   // After iterating over the window elements, scatter the source element to
@@ -829,10 +837,13 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(), &b_);
   llvm::SmallVector<llvm::Value*> selected_multi_index;
   for (int64_t i = 0; i < rank; ++i) {
+    const std::vector<llvm::Value*> gep_index = {b_.getInt32(i)};
     llvm::Value* selected_index_address_slot =
         InBoundsGEP(selected_index_address->getAllocatedType(),
-                    selected_index_address, {b_.getInt32(i)});
-    selected_multi_index.push_back(Load(selected_index_address_slot));
+                    selected_index_address, gep_index);
+    llvm::Type* type = llvm::GetElementPtrInst::getIndexedType(
+        selected_index_address->getAllocatedType(), gep_index);
+    selected_multi_index.push_back(Load(type, selected_index_address_slot));
   }
   llvm_ir::IrArray source_array(GetIrArrayFor(source));
   llvm::Value* source_value =
@@ -1614,7 +1625,8 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
         accumulator_shard_type, "accumulator", &b_, 0));
   }
 
-  llvm::Value* init_value_ssa = Load(GetEmittedValueFor(init_value));
+  llvm::Value* init_value_ssa =
+      Load(IrShapeType(init_value->shape()), GetEmittedValueFor(init_value));
 
   for (llvm::Value* accumulator_shard : accumulator) {
     llvm::Value* initial_value;
@@ -2108,7 +2120,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
       [this, pad](const llvm_ir::IrArray::Index& target_index) {
         const HloInstruction* padding_value = pad->operand(1);
         llvm::Value* padding_value_addr = GetEmittedValueFor(padding_value);
-        return Load(padding_value_addr);
+        return Load(IrShapeType(padding_value->shape()), padding_value_addr);
       }));
 
   // Create a loop to iterate over the operand elements and update the output
@@ -2255,7 +2267,8 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   for (int64_t i = 1; i < hlo->operand_count(); ++i) {
     const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
-    llvm::LoadInst* dyn_dim_size = Load(source_buffer, "dyn_dim_size");
+    llvm::LoadInst* dyn_dim_size = Load(IrShapeType(hlo->operand(i)->shape()),
+                                        source_buffer, "dyn_dim_size");
 
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
         b_.getInt8Ty(), raw_buffer,
@@ -2539,7 +2552,9 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   // body.  It must return a bool, so use the scalar call form.
   EmitGlobalCall(*xla_while->while_condition(), IrName(xla_while, "cond"));
   llvm::Value* while_predicate = ICmpNE(
-      Load(GetBufferForGlobalCallReturnValue(*xla_while->while_condition())),
+      Load(IrShapeType(
+               xla_while->while_condition()->root_instruction()->shape()),
+           GetBufferForGlobalCallReturnValue(*xla_while->while_condition())),
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0));
 
   // Branches to the body or to the while exit depending on the condition.
@@ -2801,6 +2816,7 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
     //   else
     //     cond_result = false_computation(false_operand)
     llvm::LoadInst* pred_value = Load(
+        GetIrArrayFor(branch_index).GetBasePointeeType(),
         GetIrArrayFor(branch_index).GetBasePointer(), "load_predicate_value");
     llvm::Value* pred_cond =
         ICmpNE(pred_value,
@@ -2836,6 +2852,7 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   //     break;
   // }
   llvm::LoadInst* branch_index_value = Load(
+      GetIrArrayFor(branch_index).GetBasePointeeType(),
       GetIrArrayFor(branch_index).GetBasePointer(), "load_branch_index_value");
 
   auto case_block = b_.GetInsertBlock();
@@ -3204,7 +3221,8 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
       llvm::Value* params = compute_function_->parameters_arg();
       llvm::Value* param_address_offset = llvm_ir::EmitBufferIndexingGEP(
           params, b_.getInt8PtrTy(), param_number, &b_);
-      llvm::LoadInst* param_address_untyped = Load(param_address_offset);
+      llvm::LoadInst* param_address_untyped =
+          Load(b_.getInt8PtrTy(), param_address_offset);
 
       if (!target_shape.IsOpaque()) {
         AttachAlignmentMetadataForLoad(param_address_untyped, target_shape);
@@ -3240,7 +3258,8 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
   const BufferAllocation& allocation = *slice.allocation();
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
       GetBufferTableArgument(), b_.getInt8PtrTy(), slice.index(), &b_);
-  llvm::LoadInst* tempbuf_address_base = Load(tempbuf_address_ptr);
+  llvm::LoadInst* tempbuf_address_base =
+      Load(b_.getInt8PtrTy(), tempbuf_address_ptr);
   if (hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
     tempbuf_address_base->setMetadata(
@@ -3422,7 +3441,7 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
       is_scalar_return
           ? MinimumAlignmentForPrimitiveType(return_shape.element_type())
           : 0;
-  llvm::Value* return_value_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* return_value_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
       return_value_buffer_type, retval_alloca_name, &b_, retval_alignment);
 
   std::vector<llvm::Value*> allocas_for_returned_scalars;
@@ -3460,7 +3479,8 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());
   for (llvm::Value* addr : allocas_for_returned_scalars) {
-    returned_scalars.push_back(Load(addr));
+    returned_scalars.push_back(
+        Load(llvm::cast<llvm::AllocaInst>(addr)->getAllocatedType(), addr));
   }
   return returned_scalars;
 }
