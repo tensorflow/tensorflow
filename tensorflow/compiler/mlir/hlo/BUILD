@@ -999,6 +999,23 @@ cc_library(
 )
 
 cc_library(
+    name = "constraint_fusion_pass",
+    srcs = ["lib/Dialect/mhlo/transforms/constraint_fusion_pass.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "group_reduction_dimensions",
     srcs = ["lib/Dialect/mhlo/transforms/group_reduction_dimensions.cc"],
     hdrs = [
@@ -1584,6 +1601,7 @@ cc_library(
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
         ":collapse_elementwise_map",
+        ":constraint_fusion_pass",
         ":copy_removal",
         ":expand_hlo_tuples",
         ":gml_st_passes_inc_gen",

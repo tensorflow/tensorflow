@@ -178,6 +178,11 @@ def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let constructor = "CreateShapeReificationPass()";
 }
 
+def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
+  let summary = "Fuse shape constraints and merge all assuming regions.";
+  let constructor = "CreateConstraintFusionPass()";
+}
+
 def GroupReductionDimensionsPass
     : Pass<"group-reduction-dimensions", "func::FuncOp"> {
   let summary = "Group dimensions of reduction operations";
