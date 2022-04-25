@@ -73,7 +73,7 @@ struct ConvertLmhloToGpuPass
 
 void ConvertLmhloToGpuPass::runOnOperation() {
   auto* context = &getContext();
-  TypeConverter converter = tfrt::gpu::createMemrefToTfrtGpuConverter();
+  TypeConverter converter = tfrt::gpu::CreateMemrefToTfrtGpuConverter();
 
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
