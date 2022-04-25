@@ -383,26 +383,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "lhlo_gpu_ops_enums",
-    srcs = [
-        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc",
-        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc",
-        "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc",
-    ],
-    hdrs = [
-        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":lhlo_gpu_ops_attrdefs_inc_gen",
-        ":lhlo_gpu_ops_dialect_inc_gen",
-        ":lhlo_gpu_ops_enums_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 td_library(
     name = "lhlo_gpu_ops_td_files",
     srcs = glob(["include/mlir-hlo/Dialect/lhlo_gpu/IR/*.td"]),
@@ -648,7 +628,11 @@ cc_library(
 cc_library(
     name = "lhlo_gpu",
     srcs = [
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc",
         "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc",
+        "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h",
@@ -662,7 +646,7 @@ cc_library(
         ":lhlo",
         ":lhlo_gpu_ops_attrdefs_inc_gen",
         ":lhlo_gpu_ops_dialect_inc_gen",
-        ":lhlo_gpu_ops_enums",
+        ":lhlo_gpu_ops_enums_inc_gen",
         ":lhlo_gpu_ops_inc_gen",
         ":lhlo_gpu_ops_ops",
         ":lhlo_gpu_ops_structs",
