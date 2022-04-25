@@ -249,6 +249,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 };
 
 // Extern template instantiated in conv_ops.cc.
+extern template struct LaunchConv2DOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DOp<CPUDevice, float>;
 extern template struct LaunchConv2DOp<CPUDevice, double>;
@@ -507,6 +508,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DepthwiseConv2dNativeOp<CPUDevice, T>)
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
