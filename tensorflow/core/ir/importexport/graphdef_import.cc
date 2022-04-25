@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ThreadPool.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -604,6 +608,41 @@ Status GraphDefImporter::ConvertNodes(
   for (const NodeDef &node : nodes) {
     TF_RETURN_IF_ERROR(ConvertNodeDef(builder, s, node));
   }
+
+  // If the placeholder has remaining uses, then an input is missing.
+  if (TF_PREDICT_FALSE(!placeholder_.use_empty())) {
+    const auto id_to_str = [](const ResultId &id) {
+      std::string name = id.node.str();
+      if (id.IsControl()) return absl::StrCat("^", name);
+      if (id.output.empty())
+        return id.index ? absl::StrCat(id.node.str(), ":", id.index) : name;
+      return absl::StrCat(name, ":", id.output.str(), ":", id.index);
+    };
+    // Gather all missing input edges.
+    std::vector<std::pair<std::string, std::string>> missing_edges;
+    for (const ResultInfo &info :
+         llvm::make_pointee_range(llvm::make_second_range(s))) {
+      if (info.backedges.empty()) continue;
+      const Backedge &edge = info.backedges.front();
+      missing_edges.emplace_back(id_to_str(edge.id),
+                                 TFOp(edge.operand->getOwner()).name().str());
+    }
+    assert(!missing_edges.empty() &&
+           "placeholder had remaining uses but found no unresolved backedges");
+    // Report them in alphabetical order.
+    llvm::sort(missing_edges);
+    std::string error_message;
+    llvm::raw_string_ostream os(error_message);
+    llvm::interleave(
+        missing_edges, os,
+        [&](const auto &edge) {
+          os << "Non-existent input " << edge.first << " in node "
+             << edge.second;
+        },
+        "\n");
+    return InvalidArgument(std::move(os.str()));
+  }
+
   return Status::OK();
 }
 
