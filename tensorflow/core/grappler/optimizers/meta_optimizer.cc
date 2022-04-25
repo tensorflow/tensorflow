@@ -66,6 +66,7 @@ limitations under the License.
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
 #ifndef __Fuchsia__
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
+#include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 #endif
 
 namespace tensorflow {
@@ -406,10 +407,20 @@ Status MetaOptimizer::InitializeOptimizers(
     }
   }
   if (BOTH_NOT_OFF(remapping)) {
-    if (USER_IS_EXPERIMENTAL_MLIR(remapping) ||
-        USER_IS_EXPERIMENTAL_BOTH(remapping)) {
-      VLOG(2) << "remapping is not implemented in TFG yet";
-    } else {
+    bool enable_mlir_pass = USER_IS_EXPERIMENTAL_MLIR(remapping) ||
+                            USER_IS_EXPERIMENTAL_BOTH(remapping);
+    bool enable_grappler_pass =
+        !enable_mlir_pass || USER_IS_EXPERIMENTAL_BOTH(remapping);
+    if (enable_mlir_pass) {
+// #TODO(b/200087693): LLVM does not build on Fuchsia.
+#ifndef __Fuchsia__
+      optimizers->push_back(MakeUnique<mlir::tfg::TFGGrapplerOptimizer>(
+          mlir::tfg::RemapperPassBuilder));
+#else
+      VLOG(2) << "mlir Remapper pass is not supported on Fuchsia";
+#endif
+    }
+    if (enable_grappler_pass) {
       optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping(),
                                                  cfg_.cpu_layout_conversion(),
                                                  xla_auto_clustering_on_));
