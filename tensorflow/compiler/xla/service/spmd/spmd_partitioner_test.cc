@@ -10100,6 +10100,28 @@ ENTRY entry {
                      op::Shape("f32[1]"))));
 }
 
+TEST_F(SpmdPartitioningTest, SliceToMiddle2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[512] parameter(0), sharding={devices=[8]0,1,2,3,4,5,6,7}
+  ROOT %slice = f32[2] slice(input), slice={[300:302]},
+    sharding={devices=[8]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  auto slice = AllOf(op::Slice(op::Parameter()), op::Shape("f32[2]"));
+  auto halo1 = AllOf(op::CollectivePermute(slice), op::Shape("f32[2]"));
+  auto halo2 =
+      AllOf(op::CollectivePermute(op::Slice(slice)), op::Shape("f32[1]"));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(AllOf(op::DynamicSlice(op::Concatenate(halo1, halo2), _),
+                             op::Shape("f32[1]"))));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

@@ -639,9 +639,21 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   std::vector<int64_t> explicit_left_padding(base_shape_.rank());
   // Track if any shards can be skipped.
   std::vector<int64_t> trimmed_target_sharding_tile_shape(base_shape_.rank());
-  bool trimmed = false;
+  // There can be at most 2 ranges of skipped shards on a dimension: 1) on the
+  // right side, 2) in the middle. The following vector tracks the middle range
+  // (i.e., <start, size>). The leftmost shard must not be skipped because
+  // outputs are left-aligned.
+  std::vector<std::pair<int64_t, int64_t>> trimmed_target_sharding_middle_range(
+      base_shape_.rank(), std::pair<int64_t, int64_t>(-1, -1));
+  bool trimmed_shards = false;
   std::vector<int64_t> dims_needs_pre_masking;
   Shape halo_exchange_base_shape = base_shape_;
+  // If all useful input data are in a single shard, we can skip in-shard data
+  // (e.g., those that belong to negative padding) via a local slice.
+  bool trimmed_in_shard = false;
+  std::vector<int64_t> pre_halo_exchange_slice_starts(base_shape_.rank(), 0);
+  std::vector<int64_t> pre_halo_exchange_slice_limits(
+      hlo_->shape().dimensions().begin(), hlo_->shape().dimensions().end());
   for (int64_t i = 0; i < base_shape_.rank(); ++i) {
     // Do not pad non-partitioned dimensions.
     int64_t shard_count = target.tile_assignment().dim(i);
@@ -671,7 +683,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
           base_shape_.dimensions(i) + wd.padding_high(), input_shard_size);
       if (useful_input_shards < shard_count) {
         shard_count = std::max<int64_t>(useful_input_shards, window_count);
-        trimmed = true;
+        trimmed_shards = true;
         trimmed_target_sharding_tile_shape[i] = shard_count;
         if (shard_count == 1) {
           offsets_on_padded_shape[i] = state_.b->AddInstruction(
@@ -692,8 +704,76 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                    full_size - wd.padding_low() < input_shard_size) {
           // If the useful input is smaller than a shard, we treat the shard
           // size as the useful input size and slice later.
+          input_shard_size = full_size - wd.padding_low();
           halo_exchange_base_shape.set_dimensions(
-              i, (full_size - wd.padding_low()) * shard_count);
+              i, input_shard_size * shard_count);
+          pre_halo_exchange_slice_limits[i] = input_shard_size;
+          trimmed_in_shard = true;
+        }
+      }
+    }
+
+    // We use explicit padding for full dilations, then use padding_low and
+    // padding_high on the sharded op for the remaining. padding_low and
+    // padding_high are now given initial values, which will be later updated if
+    // dilation is not 1.
+    explicit_left_padding[i] = wd.padding_low() / wd.base_dilation();
+    swd->set_padding_low(wd.padding_low() % wd.base_dilation());
+    swd->set_padding_high(0);
+
+    // Find potential skippable range in the middle. This could happen when only
+    // a few shards have outputs (window_count < shard_count), but there is a
+    // large negative left padding such that the start shard that has useful
+    // input does not have any outputs.
+    if (window_count < shard_count && wd.window_dilation() == 1 &&
+        wd.base_dilation() == 1) {
+      int64_t middle_empty_shards =
+          (-explicit_left_padding[i]) / input_shard_size - window_count;
+      if (middle_empty_shards > 0) {
+        shard_count -= middle_empty_shards;
+        CHECK_GT(shard_count, 1);
+        trimmed_target_sharding_middle_range[i].first = window_count;
+        trimmed_target_sharding_middle_range[i].second = middle_empty_shards;
+        trimmed_shards = true;
+        trimmed_target_sharding_tile_shape[i] = shard_count;
+        // Reduce negative padding.
+        explicit_left_padding[i] += middle_empty_shards * input_shard_size;
+        halo_exchange_base_shape.set_dimensions(i,
+                                                input_shard_size * shard_count);
+        HloInstruction* ordinal = partition_ordinals[i];
+        HloInstruction* left_count = CreateR0WithType<int32_t>(
+            ordinal->shape().element_type(), window_count, state_.b);
+        HloInstruction* on_left =
+            state_.b->AddInstruction(HloInstruction::CreateCompare(
+                ShapeUtil::ChangeElementType(ordinal->shape(), PRED), ordinal,
+                left_count, ComparisonDirection::kLt));
+        HloInstruction* right_ordinal =
+            state_.b->AddInstruction(HloInstruction::CreateBinary(
+                ordinal->shape(), HloOpcode::kSubtract, ordinal, left_count));
+        partition_ordinals[i] =
+            state_.b->AddInstruction(HloInstruction::CreateTernary(
+                partition_ordinals[i]->shape(), HloOpcode::kSelect, on_left,
+                partition_ordinals[i], right_ordinal));
+        if (-explicit_left_padding[i] > input_shard_size * (shard_count - 1)) {
+          // If all useful data is on the last shard, we can skip extra negative
+          // left padding.
+          int64_t skip_amount =
+              -explicit_left_padding[i] - input_shard_size * (shard_count - 1);
+          input_shard_size -= skip_amount;
+          explicit_left_padding[i] += skip_amount * shard_count;
+          pre_halo_exchange_slice_starts[i] = skip_amount;
+          trimmed_in_shard = true;
+          // We may have enabled a new skipping opportunity on the right side
+          // within the only shard that has useful input, because we excluded
+          // negative left padding regions this time.
+          if (full_size < input_shard_size) {
+            skip_amount = input_shard_size - full_size;
+            pre_halo_exchange_slice_limits[i] -= skip_amount;
+            explicit_left_padding[i] += skip_amount * (shard_count - 1);
+            input_shard_size = full_size;
+          }
+          halo_exchange_base_shape.set_dimensions(
+              i, input_shard_size * shard_count);
         }
       }
     }
@@ -708,14 +788,6 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
       VLOG(2) << "Failed to reshard window operand due to non-trivial dilation";
       return absl::nullopt;
     }
-
-    // We use explicit padding for full dilations, then use padding_low and
-    // padding_high on the sharded op for the remaining. padding_low and
-    // padding_high are now given initial values, which will be later updated if
-    // dilation is not 1.
-    explicit_left_padding[i] = wd.padding_low() / wd.base_dilation();
-    swd->set_padding_low(wd.padding_low() % wd.base_dilation());
-    swd->set_padding_high(0);
 
     // Calculation for the first element needed on the 'padded-but-not-dilated'
     // shape. The start on the dilated shape could be a hole, so we add
@@ -882,11 +954,18 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   }
   absl::optional<HloSharding> trimmed_target;
   const HloSharding* halo_exchange_target = &target;
-  if (trimmed) {
+  if (trimmed_shards) {
     // Remove devices on the right side.
     Array<int64_t> trimmed_devices(trimmed_target_sharding_tile_shape);
     trimmed_devices.Each([&](absl::Span<const int64_t> indices, int64_t* d) {
-      *d = target.tile_assignment()(indices);
+      std::vector<int64_t> target_indices(indices.begin(), indices.end());
+      for (int64_t i = 0; i < trimmed_target_sharding_tile_shape.size(); ++i) {
+        const auto& range = trimmed_target_sharding_middle_range[i];
+        if (range.first >= 0 && indices[i] >= range.first) {
+          target_indices[i] += range.second;
+        }
+      }
+      *d = target.tile_assignment()(target_indices);
     });
     trimmed_target = target.ReplicateOnLastTileDim()
                          ? HloSharding::PartialTile(trimmed_devices)
@@ -908,35 +987,21 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                    /*skipped_dims=*/skipped_dims);
   }
 
-  // If we skipped unused data in halo_exchange_base_shape, we need to slice the
-  // input shard.
-  Shape halo_exchange_input_shard_shape =
-      MakePartitionedShape(halo_exchange_base_shape, *halo_exchange_target);
-  if (halo_exchange_input_shard_shape.dimensions() !=
-      hlo_->shape().dimensions()) {
-    std::vector<int64_t> slice_limits(
-        halo_exchange_input_shard_shape.dimensions().begin(),
-        halo_exchange_input_shard_shape.dimensions().end());
-    bool needs_slicing = false;
-    for (int64_t i = 0; i < slice_limits.size(); ++i) {
-      if (halo_exchange_target->tile_assignment().dim(i) == 1) {
-        // Single-shard case is handled by shard window high padding.
-        slice_limits[i] = hlo_->shape().dimensions(i);
-      } else if (slice_limits[i] != hlo_->shape().dimensions(i)) {
-        needs_slicing = true;
-      }
+  // If we skipped unused data within a shard, we need to slice the input shard.
+  if (trimmed_in_shard) {
+    std::vector<int64_t> slice_sizes(halo_exchange_base_shape.rank());
+    for (int64_t i = 0; i < slice_sizes.size(); ++i) {
+      slice_sizes[i] =
+          pre_halo_exchange_slice_limits[i] - pre_halo_exchange_slice_starts[i];
     }
-    if (needs_slicing) {
-      visiting_hlo = state_.b->AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(halo_exchange_input_shard_shape.element_type(),
-                               slice_limits),
-          visiting_hlo,
-          /*start_indices=*/
-          std::vector<int64_t>(halo_exchange_input_shard_shape.rank(), 0),
-          /*limit_indices=*/slice_limits,
-          /*strides=*/
-          std::vector<int64_t>(halo_exchange_input_shard_shape.rank(), 1)));
-    }
+    visiting_hlo = state_.b->AddInstruction(HloInstruction::CreateSlice(
+        ShapeUtil::MakeShape(halo_exchange_base_shape.element_type(),
+                             slice_sizes),
+        visiting_hlo,
+        /*start_indices=*/pre_halo_exchange_slice_starts,
+        /*limit_indices=*/pre_halo_exchange_slice_limits,
+        /*strides=*/
+        std::vector<int64_t>(halo_exchange_base_shape.rank(), 1)));
   }
 
   std::vector<OffsetCalculation> left_halo_size_functions(base_shape_.rank());
