@@ -119,6 +119,11 @@ std::string GetValue(const Point& point) {
 }
 
 template <>
+bool GetValue(const Point& point) {
+  return point.bool_value;
+}
+
+template <>
 Histogram GetValue(const Point& point) {
   return Histogram(point.histogram_value);
 }
@@ -132,6 +137,13 @@ template <>
 std::string GetDelta(const std::string& a, const std::string& b) {
   // String gauges do not support `CellReader::Delta`. This is called by `Read`
   // to ignore the initial snapshot collected at the time of construction.
+  return a;
+}
+
+template <>
+bool GetDelta(const bool& a, const bool& b) {
+  // Bool gauges do not support `CellReader::Delta`. This is called by `Read` to
+  // ignore the initial snapshot collected at the time of construction.
   return a;
 }
 

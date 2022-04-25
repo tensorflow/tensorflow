@@ -151,6 +151,14 @@ std::string CellReader<std::string>::Delta(const LabelType&... labels) {
   return "";
 }
 
+template <>
+template <typename... LabelType>
+bool CellReader<bool>::Delta(const LabelType&... labels) {
+  LOG(FATAL) << "`CellReader<bool>` does not support `Delta`. "
+             << "Please use `Read` instead.";
+  return false;
+}
+
 }  // namespace testing
 }  // namespace monitoring
 }  // namespace tensorflow
