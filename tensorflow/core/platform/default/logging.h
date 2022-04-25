@@ -355,7 +355,7 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 // The (int, int) overload works around the issue that the compiler
 // will not instantiate the template version of the function on values of
 // unnamed enum type - see comment below.
-#define TF_DEFINE_CHECK_OP_IMPL(name, op)                            \
+#define TF_DEFINE_CHECK_OP_IMPL(name, op)                                 \
   template <typename T1, typename T2>                                     \
   inline string* name##Impl(const T1& v1, const T2& v2,                   \
                             const char* exprtext) {                       \
@@ -366,7 +366,7 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
   }                                                                       \
   inline string* name##Impl(int v1, int v2, const char* exprtext) {       \
     return name##Impl<int, int>(v1, v2, exprtext);                        \
-  }                                                                       
+  }
 
 // The (size_t, int) and (int, size_t) specialization are to handle unsigned
 // comparison errors while still being thorough with the comparison.
@@ -375,46 +375,38 @@ TF_DEFINE_CHECK_OP_IMPL(Check_EQ, ==)
 // Compilation error with CHECK_EQ(NULL, x)?
 // Use CHECK(x == NULL) instead.
 
-inline string* Check_EQImpl(int v1, size_t v2,
-                            const char* exprtext) {
+inline string* Check_EQImpl(int v1, size_t v2, const char* exprtext) {
   if (TF_PREDICT_FALSE(v1 < 0))
     ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
 
   return Check_EQImpl(size_t(v1), v2, exprtext);
 }
 
-inline string* Check_EQImpl(size_t v1, int v2,
-                            const char* exprtext) {
+inline string* Check_EQImpl(size_t v1, int v2, const char* exprtext) {
   return Check_EQImpl(v2, v1, exprtext);
 }
 
 TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)
 
-inline string* Check_NEImpl(int v1, size_t v2,
-                            const char* exprtext) {
-  if (v1 < 0)
-    return NULL; 
-    
+inline string* Check_NEImpl(int v1, size_t v2, const char* exprtext) {
+  if (v1 < 0) return NULL;
+
   return Check_NEImpl(size_t(v1), v2, exprtext);
 }
 
-inline string* Check_NEImpl(size_t v1, int v2,
-                            const char* exprtext) {
+inline string* Check_NEImpl(size_t v1, int v2, const char* exprtext) {
   return Check_NEImpl(v2, v1, exprtext);
 }
 
 TF_DEFINE_CHECK_OP_IMPL(Check_LE, <=)
 
-inline string* Check_LEImpl(int v1, size_t v2,
-                            const char* exprtext) {
-  if (v1 <= 0)
-    return NULL;
+inline string* Check_LEImpl(int v1, size_t v2, const char* exprtext) {
+  if (v1 <= 0) return NULL;
 
   return Check_LEImpl(size_t(v1), v2, exprtext);
 }
 
-inline string* Check_LEImpl(size_t v1, int v2,
-                            const char* exprtext) {
+inline string* Check_LEImpl(size_t v1, int v2, const char* exprtext) {
   if (TF_PREDICT_FALSE(v2 < 0))
     return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
   return Check_LEImpl(v1, size_t(v2), exprtext);
@@ -422,16 +414,13 @@ inline string* Check_LEImpl(size_t v1, int v2,
 
 TF_DEFINE_CHECK_OP_IMPL(Check_LT, <)
 
-inline string* Check_LTImpl(int v1, size_t v2,
-                            const char* exprtext) {
-  if (v1 < 0)
-    return NULL;
+inline string* Check_LTImpl(int v1, size_t v2, const char* exprtext) {
+  if (v1 < 0) return NULL;
 
   return Check_LTImpl(size_t(v1), v2, exprtext);
 }
 
-inline string* Check_LTImpl(size_t v1, int v2,
-                            const char* exprtext) {
+inline string* Check_LTImpl(size_t v1, int v2, const char* exprtext) {
   if (v2 < 0)
     return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
   return Check_LTImpl(v1, size_t(v2), exprtext);
