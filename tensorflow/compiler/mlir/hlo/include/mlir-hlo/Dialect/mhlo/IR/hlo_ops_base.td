@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
@@ -42,6 +43,50 @@ def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
 
 def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
+//===----------------------------------------------------------------------===//
+// Quantized element type definitions.
+//===----------------------------------------------------------------------===//
+
+// TODO(b/230381284): Upstream width-specific uniform quantized element types.
+class UniformQuantizedSignedInt<int width>
+  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".getStorageTypeIntegralWidth() == " # width>,
+              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".isSigned()">]>,
+    "QI" # width # " type"> {
+  string name = "UniformQuantizedSignedInt";
+  int bitwidth = width;
+}
+
+class UniformQuantizedUnsignedInt<int width>
+  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".getStorageTypeIntegralWidth() == " # width>,
+              CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                    ".isSigned()">]>,
+    "QUI" # width # " type"> {
+  string name = "UniformQuantizedUnsignedInt";
+  int bitwidth = width;
+}
+
+class UniformQuantizedSignedIntOfWidths<list<int> widths> :
+    AnyTypeOf<!foreach(w, widths, UniformQuantizedSignedInt<w>),
+              !interleave(widths, "/") # "-bit uniform quantized signed " #
+              "integer">;
+
+class UniformQuantizedUnsignedIntOfWidths<list<int> widths> :
+    AnyTypeOf<!foreach(w, widths, UniformQuantizedUnsignedInt<w>),
+              !interleave(widths, "/") # "-bit uniform quantized unsigned " #
+              "integer">;
+
+// Integer-based uniform quantized types. The definitions can be used to specify
+// operand's tensor types.
+def HLO_QuantizedSignedInt : UniformQuantizedSignedIntOfWidths<[8, 16, 32]>;
+def HLO_QuantizedUnsignedInt : UniformQuantizedUnsignedIntOfWidths<[8, 16, 32]>;
+def HLO_QuantizedInt :
+    AnyTypeOf<[HLO_QuantizedSignedInt, HLO_QuantizedUnsignedInt]>;
+
 // The broadcasting dimensions correspond to a tuple that describes how a
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
@@ -64,9 +109,12 @@ def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
+// Any quantized integer tensor types
+def HLO_QuantizedIntTensor : TensorOf<[HLO_QuantizedInt]>;
+
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
+def HLO_Tensor : TensorOf<[AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 def HLO_ComplexTensor : TensorOf<[HLO_Complex]>;
 
@@ -86,7 +134,7 @@ def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
+      AnyFloat, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
 
 //===----------------------------------------------------------------------===//
 // MHLO on tensors combined type definitions.
