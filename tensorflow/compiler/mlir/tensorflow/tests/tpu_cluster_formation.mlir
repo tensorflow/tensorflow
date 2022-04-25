@@ -773,3 +773,49 @@ func.func @missing_metadata() {
   "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
   func.return
 }
+
+// -----
+
+// CHECK-LABEL: func @const_with_attrs
+func.func @const_with_attrs(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Reshape"(%arg0
+  // CHECK-NEXT: %{{.*}} = "tf_device.cluster"() ({
+  %minus_one = "tf.Const"() {_replication_info = "cluster",
+                          _xla_compile_device_type = "TPU",
+                          value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster", num_replicas = 1 : i64} : () -> ()
+
+  %1 = "tf.Reshape"(%arg0, %minus_one) : (tensor<*xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %2 = "tf.Identity"(%1) {_replication_info = "cluster", _xla_compile_device_type = "TPU"} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %4 = "tf.Reshape"(%arg1, %minus_one) {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = ""} : (tensor<?xi64>, tensor<1xi32>) -> tensor<?xi64>
+  %5 = "tf.Identity"(%4) {_replication_info = "cluster", _xla_compile_device_type = "TPU"} : (tensor<?xi64>) -> tensor<?xi64>
+
+  return %2, %5 : tensor<?xi32>, tensor<?xi64>
+}
+
+// -----
+
+// CHECK-LABEL: func @two_clusters
+func.func @two_clusters(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"(){{.*}}value = dense<1>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Const"(){{.*}}value = dense<2>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf_device.cluster"
+  %one = "tf.Const"() {_replication_info = "cluster1",
+                       _xla_compile_device_type = "TPU",
+                       value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %two = "tf.Const"() {_replication_info = "cluster2",
+                       _xla_compile_device_type = "TPU",
+                       value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster1", num_replicas = 1 : i64} : () -> ()
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster2", num_replicas = 1 : i64} : () -> ()
+
+  %1 = "tf.Reshape"(%arg0, %one) {_replication_info = "cluster2", _xla_compile_device_type = "TPU", device = ""} : (tensor<*xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %2 = "tf.Identity"(%1) {_replication_info = "cluster2", _xla_compile_device_type = "TPU"} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %3 = "tf.Reshape"(%arg1, %two) {_replication_info = "cluster1", _xla_compile_device_type = "TPU", device = ""} : (tensor<?xi64>, tensor<1xi32>) -> tensor<?xi64>
+  %4 = "tf.Identity"(%3) {_replication_info = "cluster1", _xla_compile_device_type = "TPU"} : (tensor<?xi64>) -> tensor<?xi64>
+
+  return %2, %4 : tensor<?xi32>, tensor<?xi64>
+}

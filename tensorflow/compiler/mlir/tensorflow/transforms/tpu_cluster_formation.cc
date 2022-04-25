@@ -718,6 +718,24 @@ LogicalResult FormClustersInFunction(
 }
 
 void TPUClusterFormationPass::runOnOperation() {
+  // Attributes on tf.Constant aren't reliable: CSE will merge ConstantLike ops
+  // with the same value (but different attributes!) into the same tf.Const
+  // definition, potentially leading to bogus _replication_info attributes. So
+  // we just scrub all tf.Constants of all extra attributes.
+  // TODO(kramm): Remove this once tf.Const's folder is aware of extra
+  // attributes.
+  auto value_str_attr = StringAttr::get(&getContext(), "value");
+  getOperation().walk([&](TF::ConstOp cst) {
+    auto dict = cst->getAttrDictionary();
+    if (dict.size() == 1) {
+      return;  // Optimization. Assume the one attribute is "value".
+    }
+    // Recreate the attributes dictionary to only contain "value".
+    NamedAttrList attributes;
+    attributes.append(NamedAttribute(value_str_attr, cst->getAttr("value")));
+    cst->setAttrs(attributes.getDictionary(&getContext()));
+  });
+
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   for (auto func : getOperation().getOps<func::FuncOp>())
     if (!func.isExternal() &&
