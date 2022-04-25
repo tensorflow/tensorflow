@@ -501,6 +501,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
       if (std::strcmp(
               error_message,
               "Restored original execution plan after delegate application "
+              "failure.") == 0 ||
+          std::strcmp(
+              error_message,
+              "Restored original execution plan after delegate application "
+              "failure.\n"
+              "Restored original execution plan after delegate application "
               "failure.") == 0) {
         ThrowException(env, tflite::jni::kIllegalArgumentException,
                        "Internal error: Failed to apply delegate.");
