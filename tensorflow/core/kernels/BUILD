@@ -4144,6 +4144,9 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
+    ]) + if_cuda_or_rocm([
+        ":gpu_utils",
+        ":gpu_prim_hdrs",
     ]),
 )
 
