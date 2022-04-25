@@ -612,8 +612,6 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   cores to contain a ring of the required size. The leftover axes in `ring_axes`
   won't affect results.
 
-  See go/dtensor-device-assignment-api for details and performance tuning tips.
-
   Args:
     mesh_dim_names: List of mesh dimension names.
     mesh_shape: Shape of the mesh.
