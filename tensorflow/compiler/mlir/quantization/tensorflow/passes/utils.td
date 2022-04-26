@@ -22,5 +22,15 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
 // Checks if the data format is "NHWC".
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
-def FalseBoolAttr : AttrConstraint<
+// Checks if the element value has a float type.
+def IsFloatElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<ElementsAttr>() && "
+        "getElementTypeOrSelf($_self.cast<ElementsAttr>().getType()).isa<FloatType>()">,
+        "float constant tensor">;
+
+// Checks if the boolean value is false.
+def IsFalseBoolAttr : AttrConstraint<
   CPred<"!$_self.cast<BoolAttr>().getValue()">>;
+
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
