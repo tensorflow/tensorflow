@@ -409,7 +409,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
