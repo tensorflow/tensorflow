@@ -7155,9 +7155,11 @@ class ConvertXlaRngBitGeneratorOp
       return op.emitOpError() << "unknown algorithm";
     }
 
+    auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+        rewriter.getContext(),
+        *mlir::mhlo::symbolizeRngAlgorithm(xla_alg.getValue()));
     auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
-        loc, op.getResultTypes(),
-        rewriter.getI32IntegerAttr(xla_alg.getValue()), op.initial_state());
+        loc, op.getResultTypes(), op.initial_state(), algorithm_attr);
 
     rewriter.replaceOp(op, rng_bit_generator_op.getResults());
 

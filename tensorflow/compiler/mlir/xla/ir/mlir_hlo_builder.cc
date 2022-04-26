@@ -426,9 +426,10 @@ StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
   llvm::SmallVector<mlir::Type> flattened_ret_types;
   HloFunctionImporter::FlattenTupleType(ty, flattened_ret_types);
 
+  auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+      builder_.getContext(), *mlir::mhlo::symbolizeRngAlgorithm(algorithm));
   auto op = builder_.create<mlir::mhlo::RngBitGeneratorOp>(
-      loc_, flattened_ret_types, builder_.getI32IntegerAttr(algorithm),
-      GetValue(initial_state));
+      loc_, flattened_ret_types, GetValue(initial_state), algorithm_attr);
 
   if (ty.isa<mlir::TupleType>()) {
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
