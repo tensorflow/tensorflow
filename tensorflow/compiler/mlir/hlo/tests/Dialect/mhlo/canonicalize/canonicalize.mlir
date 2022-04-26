@@ -1660,26 +1660,6 @@ func.func @fold_if_false(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32
   func.return %0 : tensor<f32>
 }
 
-// CHECK-LABEL: func @if_sink_conditional_code
-//  CHECK-SAME:   %[[COND:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
-//  CHECK-SAME: )
-func.func @if_sink_conditional_code(%cond: tensor<i1>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<f32>
-  %1 = mhlo.multiply %arg0, %arg1 : tensor<f32>
-  // CHECK-NEXT: mhlo.if
-  %2 = "mhlo.if"(%cond) ({
-    // CHECK-NEXT: mhlo.add
-    "mhlo.return"(%0) : (tensor<f32>) -> ()
-    // CHECK: }, {
-  }, {
-    // CHECK-NEXT: mhlo.multiply
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) : (tensor<i1>) -> tensor<f32>
-  func.return %2 : tensor<f32>
-}
-
 // CHECK-LABEL: func @fold_case(
 //  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
 //  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
@@ -1735,27 +1715,6 @@ func.func @fold_case_oob_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 :
       "mhlo.return"(%arg2) : (tensor<f32>) -> ()
   }) : (tensor<i32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// CHECK-LABEL: func @case_sink_conditional_code
-//  CHECK-SAME:   %[[COND:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
-//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
-//  CHECK-SAME: )
-func.func @case_sink_conditional_code(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
-  // CHECK-NEXT: mhlo.multiply
-  %1 = "mhlo.multiply"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
-  // CHECK-NEXT: mhlo.case
-  %2 = "mhlo.case"(%index) ({
-    // CHECK-NEXT: mhlo.add
-    "mhlo.return"(%0) : (tensor<f32>) -> ()
-  }, {
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }, {
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) : (tensor<i32>) -> tensor<f32>
-  func.return %2 : tensor<f32>
 }
 
 // CHECK-LABEL: @tensor_flow_scatter_v1_update
