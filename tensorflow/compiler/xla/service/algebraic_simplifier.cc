@@ -2965,6 +2965,75 @@ Status AlgebraicSimplifierVisitor::HandleGetTupleElement(
   return Status::OK();
 }
 
+Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
+    HloInstruction* barrier) {
+  if (!barrier->shape().IsTuple() ||
+      barrier == computation_->root_instruction()) {
+    return Status::OK();
+  }
+
+  // The goal of this transformation is to enable DCE on the tuple elements of
+  // an optimization barrier operand. To do this safely, the optimization
+  // barrier users must not use the tuple element and the only use of the index
+  // of the operand should be the tuple instruction producing the operand of the
+  // optimization barrier. Additionally if the operand is a tuple producing
+  // instruction it should also be safe to create a sub tuple of only the used
+  // components to enable module level dce.
+  std::vector<bool> used_elements(barrier->shape().tuple_shapes_size());
+  bool has_non_gte_use = false;
+  for (auto use : barrier->users()) {
+    if (use->opcode() != HloOpcode::kGetTupleElement) {
+      has_non_gte_use = true;
+      break;
+    }
+    used_elements[use->tuple_index()] = true;
+  }
+
+  HloInstruction* operand = barrier->mutable_operand(0);
+  if (operand->opcode() == HloOpcode::kTuple) {
+    for (int64_t i = 0; i < operand->operand_count(); ++i) {
+      if (used_elements[i]) {
+        continue;
+      }
+      if (operand->operand(i)->user_count() > 1 ||
+          operand->operand(i) == computation_->root_instruction()) {
+        used_elements[i] = true;
+      }
+    }
+  }
+
+  if (has_non_gte_use || !absl::c_linear_search(used_elements, false)) {
+    return Status::OK();
+  }
+
+  changed_ = true;
+  std::vector<int64_t> index_map(used_elements.size(), -1);
+  std::vector<HloInstruction*> operands;
+  int64_t current_index = 0;
+  for (int64_t element = 0; element < used_elements.size(); ++element) {
+    if (!used_elements[element]) {
+      continue;
+    }
+    index_map[element] = current_index++;
+    if (operand->opcode() == HloOpcode::kTuple) {
+      operands.push_back(operand->mutable_operand(element));
+    } else {
+      operands.push_back(barrier->AddInstruction(
+          HloInstruction::CreateGetTupleElement(operand, element)));
+    }
+  }
+
+  HloInstruction* new_operand =
+      operand->AddInstruction(HloInstruction::CreateTuple(operands));
+  TF_RETURN_IF_ERROR(barrier->ReplaceOperandWithDifferentShape(0, new_operand));
+  *barrier->mutable_shape() = new_operand->shape();
+  for (auto use : barrier->users()) {
+    CHECK_EQ(use->opcode(), HloOpcode::kGetTupleElement);
+    use->set_tuple_index(index_map[use->tuple_index()]);
+  }
+  return Status::OK();
+}
+
 namespace {
 
 absl::optional<std::vector<int64_t>> ReshapeLeavesDimensionsUnmodified(
