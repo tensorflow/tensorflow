@@ -53,6 +53,8 @@ class ConvertLmhloToTfrtBranchPass
     : public PassWrapper<ConvertLmhloToTfrtBranchPass,
                          OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertLmhloToTfrtBranchPass)
+
   ConvertLmhloToTfrtBranchPass() = default;
   ConvertLmhloToTfrtBranchPass(const ConvertLmhloToTfrtBranchPass&) {}
 
