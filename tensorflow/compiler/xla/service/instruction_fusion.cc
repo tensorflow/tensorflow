@@ -846,6 +846,50 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
   });
 }
 
+// Returns true if fusing a slice or dynamic slice in producer into a dynamic
+// update slice fusion in consumer is safe. It is not safe to fuse the slice and
+// DUS when fusing will cause another non-elementwise op to share operands with
+// the DUS in-place buffer.
+bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
+                                    const HloInstruction* consumer) {
+  CHECK_EQ(consumer->opcode(), HloOpcode::kFusion);
+  const HloInstruction* dus =
+      ExtractInstruction(consumer, HloOpcode::kDynamicUpdateSlice);
+  CHECK_NE(dus, nullptr);
+
+  // Use a memoization map to avoid exponential runtime.
+  absl::flat_hash_map<const HloInstruction*, bool> nonelementwise_memo;
+  // Recursively check if the instruction or its users (or their users) are
+  // non-elementwise with the exception of the DUS. We have already verified
+  // that the slice and DUS are compatible since their indices match.
+  std::function<bool(const HloInstruction*)>
+      has_nonelementwise_uses_except_dus =
+          [&](const HloInstruction* instruction) {
+            auto record_and_return = [&](bool val) {
+              nonelementwise_memo[instruction] = val;
+              return val;
+            };
+            auto nonelementwise_memo_it = nonelementwise_memo.find(instruction);
+            if (nonelementwise_memo_it != nonelementwise_memo.end()) {
+              return nonelementwise_memo_it->second;
+            }
+            if (instruction != dus && !instruction->IsElementwise() &&
+                instruction->opcode() != HloOpcode::kParameter) {
+              return record_and_return(true);
+            }
+            return record_and_return(absl::c_any_of(
+                instruction->users(), has_nonelementwise_uses_except_dus));
+          };
+  for (int i = 0; i < consumer->operand_count(); ++i) {
+    if (consumer->operand(i) == producer &&
+        has_nonelementwise_uses_except_dus(consumer->fused_parameter(i))) {
+      VLOG(4) << "Found a different elementwise";
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 /*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
@@ -912,6 +956,11 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           }
         }
         VLOG(4) << "DUS and slice index match";
+        if (consumer->opcode() == HloOpcode::kFusion &&
+            !IsSafeToFuseSliceIntoDusFusion(producer, consumer)) {
+          return "Fusing slice into DUS will also fuse another non-elementwise "
+                 "op with shared operand as DUS.";
+        }
         return {};
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
@@ -928,6 +977,11 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           }
         }
         VLOG(4) << "DUS and DS index match";
+        if (consumer->opcode() == HloOpcode::kFusion &&
+            !IsSafeToFuseSliceIntoDusFusion(producer, consumer)) {
+          return "Fusing DS into DUS will also fuse another non-elementwise op "
+                 "with shared operand as DUS.";
+        }
         return {};
       }
       return "unrecognized inplace update non-elementwise output pair";

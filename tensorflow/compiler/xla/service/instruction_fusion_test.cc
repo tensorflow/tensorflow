@@ -566,6 +566,57 @@ TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSameDynamicSlice) {
   EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, InPlaceOpShouldNotFuseWithSliceSameIndex) {
+  // Test case for b/223895450. Even though the indices for slice and DUS match,
+  // fusing the two will cause reverse to share operand with the DUS in-place
+  // buffer.
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    slice.19 = f32[7] slice(parameter.1), slice={[1:8]}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(slice.19, broadcast.8)
+    reverse = f32[7] reverse(add.9), dimensions={0}
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, reverse, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  // Verify that the slice is not fused because that would fuse with a
+  // non-elementwise op (reverse) in between the slice and DUS.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Slice()));
+}
+
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldFuseWithSliceSameIndexWithoutUnsafeNonelementwise) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    parameter.2 = f32[7] parameter(1)
+    slice.19 = f32[7] slice(parameter.1), slice={[1:8]}
+    reverse = f32[7] reverse(parameter.2), dimensions={0}
+    add.9 = f32[7] add(slice.19, reverse)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+}
+
 TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
