@@ -166,7 +166,7 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
   };
 };
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 namespace {
 
 se::port::StatusOr<se::blas::Epilogue> GetBlasLtEpilogOp(
@@ -377,7 +377,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
   }
 };
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 template <typename Device, typename T>
 class FusedMatMulOp : public OpKernel {
