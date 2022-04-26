@@ -510,9 +510,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "linenoise",
         build_file = "//third_party:linenoise.BUILD",
-        sha256 = "7f51f45887a3d31b4ce4fa5965210a5e64637ceac12720cfce7954d6a2e812f7",
-        strip_prefix = "linenoise-c894b9e59f02203dbe4e2be657572cf88c4230c3",
-        urls = tf_mirror_urls("https://github.com/antirez/linenoise/archive/c894b9e59f02203dbe4e2be657572cf88c4230c3.tar.gz"),
+        sha256 = "b35a74dbc9cd2fef9e4d56222761d61daf7e551510e6cd1a86f0789b548d074e",
+        strip_prefix = "linenoise-4ce393a66b10903a0ef52edf9775ed526a17395f",
+        urls = tf_mirror_urls("https://github.com/antirez/linenoise/archive/4ce393a66b10903a0ef52edf9775ed526a17395f.tar.gz"),
     )
 
     llvm_setup(name = "llvm-project")
