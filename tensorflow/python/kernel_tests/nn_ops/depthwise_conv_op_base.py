@@ -1020,7 +1020,7 @@ class DepthwiseConv2DBase(test.TestCase):
       padding_nhwc = [(0, 0)] + padding + [(0, 0)]
       padding_nchw = [(0, 0)] + [(0, 0)] + padding
 
-    def _GetVal(use_gpu):
+    def _GetVal(use_gpu, data_format='NHWC'):
       with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
