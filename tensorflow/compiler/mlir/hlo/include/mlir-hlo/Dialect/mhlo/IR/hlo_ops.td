@@ -1096,7 +1096,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect,
   let hasVerifier = 1;
 }
 
-def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
+def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameOperandsElementType,
     SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
   let summary = "Comparison operator";
   let description = [{
