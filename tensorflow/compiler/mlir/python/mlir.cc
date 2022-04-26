@@ -195,151 +195,21 @@ std::string ImportGraphDef(const std::string &proto,
                             specs, status);
 }
 
-static Status ParseShapeStr(absl::string_view shape_str, std::vector<int> &dims, char delimiter) {
-  if (shape_str.empty()) {
-    return Status::OK();
-  }
-  for (const auto &dim_str : absl::StrSplit(shape_str, delimiter)) {
-    int size;
-    if (absl::SimpleAtoi(dim_str, &size)) {
-      dims.push_back(size);
-    } else {
-      return tensorflow::errors::InvalidArgument(
-          "Invalid Shape Specified ", dim_str);
-    }
-  }
-  return Status::OK();
-}
-
-static Status 
-HandleSubtype(absl::string_view subtype, ArrayInfo::SubTypeInfo *result) {
-  std::vector<std::string> shape_and_type = absl::StrSplit(subtype, ':');
-
-  std::vector<int> dims;
-  if (shape_and_type.size() > 2) {
-    return errors::FailedPrecondition(
-      "Invalid argument, the subtype and shape have to be separated with a ':'");
-  } else if(shape_and_type.size() == 2) {
-    const auto &shape_str = shape_and_type[0];
-    auto s = ParseShapeStr(shape_str, dims, 'x');
-    if (!s.ok())
-      return s;
-  }
-
-  const auto &subtype_str = shape_and_type.back();
-  DataType subtype_dtype;
-  if (!DataType_Parse(subtype_str, &subtype_dtype)) {
-    return errors::FailedPrecondition(
-        absl::StrCat("Invalid type '", subtype_str, "'"));
-  }
-
-  TensorShapeProto subtype_tensor_shape;
-  for (auto &dim : dims) {
-    subtype_tensor_shape.add_dim()->set_size(dim);
-  }
-  *result = {subtype_dtype, subtype_tensor_shape};
-  return Status::OK();
-}
-
 std::string ImportGraphDef(const std::string &proto,
                            const std::string &pass_pipeline,
                            bool show_debug_info, absl::string_view input_names,
                            absl::string_view input_data_types,
                            absl::string_view input_data_shapes,
                            absl::string_view output_names, TF_Status *status) {
-  std::vector<string> node_names = absl::StrSplit(input_names, ',');
-  std::vector<string> node_dtypes = absl::StrSplit(input_data_types, ',');
-  std::vector<string> node_shapes_str = absl::StrSplit(input_data_shapes, ':');
-  std::vector<std::vector<int>> node_shapes;
-
-  std::vector<int> dims;
-  for (const string &shape_str : node_shapes_str) {
-    dims.clear();
-    auto s = ParseShapeStr(shape_str, dims, ',');
-    if (!s.ok()) {
-      Set_TF_Status_from_Status(status, s);
-      return "// error";
-    }
-    node_shapes.push_back(dims);
-  }
-
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
-
+  auto s = ParseInputArrayInfo(input_names,input_data_types,input_data_shapes,&specs.inputs);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
+    return "// error";
+  }
   if (!output_names.empty()) {
-    // Set the output to the output nodes.
     specs.outputs = absl::StrSplit(output_names, ',');
-  }
-
-  // Set the input values to specs.input.
-  std::vector<std::string> used_node_dtypes;
-  if (node_dtypes.empty() ||
-      (node_dtypes.size() == 1 && node_dtypes[0].empty())) {
-    // Mark all the node dtypes Invalid, so the importer can handle them by
-    // using the type from the graph.
-    used_node_dtypes.resize(node_names.size(), DataType_Name(DT_INVALID));
-  } else if (node_names.size() == node_dtypes.size()) {
-    for (const auto &dtype : node_dtypes) {
-      if (dtype.empty()) {
-        used_node_dtypes.push_back(DataType_Name(DT_INVALID));
-      } else if (dtype != DataType_Name(DT_INVALID)) {
-        used_node_dtypes.push_back(dtype);
-
-        // Use '' if you want to use the type from graph.
-      } else {
-        auto s = tensorflow::errors::InvalidArgument(
-            "DT_INVALID isn't a valid input data type");
-        Set_TF_Status_from_Status(status, s);
-        return "// error";
-      }
-    }
-
-    // Unmatched input node array and data type sizes.
-  } else {
-    auto s = tensorflow::errors::InvalidArgument(
-        "Length of input node array and data type doesn't match");
-    Set_TF_Status_from_Status(status, s);
-    return "// error";
-  }
-
-  // Unmatched input node array and data shapes sizes.
-  if (node_names.size() != node_shapes.size()) {
-    auto s = tensorflow::errors::InvalidArgument(
-        "Length of input node array and data shape doesn't match");
-    Set_TF_Status_from_Status(status, s);
-    return "// error";
-  }
-  for (unsigned i = 0, e = node_names.size(); i < e; i++) {
-    const string &name = node_names[i];
-    const string &type = used_node_dtypes[i];
-    if (name.empty()) continue;
-
-    auto it_inserted_pair = specs.inputs.insert({name, {}});
-    ArrayInfo &info = it_inserted_pair.first->second;
-    for (auto &dim : node_shapes[i]) {
-      info.shape.add_dim()->set_size(dim);
-    }
-    // Splitting the type and subtype into parts
-    std::vector<std::string> parts = absl::StrSplit(type, absl::ByAnyChar("()")); // TODO make this better
-    if (parts.size() > 3) {
-      Set_TF_Status_from_Status(status, 
-        errors::InvalidArgument("Invalid type '", type, "'"));
-      return "// error";
-    } else if (parts.size() == 3) {
-      // First part is the type, second is the subtype
-      ArrayInfo::SubTypeInfo subtype;
-      auto s = HandleSubtype(parts[1], &subtype);
-      if (!s.ok()) {
-        Set_TF_Status_from_Status(status, s);
-        return "// error";
-      }
-      info.subtypes.push_back(std::move(subtype));
-    }
-    if (!DataType_Parse(parts[0], &info.imported_dtype)) {
-      Set_TF_Status_from_Status(status, 
-        errors::InvalidArgument("Invalid type '", type, "'"));
-      return "// error";
-    }
   }
   return ImportGraphDefImpl(proto, pass_pipeline, show_debug_info, debug_info,
                             specs, status);

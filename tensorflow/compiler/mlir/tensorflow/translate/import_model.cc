@@ -2416,7 +2416,6 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   VLOG(1) << "Importing: "
           << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
                                            &flib_def);
-
   GraphDefImporter importer(flib_def, debug_info, specs, module.get(),
                             &tf_name_to_mlir_name, &function_name_uniquifier);
 
@@ -2497,7 +2496,6 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
           b.getDictionaryAttr({inputs, outputs, control_outputs})));
     }
   }
-
   // Record version info.
   PopulateTfVersions(module.get(), graph.versions());
 
@@ -2508,7 +2506,6 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                                                     arg_nodes, ret_nodes,
                                                     control_ret_nodes, attrs));
   TF_RETURN_IF_ERROR(importer.ImporterBase::ConvertDeferredFunctions());
-
   // Mark main function public, others private.
   for (auto function : module.get().getOps<mlir::FuncOp>()) {
     auto visibility = function.getName() == graph_func_name
@@ -2536,7 +2533,6 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
       inputs.insert({tensor.node(), input_and_idx.index()});
     }
   }
-
   absl::flat_hash_set<absl::string_view> output_node_names;
   std::vector<TensorId> outputs;
   output_node_names.reserve(specs.outputs.size());
@@ -2551,7 +2547,6 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
       outputs.push_back(tensor);
     }
   }
-
   if (!inputs.empty() || !outputs.empty()) {
     arg_nodes->resize(inputs.size());
     ret_nodes->resize(outputs.size());
@@ -2573,7 +2568,6 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
       }
     }
   }
-
   // Starts to construct the function type.
   mlir::Builder builder(context);
   llvm::SmallVector<mlir::Type, 4> arg_types;
@@ -2595,7 +2589,9 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
       if (imported_dtype == DT_INVALID) {
         return errors::InvalidArgument("Input ", i, "has invalid data type");
       }
-    } else if (!node_info.subtypes.empty()) {
+    }
+    /// Check if we have subtypes first
+    if (!node_info.subtypes.empty()) {
       std::vector<mlir::TensorType> subtypes;
       for (const auto &st: node_info.subtypes) {
         mlir::Type t;
@@ -2625,7 +2621,6 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     }
     i++;
   }
-
   llvm::SmallVector<mlir::Type, 4> ret_types;
   ret_types.reserve(specs.outputs.size());
   for (int i = 0, e = specs.outputs.size(); i != e; ++i) {
@@ -2643,7 +2638,6 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
                         InferOutputType(*ret.node, ret.index, builder));
     ret_types.push_back(type);
   }
-
   return builder.getFunctionType(arg_types, ret_types);
 }
 
@@ -4174,7 +4168,6 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
   options.allow_internal_ops = true;
   options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
-
   GraphDef preprocessed_graphdef(graphdef);
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));

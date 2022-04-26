@@ -92,6 +92,54 @@ Status ParseInputArrayInfo(absl::string_view array_names,
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
+static Status ParseSubtypeShape(absl::string_view shape_str, std::vector<int> &dims) {
+  if (shape_str.empty()) {
+    return Status::OK();
+  }
+  for (const auto &dim_str : absl::StrSplit(shape_str, 'x')) {
+    int size;
+    if (dim_str == "?") {
+      dims.push_back(-1);
+    } else if (absl::SimpleAtoi(dim_str, &size)) {
+      dims.push_back(size);
+    } else {
+      return tensorflow::errors::InvalidArgument(
+          "Invalid Shape Specified ", dim_str);
+    }
+  }
+  return Status::OK();
+}
+
+static Status 
+HandleSubtype(absl::string_view subtype, ArrayInfo::SubTypeInfo *result) {
+  std::vector<std::string> shape_and_type = absl::StrSplit(subtype, ':');
+
+  std::vector<int> dims;
+  if (shape_and_type.size() > 2) {
+    return errors::FailedPrecondition(
+      "Invalid argument, the subtype and shape have to be separated with a ':'");
+  } else if(shape_and_type.size() == 2) {
+    const auto &shape_str = shape_and_type[0];
+    auto s = ParseSubtypeShape(shape_str, dims);
+    if (!s.ok())
+      return s;
+  }
+
+  const auto &subtype_str = shape_and_type.back();
+  DataType subtype_dtype;
+  if (!DataType_Parse(subtype_str, &subtype_dtype)) {
+    return errors::FailedPrecondition(
+        absl::StrCat("Invalid type '", subtype_str, "'"));
+  }
+
+  TensorShapeProto subtype_tensor_shape;
+  for (auto &dim : dims) {
+    subtype_tensor_shape.add_dim()->set_size(dim);
+  }
+  *result = {subtype_dtype, subtype_tensor_shape};
+  return Status::OK();
+}
+
 Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
@@ -128,6 +176,7 @@ Status ParseInputArrayInfo(
   // StringMap doesn't support reserve else reserve input map size here.
   for (int i = 0, end = node_names.size(); i < end; i++) {
     auto& name = node_names[i];
+    const string &type = used_node_dtypes[i];
     if (name.empty()) continue;
 
     auto it_inserted_pair = inputs->insert({name, {}});
@@ -136,7 +185,21 @@ Status ParseInputArrayInfo(
           absl::StrCat("tensor ", name, " is repeated in the arrays flag"));
 
     ArrayInfo& info = it_inserted_pair.first->second;
-    if (!DataType_Parse(used_node_dtypes[i], &info.imported_dtype)) {
+    // Splitting the type and subtype into parts
+    std::vector<std::string> parts = absl::StrSplit(type, absl::ByAnyChar("()")); // TODO make this better
+    /// If type has subtype, parts will have three members, part[0] = type, part[1] = subtype, part[2] = ""
+    if (parts.size() != 3 && parts.size() != 1) {
+      return errors::InvalidArgument("Invalid type '", type, "'");
+    } else if (parts.size() == 3) {
+      // First part is the type, second is the subtype
+      ArrayInfo::SubTypeInfo subtype;
+      auto s = HandleSubtype(parts[1], &subtype);
+      if (!s.ok()) {
+        return s;
+      }
+      info.subtypes.push_back(std::move(subtype));
+    }
+    if (!DataType_Parse(parts[0], &info.imported_dtype)) {
       return errors::FailedPrecondition(
           absl::StrCat("Invalid node type '", node_dtypes[i], "'"));
     }

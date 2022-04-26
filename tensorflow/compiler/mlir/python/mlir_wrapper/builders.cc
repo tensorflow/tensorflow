@@ -42,7 +42,7 @@ void init_builders(py::module& m) {
       .def(
           "createOperation",
           [](mlir::OpBuilder& opb, mlir::OperationState& state) {
-            return opb.createOperation(state);
+            return opb.create(state);
           },
           py::return_value_policy::reference)
       .def("getContext", &mlir::OpBuilder::getContext,
