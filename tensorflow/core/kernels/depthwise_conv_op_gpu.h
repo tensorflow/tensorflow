@@ -19,7 +19,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #define UNROLL
@@ -1310,10 +1310,9 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
 // A GPU kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T>
 __global__ void __launch_bounds__(512, 2)
-    DepthwiseConv2dBackpropFilterGPUKernelNCHW(const DepthwiseArgs args,
-                                               const T *__restrict__ out_backprop,
-                                               const T *__restrict__ input,
-                                               T *__restrict__ filter_backprop) {
+    DepthwiseConv2dBackpropFilterGPUKernelNCHW(
+        const DepthwiseArgs args, const T* __restrict__ out_backprop,
+        const T* __restrict__ input, T* __restrict__ filter_backprop) {
   const int batch_num = args.batch;
   const int in_depth = args.in_depth;
   const int in_height = args.in_rows;
@@ -1373,7 +1372,7 @@ __global__ void __launch_bounds__(512, 2)
 
   T val = WarpReduce(temp_storage).Sum(partial_sum);
   if (gpuprim::LaneId() == 0) {
-    T *addr = filter_backprop + filter_backprop_offset;
+    T* addr = filter_backprop + filter_backprop_offset;
     GpuAtomicAdd(addr, val);
   }
 }
@@ -1675,8 +1674,8 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
 
     int launch_bounds_value = 640;
-    GpuLaunchConfig config = GetGpuLaunchConfig(num_out_backprop, device, kernel,
-                                                0, launch_bounds_value);
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_out_backprop, device,
+                                                kernel, 0, launch_bounds_value);
     TF_CHECK_OK(GpuLaunchKernel(
         kernel, config.block_count, config.thread_per_block, 0, device.stream(),
         args, out_backprop, input, filter_backprop, num_out_backprop));
@@ -1685,14 +1684,13 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
     dim3 blocks = dim3(args.filter_cols, args.filter_rows, args.out_depth);
     dim3 threads = dim3(512, 1, 1);
 
-    TF_CHECK_OK(GpuLaunchKernel(
-        kernel, blocks, threads, 0, device.stream(),
-        args, out_backprop, input, filter_backprop));
+    TF_CHECK_OK(GpuLaunchKernel(kernel, blocks, threads, 0, device.stream(),
+                                args, out_backprop, input, filter_backprop));
   } else {
     return errors::InvalidArgument("FORMAT_", ToString(data_format),
                                    " is not supported");
   }
-  
+
   return Status::OK();
 }
 
