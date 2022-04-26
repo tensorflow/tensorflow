@@ -117,7 +117,7 @@ def _make_tensor_into_per_replica(input_tensor):
     raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object, "
                      "got %r but expected a object that is not a tuple or list."
                      % (input_tensor,))
-  if isinstance(input_tensor, value_lib.PerReplica):
+  if isinstance(input_tensor, value_lib.DistributedValues):
     return input_tensor
 
   # If input is not a Tensor, convert it to a Tensor first.
@@ -303,8 +303,8 @@ class CrossDeviceOps(object):
     """
     if options is None:
       options = collective_util.Options()
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -352,8 +352,7 @@ class CrossDeviceOps(object):
     if options is None:
       options = collective_util.Options()
 
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
