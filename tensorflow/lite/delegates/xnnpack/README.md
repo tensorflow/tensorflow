@@ -489,6 +489,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `FULLY_CONNECTED`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `HARD_SWISH`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -561,6 +565,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `SPLIT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQRT`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
