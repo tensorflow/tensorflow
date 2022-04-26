@@ -728,14 +728,15 @@ func.func @invalid_device_type() {
 
 // -----
 
-// CHECK: "tf_device.cluster"() ({
+// Check non-replicated case, including expected attributes at device cluster.
+// CHECK: "tf_device.cluster"()
 // CHECK:    "tf.opA"()
 // CHECK:    "tf.opB"()
 // CHECK:    tf_device.return
-// CHECK:  })
+// CHECK:  })  {_replication_info = "__no_replication_cluster", _xla_compile_device_type = "TPU", allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i32, step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false}
 func.func @valid_compilation_cluster_no_replication() {
-  "tf.opA"() { _xla_compile_device_type = "CPU", is_stateless = true} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "CPU", is_stateless = true} : () -> ()
+  "tf.opA"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
   func.return
 }
 
