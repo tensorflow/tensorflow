@@ -2027,9 +2027,9 @@ cc_library(
     srcs = ["scatter_expander.cc"],
     hdrs = ["scatter_expander.h"],
     deps = [
+        ":call_inliner",
         ":hlo",
         ":hlo_creation_utils",
-        ":hlo_pass",
         ":op_expander_pass",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
