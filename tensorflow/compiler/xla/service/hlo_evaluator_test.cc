@@ -4110,6 +4110,57 @@ ENTRY main {
                                    {&operand, &scatter_indices, &updates})));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateScatter_Multioutput) {
+  const char* hlo_text = R"(
+HloModule MultioutputScatter
+
+update {
+  lhs0 = s32[] parameter(0)
+  lhs1 = f32[] parameter(1)
+  rhs0 = s32[] parameter(2)
+  rhs1 = f32[] parameter(3)
+  ROOT tuple = (s32[], f32[]) tuple(rhs0, rhs1)
+}
+
+ENTRY main {
+  operand0 = s32[3,3,2] parameter(0)
+  operand1 = f32[3,3,2] parameter(1)
+  indices = s32[2,2] parameter(2)
+  updates0 = s32[2,2] parameter(3)
+  updates1 = f32[2,2] parameter(4)
+  ROOT scatter = (s32[3,3,2], f32[3,3,2]) scatter(operand0, operand1, indices, updates0, updates1),
+      to_apply=update,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand0 =
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal operand1 =
+      LiteralUtil::CreateR3<float>({{{-2, 2}, {-3, 3}, {-4, 4}},  //
+                                    {{-5, 5}, {-6, 6}, {-7, 7}},  //
+                                    {{-8, 8}, {-9, 9}, {-10, 10}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
+  Literal updates0 = LiteralUtil::CreateR2<int32_t>({{-10, 10}, {-40, 40}});
+  Literal updates1 = LiteralUtil::CreateR2<float>({{-11, 11}, {-41, 41}});
+  Literal expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR3<int32_t>({{{-10, 10}, {-2, 2}, {-3, 3}},  //
+                                      {{-40, 40}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}}),
+      LiteralUtil::CreateR3<float>({{{-11, 11}, {-3, 3}, {-4, 4}},  //
+                                    {{-41, 41}, {-6, 6}, {-7, 7}},  //
+                                    {{-8, 8}, {-9, 9}, {-10, 10}}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Evaluate({&operand0, &operand1, &scatter_indices, &updates0, &updates1}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise comparison with 2 bfloat16 operands.
 TEST_F(HloEvaluatorTest, DoesCompareBF16) {

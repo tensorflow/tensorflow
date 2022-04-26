@@ -154,6 +154,13 @@ struct IsReal {
       std::is_same<bfloat16, T>::value || std::is_same<half, T>::value;
 };
 
+template <typename T>
+struct IsValidScalarType {
+  static constexpr bool value = IsReal<T>::value ||
+                                std::is_same<complex64, T>::value ||
+                                std::is_same<complex128, T>::value;
+};
+
 template <typename NativeT>
 std::enable_if_t<std::is_integral<NativeT>::value, NativeT> GetMaxImpl() {
   return std::numeric_limits<NativeT>::max();
@@ -230,6 +237,38 @@ struct MaxElementProvider {
     return GetMaxElementImpl<NativeT<kType>>(literal);
   }
 };
+
+template <typename NativeT>
+std::enable_if_t<IsValidScalarType<NativeT>::value, NativeT>
+GetElementAtIndexImpl(const LiteralBase* literal,
+                      absl::Span<const int64_t> multi_index) {
+  return literal->Get<NativeT>(multi_index);
+}
+
+template <typename NativeT>
+std::enable_if_t<!IsValidScalarType<NativeT>::value, NativeT>
+GetElementAtIndexImpl(const LiteralBase* literal,
+                      absl::Span<const int64_t> multi_index) {
+  LOG(FATAL) << "Not a valid scalar element type.";
+}
+
+template <PrimitiveType kType>
+struct GetElementAtIndexProvider {
+  NativeT<kType> operator()(const LiteralBase* literal,
+                            absl::Span<const int64_t> multi_index) const {
+    DCHECK_EQ(literal->shape().element_type(), kType);
+    return GetElementAtIndexImpl<NativeT<kType>>(literal, multi_index);
+  }
+};
+
+template <PrimitiveType kType>
+void SetScalarAtIndexImpl(MutableLiteralBase& literal,
+                          absl::Span<const int64_t> multi_index,
+                          const LiteralBase& scalar) {
+  DCHECK_EQ(literal.shape().element_type(), kType);
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
+  literal.Set<NativeT>(multi_index, scalar.Get<NativeT>({}));
+}
 
 }  // namespace
 
@@ -423,6 +462,67 @@ struct MaxElementProvider {
   CHECK_GT(ShapeUtil::ElementsIn(literal.shape()), 0);
   return CreateScalar<FirstElementProvider>(literal.shape().element_type(),
                                             literal);
+}
+
+/*static*/ Literal LiteralUtil::GetScalarLiteral(
+    const LiteralBase& literal, absl::Span<const int64_t> multi_index) {
+  return CreateScalar<GetElementAtIndexProvider>(literal.shape().element_type(),
+                                                 &literal, multi_index);
+}
+
+/*static*/ void LiteralUtil::SetScalarLiteral(
+    MutableLiteralBase& literal, absl::Span<const int64_t> multi_index,
+    const LiteralBase& scalar) {
+  switch (literal.shape().element_type()) {
+    case PRED:
+      SetScalarAtIndexImpl<PRED>(literal, multi_index, scalar);
+      break;
+    case U8:
+      SetScalarAtIndexImpl<U8>(literal, multi_index, scalar);
+      break;
+    case U16:
+      SetScalarAtIndexImpl<U16>(literal, multi_index, scalar);
+      break;
+    case U32:
+      SetScalarAtIndexImpl<U32>(literal, multi_index, scalar);
+      break;
+    case U64:
+      SetScalarAtIndexImpl<U64>(literal, multi_index, scalar);
+      break;
+    case S8:
+      SetScalarAtIndexImpl<S8>(literal, multi_index, scalar);
+      break;
+    case S16:
+      SetScalarAtIndexImpl<S16>(literal, multi_index, scalar);
+      break;
+    case S32:
+      SetScalarAtIndexImpl<S32>(literal, multi_index, scalar);
+      break;
+    case S64:
+      SetScalarAtIndexImpl<S64>(literal, multi_index, scalar);
+      break;
+    case F16:
+      SetScalarAtIndexImpl<F16>(literal, multi_index, scalar);
+      break;
+    case BF16:
+      SetScalarAtIndexImpl<BF16>(literal, multi_index, scalar);
+      break;
+    case F32:
+      SetScalarAtIndexImpl<F32>(literal, multi_index, scalar);
+      break;
+    case F64:
+      SetScalarAtIndexImpl<F64>(literal, multi_index, scalar);
+      break;
+    case C64:
+      SetScalarAtIndexImpl<C64>(literal, multi_index, scalar);
+      break;
+    case C128:
+      SetScalarAtIndexImpl<C128>(literal, multi_index, scalar);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported element type: "
+                 << literal.shape().element_type();
+  }
 }
 
 /* static */ Literal LiteralUtil::MaxElement(const LiteralSlice& literal) {
