@@ -28,9 +28,9 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 #include <string>
 #include <vector>
@@ -49,17 +49,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
-
-#if GOOGLE_CUDA
 #include "tensorflow/stream_executor/matmul_util.h"
 #endif  // GOOGLE_CUDA
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -482,7 +478,7 @@ TF_CALL_float(REGISTER_FUSED_CPU_MATMUL);
 
 #undef REGISTER_FUSED_CPU_MATMUL
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 // Registration of the GPU implementations.
 #define REGISTER_FUSED_GPU_MATMUL(T)                                  \
@@ -495,7 +491,7 @@ TF_CALL_half(REGISTER_FUSED_GPU_MATMUL);
 
 #undef REGISTER_FUSED_GPU_MATMUL
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_OP_FUSED_H_
