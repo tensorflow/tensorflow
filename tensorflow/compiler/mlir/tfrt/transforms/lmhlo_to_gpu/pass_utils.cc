@@ -39,6 +39,8 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
   tensorflow::applyTensorflowAndCLOptions(pm);
   pm.addPass(tensorflow::createConvertLmhloToGpuBinaryPass());
   populateLmhloToTfrtGpuPasses(pm);
+  pm.addPass(tfrt::gpu::CreateSetEntryPointPass(
+      kGpuTargetPlatform, entry_function_name, buffer_sizes));
 
   // Dump IR on failure.
   std::string error_string;
@@ -55,8 +57,6 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
         std::move(error_stream.str()));
   }
 
-  tfrt::gpu::setEntryPoint(module, kGpuTargetPlatform, entry_function_name,
-                           buffer_sizes);
   return Status::OK();
 }
 
