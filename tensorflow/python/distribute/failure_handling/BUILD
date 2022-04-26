@@ -40,6 +40,9 @@ py_library(
 tf_py_test(
     name = "failure_handler_test",
     srcs = ["failure_handler_test.py"],
+    tags = [
+        "no_oss",  # TODO(b/230003805): Test sometimes times out
+    ],
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
