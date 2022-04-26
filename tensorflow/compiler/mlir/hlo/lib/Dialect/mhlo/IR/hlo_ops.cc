@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -72,7 +73,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/ControlFlowSinkUtils.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
+#include "mlir/Transforms/SideEffectUtils.h"
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"
@@ -4928,9 +4932,30 @@ static LogicalResult InlineIfConstantCondition(IfOp ifOp,
   return success();
 }
 
+static LogicalResult SinkConditionalCode(RegionRange regions) {
+  DominanceInfo domInfo;
+  size_t num_sunk = controlFlowSink(
+      regions, domInfo,
+      [](Operation* op, Region*) {
+        // Don't sink constants because the folder is active during
+        // canonicalization and this invalides its internal book-keeping. MHLO
+        // has an express constant sinking pass anyways.
+        return !op->hasTrait<mlir::OpTrait::ConstantLike>() &&
+               isSideEffectFree(op);
+      },
+      [](Operation* op, Region* region) {
+        op->moveBefore(&region->front(), region->front().begin());
+      });
+  return success(num_sunk > 0);
+}
+
 void IfOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                        MLIRContext* context) {
   results.add(&InlineIfConstantCondition);
+  results.add(+[](IfOp ifOp, PatternRewriter& rewriter) {
+    return SinkConditionalCode(
+        llvm::makeArrayRef({&ifOp.true_branch(), &ifOp.false_branch()}));
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -4970,6 +4995,9 @@ static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
 void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
   results.add(&InlineCaseConstantCondition);
+  results.add(+[](CaseOp caseOp, PatternRewriter& rewriter) {
+    return SinkConditionalCode(caseOp.getRegions());
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -6942,6 +6970,17 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
 void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.add(&whileCanonicalization);
+  // TODO(b/230377476) LICM on side-effect-free ops is not side-effect-free.
+  // results.add(+[](WhileOp whileOp, PatternRewriter& rewriter) {
+  //   size_t numMoved = moveLoopInvariantCode(
+  //       whileOp->getRegions(),
+  //       [](Value value, Region* region) {
+  //         return value.getParentRegion()->isProperAncestor(region);
+  //       },
+  //       [](Operation* op, Region*) { return isSideEffectFree(op); },
+  //       [&](Operation* op, Region*) { op->moveBefore(whileOp); });
+  //   return success(numMoved > 0);
+  // });
 }
 
 using mlir::hlo::parseWindowAttributes;
