@@ -46,7 +46,6 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/util/env_var.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -265,17 +264,6 @@ extern template struct LaunchConv2DOp<GPUDevice, double>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
-
-bool DisableDepthwiseConvDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_DEPTHWISE_CONV_DETERMINISM_EXCEPTIONS",
-        /*default_val*/ false, &disable));
-    return disable;
-  }();
-  return cached_disable;
-}
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

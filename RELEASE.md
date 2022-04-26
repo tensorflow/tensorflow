@@ -15,28 +15,29 @@
 
 # Major Features and Improvements
 
-* `tf.keras`:
+*   `tf.keras`:
 
-    * Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
-      class implements the sharpness-aware minimization technique, which boosts
-      model performance on various tasks, e.g., ResNet on image classification.
-    * `EinsumDense` layer moved from experimental to core. Its import path moved
-      from `tf.keras.layers.experimental.EinsumDense` to
-      `tf.keras.layers.EinsumDense`.
-    * Added `tf.keras.utils.audio_dataset_from_directory` utility to easily
-      generate audio classification datasets from directories of `.wav` files.
-    * Added `subset="both"` support in
-      `tf.keras.utils.image_dataset_from_directory`,
-      `tf.keras.utils.text_dataset_from_directory`, and
-      `audio_dataset_from_directory`, to be used with the `validation_split`
-      argument, for returning both dataset splits at once, as a tuple.
+    *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
+        class implements the sharpness-aware minimization technique, which
+        boosts model performance on various tasks, e.g., ResNet on image
+        classification.
+    *   `EinsumDense` layer moved from experimental to core. Its import path
+        moved from `tf.keras.layers.experimental.EinsumDense` to
+        `tf.keras.layers.EinsumDense`.
+    *   Added `tf.keras.utils.audio_dataset_from_directory` utility to easily
+        generate audio classification datasets from directories of `.wav` files.
+    *   Added `subset="both"` support in
+        `tf.keras.utils.image_dataset_from_directory`,
+        `tf.keras.utils.text_dataset_from_directory`, and
+        `audio_dataset_from_directory`, to be used with the `validation_split`
+        argument, for returning both dataset splits at once, as a tuple.
 
 *   `tf.math`:
 
-    * Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the
-      optimized alternatives to `tf.math.top_k` on TPU. The performance
-      difference range from 8 to 100 times depending on the size of k.
-      When running on CPU and GPU, a non-optimized XLA kernel is used.
+    *   Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the
+        optimized alternatives to `tf.math.top_k` on TPU. The performance
+        difference range from 8 to 100 times depending on the size of k. When
+        running on CPU and GPU, a non-optimized XLA kernel is used.
 
 *   `tf.vectorized_map`:
 
@@ -46,9 +47,16 @@
 
 # Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
+*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*   <NOTES SHOULD BE GROUPED PER AREA>
+
+*   When running on GPU (with cuDNN version 7.6.3 or later),
+    `tf.nn.depthwise_conv2d` backprop to `filter` (and therefore also
+    `tf.keras.layers.DepthwiseConv2D`) now operate deterministically (and
+    `tf.errors.UnimplementedError` is no longer thrown) when op-determinism has
+    been enabled via `tf.config.experimental.enable_op_determinism`. This closes
+    issue [47174](https://github.com/tensorflow/tensorflow/issues/47174).
 
 # Thanks to our Contributors
 
