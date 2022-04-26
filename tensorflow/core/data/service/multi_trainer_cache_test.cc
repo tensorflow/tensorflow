@@ -291,10 +291,7 @@ TEST(MultiTrainerCacheTest, ConcurrentReaders) {
           }
         })));
   }
-
-  for (auto& thread : reader_threads) {
-    thread.reset();
-  }
+  reader_threads.clear();
 
   // Verifies all trainers can read `num_elements_to_read` elements.
   EXPECT_EQ(results.size(), num_trainers);
@@ -330,10 +327,8 @@ TEST(MultiTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
           }
         })));
   }
+  reader_threads.clear();
 
-  for (auto& thread : reader_threads) {
-    thread.reset();
-  }
   // Verifies the readers have read all elements because they have the same
   // trainer ID.
   EXPECT_THAT(results, UnorderedElementsAreArray(GetRange(1000)));
@@ -369,9 +364,7 @@ TEST(MultiTrainerCacheTest, Cancel) {
 
   Env::Default()->SleepForMicroseconds(1000000);
   cache.Cancel(errors::Cancelled("Cancelled"));
-  for (auto& thread : reader_threads) {
-    thread.reset();
-  }
+  reader_threads.clear();
 
   mutex_lock l(mu);
   EXPECT_THAT(status, StatusIs(error::CANCELLED));
