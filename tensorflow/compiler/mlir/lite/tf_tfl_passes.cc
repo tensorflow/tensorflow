@@ -72,7 +72,7 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
   // Run RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected
   // passes once Quant/Dequant stat nodes have been removed, because patterns to
   // apply these optimizations have been changed once these ops are removed.
-  pass_manager.addNestedPass<mlir::FuncOp>(
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
