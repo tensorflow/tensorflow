@@ -2356,14 +2356,9 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
       wrap::rocblas_ctrsm_batched, stream, true /* = pointer_mode_host */,
       ROCMBlasSide(side), ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
       ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
-<<<<<<< HEAD
-      static_cast<const rocblas_float_complex * const *>(as.opaque()), lda,
-      static_cast<rocblas_float_complex * const *>(bs->opaque()), ldb, batch_count);
-=======
       static_cast<const rocblas_float_complex *const *>(as.opaque()), lda,
       static_cast<rocblas_float_complex *const *>(bs->opaque()), ldb,
       batch_count);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
@@ -2378,14 +2373,9 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
       wrap::rocblas_ztrsm_batched, stream, true /* = pointer_mode_host */,
       ROCMBlasSide(side), ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
       ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
-<<<<<<< HEAD
-      static_cast<const rocblas_double_complex * const *>(as.opaque()), lda, 
-      static_cast<rocblas_double_complex * const *>(bs->opaque()), ldb, batch_count);
-=======
       static_cast<const rocblas_double_complex *const *>(as.opaque()), lda,
       static_cast<rocblas_double_complex *const *>(bs->opaque()), ldb,
       batch_count);
->>>>>>> upstream/master
 }
 
 port::Status ROCMBlas::DoBlasGemmStridedBatched(
