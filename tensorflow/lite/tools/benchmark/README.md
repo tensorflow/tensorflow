@@ -175,6 +175,11 @@ Note enabling this option will not produce profiling results outputs unless
 `enable_op_profiling` is also turned on. When both parameters are set to true,
 the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
+* `hexagon_lib_path`: `string` (default="/data/local/tmp/") \
+The library path for the underlying Hexagon libraries.
+This is where libhexagon_nn_skel*.so files should be.
+For libhexagon_interface.so it needs to be on a path that can be loaded from
+example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
 *   `use_xnnpack`: `bool` (default=false) \
