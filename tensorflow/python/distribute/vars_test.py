@@ -999,11 +999,8 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(expected, self.evaluate(array_ops.identity(v)),
                        aggregation)
 
-  # TODO(b/145574622): Re-enable this test once ReduceOp argument is
-  # respected on GPUs.
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def disable_testAllReduce(self, distribution,
-                            experimental_run_tf_function):
+  def testAllReduce(self, distribution, experimental_run_tf_function):
     with distribution.scope():
       v = variable_scope.variable(
           2.,
@@ -1026,7 +1023,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     for i in range(distribution.num_replicas_in_sync):
       expected_result.append(2.0 * distribution.num_replicas_in_sync +
                              1.0 * i)
-    self.assertEqual(per_replica_results, tuple(expected_result))
+    self.assertAllEqual(per_replica_results, tuple(expected_result))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testAssignPerReplicaBeforeRead(self, distribution,
