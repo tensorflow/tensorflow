@@ -310,12 +310,11 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     bool trans_a = dim_pair[0].first == 0 ? true : false;
     bool trans_b = dim_pair[0].second == 1 ? true : false;
 
-    const uint64 m = a.dim_size(trans_a ? 1 : 0);
-    const uint64 k = a.dim_size(trans_a ? 0 : 1);
-    const uint64 n = b.dim_size(trans_b ? 0 : 1);
+    const int64_t m = a.dim_size(trans_a ? 1 : 0);
+    const int64_t k = a.dim_size(trans_a ? 0 : 1);
+    const int64_t n = b.dim_size(trans_b ? 0 : 1);
 
     DataType dtype = DataTypeToEnum<T>::value;
-    bool allow_tf32 = tensor_float_32_execution_enabled();
     int device_id = stream->parent()->device_ordinal();
 
     BatchMatmulParameters matmul_params(trans_a, trans_b, false, false, m, n, k,
