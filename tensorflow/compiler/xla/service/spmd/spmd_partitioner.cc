@@ -959,7 +959,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     Array<int64_t> trimmed_devices(trimmed_target_sharding_tile_shape);
     trimmed_devices.Each([&](absl::Span<const int64_t> indices, int64_t* d) {
       std::vector<int64_t> target_indices(indices.begin(), indices.end());
-      for (int64_t i = 0; i < trimmed_target_sharding_tile_shape.size(); ++i) {
+      for (int64_t i = 0; i < base_shape_.rank(); ++i) {
         const auto& range = trimmed_target_sharding_middle_range[i];
         if (range.first >= 0 && indices[i] >= range.first) {
           target_indices[i] += range.second;
