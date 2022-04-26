@@ -21,6 +21,12 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+// Constructs the default graph/function-level TFG pass pipeline.
+void DefaultGrapplerPipeline(PassManager& mgr);
+
+// Constructs the default module-level TFG pass pipeline.
+void DefaultModuleGrapplerPipeline(PassManager& mgr);
+
 // Add a remapper pass to the given pass manager.
 void RemapperPassBuilder(PassManager& mgr);
 

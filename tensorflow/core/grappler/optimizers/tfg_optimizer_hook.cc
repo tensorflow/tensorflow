@@ -41,32 +41,12 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
-#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
-#include "tensorflow/core/transforms/functional_to_region/pass.h"
-#include "tensorflow/core/transforms/pass_registration.h"
-#include "tensorflow/core/transforms/region_to_functional/pass.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
 namespace mlir {
 namespace tfg {
-
-// The default pipeline is empty.
-void DefaultGrapplerPipeline(PassManager& mgr) {}
-
-// Run the consolidate attributes pass. Convert the whole module to region
-// control-flow and run control-flow sinking. Convert the whole module back to
-// functional control-flow and prepare the attributes for export.
-void DefaultModuleGrapplerPipeline(PassManager& mgr) {
-  mgr.addPass(CreateConsolidateAttributesPass());
-  mgr.addPass(CreateFunctionalToRegionPass());
-  // TODO(b/228618345): Enable control-flow sinking.
-  // mgr.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
-  mgr.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
-  mgr.addPass(CreatePrepareAttributesForExportPass());
-}
 
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.
