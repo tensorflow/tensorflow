@@ -1196,10 +1196,10 @@ Status Converter::BuildCudaEngine(
       trt_builder_->createBuilderConfig());
   builder_config->setMaxWorkspaceSize(max_workspace_size_bytes);
 
-  // Create the algorithm selector. For TensorRT 7.1, the algorithm selector
+  // Create the algorithm selector. For TensorRT 7.x, the algorithm selector
   // cannot be used when building with INT8 calibration.
   std::unique_ptr<nvinfer1::IAlgorithmSelector> trt_algorithm_selector{nullptr};
-  if (!IS_TRT_VERSION_GE(7, 2, 0, 0)) {
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
     if (!use_calibration_ || precision_mode_ != TrtPrecisionMode::INT8) {
       trt_algorithm_selector = MaybeCreateAlgorithmSelector();
     }
@@ -1234,15 +1234,13 @@ Status Converter::BuildCudaEngine(
                                  "INT8 and FP32 tactics.";
     }
     builder_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    if (use_calibration_) {
-      builder_config->setInt8Calibrator(calibrator);
-    } else {
-      builder_config->setInt8Calibrator(nullptr);
-    }
   }
   if (!use_implicit_batch_ && profiles) {
     TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
         trt_builder_.get(), builder_config.get(), network()));
+  }
+  if (precision_mode_ == TrtPrecisionMode::INT8) {
+    builder_config->setInt8Calibrator(use_calibration_ ? calibrator : nullptr);
   }
 
   string precision_mode_str;
