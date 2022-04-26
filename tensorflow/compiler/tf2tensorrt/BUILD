@@ -679,6 +679,7 @@ tf_cuda_library(
         "convert/ops/slice_ops.cc",
         "convert/ops/tile.cc",
         "convert/ops/unary_ops.cc",
+        "convert/timing_cache.cc",
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
@@ -687,6 +688,7 @@ tf_cuda_library(
         "convert/ops/layer_utils.h",
         "convert/ops/quantization_ops.h",
         "convert/ops/slice_ops.h",
+        "convert/timing_cache.h",
         "convert/trt_optimization_pass.h",
     ],
     copts = tf_copts() + select({
