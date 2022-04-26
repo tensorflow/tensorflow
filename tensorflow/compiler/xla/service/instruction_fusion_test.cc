@@ -617,6 +617,33 @@ TEST_F(InstructionFusionTest,
   EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, InPlaceOpShouldNotBeFusedIfItSharesOperand) {
+  // Test case for b/223896048. In-place operations that have an additional
+  // operand that has the same value as the in-place buffer should not be fused.
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  update_s32 {
+    lhs = s32[] parameter(0)
+    ROOT rhs = s32[] parameter(1)
+  }
+
+  ENTRY main {
+    arg0 = s32[9] parameter(0)
+    iota = s32[9] iota(), iota_dimension=0
+    indices = s32[9] reverse(iota), dimensions={0}
+    ROOT scatter = s32[9] scatter(arg0, indices, arg0), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+  }
+  )")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Scatter());
+}
+
 TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module

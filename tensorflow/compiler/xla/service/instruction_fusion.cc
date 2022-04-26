@@ -898,20 +898,27 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   // operand as an in-place operand of the consumer. The consumer will modify
   // the buffer in-place, which will cause producer's operand to change if we
   // allow them to fuse.
-  if (producer->IsElementwise()) {
-    return {};
-  }
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs =
           HloDataflowAnalysis::GetInPlaceInputOutputPairs(
               const_cast<HloInstruction*>(consumer));
   for (auto& pair : in_place_input_output_pairs) {
-    VLOG(4) << "in/out pair: " << pair.first.operand_number << " "
+    int operand_number = pair.first.operand_number;
+    VLOG(4) << "in/out pair: " << operand_number << " "
             << pair.first.operand_index.ToString() << " "
             << pair.second.ToString();
-    if (absl::c_find(producer->operands(),
-                     consumer->operand(pair.first.operand_number)) !=
-        producer->operands().end()) {
+    // Check if the consumer also has an additional operand that has the same
+    // value as the in-place buffer. If so, it's unsafe to fuse.
+    for (int i = 0; i < consumer->operand_count(); ++i) {
+      if (i != operand_number &&
+          consumer->operand(operand_number) == consumer->operand(i)) {
+        return "The consumer is an in-place operation that has an additional "
+               "operand that has the same value as the in-place buffer";
+      }
+    }
+    if (!producer->IsElementwise() &&
+        absl::c_find(producer->operands(), consumer->operand(operand_number)) !=
+            producer->operands().end()) {
       VLOG(4) << "Found non-elementwise operand that uses the same operand of "
                  "an in-place consumer";
       auto get_real_operand = [](const HloInstruction* op,
