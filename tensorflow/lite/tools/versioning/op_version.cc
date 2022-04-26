@@ -796,6 +796,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_REDUCE_PROD:
+    case BuiltinOperator_ROUND:
       if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
           op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 2;
