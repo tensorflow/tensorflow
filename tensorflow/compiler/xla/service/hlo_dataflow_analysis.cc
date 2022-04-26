@@ -1716,6 +1716,16 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     const HloInstruction* instruction) {
   if (IsInPlaceOperation(instruction->opcode())) {
+    const HloScatterInstruction* scatter =
+        DynCast<HloScatterInstruction>(instruction);
+    if (scatter && scatter->scatter_operand_count() > 1) {
+      std::vector<std::pair<HloOperandIndex, ShapeIndex>> pairs;
+      pairs.reserve(scatter->scatter_operand_count());
+      for (int i = 0, n = scatter->scatter_operand_count(); i < n; ++i) {
+        pairs.emplace_back(HloOperandIndex{i, {}}, ShapeIndex{i});
+      }
+      return pairs;
+    }
     return {{HloOperandIndex{0, {}}, {}}};
   } else if (instruction->opcode() == HloOpcode::kCollectivePermute &&
              instruction->operands().size() == 4) {
