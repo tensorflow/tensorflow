@@ -1759,7 +1759,7 @@ class ResourceVariable(BaseResourceVariable):
         initial_value, "graph") and initial_value.graph.building_function:
       raise ValueError(f"Argument `initial_value` ({initial_value}) could not "
                        "be lifted out of a `tf.function`. "
-                       "(Tried to create variable with name='{name}'). "
+                       f"(Tried to create variable with name='{name}'). "
                        "To avoid this error, when constructing `tf.Variable`s "
                        "inside of `tf.function` you can create the "
                        "`initial_value` tensor in a "
