@@ -54,8 +54,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
+
+#if GOOGLE_CUDA
 #include "tensorflow/stream_executor/matmul_util.h"
 #endif  // GOOGLE_CUDA
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
