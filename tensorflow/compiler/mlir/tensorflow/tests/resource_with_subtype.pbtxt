@@ -1,0 +1,16 @@
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  input: "input0"
+  input: "input1"
+  input: "input2"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
