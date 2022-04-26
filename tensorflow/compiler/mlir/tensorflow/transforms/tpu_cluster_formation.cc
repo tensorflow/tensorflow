@@ -283,9 +283,8 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
         // might have runtime impact for existing models.
         // We should make this message an error once there is such a contract
         // and once existing cases have been fixed.
-        VLOG(1) << "Invalid TPU cluster structure. Following op is both a "
-                   "predecessor and a successor of a cluster: "
-                << mlir::debugString(op);
+        op.emitWarning()
+            << "op has cyclic dependency with a compilation cluster";
       } else {
         cluster_successor_ops.insert(&op);
       }

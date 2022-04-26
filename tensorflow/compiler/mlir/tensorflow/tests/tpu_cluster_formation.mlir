@@ -769,6 +769,53 @@ func.func @mixed_replicated_non_replicated_ops() {
 
 // -----
 
+func.func @cyclic_control_dependency_no_replication() {
+  "tf.opA"() {_xla_compile_device_type = "CPU"} : () -> ()
+  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  "tf.opB"() : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "CPU"} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_data_dependency_no_replication() {
+  %0 = "tf.opA"() {_xla_compile_device_type = "GPU", is_stateless = true} : () -> (tensor<i32>)
+  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-error@+1 {{operand #0 does not dominate this use}}
+  %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  // expected-note@+1 {{operand defined here (op in the same block)}}
+  "tf.opC"(%1) {_xla_compile_device_type = "GPU", is_stateless = true} : (tensor<i32>) -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_control_dependency_replication() {
+  "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  "tf.opB"() : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+
+// -----
+
+func.func @cyclic_data_dependency_replication() {
+  %0 = "tf.opA"() {_xla_compile_device_type = "TPU", is_stateless = true} : () -> (tensor<i32>)
+  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-error@+1 {{operand #0 does not dominate this use}}
+  %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  // expected-note@+1 {{operand defined here (op in the same block)}}
+  "tf.opC"(%1) {_xla_compile_device_type = "TPU", is_stateless = true} : (tensor<i32>) -> ()
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+// -----
+
 // expected-warning@+1 {{TPUReplicateMetadata for associated '_replication_info' attribute 'cluster' is missing}}
 func.func @missing_metadata() {
   "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
