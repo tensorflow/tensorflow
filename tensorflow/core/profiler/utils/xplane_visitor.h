@@ -178,6 +178,9 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   int64_t EndOffsetPs() const {
     return event_->offset_ps() + event_->duration_ps();
   }
+
+  int64_t EndTimestampNs() const { return TimestampNs() + DurationNs(); }
+
   int64_t EndTimestampPs() const { return TimestampPs() + DurationPs(); }
 
   int64_t NumOccurrences() const { return event_->num_occurrences(); }
