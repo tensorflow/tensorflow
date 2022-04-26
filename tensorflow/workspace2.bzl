@@ -854,10 +854,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "coremltools",
-        sha256 = "0d594a714e8a5fd5bd740ad112ef59155c0482e25fdc8f8efa5758f90abdcf1e",
-        strip_prefix = "coremltools-3.3",
+        sha256 = "89bb0bd2c16e19932670838dd5a8b239cd5c0a42338c72239d2446168c467a08",
+        strip_prefix = "coremltools-5.2",
         build_file = "//third_party:coremltools.BUILD",
-        urls = tf_mirror_urls("https://github.com/apple/coremltools/archive/3.3.zip"),
+        urls = tf_mirror_urls("https://github.com/apple/coremltools/archive/5.2.tar.gz"),
     )
 
 def workspace():
