@@ -195,7 +195,7 @@ H AbslHashValue(H h, const CallSignature& s) {
     } catch (const py::error_already_set& e) {
       if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(
-          "Non-hashable static arguments are not supported. An error occured "
+          "Non-hashable static arguments are not supported. An error occurred "
           "during a call to '",
           s.function_name, "' while trying to hash an object of type ",
           py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
@@ -314,7 +314,7 @@ struct CacheEntry {
   //
   // The first thread (holding the GIL) will create the CacheEntry associated to
   // a signature and fill it. Other threads will wait for the notification.
-  // If an error occured during the compilation, `fall_back_to_python` is set
+  // If an error occurred during the compilation, `fall_back_to_python` is set
   // to `true`, and other threads will fail with the same error.
   absl::Notification compilation_complete;
 
@@ -929,7 +929,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     }
   }
   // It's hard to reraise the exact same kind of errors when a compilation error
-  // occured. If the first compilation failed, other threads will also execute
+  // occurred. If the first compilation failed, other threads will also execute
   // the Python path.
   if (cache_entry->fall_back_to_python) {
     return py::object(
