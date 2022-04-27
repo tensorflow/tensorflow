@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -31,12 +35,14 @@ namespace {
 constexpr char kPortPlaceholder[] = "%port%";
 }
 
-GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol,
-                                       const std::string server_type)
+GrpcDataServerBase::GrpcDataServerBase(
+    int port, const std::string& protocol, const std::string server_type,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
     : requested_port_(port),
       protocol_(protocol),
       server_type_(server_type),
-      bound_port_(port) {}
+      bound_port_(port),
+      server_options_(std::move(options)) {}
 
 Status GrpcDataServerBase::Start() {
   if (stopped_) {
@@ -47,6 +53,11 @@ Status GrpcDataServerBase::Start() {
     return Status::OK();
   }
   ::grpc::ServerBuilder builder;
+  for (std::unique_ptr<::grpc::ServerBuilderOption>& option : server_options_) {
+    builder.SetOption(std::move(option));
+  }
+  server_options_.clear();
+
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateServerCredentials(protocol_, &credentials));
@@ -125,8 +136,10 @@ size_t DispatchGrpcDataServer::NumActiveJobs() {
 }
 
 WorkerGrpcDataServer::WorkerGrpcDataServer(
-    const experimental::WorkerConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer"),
+    const experimental::WorkerConfig& config,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
+    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer",
+                         std::move(options)),
       config_(config) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
