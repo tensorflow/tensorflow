@@ -661,9 +661,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_pprof",
         build_file = "//third_party:pprof.BUILD",
-        sha256 = "e0928ca4aa10ea1e0551e2d7ce4d1d7ea2d84b2abbdef082b0da84268791d0c4",
-        strip_prefix = "pprof-c0fb62ec88c411cc91194465e54db2632845b650",
-        urls = tf_mirror_urls("https://github.com/google/pprof/archive/c0fb62ec88c411cc91194465e54db2632845b650.tar.gz"),
+        sha256 = "b844b75c25cfe7ea34b832b369ab91234009b2dfe2ae1fcea53860c57253fe2e",
+        strip_prefix = "pprof-83db2b799d1f74c40857232cb5eb4c60379fe6c2",
+        urls = tf_mirror_urls("https://github.com/google/pprof/archive/83db2b799d1f74c40857232cb5eb4c60379fe6c2.tar.gz"),
     )
 
     # The CUDA 11 toolkit ships with CUB.  We should be able to delete this rule
