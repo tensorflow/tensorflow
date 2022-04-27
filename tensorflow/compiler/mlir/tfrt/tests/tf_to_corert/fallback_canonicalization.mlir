@@ -42,7 +42,7 @@ func.func @test_const_tensor_canonicalization_mixed_operands(%arg0: !corert.tens
   tfrt.return %ra, %rarg0, %rb, %rarg1 : !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor
 }
 
-// Tests that if the conversion op is partially canonicalizable, the non-canonicalizable operands are always seperated into individual conversion ops.
+// Tests that if the conversion op is partially canonicalizable, the non-canonicalizable operands are always separated into individual conversion ops.
 // CHECK-LABEL: func @test_const_tensor_canonicalization_mixed_operands_no_consolidation
 // CHECK-SAME: ([[arg0:%.*]]: !corert.tensorhandle, [[arg1:%.*]]: !corert.tensorhandle)
 func.func @test_const_tensor_canonicalization_mixed_operands_no_consolidation(%arg0: !corert.tensorhandle, %arg1: !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor) {

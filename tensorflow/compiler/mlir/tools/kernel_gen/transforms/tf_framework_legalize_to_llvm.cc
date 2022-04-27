@@ -322,7 +322,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
   LogicalResult matchAndRewrite(
       JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // The TF context must be known for a succesful lowering. Also, we support
+    // The TF context must be known for a successful lowering. Also, we support
     // only one result.
     if (adaptor.ctx() == nullptr || op.operands().empty() ||
         op.getNumResults() != 1)

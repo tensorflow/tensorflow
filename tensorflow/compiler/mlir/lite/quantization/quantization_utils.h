@@ -374,7 +374,7 @@ class QuantizationPattern : public RewritePattern {
       }
       DenseFPElementsAttr attr;
       if (matchPattern(quantize_operand, m_Constant(&attr))) {
-        // Const->Q pattern will be handled seperately.
+        // Const->Q pattern will be handled separately.
         return failure();
       }
       if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
