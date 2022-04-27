@@ -93,24 +93,6 @@ Status ParseInputArrayInfo(absl::string_view array_names,
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
-static Status ParseSubtypeShape(absl::string_view shape_str, std::vector<int> &dims) {
-  if (shape_str.empty()) {
-    return Status::OK();
-  }
-  for (const auto &dim_str : absl::StrSplit(shape_str, 'x')) {
-    int size;
-    if (dim_str == "?") {
-      dims.push_back(-1);
-    } else if (absl::SimpleAtoi(dim_str, &size)) {
-      dims.push_back(size);
-    } else {
-      return tensorflow::errors::InvalidArgument(
-          "Invalid Shape Specified ", dim_str);
-    }
-  }
-  return Status::OK();
-}
-
 StatusOr<std::vector<int>> ParseShapeStr(absl::string_view node_shapes_str) {
   std::vector<int> dims;
   for (const absl::string_view dim_str :
