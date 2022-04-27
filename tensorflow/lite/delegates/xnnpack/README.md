@@ -184,6 +184,10 @@ packed weights. If it can be found, we access the packed weights in the
 cache for subsequent operations, and the temporary buffer is freed. Otherwise,
 the packed weights is added to the cache.
 
+## Profiling
+When TfLite profiling is enabled, XNNPACK will time each operator and report the
+results to TfLite which will print them as part of the overall execution profile.
+
 ## Limitations and supported operators
 
 XNNPACK delegate is a work-in-progress, and currently supports a limited set of
