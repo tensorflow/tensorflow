@@ -730,7 +730,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
     // alpha_float = (alpha_q - alpha_zp) * alpha_scale
     //
     // When input_q - input_zp >= 0:
-    // ouput_q = (input_q - input_zp) * input_scale / output_scale + output_q
+    // output_q = (input_q - input_zp) * input_scale / output_scale + output_q
     // else:
     // output_q = (input_q - input_zp) * (alpha_q - alpha_zp) * input_scale
     //            * alpha_scale / output_scale + output_q
