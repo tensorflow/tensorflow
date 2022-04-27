@@ -3570,7 +3570,7 @@ This release introduces several vulnerability fixes:
 
 ## Breaking Changes
 
-*   The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
+*   The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to
     `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
 
 ## Bug Fixes and Other Changes
