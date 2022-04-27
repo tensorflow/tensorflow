@@ -926,6 +926,13 @@ Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
   return Status::OK();
 }
 
+Fprint128 GetDeviceCacheKey(EagerOperation* op, const EagerContext& ctx) {
+  Fprint128 device_cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
+  device_cache_key =
+      FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
+  return device_cache_key;
+}
+
 Status GetOrCreateKernelAndDevice(
     EagerOperation* op, TensorHandle** retvals, int* num_retvals,
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
@@ -935,7 +942,14 @@ Status GetOrCreateKernelAndDevice(
   // Set the EagerOperation's device prior to extracting the input_dev_ptrs to
   // avoid any redundant H2D/D2H copies.
   if (device == nullptr && !op->is_function()) {
-    TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
+    Fprint128 device_cache_key = GetDeviceCacheKey(op, ctx);
+    device = ctx.GetCachedDevice(device_cache_key);
+    if (device == nullptr) {
+      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
+      ctx.AddDeviceToCache(device_cache_key, device);
+    } else {
+      op->SetDevice(device);
+    }
   }
 
   // Save the original value of reuse_rendezvous_for_functions from the context.
