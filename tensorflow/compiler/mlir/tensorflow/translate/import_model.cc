@@ -4176,7 +4176,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
   options.allow_internal_ops = true;
   options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
-  
+
   GraphDef preprocessed_graphdef(graphdef);
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
