@@ -202,8 +202,8 @@ Status ParseInputArrayInfo(
 
     ArrayInfo& info = it_inserted_pair.first->second;
     // Splitting the type and subtype into parts
-    std::vector<std::string> parts = absl::StrSplit(type, absl::ByAnyChar("()")); // TODO make this better
-    /// If type has subtype, parts will have three members, part[0] = type, part[1] = subtype, part[2] = ""
+    std::vector<std::string> parts = absl::StrSplit(type, absl::ByAnyChar("()"));
+    /// If type has subtypes then part[0] = type, part[1] = subtypes, part[2] = ""
     if (parts.size() != 3 && parts.size() != 1) {
       return errors::InvalidArgument("Invalid type '", type, "'");
     } else if (parts.size() == 3) {
@@ -260,25 +260,39 @@ Status ParseNodeNames(absl::string_view names_str,
   return Status::OK();
 }
 
-std::vector<std::string> ParseDTypesHelper(absl::string_view data_types_str) {
+StatusOr<std::vector<std::string>> ParseDTypesHelper(absl::string_view data_types_str) {
   bool inside_subtype = false;
   int cur_pos = 0;
   std::vector<std::string> dtypes;
   for (auto it: llvm::enumerate(data_types_str)) {
     char c = it.value();
     int i = it.index();
+    // Skip parsing the subtypes of a type
     if (c == '(') {
+      if (inside_subtype) {
+        return errors::FailedPrecondition(
+          absl::StrCat("Syntax error in data types '", data_types_str, "'"));
+      }
       inside_subtype = true;
     } else if (c == ')') {
+      if (!inside_subtype) {
+        return errors::FailedPrecondition(
+          absl::StrCat("Syntax error in data types '", data_types_str, "'"));
+      }
       inside_subtype = false;
     }
     if (inside_subtype) continue;
     if (c == ',') {
       dtypes.push_back(std::string(data_types_str.substr(cur_pos, i)));
       cur_pos = i+1;
-    } else if (i == data_types_str.size()-1) {
-      dtypes.push_back(std::string(data_types_str.substr(cur_pos, i+1)));
     }
+  }
+  if (inside_subtype) {
+    return errors::FailedPrecondition(
+          absl::StrCat("Syntax error in data types '", data_types_str, "'"));
+  }
+  if (!data_types_str.empty()) {
+    dtypes.push_back(std::string(data_types_str.substr(cur_pos, data_types_str.size())));
   }
   return dtypes;
 }
@@ -287,7 +301,11 @@ Status ParseNodeDataTypes(absl::string_view data_types_str,
                           std::vector<std::string>& data_type_vector) {
   data_type_vector.clear();
   if (!data_types_str.empty()) {
-    data_type_vector = ParseDTypesHelper(data_types_str);
+    auto s = ParseDTypesHelper(data_types_str);
+    if (!s.ok()) {
+      return s.status();
+    }
+    data_type_vector = s.ValueOrDie();
   }
   return Status::OK();
 }
