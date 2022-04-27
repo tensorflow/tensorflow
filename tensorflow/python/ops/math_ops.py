@@ -1910,8 +1910,8 @@ def equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
-    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor`.
+    y: A `tf.Tensor`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1947,8 +1947,8 @@ def not_equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
-    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor`.
+    y: A `tf.Tensor`.
     name: A name for the operation (optional).
 
   Returns:
