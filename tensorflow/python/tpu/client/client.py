@@ -181,7 +181,7 @@ class Client(object):
       time_diff = _utcnow() - oom_datetime
       if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
         logging.warning(self._symptom_msg(
-            'a recent runtime OOM has occured ~{} seconds ago. The model '
+            'a recent runtime OOM has occurred ~{} seconds ago. The model '
             'script will terminate automatically. To prevent future OOM '
             'events, please consider reducing the model size. To disable this '
             'behavior, set flag --runtime_oom_exit=false when starting the '
@@ -202,7 +202,7 @@ class Client(object):
       time_diff = _utcnow() - oom_datetime
       if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
         logging.warning(self._symptom_msg(
-            'a recent HBM OOM has occured ~{} seconds ago. The model '
+            'a recent HBM OOM has occurred ~{} seconds ago. The model '
             'script will terminate automatically. To prevent future HBM OOM '
             'events, please consider reducing the model size. To disable this '
             'behavior, set flag --hbm_oom_exit=false when starting the '

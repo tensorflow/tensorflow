@@ -1263,7 +1263,7 @@ def _sum_states(idx, states):
       each label state.
 
   Returns:
-    tensor of shape [frames, batch_size, label_length], log probabilites summed
+    tensor of shape [frames, batch_size, label_length], log probabilities summed
       for each unique label of the sequence.
   """
 
@@ -1294,7 +1294,7 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     sequence_length: tensor of shape [batch_size]
 
   Returns:
-    forward backward log probabilites: tensor of shape [frames, batch, states]
+    forward backward log probabilities: tensor of shape [frames, batch, states]
     log_likelihood: tensor of shape [batch_size]
 
   Raises:

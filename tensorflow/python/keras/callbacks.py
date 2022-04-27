@@ -2355,7 +2355,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         of positive integers signify a range of batches to profile.
 
     Raises:
-      ValueError: If profile_batch is not an integer or a comma seperated pair
+      ValueError: If profile_batch is not an integer or a comma separated pair
                   of positive integers.
 
     """
