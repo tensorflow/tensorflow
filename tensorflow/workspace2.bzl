@@ -281,9 +281,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_googleapis",
         build_file = "//third_party/googleapis:googleapis.BUILD",
-        sha256 = "7ebab01b06c555f4b6514453dc3e1667f810ef91d1d4d2d3aa29bb9fcb40a900",
-        strip_prefix = "googleapis-541b1ded4abadcc38e8178680b0677f65594ea6f",
-        urls = tf_mirror_urls("https://github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip"),
+        sha256 = "249d83abc5d50bf372c35c49d77f900bff022b2c21eb73aa8da1458b6ac401fc",
+        strip_prefix = "googleapis-6b3fdcea8bc5398be4e7e9930c693f0ea09316a0",
+        urls = tf_mirror_urls("https://github.com/googleapis/googleapis/archive/6b3fdcea8bc5398be4e7e9930c693f0ea09316a0.tar.gz"),
     )
 
     tf_http_archive(
