@@ -394,7 +394,7 @@ Status TrtShapeOptimizationProfile::AddProfiles(
     return errors::Internal("Failure in adding an optimization profile.");
   }
   need_profiles_ = config->getNbOptimizationProfiles() > 0;
-  // Update the the mask that flag shape tensors. The network is known now,
+  // Update the mask that flag shape tensors. The network is known now,
   // the mask will be correct.
   SetShapeTensorMask(network);
   is_pruned_input_.resize(network->getNbInputs());

@@ -1561,7 +1561,7 @@ Status XlaCompiler::SetHostComputeControlDependency(
   if (host_compute_control_output_.find(host_compute_name) !=
       host_compute_control_output_.end()) {
     return errors::InvalidArgument(
-        "Duplicate control handles registered for for host compute Op ",
+        "Duplicate control handles registered for host compute Op ",
         host_compute_name);
   }
   host_compute_control_output_[host_compute_name] = handle;
