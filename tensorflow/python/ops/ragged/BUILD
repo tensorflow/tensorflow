@@ -543,6 +543,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:string_ops",
