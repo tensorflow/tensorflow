@@ -318,10 +318,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "six_archive",
         build_file = "//third_party:six.BUILD",
-        sha256 = "30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259",
-        strip_prefix = "six-1.15.0",
+        sha256 = "1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
+        strip_prefix = "six-1.16.0",
         system_build_file = "//third_party/systemlibs:six.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/source/s/six/six-1.15.0.tar.gz"),
+        urls = tf_mirror_urls("https://pypi.python.org/packages/source/s/six/six-1.16.0.tar.gz"),
     )
 
     tf_http_archive(
