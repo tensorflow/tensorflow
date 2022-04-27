@@ -46,7 +46,7 @@ void populateLmhloToTfrtGpuPasses(mlir::OpPassManager &pm) {
              tfrt::compiler::WhileOp>());
   pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
-  tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
+  tfrt::gpu::PopulateGpuToTfrtGpuPasses(pm);
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
