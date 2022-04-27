@@ -179,13 +179,15 @@ py_test(
     ],
     deps = [
         ":tf_upgrade_v2_lib",
+        "@six_archive//:six",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

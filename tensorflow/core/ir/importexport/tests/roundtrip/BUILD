@@ -47,6 +47,8 @@ tf_cc_binary(
         "//tensorflow/core:ops",  # Ops need to be registered for import.
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:graphdef_export",
+        "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/ir/importexport:import",
         "//tensorflow/core/ir/importexport:load_proto",
         "//tensorflow/core/transforms/consolidate_attrs:Pass",

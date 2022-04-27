@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   acceleration.
                        DESC
 
-  s.ios.deployment_target = '9.0'
+  s.ios.deployment_target = '11.0'
 
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true
@@ -26,7 +26,6 @@ Pod::Spec.new do |s|
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
-    'VALID_ARCHS' => 'x86_64 arm64',
     # TODO: Remove this after adding support for arm64 simulator.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
   }

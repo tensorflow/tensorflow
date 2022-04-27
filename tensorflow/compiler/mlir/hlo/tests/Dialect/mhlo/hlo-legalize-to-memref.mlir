@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -tensor-bufferize -hlo-legalize-to-memref -cse --split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt -hlo-legalize-to-memref -canonicalize -cse --split-input-file %s | FileCheck %s
 
 // CHECK: #[[MAP:.*]] = affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s0 + d1 * s1 + d2 * s2)>
 
@@ -15,10 +15,10 @@ func.func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-// CHECK: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
+// CHECK-DAG: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
 
-// CHECK: %[[OPER_DIM_1:.*]] = memref.dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
-// CHECK: %[[OPER_DIM_0:.*]] = memref.dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
+// CHECK: %[[OPER_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]] : tensor<?x?xf32>
+// CHECK: %[[OPER_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]] : tensor<?x?xf32>
 // CHECK: %[[EXPAND_1:.*]] = arith.cmpi slt, %[[OPER_DIM_0]], %[[C1]] : index
 // CHECK: %[[STRIDE_1:.*]] = arith.select %[[EXPAND_1]], %[[C0]], %[[OPER_DIM_1]] : index
 // CHECK: %[[EXPAND_2:.*]] = arith.cmpi slt, %[[OPER_DIM_1]], %[[C1]] : index
@@ -26,9 +26,10 @@ func.func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 
 // CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: [%[[C1]], %[[C1]], %[[C1]]], strides: [%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xf32> to memref<?x?x?xf32, #map>
 // CHECK: %[[ALLOC:.*]] = memref.alloc
-// CHECK: memref.copy %[[TRANSFORMED_MEMREF]], %[[ALLOC]] : memref<?x?x?xf32, #map> to memref<?x?x?xf32>
+// CHECK: %[[CASTED:.*]] = memref.cast %[[ALLOC]] : memref<1x1x1xf32> to memref<?x?x?xf32>
+// CHECK: memref.copy %[[TRANSFORMED_MEMREF]], %[[ALLOC]] : memref<?x?x?xf32, #map> to memref<1x1x1xf32>
 
-// CHECK: %[[RESULT:.*]] = bufferization.to_tensor %[[ALLOC]]
+// CHECK: %[[RESULT:.*]] = bufferization.to_tensor %[[CASTED]]
 
 // CHECK: return %[[RESULT]]
 
@@ -48,10 +49,10 @@ func.func @dyn_broadcast_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi6
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
 
-// CHECK: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
+// CHECK-DAG: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
 
-// CHECK: %[[OPER_DIM_1:.*]] = memref.dim %[[OPERAND]], %[[C1]] : memref<?x?xi32>
-// CHECK: %[[OPER_DIM_0:.*]] = memref.dim %[[OPERAND]], %[[C0]] : memref<?x?xi32>
+// CHECK: %[[OPER_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]] : tensor<?x?xi32>
+// CHECK: %[[OPER_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]] : tensor<?x?xi32>
 
 // CHECK: %[[EL0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<3xi64>
 // CHECK: %[[SIZE_0:.*]] = arith.index_cast %[[EL0]] : i64 to index
@@ -88,26 +89,6 @@ func.func @dyn_reshape_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>
 // CHECK-DAG: %[[BSHAPE:.*]] = bufferization.to_memref %[[SHAPE]]
 
 // CHECK: %[[RESHAPED:.*]] = memref.reshape %[[OPERAND]](%[[BSHAPE]]) : (memref<?x?xi32>, memref<3xi64>) -> memref<?x?x?xi32>
-// CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<?x?x?xi32>
-// CHECK: return %[[TRESULT]]
-
-// -----
-
-// CHECK-LABEL: func @dyn_reshape_of_extract_slice
-func.func @dyn_reshape_of_extract_slice(%operand: tensor<?xi32>, %shape: tensor<3xi64>, %offset: index) -> tensor<?x?x?xi32> {
-  // CHECK-SAME: %[[ARG:.*]]: tensor<?xi32>, %[[SHAPE:.*]]: tensor<3xi64>, %[[OFFSET:.*]]: index
-  %0 = tensor.extract_slice %operand[%offset][11][1] : tensor<?xi32> to tensor<11xi32>
-  %result = "mhlo.dynamic_reshape"(%0, %shape) : (tensor<11xi32>, tensor<3xi64>) -> tensor<?x?x?xi32>
-  func.return %result : tensor<?x?x?xi32>
-}
-
-// CHECK-DAG: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
-// CHECK-DAG: %[[BSHAPE:.*]] = bufferization.to_memref %[[SHAPE]]
-
-// CHECK: %[[SUBVIEW:.*]] = memref.subview %[[OPERAND]][%[[OFFSET]]] [11] [1]
-// CHECK: %[[ALLOC:.*]] = memref.alloc() {alignment = 128 : i64}
-// CHECK: memref.copy %[[SUBVIEW]], %[[ALLOC]]
-// CHECK: %[[RESHAPED:.*]] = memref.reshape %[[ALLOC]](%[[BSHAPE]]) : (memref<11xi32>, memref<3xi64>) -> memref<?x?x?xi32>
 // CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<?x?x?xi32>
 // CHECK: return %[[TRESULT]]
 

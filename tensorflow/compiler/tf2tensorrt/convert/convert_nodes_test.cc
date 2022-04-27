@@ -1900,6 +1900,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
                              const std::string& input_name,
                              const std::vector<T>& input_values,
                              const std::string& op_name) {
+
     // Input is weights, should fail.
     Reset();
     std::string error =
@@ -2013,7 +2014,7 @@ typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_INT32_Test;
 typedef ParameterizedOpConverterTestBase OpConverter_INT32_Test;
 // Base class for Unary tests that need to be tested
 typedef OpConverter_UnaryTest<float> OpConverter_FP32_UnaryTest;
-typedef OpConverter_UnaryTest<bool> OpConverter_BOOL_Test;
+typedef OpConverter_UnaryTest<int> OpConverter_BOOL_Test;
 
 // Instantiate parameter combinations to OpConverter_<DT_X...>_Test
 INSTANTIATE_TEST_CASE_P(
@@ -7077,19 +7078,22 @@ TEST_P(OpConverter_FP32_UnaryTest, ConvertUnary) {
 }
 
 TEST_P(OpConverter_BOOL_Test, ConvertBoolean) {
-  std::vector<bool> input_values{1, 0, 1, 0, 0, 1};
+  std::vector<int> input_values{1, 0, 1, 0, 0, 1};
   using OpFunc = std::function<NodeDef(DataType)>;
 
-  using ValFunc = bool (*)(bool);
+  using ValFunc = int (*)(int);
   std::map<std::string, std::pair<OpFunc, ValFunc>> op_map;
 #define ADD_OP(name, op, compute) \
   op_map[name] =                  \
       std::make_pair(CreateUnaryOp<op>, static_cast<ValFunc>(compute))
-  ADD_OP("LogicalNot", ops::LogicalNot, [](bool x) { return (bool)(1 - x); });
+  ADD_OP("LogicalNot", ops::LogicalNot, [](int x) { return 1 - x; });
 #undef ADD_OP
 
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  // The test does not actually run for TPT versions less than 8.2
   RunTests("LogicalUnary", *UnaryBooleanOperationMap(), op_map, input_values,
            "x");
+#endif
 }
 
 // Get the NodeDef for ConcatV2.

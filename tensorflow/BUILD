@@ -7,9 +7,9 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
-    "get_cc_shared_library_target_name",
     "if_google",
     "if_oss",
+    "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
     "tf_native_cc_binary",
 )
@@ -1066,12 +1066,8 @@ cc_import(
 # an "-exported_symbols_list" command.  -z defs disallows undefined
 # symbols in object files.
 
-tf_cc_shared_library(
+tf_cc_shared_object(
     name = "tensorflow",
-    additional_linker_inputs = [
-        "//tensorflow/c:exported_symbols.lds",
-        "//tensorflow/c:version_script.lds",
-    ],
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
@@ -1096,14 +1092,18 @@ tf_cc_shared_library(
     }),
     per_os_targets = True,
     soversion = VERSION,
-    static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
     # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
-    win_def_file = ":tensorflow_filtered_def_file",
+    win_def_file = select({
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        "//conditions:default": None,
+    }),
     # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:exported_symbols.lds",
+        "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
@@ -1119,8 +1119,7 @@ tf_cc_shared_library(
         "//tensorflow:tf_version_script.lds",
     ],
     dynamic_deps = [
-        # TODO(b/229550590): Replace the following target name with libtensorflow_framework.so.2.
-        get_cc_shared_library_target_name("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
+        "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
     ],
     framework_so = [],
     linkopts = select({

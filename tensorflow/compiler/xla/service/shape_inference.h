@@ -350,8 +350,8 @@ class ShapeInference {
   // shape, and scatter dimension numbers that constitute a scatter operation,
   // and returns the result shape of the scatter operation.
   static StatusOr<Shape> InferScatterShape(
-      const Shape& operand_shape, const Shape& scatter_indices_shape,
-      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      absl::Span<const Shape* const> arg_shapes,
+      const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
   // Helper that validates the given input shape to GetDimensionSize.

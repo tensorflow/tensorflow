@@ -46,7 +46,6 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/util/env_var.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -249,6 +248,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 };
 
 // Extern template instantiated in conv_ops.cc.
+extern template struct LaunchConv2DOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DOp<CPUDevice, float>;
 extern template struct LaunchConv2DOp<CPUDevice, double>;
@@ -264,17 +264,6 @@ extern template struct LaunchConv2DOp<GPUDevice, double>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
-
-bool DisableDepthwiseConvDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_DEPTHWISE_CONV_DETERMINISM_EXCEPTIONS",
-        /*default_val*/ false, &disable));
-    return disable;
-  }();
-  return cached_disable;
-}
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -507,6 +496,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DepthwiseConv2dNativeOp<CPUDevice, T>)
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)

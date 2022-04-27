@@ -134,22 +134,6 @@ bool IsNotContainedInLoop(const HloInstruction& while_hlo,
   return true;
 }
 
-int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
-                                 const CallGraph& call_graph,
-                                 const int default_loop_count,
-                                 const int max_outer_loop_count,
-                                 const int max_loop_count) {
-  int loop_bound = GetLoopBound(while_hlo, default_loop_count, max_loop_count);
-  if (loop_bound > max_outer_loop_count) {
-    // First does the inexpensive loop bound check to avoid as many
-    // expensive graph traversals in IsNotContainedInLoop as possible.
-    if (IsNotContainedInLoop(while_hlo, call_graph)) {
-      return max_outer_loop_count;
-    }
-  }
-  return loop_bound;
-}
-
 }  // namespace
 
 int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
@@ -175,6 +159,22 @@ int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
     }
   }
   return default_loop_count;
+}
+
+int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
+                                 const CallGraph& call_graph,
+                                 const int default_loop_count,
+                                 const int max_outer_loop_count,
+                                 const int max_loop_count) {
+  int loop_bound = GetLoopBound(while_hlo, default_loop_count, max_loop_count);
+  if (loop_bound > max_outer_loop_count) {
+    // First does the inexpensive loop bound check to avoid as many
+    // expensive graph traversals in IsNotContainedInLoop as possible.
+    if (IsNotContainedInLoop(while_hlo, call_graph)) {
+      return max_outer_loop_count;
+    }
+  }
+  return loop_bound;
 }
 
 Status HloControlFlowFlattening::FlattenWhileLoop(

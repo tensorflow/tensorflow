@@ -1053,6 +1053,14 @@ class HloInstruction {
       absl::Span<const int64_t> slice_sizes, bool indices_are_sorted);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloInstruction* scatter_indices,
+      absl::Span<HloInstruction* const> updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted, bool unique_indices);
+
+  static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
@@ -1333,6 +1341,13 @@ class HloInstruction {
 
   // Same as ReplaceUseWith(), but new_producer can have a different shape.
   Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
+  // Same as ReplaceUseWith but only replaces the use at the given operand
+  // number.
+  Status ReplaceUseWith(HloInstruction* user, int operand_number,
+                        HloInstruction* new_producer);
+  Status ReplaceUseWithDifferentShape(HloInstruction* user, int operand_number,
                                       HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand. The old and new operands

@@ -77,14 +77,6 @@ tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
     const tensorflow::FullTypeDef& full_type, Builder& builder,
     TFGraphDialect* tfgDialect);
 
-// Certain load-bearing TF attributes are promoted to TFG attributes by dropping
-// the underscore and adding a `tfg.` prefix. This is so that transformations
-// are made aware that these are attributes that must be handled with care.
-StringRef PromoteToTFGAttribute(StringRef tf_attr_name);
-// Prepare promoted TFG attributes for export by converting them back to their
-// original names.
-StringRef PrepareTFGAttributeForExport(StringRef tfg_attr_name);
-
 }  // namespace tfg
 }  // namespace mlir
 

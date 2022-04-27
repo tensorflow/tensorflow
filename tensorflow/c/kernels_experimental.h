@@ -54,9 +54,15 @@ typedef struct TF_VariableInputLockHolder TF_VariableInputLockHolder;
 // the input and value tensors. It also accepts the copy callback provided by
 // pluggable vendor to do the copying of the tensors. The caller takes ownership
 // of the `source` and `dest` tensors and is responsible for freeing them with
-// TF_DeleteTensor.
+// TF_DeleteTensor. This function will return an error when the following
+// conditions are met:
+//   1. `validate_shape` is set to `true`
+//   2. The variable is initialized
+//   3. The shape of the value tensor doesn't match the shape of the variable
+//      tensor.
 TF_CAPI_EXPORT extern void TF_AssignVariable(
     TF_OpKernelContext* ctx, int input_index, int value_index,
+    bool validate_shape,
     void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
                      TF_Tensor* dest),
     TF_Status* status);

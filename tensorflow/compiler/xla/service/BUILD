@@ -2027,9 +2027,9 @@ cc_library(
     srcs = ["scatter_expander.cc"],
     hdrs = ["scatter_expander.h"],
     deps = [
+        ":call_inliner",
         ":hlo",
         ":hlo_creation_utils",
-        ":hlo_pass",
         ":op_expander_pass",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -4349,6 +4349,7 @@ cc_library(
         "//tensorflow/core/lib/math:math_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings",
     ],
 )
 

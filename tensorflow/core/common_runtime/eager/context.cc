@@ -164,7 +164,7 @@ EagerContext::EagerContext(
       num_active_steps_(0),
       step_container_(std::make_unique<ScopedStepContainer>(
           0, [this](const string& name) { ClearResourceContainer(name); })),
-      default_executor_(async),
+      default_executor_(async, /*enable_streaming_enqueue=*/true),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       collective_executor_mgr_(collective_executor_mgr, /*owned=*/false),
@@ -850,6 +850,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, request.get(), response,
         [request, response](const Status& status) {
           if (!status.ok()) {
@@ -894,6 +895,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     for (int i = 0; i < requests.size(); i++) {
       auto response = std::make_shared<eager::EnqueueResponse>();
       eager_client->StreamingEnqueueAsync(
+          this->Executor().StreamingEnqueue(),
           /*call_opts=*/nullptr, requests[i].get(), response.get(),
           [request = requests[i], response](const Status& s) {
             if (!s.ok()) {
@@ -1031,6 +1033,7 @@ Status EagerContext::SyncExecutors() {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, &request, response,
         [response, target, &counter, &s = statuses[i]](const Status& status) {
           s = status;

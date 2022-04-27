@@ -841,6 +841,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:ArithmeticDialect",
     ],
 )
 
@@ -1662,6 +1663,7 @@ cc_library(
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:bef",
+            "@tf_runtime//backends/gpu:gpu_executor",
         ],
         "//conditions:default": [],
     }),
@@ -1855,6 +1857,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
         "@com_google_absl//absl/algorithm:container",
@@ -2551,6 +2554,7 @@ test_suite(
 test_suite(
     name = "bef_executable_tests",
     tests = [
+        "//tensorflow/compiler/tests:fft_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         "//tensorflow/compiler/xla/service/gpu/tests:add_preds.hlo.test",
@@ -2698,6 +2702,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:convolution_test_gpu_alternative_layout_gpu",
         "//tensorflow/compiler/xla/tests:convolution_variants_test_gpu",
         "//tensorflow/compiler/xla/tests:grouped_convolution_test_gpu",
+        "//tensorflow/python/kernel_tests/signal:fft_ops_test_xla_gpu",
     ]),
 )
 

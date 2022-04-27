@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_INTERNAL_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_INTERNAL_H_
 
-namespace mlir {
+#include "tensorflow/lite/tools/verifier_internal.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.cpp.inc"
+namespace tflite_shims {
+namespace internal {
 
-}  // namespace mlir
+using ::tflite::internal::VerifyFlatBufferAndGetModel;  // NOLINT
+
+}  // namespace internal
+}  // namespace tflite_shims
+
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_INTERNAL_H_

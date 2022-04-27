@@ -131,29 +131,6 @@ module {
     func.return %3 : tensor<*xi8>
   }
 
-  // TODO(b/228774603) Introduce a new library for this function.
-  func.func @quantized_conv2d_with_bias_and_sigmoid_fn(%input : tensor<*xi8>,
-                         %filter : tensor<*xi8>, %bias : tensor<*xi32>,
-                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
-                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %0 = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
-                                %filter_scale, %filter_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_conv2d_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %1 = "tf.AddV2"(%0, %bias) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-    %scale_prod = "tf.Mul"(%input_scale, %filter_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %3 = "tf.Mul"(%2, %scale_prod) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %4 = "tf.Sigmoid"(%3) : (tensor<*xf32>) -> tensor<*xf32>
-    %5 = "tf.PartitionedCall"(%4, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@quantize_i8
-      } : (tensor<*xf32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    func.return %5 : tensor<*xi8>
-  }
-
   parameters[
     {"func_name": "conv2d", "act_func": "internal_no_activation_fn"},
     {"func_name": "conv2d_with_relu", "act_func": "internal_relu_fn"},

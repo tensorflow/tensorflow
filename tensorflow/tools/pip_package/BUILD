@@ -138,6 +138,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/linalg/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/kernel_tests/nn_ops:bias_op_base",
     "//tensorflow/python/kernel_tests/nn_ops:cudnn_deterministic_base",
+    "//tensorflow/python/kernel_tests/nn_ops:depthwise_conv_op_base",
     "//tensorflow/python/kernel_tests/nn_ops:xent_op_test_base",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",

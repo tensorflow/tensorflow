@@ -2463,6 +2463,66 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
       updates_param, {}, scatter, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, MultioutputScatterCanShare) {
+  const char* hlo_text = R"(
+    HloModule MultioutputScatter
+
+    update {
+      lhs0 = s32[] parameter(0)
+      lhs1 = f32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = f32[] parameter(3)
+      ROOT tuple = tuple(rhs0, rhs1)
+    }
+
+    ENTRY main {
+      operand0 = s32[3,3] parameter(0)
+      operand1 = f32[3,3] parameter(1)
+      indices = s32[2] parameter(2)
+      updates0 = s32[2,3] parameter(3)
+      updates1 = f32[2,3] parameter(4)
+      ROOT scatter = (s32[3,3], f32[3,3])
+      scatter(operand0, operand1, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto computation = module->entry_computation();
+  auto dataflow_analysis = RunAnalysis(*module);
+
+  HloInstruction* operand0_param = computation->parameter_instruction(0);
+  HloInstruction* operand1_param = computation->parameter_instruction(1);
+  HloInstruction* indices_param = computation->parameter_instruction(2);
+  HloInstruction* updates0_param = computation->parameter_instruction(3);
+  HloInstruction* updates1_param = computation->parameter_instruction(4);
+  HloInstruction* scatter = computation->root_instruction();
+
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand0_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand0_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand1_param, {}, scatter, {0}));
+  EXPECT_TRUE(dataflow_analysis->CanShareOperandBufferWithUser(
+      operand1_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates0_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates0_param, {}, scatter, {1}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates1_param, {}, scatter, {0}));
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(
+      updates1_param, {}, scatter, {1}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {
   const char* hlo_text = R"(
     HloModule TensorFlowTriangularSolve

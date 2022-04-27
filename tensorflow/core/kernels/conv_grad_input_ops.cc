@@ -30,6 +30,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 // To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropInputOp<CPUDevice, bfloat16>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;

@@ -527,7 +527,7 @@ class Layout(object):
 
   @staticmethod
   def from_string(layout_str: str) -> 'Layout':
-    """Parses layout string."""
+    """Creates an instance from a human-readable string."""
     layout_parts = layout_str.split(' ')
     if len(layout_parts) != 2:
       raise ValueError(
@@ -545,6 +545,7 @@ class Layout(object):
 
   @staticmethod
   def from_str(layout_str: bytes) -> 'Layout':
+    """Creates an instance from a serialized Protobuf binary string."""
     layout_proto = layout_pb2.LayoutProto()
     layout_proto.ParseFromString(layout_str)
     sharding_specs = [
@@ -608,15 +609,17 @@ class Layout(object):
     return layout_proto
 
   def mesh_proto(self) -> layout_pb2.MeshProto:
+    """Returns the underlying mesh in Protobuf format."""
     return self.mesh.as_proto()
 
   def is_fully_replicated(self) -> bool:
+    """Returns True if all tensor axes are replicated."""
     return all([self.num_shards(i) == 1 for i in range(self.rank)])
 
   # A layout with no sharding specs is acceptable, therefore we only check the
   # mesh.
   def to_string(self) -> str:
-    """Returns string representation of Layout."""
+    """Returns a human-readable string representation."""
     sharding_spec_str = 'sharding_specs:'
     # Add comma after each instruction.
     for spec in self.sharding_specs:
@@ -626,6 +629,7 @@ class Layout(object):
     return sharding_spec_str + ' ' + mesh_str
 
   def serialized_string(self) -> bytes:
+    """Returns a serialized Protobuf binary string representation."""
     return self.as_proto().SerializeToString()
 
   def __eq__(self, other) -> bool:

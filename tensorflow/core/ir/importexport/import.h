@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_IMPORT_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_IMPORT_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,6 +36,14 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+// Constructs the MLIR VersionAttr for the provided GraphDef.
+VersionAttr ConvertVersionAttr(MLIRContext* context,
+                               const tensorflow::VersionDef& version);
+
+// Returns true if the function is a generic function. I.e. it contains
+// placeholder attributes.
+bool IsGenericFunction(const tensorflow::FunctionDef& fdef);
 
 // Converts a Graph and function libs to a MLIR module containing the graph and
 // expressed in TFG dialect.

@@ -260,14 +260,13 @@ tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
 // used as scratchpad for the import inside this function. The `gradients` maps
 // is provided to
 Status ImportGenericFunction(
-    const FunctionDef& func,
+    GraphFuncOp func_op, const FunctionDef& func,
     llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>>& values_map,
     OpBuilder& builder) {
   const OpDef& signature = func.signature();
   Location unknown_loc = builder.getUnknownLoc();
   MLIRContext* context = builder.getContext();
 
-  auto func_op = builder.create<GraphFuncOp>(unknown_loc);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
@@ -517,9 +516,10 @@ Status ImportGenericFunction(
 
 }  // namespace
 
-Status ConvertGenericFunction(const FunctionDef& func, OpBuilder& builder) {
+Status ConvertGenericFunction(GraphFuncOp func_op, const FunctionDef& func,
+                              OpBuilder& builder) {
   llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>> values_map;
-  return ImportGenericFunction(func, values_map, builder);
+  return ImportGenericFunction(func_op, func, values_map, builder);
 }
 
 }  // namespace tfg

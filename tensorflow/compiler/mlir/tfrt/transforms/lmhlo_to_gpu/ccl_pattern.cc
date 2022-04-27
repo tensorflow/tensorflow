@@ -427,7 +427,7 @@ struct CclRewritePattern : tfrt::gpu::StreamifyOpConversionPattern<CclOpType> {
     auto context =
         rewriter.create<tfrt::gpu::StreamGetContextOp>(op.getLoc(), stream);
     auto handle = rewriter.create<xla::gpu::CclCreateOp>(
-        op.getLoc(), ValueRange{context}, attributes);
+        op.getLoc(), ValueRange{context, chain}, attributes);
 
     out_chain_or =
         CclOpConversionRewrite(op, chain, handle, config, mapping, rewriter);

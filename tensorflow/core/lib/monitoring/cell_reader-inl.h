@@ -72,6 +72,9 @@ template <>
 std::string GetValue(const Point& point);
 
 template <>
+bool GetValue(const Point& point);
+
+template <>
 Histogram GetValue(const Point& point);
 
 // Returns the latest value for `metric_name`, associated with the `labels`. If
@@ -106,6 +109,9 @@ int64_t GetDelta(const int64_t& a, const int64_t& b);
 
 template <>
 std::string GetDelta(const std::string& a, const std::string& b);
+
+template <>
+bool GetDelta(const bool& a, const bool& b);
 
 template <>
 Histogram GetDelta(const Histogram& a, const Histogram& b);

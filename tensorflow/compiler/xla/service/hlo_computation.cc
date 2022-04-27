@@ -76,9 +76,7 @@ HloComputation::HloComputation(
       fusion_instruction_(fusion_instruction),
       is_fusion_computation_(fusion_instruction != nullptr),
       custom_call_instruction_(nullptr),
-      is_custom_call_computation_(false),
-      async_instruction_(nullptr),
-      is_async_computation_(false) {
+      is_custom_call_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -104,6 +102,13 @@ HloComputation::~HloComputation() {
     CHECK(fusion_instruction_->fused_instructions_computation() == this);
     fusion_instruction_->ClearCalledComputations();
     fusion_instruction_ = nullptr;
+  }
+  if (IsAsyncComputation()) {
+    for (auto* async_instr : async_instructions_) {
+      CHECK(async_instr->async_wrapped_computation() == this);
+      async_instr->ClearCalledComputations();
+    }
+    async_instructions_.clear();
   }
 }
 

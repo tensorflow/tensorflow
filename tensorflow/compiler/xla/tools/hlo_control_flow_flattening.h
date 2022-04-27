@@ -98,6 +98,12 @@ class HloControlFlowFlattening : public HloModulePass {
 int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
                  const int max_loop_count = DefaultMaxGetLoopBound());
 
+// Retrieves the loop bound determined by the original loop bound, the max
+// outer loops count and max loop count.
+int GetLoopBoundWithOuterLoopMax(
+    const HloInstruction& while_hlo, const CallGraph& call_graph,
+    const int default_loop_count, const int max_outer_loop_count,
+    const int max_loop_count = DefaultMaxGetLoopBound());
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TOOLS_HLO_CONTROL_FLOW_FLATTENING_H_

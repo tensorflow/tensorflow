@@ -178,6 +178,7 @@ limitations under the License.
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
+#include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
@@ -291,10 +292,10 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
       HloModule::CreateFromProto(bef_executable_.hlo_module_proto(),
                                  hlo_module_config));
   auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
-  return GpuExecutable::LoadFromBef(std::move(hlo_module),
-                                    bef_executable_.bef(),
-                                    bef_executable_.entry_func_attrs(),
-                                    gpu_compiler->GetGpuVersion(executor));
+  return GpuExecutable::LoadFromBef(
+      std::move(hlo_module), bef_executable_.bef(),
+      bef_executable_.entry_func_attrs(), gpu_compiler->GetGpuVersion(executor),
+      executor);
 }
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
@@ -905,6 +906,7 @@ struct CompileModuleResults {
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
   absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
+  GpuExecutable::OwnedGpuContextCache gpu_ctx_cache;
   EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
@@ -922,7 +924,8 @@ static Status CompileModuleToLlvmIrImpl(
     se::CudaComputeCapability cuda_compute_capability,
     se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
-    int pointer_size, CompileModuleResults* results) {
+    int pointer_size, CompileModuleResults* results,
+    se::StreamExecutor* stream_exec = nullptr) {
   results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
@@ -1025,6 +1028,14 @@ static Status CompileModuleToLlvmIrImpl(
     TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
                         LowerToBef(*mlir_module, entry_function.getName(),
                                    buffer_sizes, hlo_module));
+    if (stream_exec) {
+      auto& bef_buffer = absl::get<OwnedBefBuffer>(results->thunks_or_bef);
+      llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
+                                        bef_buffer.get_deleter().size);
+      TF_ASSIGN_OR_RETURN(results->gpu_ctx_cache,
+                          GpuExecutable::CreatePreloadedGpuContextCache(
+                              bef_array, stream_exec));
+    }
     return Status::OK();
   }
 #endif  // XLA_ENABLE_XLIR
@@ -1280,7 +1291,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
       stream_exec->GetDeviceDescription().rocm_compute_capability(),
-      GetCanShareBuffer(), pointer_size_, &compile_module_results));
+      GetCanShareBuffer(), pointer_size_, &compile_module_results,
+      stream_exec));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1332,7 +1344,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
            std::move(compile_module_results.allocations),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-           std::move(module)}));
+           std::move(module),
+           std::move(compile_module_results.gpu_ctx_cache)}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);

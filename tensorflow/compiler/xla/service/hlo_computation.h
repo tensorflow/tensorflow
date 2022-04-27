@@ -543,14 +543,32 @@ class HloComputation {
   }
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const { return is_async_computation_; }
+  bool IsAsyncComputation() const { return !async_instructions_.empty(); }
 
-  // Returns the owning async instruction, or nullptr if this is not an async
+  // Returns the owning async instruction. It's empty if this is not an async
   // computation.
-  HloInstruction* AsyncInstruction() const { return async_instruction_; }
-  void SetAsyncInstruction(HloInstruction* async_instruction) {
-    async_instruction_ = async_instruction;
-    is_async_computation_ |= (async_instruction != nullptr);
+  const std::vector<HloInstruction*>& AsyncInstructions() const {
+    return async_instructions_;
+  }
+
+  std::vector<HloInstruction*>& AsyncInstructions() {
+    return async_instructions_;
+  }
+
+  void AddAsyncInstruction(HloInstruction* async_instruction) {
+    CHECK(async_instruction != nullptr)
+        << "Nullptr shouldn't be added as commputation's async instruction. ";
+    async_instructions_.push_back(async_instruction);
+  }
+
+  void RemoveAsyncInstruction(HloInstruction* async_instruction) {
+    if (async_instruction == nullptr) {
+      return;
+    }
+    async_instructions_.erase(
+        std::remove(async_instructions_.begin(), async_instructions_.end(),
+                    async_instruction),
+        async_instructions_.end());
   }
 
   // Returns if this computation is invoked by an Hlo instruction.
@@ -653,11 +671,9 @@ class HloComputation {
   bool is_custom_call_computation_;
 
   // If this computation is an async computation, this field points to the
-  // corresponding async instruction (if it is live). Otherwise, this is null.
-  HloInstruction* async_instruction_;
-
-  // Determines whether this computation is an async computation.
-  bool is_async_computation_;
+  // corresponding async instructions (if live) that call this computation.
+  // Otherwise, this is empty.
+  std::vector<HloInstruction*> async_instructions_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

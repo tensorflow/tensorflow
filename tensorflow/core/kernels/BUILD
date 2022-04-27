@@ -4136,15 +4136,15 @@ tf_kernel_library(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
-    ]) + if_cuda_or_rocm([":gpu_utils"]),
+    ]),
 )
 
 tf_kernel_library(
@@ -4161,6 +4161,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]),
@@ -6366,6 +6367,7 @@ filegroup(
         "scatter_functor.h",
         "scatter_nd_op.h",
         "scatter_nd_util.h",
+        "searchsorted_op.h",
         "segment_reduction_ops.h",
         "segment_reduction_ops_impl.h",
         "softplus_op.h",
@@ -6652,6 +6654,7 @@ filegroup(
         "scatter_nd_op_cpu_impl_6.cc",
         "scatter_nd_op_cpu_impl_7.cc",
         "scatter_nd_util.cc",
+        "searchsorted_op.cc",
         "segment_reduction_ops_impl_1.cc",
         "segment_reduction_ops_impl_2.cc",
         "segment_reduction_ops_impl_3.cc",

@@ -1775,7 +1775,8 @@ TEST_F(OpTest, AvgPool) {
 }
 
 TEST_F(OpTest, AvgPool3D) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     std::uniform_int_distribution<int> random_int(1, 5);
     std::vector<int64_t> dims = RandomDims(5, 5, 1);
@@ -1805,7 +1806,8 @@ TEST_F(OpTest, AvgPool3D) {
 }
 
 TEST_F(OpTest, AvgPoolGrad) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     int batch = RandomDim(1), features = RandomDim(1);
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
@@ -1826,7 +1828,8 @@ TEST_F(OpTest, AvgPoolGrad) {
 }
 
 TEST_F(OpTest, AvgPool3DGrad) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     int batch = RandomDim(1), features = RandomDim(1);
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
@@ -1878,7 +1881,8 @@ TEST_F(OpTest, BatchMatMulV2) {
 }
 
 TEST_F(OpTest, BatchToSpace) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     const int num_block_dims = 2;
     std::vector<int64_t> block_dims =
@@ -2315,7 +2319,8 @@ TEST_F(OpTest, IRFFT3D) {
 }
 
 TEST_F(OpTest, Conv2D) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2394,7 +2399,8 @@ TEST_F(OpTest, Conv2DBackpropInput) {
 }
 
 TEST_F(OpTest, Conv3D) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2417,7 +2423,8 @@ TEST_F(OpTest, Conv3D) {
 }
 
 TEST_F(OpTest, Conv3DBackpropFilter) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2444,7 +2451,8 @@ TEST_F(OpTest, Conv3DBackpropFilter) {
 }
 
 TEST_F(OpTest, Conv3DBackpropInput) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2512,7 +2520,8 @@ TEST_F(OpTest, DepthToSpace) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DNative) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2536,7 +2545,8 @@ TEST_F(OpTest, DepthwiseConv2DNative) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DNativeBackpropFilter) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -2564,7 +2574,8 @@ TEST_F(OpTest, DepthwiseConv2DNativeBackpropFilter) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -3287,7 +3298,8 @@ TEST_F(OpTest, MatrixDiagPart) {
 }
 
 TEST_F(OpTest, MatrixDiagPartV3) {
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto type = Choose<DataType>(kAllXlaTypes);
     auto align = Choose<std::string>(
@@ -3400,7 +3412,8 @@ TEST_F(OpTest, MaxPool) {
 }
 
 TEST_F(OpTest, MaxPool3D) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     std::uniform_int_distribution<int> random_int(1, 5);
     std::vector<int64_t> dims = RandomDims(5, 5, 1);
@@ -3905,7 +3918,8 @@ TEST_F(OpTest, Reverse) {
 }
 
 TEST_F(OpTest, ReverseSequence) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     std::vector<int64_t> dims = RandomDims(/*min_rank=*/2);
     auto type = Choose<DataType>(kAllXlaTypes);
@@ -4280,7 +4294,8 @@ TEST_F(OpTest, SpaceToDepth) {
 }
 
 TEST_F(OpTest, SparseMatMul) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     int64_t x = RandomDim();
     int64_t y = RandomDim();
@@ -4355,7 +4370,8 @@ TEST_F(OpTest, Split) {
 
 TEST_F(OpTest, SplitV) {
   // Likely this only fails when dim is negative. Try type = DT_FLOAT first.
-  GTEST_SKIP() << "b/201095155";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64_t> dims = RandomDims(1, kDefaultMaxRank, 1);
@@ -4515,7 +4531,8 @@ TEST_F(OpTest, StridedSlice) {
 }
 
 TEST_F(OpTest, StridedSliceGrad) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
 
@@ -4596,8 +4613,8 @@ TEST_F(OpTest, TanhGrad) {
 }
 
 TEST_F(OpTest, TensorScatterUpdate) {
-  GTEST_SKIP() << "b/201095155";
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto a = ChooseScatterArguments();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("TensorScatterUpdate")
@@ -4626,8 +4643,8 @@ TEST_F(OpTest, Tile) {
 }
 
 TEST_F(OpTest, TopKV2) {
-  GTEST_SKIP() << "b/201095155";
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
     auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_INT64});
     auto shape = RandomDims(1);
@@ -4655,7 +4672,8 @@ TEST_F(OpTest, Transpose) {
 }
 
 TEST_F(OpTest, TruncateDiv) {
-  GTEST_SKIP() << "b/197140886";
+  if (tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/201095155";
+  if (!tensorflow::tf_xla_test_use_mlir) GTEST_SKIP() << "b/197140886";
   Repeatedly([this]() {
     DataType type = DT_INT32;
     auto dims = BroadcastableDims();

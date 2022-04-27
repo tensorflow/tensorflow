@@ -1513,12 +1513,15 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
 }
 
 Status ShapeVerifier::HandleScatter(HloInstruction* scatter) {
-  return CheckShape(
-      scatter, ShapeInference::InferScatterShape(
-                   scatter->operand(0)->shape(), scatter->operand(1)->shape(),
-                   scatter->operand(2)->shape(),
-                   scatter->to_apply()->ComputeProgramShape(),
-                   scatter->scatter_dimension_numbers()));
+  absl::InlinedVector<const Shape*, 3> arg_shapes;
+  arg_shapes.reserve(scatter->operand_count());
+  for (const HloInstruction* operand : scatter->operands()) {
+    arg_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(scatter,
+                    ShapeInference::InferScatterShape(
+                        arg_shapes, scatter->to_apply()->ComputeProgramShape(),
+                        scatter->scatter_dimension_numbers()));
 }
 
 Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {

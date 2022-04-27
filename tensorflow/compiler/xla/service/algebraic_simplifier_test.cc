@@ -8225,6 +8225,40 @@ TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyOptimizationBarrier) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY entry {
+      param.0 = f32[] parameter(0)
+      param.1 = f32[] parameter(1)
+      add.0 = f32[] add(param.0, param.1)
+      sub.0 = f32[] subtract(param.0, param.1)
+      mul.0 = f32[] multiply(param.0, param.1)
+      tuple.0 = (f32[], f32[], f32[]) tuple(mul.0, sub.0, add.0)
+      b = (f32[], f32[], f32[]) opt-barrier(tuple.0)
+      gte.0 = f32[] get-tuple-element(b), index=1
+      ROOT  t = (f32[], f32[]) tuple(mul.0,gte.0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            3);
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            2);
+}
+
 TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
   // Verify the gte(tuple) folding does not happen if it loses sharding info.
   const char* kModuleStr = R"(

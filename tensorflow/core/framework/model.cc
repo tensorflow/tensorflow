@@ -1813,6 +1813,8 @@ Status Node::FromProtoHelper(ModelProto::Node node_proto,
     node->parameters_[parameter_proto.name()] =
         MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
                       parameter_proto.max());
+    node->parameters_[parameter_proto.name()]->value =
+        std::max(parameter_proto.min(), parameter_proto.value());
   }
   return Status::OK();
 }

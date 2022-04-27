@@ -19,6 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
 // clang-format on
 
 namespace mlir {

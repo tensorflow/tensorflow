@@ -119,11 +119,16 @@ void TFGraphDialect::initialize() {
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
-  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
-  control_ty_ = ControlType::get(getContext());
-  tfg_tpu_replicate_key_ =
-      StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
+  tfg_description_key_ =
+      StringAttr::get(getContext(), getTfgDescriptionAttrKey());
+  tfg_is_ref_key_ = StringAttr::get(getContext(), getTfgIsRefAttrKey());
+  tfg_handle_data_key_ =
+      StringAttr::get(getContext(), getTfgHandleDataAttrKey());
+  tfg_full_type_key_ = StringAttr::get(getContext(), getTfgFullTypeAttrKey());
+
+  control_ty_ = ControlType::get(getContext());
 }
 
 // Provides a hook for op interface.
@@ -1356,10 +1361,10 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<RankedTensorType>();
-  if (!index || index.getRank() != 0 ||
-      !index.getElementType().isSignlessInteger(32)) {
-    return emitOpError("expected first body block argument to be tensor<i32>");
+  auto index = args.front().getType().dyn_cast<TensorType>();
+  if (!index || !index.getElementType().isSignlessInteger(32)) {
+    return emitOpError(
+        "expected first body block argument to be an i32 tensor");
   }
 
   if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();

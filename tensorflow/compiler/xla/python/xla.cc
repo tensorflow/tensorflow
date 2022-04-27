@@ -247,6 +247,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
+      .def("get_emit_python_callback_descriptor",
+           &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
+           py::arg("operand_shapes"), py::arg("result_shapes") = absl::nullopt)
+      // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback", &PyClient::EmitPythonCallback,
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
            py::arg("result_shapes"), py::arg("operand_layouts") = absl::nullopt,

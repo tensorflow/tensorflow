@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -33,22 +34,19 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/transforms/pass_registration.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
 namespace mlir {
 namespace tfg {
-
-// The default pipeline is empty.
-void DefaultGrapplerPipeline(PassManager& mgr) {}
 
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.

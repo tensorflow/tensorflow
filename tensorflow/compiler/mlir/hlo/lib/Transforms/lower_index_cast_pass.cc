@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"

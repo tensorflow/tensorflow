@@ -54,6 +54,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",

@@ -105,6 +105,7 @@ class ConvertUnaryImpl {
     return Status::OK();
   }
 
+
   Status ConvertImpl(const OpConverterParams& params) {
     const auto& node_def = params.node_def;
     auto* converter = params.converter;
@@ -168,7 +169,14 @@ class ConvertBooleanUnary : public OpConverterBase<ConvertBooleanUnary>,
   }
 
   static constexpr const char* NodeDefDataTypeAttributeName() { return ""; }
-  Status Validate() { return ValidateImpl(*params_, {"LogicalNot"}); }
+  Status Validate() {
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    return ImplValidate(*params_, {"LogicalNot"});
+#else
+    return errors::Unimplemented("Boolean op: ", params_->node_def.op(),
+                                 " is not supported in TRT version < 8.2");
+#endif
+  }
   Status Convert() { return ConvertImpl(*params_); }
 };
 
@@ -234,9 +242,9 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertUnary>(),
 REGISTER_DEFAULT_TRT_OP_CONVERTER(
     MakeConverterFunction<ConvertBooleanUnary>(),
     GetOperationNames(*UnaryBooleanOperationMap()));
+
 REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertActivation>(),
                                   GetOperationNames(*ActivationTypeMap()));
-
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

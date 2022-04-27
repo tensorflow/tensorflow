@@ -692,13 +692,20 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "tfg_optimizer_hook",
-    srcs = ["tfg_optimizer_hook.cc"],
-    hdrs = ["tfg_optimizer_hook.h"],
+    srcs = [
+        "tfg_optimizer_hook.cc",
+        "tfg_passes_builder.cc",
+    ],
+    hdrs = [
+        "tfg_optimizer_hook.h",
+        "tfg_passes_builder.h",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":graph_optimizer",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/ir:Dialect",

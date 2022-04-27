@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <limits>
+#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
@@ -212,6 +216,18 @@ Status InsertInstructionAndEnsureOperandsInserted(
   new_sequence->push_back(new_instruction);
   TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
   return Status::OK();
+}
+
+std::string UsesToString(const std::vector<HloUse>& uses) {
+  if (uses.empty()) {
+    return "none";
+  }
+  std::vector<std::string> uses_str;
+  uses_str.reserve(uses.size());
+  for (const auto& use : uses) {
+    uses_str.push_back(use.ToString());
+  }
+  return absl::StrJoin(uses_str, ",");
 }
 
 }  // namespace
@@ -3641,7 +3657,9 @@ std::string MemorySpaceAssignment::Allocation::ToString() const {
   }
   return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
                       "Allocation in ", memory_space_str, " defined at ",
-                      defining_position_.ToString());
+                      defining_position_.ToString(),
+                      ", start_time:", start_time(), ", end_time:", end_time(),
+                      ", uses: ", UsesToString(uses()));
 }
 
 std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
@@ -3649,7 +3667,11 @@ std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
   if (memory_space_ == MemorySpace::kAlternate) {
     memory_space_str = absl::StrCat("alt (off: ", chunk_->offset, ")");
   }
-  return absl::StrCat("Copy Allocation in ", memory_space_str, " from ",
+  return absl::StrCat("Copy Allocation in ", memory_space_str,
+                      ", start_time:", start_time(), ", end_time:", end_time(),
+                      ", copy_start_after_time: ", copy_start_schedule_after(),
+                      ", copy_done_before_time: ", copy_done_schedule_before(),
+                      ", uses: ", UsesToString(uses()), ", from ",
                       prev_allocation_.ToString());
 }
 
@@ -3675,7 +3697,7 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
   VLOG(4) << "Created " << copy_start_->name()
-          << " for position: " << defining_position().ToString();
+          << " for copy allocation: " << ToString();
   // Update the allocation position with the copy done instruction so that if
   // there are further copies from it, it can find the correct position.
   defining_position_ = HloPosition{copy_done_, {}};

@@ -928,6 +928,9 @@ class PjRtExecutable {
   //     execute has completed.
   //   else:
   //     *returned_futures is undefined.
+  //
+  // The caller is *NOT* required to ensure that PjRtExecutable stays alive
+  // until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
