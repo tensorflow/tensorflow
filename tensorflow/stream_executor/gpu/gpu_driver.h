@@ -473,7 +473,7 @@ class GpuDriver {
   // (supported on ROCm only)
   static port::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);
 
-  // Return the full GCN Architecture Name for the the device
+  // Return the full GCN Architecture Name for the device
   // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
   // (supported on ROCm only)
   static port::Status GetGpuGCNArchName(GpuDeviceHandle device,
