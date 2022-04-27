@@ -113,10 +113,6 @@ def reduce_non_distributed_value(reduce_op,
 
 def _make_tensor_into_per_replica(input_tensor):
   """Converts a single tensor into a PerReplica object."""
-  if isinstance(input_tensor, (tuple, list)):
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object, "
-                     "got %r but expected a object that is not a tuple or list."
-                     % (input_tensor,))
   if isinstance(input_tensor, value_lib.DistributedValues):
     return input_tensor
 
