@@ -110,7 +110,7 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithInvalidDevice) {
 
 // Assigning and reading values should yield
 // consistent results.
-TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
+TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccessful) {
   auto& test_params = GetParam();
   DataType dtype = std::get<0>(test_params);
   std::vector<int64_t> shape_vector = std::get<1>(test_params);
