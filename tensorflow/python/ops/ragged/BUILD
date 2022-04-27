@@ -1449,6 +1449,8 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:extension_type",
         "@absl_py//absl/testing:parameterized",
     ],
 )
