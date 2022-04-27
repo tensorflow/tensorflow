@@ -620,7 +620,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
       OP_REQUIRES(context, in_sizes_data[i] >= 0,
                   errors::InvalidArgument("Dimension ", i,
                                           " of input_sizes must be >= 0"));
-      input_shape.AddDim(in_sizes_data[i]);
+      OP_REQUIRES_OK(context, input_shape.AddDimWithStatus(in_sizes_data[i]));
     }
     const TensorShape& filter_shape = filter.shape();
     EXTRACT_AND_VERIFY_DIMENSIONS("DepthwiseConv2DBackpropInput");
@@ -1117,7 +1117,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       OP_REQUIRES(context, filter_sizes_data[i] >= 0,
                   errors::InvalidArgument("Dimension ", i,
                                           " of filter_sizes must be >= 0"));
-      filter_shape.AddDim(filter_sizes_data[i]);
+      OP_REQUIRES_OK(context,
+                     filter_shape.AddDimWithStatus(filter_sizes_data[i]));
     }
     const TensorShape& input_shape = input.shape();
 
