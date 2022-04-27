@@ -161,6 +161,15 @@ def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def LHLO_ErfOp: LHLO_UnaryElementwiseOp<"erf", LHLO_FpBuffer> {
+  let summary = "Gauss error operator";
+  let description = [{
+    Returns `erf(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/api_docs/python/tf/math/erf.
+  }];
+}
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exponential", LHLO_FpOrComplexBuffer> {
   let summary = "Exponential operator";
   let description = [{

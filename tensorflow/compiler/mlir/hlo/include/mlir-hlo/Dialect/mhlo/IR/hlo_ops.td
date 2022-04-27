@@ -234,6 +234,16 @@ def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def HLO_ErfOp: HLO_UnaryElementwiseOp<"erf",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor> {
+  let summary = "Gauss error operator";
+  let description = [{
+    Returns `erf(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/api_docs/python/tf/math/erf.
+  }];
+}
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Exponential operator";

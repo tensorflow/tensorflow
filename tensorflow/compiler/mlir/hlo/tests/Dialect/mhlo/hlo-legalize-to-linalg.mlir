@@ -186,6 +186,16 @@ func.func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @float_erf
+func.func @float_erf(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: erf
+  %0 = "mhlo.erf"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_exp
 func.func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic

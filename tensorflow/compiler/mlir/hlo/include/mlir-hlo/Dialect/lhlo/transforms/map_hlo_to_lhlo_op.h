@@ -61,6 +61,7 @@ MAP_HLO_TO_LHLO(DynamicGatherOp);
 MAP_HLO_TO_LHLO(DynamicIotaOp);
 MAP_HLO_TO_LHLO(DynamicPadOp);
 MAP_HLO_TO_LHLO(DynamicReshapeOp);
+MAP_HLO_TO_LHLO(ErfOp);
 MAP_HLO_TO_LHLO(ExpOp);
 MAP_HLO_TO_LHLO(Expm1Op);
 MAP_HLO_TO_LHLO(FloorOp);
