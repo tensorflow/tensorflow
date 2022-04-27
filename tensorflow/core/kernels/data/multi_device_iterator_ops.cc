@@ -55,7 +55,7 @@ using MultiDeviceIteratorCallback =
 
 // MultiDeviceIterator provides the ability for multiple devices to fetch from
 // one iterator in a roundrobin sequence, which is deterministic. This means
-// that, for exmaple, starting from the beginning GetNextFromShard(0) always
+// that, for example, starting from the beginning GetNextFromShard(0) always
 // gets the first element and GetNextFromShard(1) always gets the second
 // element, even if GetNextFromShard(1) is called before GetNextFromShard(0).
 //

@@ -1150,7 +1150,7 @@ class TFRTCondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
 //  }
 //  return outputs
 //
-// So we need to insert extra convertion kernels and merge functions when
+// So we need to insert extra conversion kernels and merge functions when
 // lowering tf.While to tfrt.while.
 //
 //  %result = tf.While(%arg) {cond = @original_cond_fn, body =

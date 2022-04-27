@@ -3958,7 +3958,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
             input_tensor_id, hybrid_op,
             input_tensor_flags | NN_TENSOR_FLAG_INT8_CONVERSION);
       }
-      // Transpose convlution uses per-channel quantization with int8 inputs
+      // Transpose convolution uses per-channel quantization with int8 inputs
       // even if the number of channels in quantization parameters is equal to 1
       // (as opposed to conv2d, which uses per-tensor quantization in this
       // case).

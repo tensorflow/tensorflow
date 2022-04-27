@@ -3600,7 +3600,7 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   // the the size of the next params dimension (or 1 for the last
   // dimension), then sum all these together with a reduce_sum
   // operator.  This is exactly the same mathematics as one would use
-  // flatten the indicies of an N-dimensional row-major array into a
+  // flatten the indices of an N-dimensional row-major array into a
   // 1-D array in C.
   //
   // More precisely, do an element-wise multiply with [params.shape[1

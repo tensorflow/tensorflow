@@ -1234,7 +1234,7 @@ def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred, y_pred_extra_dim=False):
   """
 
   def rt_is_equiv_dense(rt):
-    """Returns true if this RaggedTensor has the same row_lenghts across
+    """Returns true if this RaggedTensor has the same row_lengths across
 
        all ragged dimensions and thus can be converted to a dense tensor
        without loss of information.

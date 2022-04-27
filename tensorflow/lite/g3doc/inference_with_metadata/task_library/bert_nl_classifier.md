@@ -21,7 +21,7 @@ Sentencepiece tokenizations outside the TFLite model.
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Bert Models created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).

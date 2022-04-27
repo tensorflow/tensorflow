@@ -871,7 +871,7 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   # with ShardedVariable. This requires embedding_lookup ops to raise TypeError
   # when called with ShardedVariable. However since ShardedVariable can be
   # converted to a tensor via concat, embedding_lookup ops would silently
-  # do the convertion and never raise a TypeError. To be able to properly
+  # do the conversion and never raise a TypeError. To be able to properly
   # raise a TypeError, namescope is used to detect if this method is called
   # within a embedding_lookup op.
   # NOTE: This doesn't work in eager mode since op namescope is always cleared
