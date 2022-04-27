@@ -31,6 +31,9 @@ namespace util {
 // Returns if the requested device is CPU.
 bool NodeIsOnCpu(Operation *op);
 
+// Returns if the requested device is GPU.
+bool NodeIsOnGpu(Operation *op);
+
 // Erase the attribute starts with "_".
 void EraseRegularNodeAttributes(NamedAttrList &attr_list);
 

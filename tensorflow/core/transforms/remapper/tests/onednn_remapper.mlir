@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -tfg-remapper=enable-mkl-patterns %s | FileCheck %s
+// RUN: tfg-transforms-opt -tfg-remapper=enable-onednn-patterns %s | FileCheck %s
 // RUN: tfg-transforms-opt -tfg-remapper=verify-pdll-patterns-only %s | FileCheck %s
 
 module {

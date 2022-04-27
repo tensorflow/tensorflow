@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "llvm/ADT/BitVector.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"        // from @llvm-project
+#include "mlir/IR/Builders.h"          // from @llvm-project
+#include "mlir/IR/OpDefinition.h"      // from @llvm-project
+#include "mlir/IR/Operation.h"         // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
@@ -40,6 +40,13 @@ bool NodeIsOnCpu(Operation *op) {
   return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
                                                       &task, &device) &&
          absl::StartsWith(device, tensorflow::DEVICE_CPU);
+}
+
+bool NodeIsOnGpu(Operation *op) {
+  std::string task, device;
+  return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
+                                                      &task, &device) &&
+         absl::StartsWith(device, tensorflow::DEVICE_GPU);
 }
 
 void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
