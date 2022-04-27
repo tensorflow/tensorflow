@@ -244,7 +244,6 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
-  kSelectedGroupIds,
   kSourceInfo,
   kModelName,
   kModelVersion,

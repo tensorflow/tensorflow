@@ -96,10 +96,6 @@ class EventNode {
 
   void AddStepName(absl::string_view step_name);
 
-  // Add a helper stat, "selected_group_ids", with group_ids of the groups
-  // connected to this event's group.
-  void AddSelectedGroupIds(const GroupMetadataMap& group_metadata_map);
-
   void SetIsEager(bool is_eager);
 
   // Returns true if this event is part of eagerly executed op.

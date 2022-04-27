@@ -48,7 +48,6 @@ void CreateStatMetadata(XPlane* plane) {
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kIsEager));
-  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kSelectedGroupIds));
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
@@ -427,22 +426,6 @@ void EventNode::PropagateGroupId(int64_t group_id,
 void EventNode::AddStepName(absl::string_view step_name) {
   FindOrAddStatByType(StatType::kStepName)
       ->set_str_value(step_name.data(), step_name.size());
-}
-
-void EventNode::AddSelectedGroupIds(
-    const GroupMetadataMap& group_metadata_map) {
-  const auto& group_metadata = group_metadata_map.at(*group_id_);
-  std::vector<int64_t> group_ids;
-  group_ids.reserve(1 + group_metadata.parents.size() +
-                    group_metadata.children.size());
-  group_ids.push_back(*group_id_);
-  group_ids.insert(group_ids.end(), group_metadata.parents.begin(),
-                   group_metadata.parents.end());
-  group_ids.insert(group_ids.end(), group_metadata.children.begin(),
-                   group_metadata.children.end());
-  FindOrAddStatByType(StatType::kSelectedGroupIds)
-      ->set_str_value(
-          absl::StrCat("?selected_group_ids=", absl::StrJoin(group_ids, ",")));
 }
 
 void EventNode::SetIsEager(bool is_eager) {
