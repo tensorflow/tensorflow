@@ -41,6 +41,8 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
 
+This is a dummy change. Do not merge.
+
 To install the current release, which includes support for
 [CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
 Windows)*:
