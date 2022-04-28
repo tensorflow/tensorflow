@@ -98,8 +98,8 @@ static void RegisterPasses() {
 // Runs pass pipeline `pass_pipeline` on `module` if `pass_pipeline` is not
 // empty.
 std::string RunPassPipelineOnModule(mlir::ModuleOp module,
-                                    const std::string &pass_pipeline,
-                                    bool show_debug_info, TF_Status *status) {
+                                    const std::string& pass_pipeline,
+                                    bool show_debug_info, TF_Status* status) {
   RegisterPasses();
   if (!pass_pipeline.empty()) {
     mlir::PassManager pm(module.getContext());
@@ -122,12 +122,12 @@ std::string RunPassPipelineOnModule(mlir::ModuleOp module,
 
 }  // anonymous namespace
 
-static std::string ImportGraphDefImpl(const std::string &proto,
-                                      const std::string &pass_pipeline,
+static std::string ImportGraphDefImpl(const std::string& proto,
+                                      const std::string& pass_pipeline,
                                       bool show_debug_info,
-                                      GraphDebugInfo &debug_info,
-                                      GraphImportConfig &specs,
-                                      TF_Status *status) {
+                                      GraphDebugInfo& debug_info,
+                                      GraphImportConfig& specs,
+                                      TF_Status* status) {
   GraphDef graphdef;
   auto s = tensorflow::LoadProtoFromBuffer(proto, &graphdef);
   if (!s.ok()) {
@@ -145,10 +145,10 @@ static std::string ImportGraphDefImpl(const std::string &proto,
                                  status);
 }
 
-std::string ImportFunction(const std::string &functiondef_proto,
-                           const std::string &pass_pipeline,
-                           bool show_debug_info, TFE_Context *tfe_context,
-                           TF_Status *status) {
+std::string ImportFunction(const std::string& functiondef_proto,
+                           const std::string& pass_pipeline,
+                           bool show_debug_info, TFE_Context* tfe_context,
+                           TF_Status* status) {
   FunctionDef functiondef;
   auto s = tensorflow::LoadProtoFromBuffer(functiondef_proto, &functiondef);
   if (!s.ok()) {
@@ -156,10 +156,10 @@ std::string ImportFunction(const std::string &functiondef_proto,
     return "// error";
   }
 
-  const std::string &function_name = functiondef.signature().name();
-  EagerContext *cpp_context = ContextFromInterface(unwrap(tfe_context));
-  FunctionLibraryDefinition &flib_def = *cpp_context->FuncLibDef();
-  const tensorflow::FunctionDef *fdef = flib_def.Find(function_name);
+  const std::string& function_name = functiondef.signature().name();
+  EagerContext* cpp_context = ContextFromInterface(unwrap(tfe_context));
+  FunctionLibraryDefinition& flib_def = *cpp_context->FuncLibDef();
+  const tensorflow::FunctionDef* fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
     s = tensorflow::errors::NotFound("Cannot find function ", function_name);
     Set_TF_Status_from_Status(status, s);
@@ -185,21 +185,21 @@ std::string ImportFunction(const std::string &functiondef_proto,
                                  status);
 }
 
-std::string ImportGraphDef(const std::string &proto,
-                           const std::string &pass_pipeline,
-                           bool show_debug_info, TF_Status *status) {
+std::string ImportGraphDef(const std::string& proto,
+                           const std::string& pass_pipeline,
+                           bool show_debug_info, TF_Status* status) {
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
   return ImportGraphDefImpl(proto, pass_pipeline, show_debug_info, debug_info,
                             specs, status);
 }
 
-std::string ImportGraphDef(const std::string &proto,
-                           const std::string &pass_pipeline,
+std::string ImportGraphDef(const std::string& proto,
+                           const std::string& pass_pipeline,
                            bool show_debug_info, absl::string_view input_names,
                            absl::string_view input_data_types,
                            absl::string_view input_data_shapes,
-                           absl::string_view output_names, TF_Status *status) {
+                           absl::string_view output_names, TF_Status* status) {
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
   auto s = ParseInputArrayInfo(input_names, input_data_types, input_data_shapes,
@@ -216,8 +216,8 @@ std::string ImportGraphDef(const std::string &proto,
 }
 
 std::string ExperimentalConvertSavedModelToMlir(
-    const std::string &saved_model_path, const std::string &exported_names_str,
-    bool show_debug_info, TF_Status *status) {
+    const std::string& saved_model_path, const std::string& exported_names_str,
+    bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelV2Bundle.
 
   tensorflow::SavedModelV2Bundle bundle;
@@ -244,9 +244,9 @@ std::string ExperimentalConvertSavedModelToMlir(
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlirLite(
-    const std::string &saved_model_path, const std::string &exported_names_str,
-    const std::string &tags, bool upgrade_legacy, bool show_debug_info,
-    TF_Status *status) {
+    const std::string& saved_model_path, const std::string& exported_names_str,
+    const std::string& tags, bool upgrade_legacy, bool show_debug_info,
+    TF_Status* status) {
   std::unordered_set<string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
 
@@ -268,9 +268,9 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlir(
-    const std::string &saved_model_path, const std::string &exported_names_str,
-    const std::string &tags, bool lift_variables, bool upgrade_legacy,
-    bool show_debug_info, TF_Status *status) {
+    const std::string& saved_model_path, const std::string& exported_names_str,
+    const std::string& tags, bool lift_variables, bool upgrade_legacy,
+    bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
   std::unordered_set<string> tag_set =
@@ -316,10 +316,10 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   return MlirModuleToString(*module, show_debug_info);
 }
 
-std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
-                                        const std::string &pass_pipeline,
+std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
+                                        const std::string& pass_pipeline,
                                         bool show_debug_info,
-                                        TF_Status *status) {
+                                        TF_Status* status) {
   RegisterPasses();
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
