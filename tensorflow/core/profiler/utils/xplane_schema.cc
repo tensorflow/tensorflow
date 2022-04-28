@@ -89,8 +89,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
        kTfDataCapturedFunctionRunInstantiated},
       {"InstantiatedCapturedFunction::RunAsync",
        kTfDataCapturedFunctionRunAsync},
-      // Functional ops.
-      {"CallOp", kCallOp},
+      // Loop ops.
       {"ParallelForOp", kParallelForOp},
       {"ForeverOp", kForeverOp},
       {"WhileOp-EvalCond", kWhileOpEvalCond},
@@ -178,8 +177,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"UnknownStatType", kUnknownStatType},
       // TraceMe arguments.
       {"id", kStepId},
-      {"parent_step_id", kParentStepId},
-      {"function_step_id", kFunctionStepId},
       {"device_ordinal", kDeviceOrdinal},
       {"chip_ordinal", kChipOrdinal},
       {"node_ordinal", kNodeOrdinal},

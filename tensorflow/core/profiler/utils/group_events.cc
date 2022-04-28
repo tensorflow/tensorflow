@@ -155,15 +155,6 @@ absl::optional<ContextTypeAndId> GetLegacyProducerContext(
         }
         break;
       }
-      case HostEventType::kCallOp: {
-        absl::optional<XStatVisitor> stat =
-            event.GetStat(StatType::kFunctionStepId);
-        if (stat.has_value()) {
-          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
-                         static_cast<uint64>(stat->IntValue())};
-        }
-        break;
-      }
       default:
         break;
     }

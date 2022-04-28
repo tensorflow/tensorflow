@@ -88,8 +88,7 @@ enum HostEventType {
   kTfDataCapturedFunctionRunWithBorrowedArgs,
   kTfDataCapturedFunctionRunInstantiated,
   kTfDataCapturedFunctionRunAsync,
-  // Functional ops.
-  kCallOp,
+  // Loop ops.
   kParallelForOp,
   kForeverOp,
   kWhileOpEvalCond,
@@ -168,8 +167,6 @@ enum StatType {
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
-  kParentStepId,
-  kFunctionStepId,
   kDeviceOrdinal,
   kChipOrdinal,
   kNodeOrdinal,
