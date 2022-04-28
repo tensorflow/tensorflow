@@ -2770,7 +2770,6 @@ xla_test(
     real_hardware_only = True,
     shard_count = 3,
     tags = [
-        "no_rocm",
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
         "nomsan",  # sometimes times out, http://b/78650012
