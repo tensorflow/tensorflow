@@ -288,8 +288,8 @@ MLIR_CAPI_EXPORTED bool
 mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr);
 
 // Returns the rng-algorithm string associated with RngAlgorithm attribute.
-MLIR_CAPI_EXPORTED std::string
-mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *mlirMhloRngAlgorithmAttrGetRngAlgorithm(
+    MlirAttribute attr);
 
 #ifdef __cplusplus
 }

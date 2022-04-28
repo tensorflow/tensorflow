@@ -529,8 +529,9 @@ bool mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr) {
   return unwrap(attr).isa<mlir::mhlo::RngAlgorithmAttr>();
 }
 
-std::string mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
+const char *mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
   return mlir::mhlo::stringifyRngAlgorithm(
              unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue())
-      .str();
+      .str()
+      .c_str();
 }

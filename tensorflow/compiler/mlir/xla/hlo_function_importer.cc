@@ -1056,7 +1056,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getContext(),
           *mlir::mhlo::symbolizeRngAlgorithm(rng_op->algorithm()));
       auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, flattened_ret_types, operands[0], algorithm_attr);
+          loc, flattened_ret_types, algorithm_attr, operands[0]);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);

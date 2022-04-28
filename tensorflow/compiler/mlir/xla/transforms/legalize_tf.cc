@@ -7159,7 +7159,7 @@ class ConvertXlaRngBitGeneratorOp
         rewriter.getContext(),
         *mlir::mhlo::symbolizeRngAlgorithm(xla_alg.getValue()));
     auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
-        loc, op.getResultTypes(), op.initial_state(), algorithm_attr);
+        loc, op.getResultTypes(), algorithm_attr, op.initial_state());
 
     rewriter.replaceOp(op, rng_bit_generator_op.getResults());
 

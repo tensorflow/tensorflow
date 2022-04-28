@@ -2304,8 +2304,8 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
   }];
   let arguments = (ins
-    HLO_IntOrFpTensor:$initial_state,
-    HLO_RngAlgorithmAttr:$rng_algorithm
+    HLO_RngAlgorithmAttr:$rng_algorithm,
+    HLO_IntOrFpTensor:$initial_state
   );
 
   let results = (outs
