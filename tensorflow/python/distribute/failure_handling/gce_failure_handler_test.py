@@ -89,7 +89,8 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
                 maintenance_event=None,
                 training_finished=None,
                 frequent_send=False,
-                termination_config=failure_handling.TerminationConfig()):
+                termination_config=failure_handling.TerminationConfig(
+                    time_till_termination=0)):
 
     _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
