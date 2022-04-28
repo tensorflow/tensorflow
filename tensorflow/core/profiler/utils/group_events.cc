@@ -101,14 +101,6 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   }
 }
 
-std::unique_ptr<XEvent> CreateVirtualEvent(const XStat& step_id_stat,
-                                           const XStat& iter_num_stat) {
-  auto virtual_event = absl::make_unique<XEvent>();
-  *virtual_event->add_stats() = step_id_stat;
-  *virtual_event->add_stats() = iter_num_stat;
-  return virtual_event;
-}
-
 bool HasFunctionRun(EventNode* event_node) {
   for (EventNode* child : event_node->GetChildren()) {
     if (child->GetEventVisitor().Type() == HostEventType::kFunctionRun) {
@@ -163,20 +155,7 @@ absl::optional<ContextTypeAndId> GetLegacyProducerContext(
         }
         break;
       }
-      case HostEventType::kCallOp:
-      case HostEventType::kNumericalGradientOpEvalRight:
-      case HostEventType::kNumericalGradientOpEvalLeft:
-      case HostEventType::kSymbolicGradientOp:
-      case HostEventType::kRemoteCallOp:
-      case HostEventType::kIfOp:
-      case HostEventType::kCaseOp:
-      case HostEventType::kPartitionedCallOp: {
-        // TODO(b/154510598): Fix handling of the loop ops.
-        // case HostEventType::kWhileOpEvalCond:
-        // case HostEventType::kWhileOpStartBody:
-        // case HostEventType::kForOp:
-        // case HostEventType::kParallelForOp:
-        // case HostEventType::kForeverOp:
+      case HostEventType::kCallOp: {
         absl::optional<XStatVisitor> stat =
             event.GetStat(StatType::kFunctionStepId);
         if (stat.has_value()) {
