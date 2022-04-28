@@ -198,14 +198,6 @@ class CoordinationServiceInterface {
   virtual Status CancelBarrier(const std::string& barrier_id,
                                const CoordinatedTask& task) = 0;
 
- protected:
-  // TODO(haoyuzhang): Remove singleton once we decide on how to access the
-  // coordination service from op kernel.
-  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
-    static CoordinationServiceInterface* instance = nullptr;
-    return &instance;
-  }
-
  private:
   friend class CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
@@ -219,6 +211,11 @@ class CoordinationServiceInterface {
     static auto* coordination_service_factories =
         new std::unordered_map<std::string, CoordinationServiceFactory>();
     return coordination_service_factories;
+  }
+
+  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
+    static CoordinationServiceInterface* instance = nullptr;
+    return &instance;
   }
 };
 
