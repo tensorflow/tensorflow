@@ -139,7 +139,9 @@ class GCPTerminationConfig(TerminationConfig):
       time_till_termination=None):
     self.termination_watcher_function = termination_watcher_function or gce_util.termination_watcher_function_gce
     self.exit_fn = exit_fn or gce_util.gce_exit_fn
-    self.time_till_termination = time_till_termination or gce_util.GRACE_PERIOD_GCE
+    self.time_till_termination = (
+        time_till_termination if time_till_termination or
+        time_till_termination is 0 else gce_util.GRACE_PERIOD_GCE)  # pylint: disable=literal-comparison
 
 
 class BorgTerminationConfig(TerminationConfig):
@@ -364,6 +366,14 @@ class WorkerPreemptionHandler(object):
     self._received_checkpoint_step = threading.Event()
 
     self._platform_device = gce_util.detect_platform()
+
+    if self._platform_device in (gce_util.PlatformDevice.GCE_TPU,
+                                 gce_util.PlatformDevice.GCE_CPU):
+      # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
+      # are the same on Borg, GCE CPU VM and GPU VM are different in terms
+      # of live migration, grace period, etc. We can make it work upon request.
+      raise NotImplementedError('WorkerPreemptionHandler does not support '
+                                'training with TPU or CPU device on GCP.')
 
     completed_termination_config = _complete_config_for_environement(
         self._platform_device, termination_config)
