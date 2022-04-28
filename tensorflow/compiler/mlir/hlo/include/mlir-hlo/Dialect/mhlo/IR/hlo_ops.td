@@ -2374,11 +2374,13 @@ def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]> {
 
 // TODO(b/230662142): Implement unknown scales/zero_point cases.
 def HLO_UniformQuantizeOp : HLO_UnaryElementwiseOp<"uniform_quantize",
-      [NoSideEffect], TensorOf<[F32, BF16]>, HLO_QuantizedIntTensor> {
+      [NoSideEffect], TensorOf<[F32, BF16, HLO_QuantizedInt]>,
+      HLO_QuantizedIntTensor> {
   let summary = "Uniform quantize operator";
   let description = [{
-    Converts floating point tensors to uniform quantized integer tensors
-    according to the quantization parameters defined by the output type.
+    Converts floating point tensors or uniform quantized integer tensors to
+    uniform quantized integer tensors according to the quantization parameters
+    defined by the output type.
   }];
 
   // Currently, it doesn't have an XLA builder equivalent.

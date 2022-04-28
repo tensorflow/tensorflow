@@ -3291,6 +3291,14 @@ func.func @uniform_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16x!quant.unif
 
 // -----
 
+// CHECK: func @uniform_requantize
+func.func @uniform_requantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<16x16x!quant.uniform<i8:f32, 34.0:16>> {
+  %0 = mhlo.uniform_quantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>
+  func.return %0 : tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>
+}
+
+// -----
+
 // CHECK: func @uniform_dequantize
 func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32> {
   %0 = mhlo.uniform_dequantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
