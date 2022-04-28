@@ -51,18 +51,18 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"            // from @llvm-project
+#include "mlir/IR/Builders.h"              // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"     // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"            // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"          // from @llvm-project
+#include "mlir/IR/Diagnostics.h"           // from @llvm-project
+#include "mlir/IR/Location.h"              // from @llvm-project
+#include "mlir/IR/MLIRContext.h"           // from @llvm-project
+#include "mlir/IR/OpDefinition.h"          // from @llvm-project
+#include "mlir/IR/Types.h"                 // from @llvm-project
+#include "mlir/IR/Verifier.h"              // from @llvm-project
+#include "mlir/Pass/PassManager.h"         // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
@@ -2599,8 +2599,31 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
         return errors::InvalidArgument("Input ", i, "has invalid data type");
       }
     }
-    TF_RETURN_IF_ERROR(
-        ::tensorflow::ConvertDataType(imported_dtype, builder, &element_type));
+    /// Check if we have subtypes first
+    if (!node_info.subtypes.empty()) {
+      std::vector<mlir::TensorType> subtypes;
+      for (const auto& st : node_info.subtypes) {
+        mlir::Type t;
+        llvm::SmallVector<int64_t, 4> shape;
+        TF_RETURN_IF_ERROR(ConvertToMlirShape(st.shape, &shape));
+        TF_RETURN_IF_ERROR(
+            ::tensorflow::ConvertDataType(st.imported_dtype, builder, &t));
+        subtypes.push_back(mlir::RankedTensorType::get(shape, t));
+      }
+      if (imported_dtype == DT_RESOURCE) {
+        element_type =
+            mlir::TF::ResourceType::get(subtypes, builder.getContext());
+      } else if (imported_dtype == DT_VARIANT) {
+        element_type =
+            mlir::TF::VariantType::get(subtypes, builder.getContext());
+      } else {
+        return errors::InvalidArgument(DataType_Name(imported_dtype),
+                                       " takes no subtypes.");
+      }
+    } else {
+      TF_RETURN_IF_ERROR(::tensorflow::ConvertDataType(imported_dtype, builder,
+                                                       &element_type));
+    }
     if (node_info.shape.unknown_rank()) {
       arg_types.push_back(mlir::UnrankedTensorType::get(element_type));
     } else {
