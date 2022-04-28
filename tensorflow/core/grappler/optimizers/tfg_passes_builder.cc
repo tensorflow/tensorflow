@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/transforms/cf_sink/cf_sink.h"
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 #include "tensorflow/core/transforms/functional_to_region/pass.h"
@@ -35,8 +36,7 @@ void DefaultGrapplerPipeline(PassManager& mgr) {}
 void DefaultModuleGrapplerPipeline(PassManager& mgr) {
   mgr.addPass(CreateConsolidateAttributesPass());
   mgr.addPass(CreateFunctionalToRegionPass());
-  // TODO(b/228618345): Enable control-flow sinking.
-  // mgr.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
+  mgr.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
   mgr.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
   mgr.addPass(CreatePrepareAttributesForExportPass());
 }
