@@ -88,7 +88,7 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
   // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
   // contention.
   tfrt::RequestContextBuilder request_context_builder(host, resource_context,
-                                                      tfrt::GetUniqueInt());
+                                                      work_queue->id());
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.
