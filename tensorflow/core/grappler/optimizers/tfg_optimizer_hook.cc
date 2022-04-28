@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
-#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -58,12 +57,6 @@ class TFGGrapplerOptimizer::Impl {
   // threads, a threadpool is initialized and passed to the MLIR context.
   explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
       : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
-    DialectRegistry registry;
-    // Register the TF op registry interface so that passes can query it.
-    registry.addExtension(+[](MLIRContext* ctx, TFGraphDialect* dialect) {
-      dialect->addInterfaces<TensorFlowOpRegistryInterface>();
-    });
-    ctx_.appendDialectRegistry(registry);
     builder(mgr_);
     if (num_tfg_threads) {
       llvm::ThreadPoolStrategy strategy;
