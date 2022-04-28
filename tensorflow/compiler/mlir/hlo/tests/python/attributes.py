@@ -182,3 +182,12 @@ def test_fusion_kind():
   assert attr is not None
   assert str(attr) == ("#mhlo<\"fusion_kind kLoop\">")
   assert attr.fusion_kind == "kLoop"
+
+@run
+def test_rng_algorithm():
+  """Check that RngAlgorithm attribute is available and usable."""
+
+  attr = RngAlgorithmAttr.get("DEFAULT")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"rng_algorithm DEFAULT\">")
+  assert attr.rng_algorithm == "DEFAULT"

@@ -190,6 +190,6 @@ def HLO_RNG_ALGORITHM : I32EnumAttr<"RngAlgorithm",
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::mhlo";
 }
-def HLO_RngAlgorithmAttr : EnumAttr<HLO_Dialect, HLO_RNG_ALGORITHM, "algorithm">;
+def HLO_RngAlgorithmAttr : EnumAttr<HLO_Dialect, HLO_RNG_ALGORITHM, "rng_algorithm">;
 
 #endif // HLO_OPS_BASE_ENUMS

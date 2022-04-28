@@ -510,3 +510,27 @@ std::string mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr) {
              unwrap(attr).cast<mlir::mhlo::FusionKindAttr>().getValue())
       .str();
 }
+
+//
+// RngAlgorithmAttr.
+//
+
+MlirAttribute mlirMhloRngAlgorithmAttrGet(MlirContext ctx,
+                                          const std::string &algorithm) {
+  llvm::Optional<mlir::mhlo::RngAlgorithm> rng_algorithm =
+      mlir::mhlo::symbolizeRngAlgorithm(algorithm);
+  if (!rng_algorithm)
+    llvm_unreachable("Invalid rng-algorithm specified.");
+  return wrap(
+      mlir::mhlo::RngAlgorithmAttr::get(unwrap(ctx), rng_algorithm.getValue()));
+}
+
+bool mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::RngAlgorithmAttr>();
+}
+
+std::string mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
+  return mlir::mhlo::stringifyRngAlgorithm(
+             unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue())
+      .str();
+}
