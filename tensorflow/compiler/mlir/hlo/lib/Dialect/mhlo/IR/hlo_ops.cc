@@ -94,7 +94,17 @@ namespace {
 // expand a single element splat to a multi-GB large tensor.
 // The limit is arbitrary set low to allow expanding small computations, like
 // shape manipulations for example.
+// TODO(b/210478841): Define a constant folding policy that generalizes this.
 constexpr int64_t kFoldExpandSplatEltLimit = 16;
+
+// Similarly to the constant above, this is an arbitrary limit into how many
+// elements can be folded by a binary operation folder.
+// This limit doesn't apply to the following special cases:
+//   1) Adding a zero.
+//   2) Multiplying by one.
+//   3) When both operands are splats.
+// TODO(b/210478841): Define a constant folding policy that generalizes this.
+constexpr int64_t kFoldBinaryOpEltLimit = 65536;
 
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
@@ -5234,6 +5244,22 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
     return {};
   }
 
+  // Special case for folding splats no matter how large.
+  // Only covers the case of both attrs being splats; operation-specific cases
+  // like adding a zero or multiplying by one are handled elsewhere.
+  SplatElementsAttr splat_lhs = lhs.dyn_cast<SplatElementsAttr>();
+  SplatElementsAttr splat_rhs = rhs.dyn_cast<SplatElementsAttr>();
+  if (splat_lhs && splat_rhs) {
+    return SplatElementsAttr::get(
+        type, Convert()(splat_lhs.getSplatValue<ValType>(),
+                        splat_rhs.getSplatValue<ValType>()));
+  }
+
+  // Prevent folding if lhs/rhs are too large.
+  if (lhs.getNumElements() > kFoldBinaryOpEltLimit) {
+    return {};
+  }
+
   SmallVector<ValType, 6> values;
   values.reserve(lhs.getNumElements());
   for (const auto zip :
@@ -5315,40 +5341,60 @@ BINARY_FOLDER(RemOp, remainder);
 BINARY_FOLDER(MaxOp, max);
 BINARY_FOLDER(MinOp, min);
 
-OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
-  if (attrs[0] && attrs[1]) {
-    BINARY_FOLDER_INTERNAL(AddOp, std::plus)
+bool isSplatZero(SplatElementsAttr attr) {
+  if (!attr) return false;
+  if (attr.getElementType().isa<FloatType>()) {
+    return attr.getSplatValue<APFloat>().isZero();
+  } else if (attr.getElementType().isa<IntegerType>()) {
+    return attr.getSplatValue<APInt>().isZero();
+  } else {
+    return false;
   }
+}
+
+OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
   // Handle special case where one operand is 0:  x + 0 => x
   if (attrs[0] || attrs[1]) {
-    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
-                                      : attrs[1].dyn_cast<SplatElementsAttr>();
-    if (!attr) return {};
-    Value result = attrs[0] ? rhs() : lhs();
-    if (attr.getElementType().isa<FloatType>()) {
-      if (attr.getSplatValue<APFloat>().isZero()) return result;
-    } else if (attr.getElementType().isa<IntegerType>()) {
-      if (attr.getSplatValue<APInt>().isZero()) return result;
-    }
+    SplatElementsAttr splat_lhs =
+        attrs[0].dyn_cast_or_null<SplatElementsAttr>();
+    SplatElementsAttr splat_rhs =
+        attrs[1].dyn_cast_or_null<SplatElementsAttr>();
+    if (isSplatZero(splat_lhs))
+      return splat_rhs ? (OpFoldResult)splat_rhs : rhs();
+    if (isSplatZero(splat_rhs))
+      return splat_lhs ? (OpFoldResult)splat_lhs : lhs();
+  }
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(AddOp, std::plus)
   }
   return {};
 }
 
-OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
-  if (attrs[0] && attrs[1]) {
-    BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
+bool isSplatOne(SplatElementsAttr attr) {
+  if (!attr) return false;
+  if (attr.getElementType().isa<FloatType>()) {
+    return attr.getSplatValue<APFloat>().convertToDouble() == 1.0;
+  } else if (attr.getElementType().isa<IntegerType>()) {
+    return attr.getSplatValue<APInt>().getSExtValue() == 1;
+  } else {
+    return false;
   }
+}
+
+OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
   // Handle special case where one operand is 1: x * 1 => x
   if (attrs[0] || attrs[1]) {
-    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
-                                      : attrs[1].dyn_cast<SplatElementsAttr>();
-    if (!attr) return {};
-    Value result = attrs[0] ? rhs() : lhs();
-    if (attr.getElementType().isa<FloatType>()) {
-      if (attr.getSplatValue<APFloat>().convertToDouble() == 1.0) return result;
-    } else if (attr.getElementType().isa<IntegerType>()) {
-      if (attr.getSplatValue<APInt>().getSExtValue() == 1) return result;
-    }
+    SplatElementsAttr splat_lhs =
+        attrs[0].dyn_cast_or_null<SplatElementsAttr>();
+    SplatElementsAttr splat_rhs =
+        attrs[1].dyn_cast_or_null<SplatElementsAttr>();
+    if (isSplatOne(splat_lhs))
+      return splat_rhs ? (OpFoldResult)splat_rhs : rhs();
+    if (isSplatOne(splat_rhs))
+      return splat_lhs ? (OpFoldResult)splat_lhs : lhs();
+  }
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
   }
   return {};
 }
