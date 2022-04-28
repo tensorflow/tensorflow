@@ -344,7 +344,8 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   if (!calib_profiles_.min.empty()) {
     VLOG(2) << "Setting up calibration profies";
     auto* calibProfile = builder->createOptimizationProfile();
-    Status status = calib_profiles_.SetDimensions(network, calibProfile);
+    Status status =
+        calib_profiles_.SetDimensions(network, calibProfile, input_mask_);
     if (!status.ok()) {
       return status;
     }
