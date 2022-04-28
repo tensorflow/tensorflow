@@ -119,10 +119,10 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
-    Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
+    Type OperandType, Type ResultType = OperandType> : HLO_Op<mnemonic, traits # [Elementwise,
     InferShapedTypeOpInterface, SameOperandsAndResultShape]> {
-  let arguments = (ins TensorType:$operand);
-  let results = (outs TensorType:$result);
+  let arguments = (ins OperandType:$operand);
+  let results = (outs ResultType:$result);
   let extraClassDeclaration = [{
     static LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location,
@@ -2343,6 +2343,7 @@ def HLO_XlaRngGetAndUpdateStateOp: HLO_Op<"xla.rng_get_and_update_state", [Decla
 //===----------------------------------------------------------------------===//
 // MHLO Quantize Operator.
 //===----------------------------------------------------------------------===//
+// TODO(b/230659796): Remove this op in favor of the uniform quantization.
 def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]> {
   let summary = "Dequantize operator";
   let description = [{
@@ -2369,6 +2370,33 @@ def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]> {
 
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
+}
+
+// TODO(b/230662142): Implement unknown scales/zero_point cases.
+def HLO_UniformQuantizeOp : HLO_UnaryElementwiseOp<"uniform_quantize",
+      [NoSideEffect], TensorOf<[F32, BF16]>, HLO_QuantizedIntTensor> {
+  let summary = "Uniform quantize operator";
+  let description = [{
+    Converts floating point tensors to uniform quantized integer tensors
+    according to the quantization parameters defined by the output type.
+  }];
+
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_UniformDequantizeOp : HLO_UnaryElementwiseOp<"uniform_dequantize",
+      [NoSideEffect], HLO_QuantizedIntTensor, TensorOf<[F32, BF16]>> {
+  let summary = "Uniform dequantize operator";
+  let description = [{
+    Converts quantized array of integers to floating-points according to the
+    quantization parameters defined by the input type.
+  }];
+
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_FusionOp : HLO_Op<"fusion", []> {

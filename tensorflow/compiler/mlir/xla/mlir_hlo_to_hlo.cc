@@ -1680,6 +1680,18 @@ LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir

@@ -3272,3 +3272,30 @@ func.func @quantized_dot_general(%arg0: tensor<2x16x32x!quant.uniform<i8:f32, 2.
     : (tensor<2x16x32x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x32x32x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<2x16x32x!quant.uniform<i8:f32, 10.0:50>>
   func.return %0 : tensor<2x16x32x!quant.uniform<i8:f32, 10.0:50>>
 }
+
+// -----
+
+// CHECK: func @uniform_quantize
+func.func @uniform_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>> {
+  %0 = mhlo.uniform_quantize(%arg) : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
+  func.return %0 : tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
+}
+
+// -----
+
+// CHECK: func @uniform_dequantize
+func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32> {
+  %0 = mhlo.uniform_dequantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
+  func.return %0 : tensor<16x16xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @quantized_constants
+func.func @quantized_constants() -> (tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>) {
+  %0 = mhlo.constant dense<[10.0, 12.0]> : tensor<2xf32>
+  %1 = mhlo.constant dense<[3.0, 100.0]> : tensor<2xf32>
+  %2 = mhlo.uniform_quantize(%1) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
+  %3 = mhlo.uniform_quantize(%0) : (tensor<2xf32>) -> tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
+  func.return %2, %3 : tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
+}
