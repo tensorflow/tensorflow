@@ -1651,38 +1651,6 @@ func.func @sort_invalid_return_types(%input0: tensor<16x16xf32>, %input1: tensor
 
 // -----
 
-// CHECK: func @dequantize
-func.func @dequantize(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
-  func.return %0 : tensor<16x64xbf16>
-}
-
-// -----
-
-func.func @dequantize_wrong_shape(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
-  // expected-error @+1 {{mismatched dimensions.}}
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = true} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
-  func.return %0 : tensor<16x64xbf16>
-}
-
-// -----
-
-func.func @dequantize_wrong_size(%arg: tensor<16x16xi32>) -> tensor<16x16xbf16> {
-  // expected-error @+1 {{last dimension of output should be 4x of the input.}}
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x16xbf16>
-  func.return %0 : tensor<16x16xbf16>
-}
-
-// -----
-
-func.func @dequantize_wrong_mode(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
-  // expected-error @+1 {{Dequantization mode. Only MIN_COMBINED is supported.}}
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "hello", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
-  func.return %0 : tensor<16x64xbf16>
-}
-
-// -----
-
 func.func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
   // expected-error @+1 {{number of output elements (9) doesn't match expected number of elements (8)}}
   %0 = "mhlo.reshape"(%operand) : (tensor<2x4xf32>) -> tensor<3x3xf32>

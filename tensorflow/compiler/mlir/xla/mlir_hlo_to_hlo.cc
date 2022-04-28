@@ -1088,28 +1088,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
-  xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
-                            ConvertAPFloat(op.max_range()));
-  auto& value_map = *ctx.values;
-  xla::XlaOp input;
-  if (failed(GetXlaOp(op.input(), value_map, &input, op))) return failure();
-
-  auto casted = xla::ConvertElementType(input, xla::U32);
-  if (op.is_16bits()) {
-    value_map[op] = xla::Dequantize<uint16>(
-        casted, range,
-        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
-        op.transpose_output());
-  } else {
-    value_map[op] = xla::Dequantize<uint8>(
-        casted, range,
-        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
-        op.transpose_output());
-  }
-  return success();
-}
-
 LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp token;

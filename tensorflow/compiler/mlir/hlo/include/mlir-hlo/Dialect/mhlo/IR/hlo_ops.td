@@ -2343,34 +2343,6 @@ def HLO_XlaRngGetAndUpdateStateOp: HLO_Op<"xla.rng_get_and_update_state", [Decla
 //===----------------------------------------------------------------------===//
 // MHLO Quantize Operator.
 //===----------------------------------------------------------------------===//
-// TODO(b/230659796): Remove this op in favor of the uniform quantization.
-def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]> {
-  let summary = "Dequantize operator";
-  let description = [{
-    Dequantize the quantized input of packed uint32 to bfloat16. Only uint8 or
-    uint16 is supported for the original unpacked input.
-
-    Returns a tensor of shape [d0,..., dn * unpack_size] if unpacked input shape
-    is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T), where T is
-    the unpacked input type. If transpose_output is true, will return a tensor
-    of shape [dn * unpack_size, dn-1, ..., d1, d0]. transpose_output is faster
-    when input's rank higher than 1. The input needs to be transposed to use
-    transpose_output feature.
-  }];
-  let arguments = (ins
-    TensorOf<[I32]>:$input,
-    F32Attr:$min_range,
-    F32Attr:$max_range,
-    HLO_DequantizeModeAttr:$mode,
-    BoolAttr:$transpose_output,
-    DefaultValuedAttr<BoolAttr, "false">:$is_16bits
-  );
-
-  let results = (outs TensorOf<[BF16]>:$output);
-
-  let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
-}
 
 // TODO(b/230662142): Implement unknown scales/zero_point cases.
 def HLO_UniformQuantizeOp : HLO_UnaryElementwiseOp<"uniform_quantize",
