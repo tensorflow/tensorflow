@@ -16,10 +16,7 @@ def roundtrip_test(name, roundtrip_cmd, args, test_file, size):
     native.sh_test(
         name = "{0}.test".format(name),
         srcs = [roundtrip_cmd],
-        tags = [
-            "no_windows",
-            "notsan",  # b/230629783
-        ],
+        tags = ["no_windows"],
         args = args + ["$(location {0})".format(test_file)],
         data = [roundtrip_cmd, test_file],
         size = size,
