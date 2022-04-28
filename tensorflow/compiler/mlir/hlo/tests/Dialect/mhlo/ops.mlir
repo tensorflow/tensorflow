@@ -1214,7 +1214,7 @@ func.func @dynamic_slice_mismatch_element_types(%arg0: tensor<3x4xi32>, %arg1: t
 // -----
 
 func.func @dynamic_slice_invalid_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // expected-error@+1 {{operand #1 must be 0D tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
+  // expected-error@+1 {{operand #1 must be 0D tensor of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
   func.return %0 : tensor<1x4xi32>
 }
@@ -1230,7 +1230,7 @@ func.func @dynamic_update_slice(%input: tensor<3x4xi64>, %update: tensor<2xi64>,
 // -----
 
 func.func @dynamic_update_slice_invalid_start(%input: tensor<3x4xi64>, %update: tensor<2xi64>, %start: tensor<2xi64>) -> tensor<3x4xi64> {
-  // expected-error@+1 {{operand #2 must be 0D tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
+  // expected-error@+1 {{operand #2 must be 0D tensor of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
   %0 = "mhlo.dynamic-update-slice"(%input, %update, %start) : (tensor<3x4xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<3x4xi64>
   func.return %0 : tensor<3x4xi64>
 }
@@ -2656,7 +2656,7 @@ func.func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %0 = "mhlo.tuple"(%arg0, %cst_2) : (tensor<3xf32>, tensor<1xf32>) -> tuple<tensor<3xf32>, tensor<1xf32>>
   %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>
-  // expected-error @+1 {{op operand #1 must be tensor of floating-point or pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 8/16/32-bit uniform quantized signed integer or 8/16/32-bit uniform quantized unsigned integer values or token}}
+  // expected-error @+1 {{op operand #1 must be tensor of floating-point or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values or token}}
   %2:2 = "mhlo.while"(%cst_0, %1) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):
     %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
@@ -3251,10 +3251,18 @@ func.func @quantized_clamp(%arg0: tensor<1x!quant.uniform<ui8:f32, 34.0:16>>) ->
 
 // -----
 
-// CHECK-LABEL: func @quantized_dot
-func.func @quantized_dot(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i8:f32, 10.0:50>> {
+// CHECK-LABEL: func @quantized_dot_i8
+func.func @quantized_dot_i8(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i8:f32, 10.0:50>> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i8:f32, 10.0:50>>
   func.return %0: tensor<2x2x!quant.uniform<i8:f32, 10.0:50>>
+}
+
+// -----
+
+// CHECK-LABEL: func @quantized_dot_i4
+func.func @quantized_dot_i4(%arg0: tensor<2x2x!quant.uniform<i4:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i4:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:50>> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i4:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i4:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:50>>
+  func.return %0: tensor<2x2x!quant.uniform<i4:f32, 10.0:50>>
 }
 
 // -----
@@ -3298,4 +3306,55 @@ func.func @quantized_constants() -> (tensor<2x!quant.uniform<i8:f32, 2.0:15>>, t
   %2 = mhlo.uniform_quantize(%1) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 2.0:15>>
   %3 = mhlo.uniform_quantize(%0) : (tensor<2xf32>) -> tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
   func.return %2, %3 : tensor<2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x!quant.uniform<ui8:f32, 34.0:16>>
+}
+
+// -----
+
+func.func @dot_i4xi4_i8(%arg0: tensor<1x2xi4>, %arg1: tensor<2x1xi4>) -> tensor<1x1xi8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<1x2xi4>, tensor<2x1xi4>) -> tensor<1x1xi8>
+  func.return %0: tensor<1x1xi8>
+}
+
+// -----
+
+// CHECK-LABEL: func @dot_i8xi8_i16
+func.func @dot_i8xi8_i16(%arg0: tensor<1x2xi8>, %arg1: tensor<2x1xi8>) -> tensor<1x1xi16> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<1x2xi8>, tensor<2x1xi8>) -> tensor<1x1xi16>
+  func.return %0: tensor<1x1xi16>
+}
+
+// -----
+
+// CHECK-LABEL: func @einsum_i4xi4_i8
+func.func @einsum_i4xi4_i8(%arg0: tensor<1x2xi4>, %arg1: tensor<2x1xi4>) -> tensor<1x1xi8> {
+  %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "ab,bc->ac"} : (tensor<1x2xi4>, tensor<2x1xi4>) -> tensor<1x1xi8>
+  func.return %0: tensor<1x1xi8>
+}
+
+// -----
+
+// CHECK-LABEL: func @einsum_i8xi8_i16
+func.func @einsum_i8xi8_i16(%arg0: tensor<1x2xi8>, %arg1: tensor<2x1xi8>) -> tensor<1x1xi16> {
+  %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "ab,bc->ac"} : (tensor<1x2xi8>, tensor<2x1xi8>) -> tensor<1x1xi16>
+  func.return %0: tensor<1x1xi16>
+}
+
+// -----
+
+// CHECK-LABEL: func @conv_i4
+func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8> {
+  // Note: This has been lowered and adapted from:
+  // %0 = "tf.Conv2D"(%arg0, %arg1) {
+  //        data_format = "NHWC",
+  //        dilations = [1, 2, 2, 1],
+  //        explicit_paddings = [0, 0, 0, 1, 0, 1, 0, 0],
+  //        padding = "EXPLICIT",
+  //        strides = [1, 1, 1, 1]} :
+  //      (tensor<64x8x8x8xf32>, tensor<4x4x8x32xf32>) -> tensor<64x3x3x32xf32>
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+         window = {stride = [1, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [2, 2]}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64} :
+       (tensor<64x8x8x8xi4>, tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8>
+  func.return %0 : tensor<64x3x3x32xi8>
 }
