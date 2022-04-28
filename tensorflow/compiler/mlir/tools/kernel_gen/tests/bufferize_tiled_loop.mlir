@@ -115,3 +115,96 @@ func.func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
   // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<?x?x12xf32>)
   func.return %sum : tensor<?x?x12xf32>
 }
+
+// -----
+
+#map0 = affine_map<()[s0] -> ((s0 floordiv 8) * 8)>
+#map1 = affine_map<(d0)[s0] -> (-d0 + s0)>
+#map2 = affine_map<(d0, d1) -> (d0, d1)>
+func.func @init_tensor_multiple_users(%arg0: tensor<1x?xf32>)
+    -> (tensor<1x?xf32>, tensor<1x?xf32>) {
+  %cst = arith.constant 0.000000e+00 : f32
+  %cst_0 = arith.constant dense<1.000000e+00> : vector<1x8xf32>
+  %cst_1 = arith.constant 1.000000e+00 : f32
+  %c0 = arith.constant 0 : index
+  %c8 = arith.constant 8 : index
+  %c1 = arith.constant 1 : index
+  %0 = tensor.dim %arg0, %c1 : tensor<1x?xf32>
+  %init = linalg.init_tensor [1, %0] : tensor<1x?xf32>
+  %2 = affine.apply #map0()[%0]
+  %3 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c1, %2) step (%c1, %c8)
+      ins (%arg3 = %arg0: tensor<1x?xf32>)
+      outs (%arg4 = %init: tensor<1x?xf32>) {
+    %7 = vector.transfer_read %arg3[%i, %j], %cst {in_bounds = [true, true]}
+      : tensor<1x?xf32>, vector<1x8xf32>
+    %8 = arith.subf %cst_0, %7 : vector<1x8xf32>
+    %9 = vector.transfer_write %8, %arg4[%i, %j] {in_bounds = [true, true]}
+      : vector<1x8xf32>, tensor<1x?xf32>
+    gml_st.yield %9 : tensor<1x?xf32>
+  }
+  %4 = gml_st.loop (%i, %j) = (%c0, %2) to (%c1, %0) step (%c1, %c8)
+      ins (%arg3 = %arg0: tensor<1x?xf32>)
+      outs (%arg4 = %3: tensor<1x?xf32>) {
+    %7 = affine.apply #map1(%j)[%0]
+    %8 = tensor.extract_slice %arg3[%i, %j] [1, %7] [1, 1]
+      : tensor<1x?xf32> to tensor<1x?xf32>
+    %9 = tensor.extract_slice %arg4[%i, %j] [1, %7] [1, 1]
+      : tensor<1x?xf32> to tensor<1x?xf32>
+    %10 = linalg.generic {
+      indexing_maps = [#map2, #map2],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%8 : tensor<1x?xf32>) outs(%9 : tensor<1x?xf32>) {
+    ^bb0(%arg5: f32, %arg6: f32):
+      %12 = arith.subf %cst_1, %arg5 : f32
+      linalg.yield %12 : f32
+    } -> tensor<1x?xf32>
+    %11 = tensor.insert_slice %10 into %arg4[%i, %j] [1, %7] [1, 1]
+      : tensor<1x?xf32> into tensor<1x?xf32>
+    gml_st.yield %11 : tensor<1x?xf32>
+  }
+  %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c1, %2) step (%c1, %c8)
+      ins (%arg3 = %arg0: tensor<1x?xf32>)
+      outs (%arg4 = %init: tensor<1x?xf32>) {
+    %7 = vector.transfer_read %arg3[%i, %j], %cst
+      {in_bounds = [true, true]} : tensor<1x?xf32>, vector<1x8xf32>
+    %8 = arith.subf %cst_0, %7 : vector<1x8xf32>
+    %9 = arith.subf %cst_0, %8 : vector<1x8xf32>
+    %10 = vector.transfer_write %9, %arg4[%i, %j]
+      {in_bounds = [true, true]} : vector<1x8xf32>, tensor<1x?xf32>
+    gml_st.yield %10 : tensor<1x?xf32>
+  }
+  %6 = gml_st.loop (%i, %j) = (%c0, %2) to (%c1, %0) step (%c1, %c8)
+      ins (%arg3 = %arg0: tensor<1x?xf32>)
+      outs (%arg4 = %5: tensor<1x?xf32>) {
+    %7 = affine.apply #map1(%j)[%0]
+    %8 = tensor.extract_slice %arg3[%i, %j] [1, %7] [1, 1]
+      : tensor<1x?xf32> to tensor<1x?xf32>
+    %9 = tensor.extract_slice %arg4[%i, %j] [1, %7] [1, 1]
+      : tensor<1x?xf32> to tensor<1x?xf32>
+    %10 = linalg.generic {
+      indexing_maps = [#map2, #map2],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%8 : tensor<1x?xf32>) outs(%9 : tensor<1x?xf32>) {
+    ^bb0(%arg5: f32, %arg6: f32):
+      %12 = arith.subf %cst_1, %arg5 : f32
+      %13 = arith.subf %cst_1, %12 : f32
+      linalg.yield %13 : f32
+    } -> tensor<1x?xf32>
+    %11 = tensor.insert_slice %10 into %arg4[%i, %j] [1, %7] [1, 1]
+      : tensor<1x?xf32> into tensor<1x?xf32>
+    gml_st.yield %11 : tensor<1x?xf32>
+  }
+  func.return %4, %6 : tensor<1x?xf32>, tensor<1x?xf32>
+}
+// CHECK-LABEL: init_tensor_multiple_users
+// CHECK: %[[BUF1:.*]] = memref.alloc
+// CHECK: gml_st.loop
+// CHECK:   %[[BUF1]]
+// CHECK: gml_st.loop
+// CHECK:   %[[BUF1]]
+// CHECK: %[[BUF2:.*]] = memref.alloc
+// CHECK: gml_st.loop
+// CHECK:   %[[BUF2]]
+// CHECK: gml_st.loop
+// CHECK:   %[[BUF2]]
+// CHECK: return %[[BUF1]], %[[BUF2]]

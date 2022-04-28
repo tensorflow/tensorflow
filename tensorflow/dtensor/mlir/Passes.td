@@ -236,6 +236,7 @@ def DTensorEmbedding
     "::mlir::mhlo::MhloDialect",
     "::mlir::shape::ShapeDialect",
     "::mlir::scf::SCFDialect",
+    "::mlir::tensor::TensorDialect",
   ];
 }
 
@@ -243,6 +244,14 @@ def DTensorEmbeddingV2
     : Pass<"dtensor-embedding-v2", "mlir::ModuleOp"> {
   let summary = "Embedding Pass";
   let constructor = "CreateDTensorEmbeddingPassV2()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorEmbeddingLoad
+    : Pass<"dtensor-embedding-load", "mlir::ModuleOp"> {
+  let summary = "Load TPU embeddings and slot variables.";
+  let constructor = "CreateDTensorEmbeddingLoadPass()";
   let dependentDialects = [
   ];
 }

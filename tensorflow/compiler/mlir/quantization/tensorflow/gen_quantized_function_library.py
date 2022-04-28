@@ -24,6 +24,8 @@ from absl import flags
 
 _OUTPUT_FILE = flags.DEFINE_string('output_file', None, 'output file location')
 _SRC = flags.DEFINE_string('src', None, 'source file location')
+_NAMESPACE = flags.DEFINE_string('namespace', 'mlir::quant',
+                                 'namespace in the generated file')
 
 flags.mark_flags_as_required(['output_file', 'src'])
 
@@ -56,6 +58,8 @@ def _substitute_function_template(module: str) -> str:
 
 
 def main(_: Sequence[str]) -> None:
+  namespaces = _NAMESPACE.value.split('::')
+
   with open(_SRC.value, 'r') as f:
     content = f.read()
 
@@ -87,23 +91,25 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZED_FUNCTION_LIBRARY_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZED_FUNCTION_LIBRARY_H_
+""")
 
-namespace mlir {
-namespace quant {
+    for namespace in namespaces:
+      f.write('namespace {0} {{\n'.format(namespace))
 
-constexpr char kQuantizedFunctionLibraryInMLIR[] =""")
+    f.write('constexpr char kQuantizedFunctionLibraryInMLIR[] =')
 
     for line in module.splitlines():
       f.write('\n  "')
       f.write(line.rstrip().replace('"', r'\"'))
       f.write('\\n"')
 
-    f.write(""";
+    f.write(';\n')
+    for namespace in reversed(namespaces):
+      f.write('}}  // namespace {0}\n'.format(namespace))
 
-}  // namespace quant
-}  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZED_FUNCTION_LIBRARY_H_
-""")
+    f.write(
+        '#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_QUANTIZED_FUNCTION_LIBRARY_H_'
+    )
 
 
 if __name__ == '__main__':

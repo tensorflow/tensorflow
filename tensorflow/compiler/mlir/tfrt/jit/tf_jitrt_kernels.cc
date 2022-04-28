@@ -24,9 +24,11 @@ limitations under the License.
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_kernels_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -441,6 +443,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
     opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+      SetCrashReproducer(pm, kCrashReproducerStdErr);
+
       TfJitRtPipelineOptions opts;
       if (tf_jitrt_opts) {
         opts.vectorize = tf_jitrt_opts->vectorize;
@@ -457,7 +461,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
+      SetCrashReproducer(pm, kCrashReproducerStdErr);
+      CreateJitRtSpecializationPipeline(pm);
+    };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
@@ -771,8 +778,8 @@ static std::string OperandsToString(
 static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, const StringAttribute& device,
                         const CompilationUnitAttribute& kernel,
-                        const ExecutionContext& exec_ctx, bool debug = false,
-                        const Optional<TfJitRtPipelineOpts>& opts = None) {
+                        const ExecutionContext& exec_ctx, bool debug,
+                        const Optional<TfJitRtPipelineOpts>& opts) {
   VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
           << ", operands: " << OperandsToString(operands);
 
@@ -825,6 +832,22 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
   });
 }
 
+static void ExecuteImplAndMaybeLogQueryOfDeath(
+    RepeatedArguments<FallbackTensor> operands, RemainingResults results,
+    const StringAttribute& device, const CompilationUnitAttribute& kernel,
+    const ExecutionContext& exec_ctx, bool debug = false,
+    const Optional<TfJitRtPipelineOpts>& opts = None) {
+  if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
+    return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
+                       opts);
+  }
+  TfJitRtQueryOfDeathLogger qod_logger(/*kernel_name=*/kernel.root_symbol(),
+                                       /*kernel_serialized_operation=*/
+                                       kernel.serialized_operation(),
+                                       /*operands=*/OperandsToString(operands));
+  ExecuteImpl(operands, results, device, kernel, exec_ctx, debug, opts);
+}
+
 // -------------------------------------------------------------------------- //
 // TFRT kernel function definitions for tf_jitrt.fallback.execute operations.
 // -------------------------------------------------------------------------- //
@@ -835,7 +858,8 @@ static void Execute(RepeatedArguments<FallbackTensor> operands,
                     RemainingResults results, StringAttribute device,
                     CompilationUnitAttribute kernel,
                     const ExecutionContext& exec_ctx) {
-  ExecuteImpl(operands, results, device, kernel, exec_ctx);
+  ExecuteImplAndMaybeLogQueryOfDeath(operands, results, device, kernel,
+                                     exec_ctx);
 }
 
 // Compiles kernel into the JitExecutable and executes it with the fallback
@@ -851,8 +875,8 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
   TfJitRtPipelineOpts opts;
   opts.vectorize = *vectorize;
   opts.legalize_i1_tensors = *legalize_i1_tensors;
-  ExecuteImpl(operands, results, device, kernel, exec_ctx,
-              *debug_specializations, opts);
+  ExecuteImplAndMaybeLogQueryOfDeath(operands, results, device, kernel,
+                                     exec_ctx, *debug_specializations, opts);
 }
 
 }  // namespace

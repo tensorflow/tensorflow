@@ -2,8 +2,6 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=false" --tfl-enable-no-side-effect="CustomTestOp=false" | FileCheck --check-prefix=NotPrune %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=false" --tfl-enable-no-side-effect="CustomTestOp=true" | FileCheck --check-prefix=NoSideEffect %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=true" --tfl-enable-no-side-effect="CustomTestOp=true" | FileCheck --check-prefix=NoSideEffectWeightOnly %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize -tfl-post-quantize  --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1-3,CustomTestOp3=3" --tfl-enable-custom-op-weight-only="CustomTestOp=true,CustomTestOp3=false" --tfl-enable-no-side-effect="CustomTestOp=true,CustomTestOp3=true" | FileCheck --check-prefix=CustomOp %s
-
 
 // CHECK-LABEL: PruneUnusedCustomOp
 func.func @PruneUnusedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {

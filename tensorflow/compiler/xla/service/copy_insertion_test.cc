@@ -192,43 +192,6 @@ TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
       op::Tuple(op::Copy(constant2), op::Copy(x), op::Add(constant1, y)));
 }
 
-TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
-  // Create a computation using select which has an ambiguous points-to set for
-  // the computation result. Verify that copies are added properly.
-  auto builder = HloComputation::Builder(TestName());
-  HloInstruction* constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  HloInstruction* constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  HloInstruction* constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-
-  HloInstruction* tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  HloInstruction* tuple2 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant3, constant2}));
-
-  HloInstruction* pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
-
-  EXPECT_THAT(constant1->users(), UnorderedElementsAre(tuple1));
-  EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
-  EXPECT_THAT(constant3->users(), UnorderedElementsAre(tuple2));
-
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(builder.Build());
-
-  HloInstruction* old_root = module->entry_computation()->root_instruction();
-  InsertCopies(module.get());
-  EXPECT_EQ(CountCopies(*module), 2);
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::Copy(op::GetTupleElement(old_root)),
-                        op::Copy(op::GetTupleElement(old_root))));
-}
-
 TEST_F(CopyInsertionTest, BitcastParameter) {
   // The output of a bitcast is its operand (same buffer), so a bitcast
   // parameter feeding the result must have a copy added.
@@ -363,42 +326,6 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
       module->entry_computation()->root_instruction(),
       op::Tuple(op::Copy(op::GetTupleElement(op::GetTupleElement(param))),
                 op::Copy(op::GetTupleElement(op::GetTupleElement(param)))));
-}
-
-TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
-  // Create a computation using select which has an ambiguous points-to set for
-  // the top-level buffer of the root of the computation. Verify that a shallow
-  // copy is added.
-  auto builder = HloComputation::Builder(TestName());
-  HloInstruction* constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  HloInstruction* constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-
-  HloInstruction* tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  HloInstruction* tuple2 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant2, constant1}));
-
-  HloInstruction* pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  HloInstruction* select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
-  HloInstruction* gte =
-      builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::GetSubshape(select->shape(), {0}), select, 0));
-
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(builder.Build());
-
-  EXPECT_EQ(gte, module->entry_computation()->root_instruction());
-
-  HloInstruction* old_root = module->entry_computation()->root_instruction();
-  InsertCopies(module.get());
-  EXPECT_EQ(CountCopies(*module), 1);
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(old_root));
 }
 
 class WhileCopyInsertionTest : public CopyInsertionTest {
@@ -682,30 +609,6 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         HloInstruction::CreateParameter(0, data_shape_, "data_init"));
     return BuildWhileInstructionWithCustomInit(loop_state_shape_, data_init,
                                                &builder);
-  }
-
-  HloInstruction* BuildWhileInstruction_InitPointsToAmbiguous() {
-    auto builder = HloComputation::Builder(TestName() + ".While");
-
-    auto one = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-    auto v1 = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, one, {}));
-    auto zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-    auto v2 = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, zero, {}));
-
-    auto tuple1 = builder.AddInstruction(HloInstruction::CreateTuple({v1, v2}));
-    auto tuple2 = builder.AddInstruction(HloInstruction::CreateTuple({v2, v1}));
-
-    auto pred = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    auto data_init = builder.AddInstruction(HloInstruction::CreateTernary(
-        nested_tuple_shape_, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
-
-    return BuildWhileInstructionWithCustomInit(nested_loop_state_shape_,
-                                               data_init, &builder);
   }
 
   HloInstruction* BuildWhileInstruction_InitPointsToNonDistinct() {
@@ -1289,62 +1192,6 @@ TEST_F(WhileCopyInsertionTest, InitPointsToParameter) {
 
   EXPECT_THAT(while_hlo->operand(0),
               op::Tuple(op::Copy(op::Constant()), op::Copy(op::Parameter())));
-}
-
-// Tests while init instruction which has an ambiguous points-to set.
-//
-//     select = Select(pred, tuple1, tuple2)
-//     init = Tuple(Constant(S32, {}), Parameter(F32, {8}))
-//
-// CopyInsertion pass will conceptually generate the following, but with some of
-// the actual GTE and Tuple instructions optimized away:
-//
-//                    Tuple  // old init
-//                   /     \
-//                  /       \
-//                GTE(0)   GTE(1)
-//                  |       /  \
-//                  |      /    \
-//                  |    GTE(0) GTE(1)
-//                  |       |    |
-//                Copy   Copy   Copy
-//                  |       |    |
-//                   \      |   /
-//                    \    Tuple
-//                     \    /
-//                      \  /
-//                     Tuple  // new init
-//
-TEST_F(WhileCopyInsertionTest, InitPointsToAmbiguous) {
-  auto while_hlo = BuildWhileInstruction_InitPointsToAmbiguous();
-
-  InsertCopies(module_.get());
-  EXPECT_EQ(CountCopies(*module_), 4);
-  // The entry computation requires three copies to resolve the ambiguity of two
-  // init elements and the constant passed in as one of the init elements.
-  EXPECT_EQ(CountCopies(*module_->entry_computation()), 3);
-  EXPECT_THAT(while_hlo->operand(0),
-              op::Tuple(op::Copy(op::Constant()),
-                        op::Tuple(op::Copy(op::GetTupleElement()),
-                                  op::Copy(op::GetTupleElement()))));
-
-  // The body requires one copy because the buffer set is not distinct: the
-  // result of one of the adds is written into two elements of the output of the
-  // loop body. Either element might be copied.
-  EXPECT_EQ(CountCopies(*while_hlo->while_body()), 1);
-  if (while_hlo->while_body()
-          ->root_instruction()
-          ->operand(1)
-          ->operand(0)
-          ->opcode() == HloOpcode::kCopy) {
-    EXPECT_THAT(
-        while_hlo->while_body()->root_instruction(),
-        op::Tuple(op::Add(), op::Tuple(op::Copy(op::Add()), op::Add())));
-  } else {
-    EXPECT_THAT(
-        while_hlo->while_body()->root_instruction(),
-        op::Tuple(op::Add(), op::Tuple(op::Add(), op::Copy(op::Add()))));
-  }
 }
 
 // Tests while init instruction which has a non-distinct points-to set.

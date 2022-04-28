@@ -541,50 +541,6 @@ TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
   EXPECT_TRUE(OutputsBF16(new_fusion_root->operand(0)));
 }
 
-// A select over tuples does not define the leaf buffers, so the types in
-// on_true and on_false must match, so that as long as one of them is F32, the
-// other must be F32 as well.
-TEST_F(BFloat16PropagationTest, SelectOverTuples) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
-
-  HloInstruction* param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "param"));
-  HloInstruction* pred = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(PRED, {}), "pred"));
-
-  HloInstruction* add0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, param));
-  HloInstruction* add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add0, param));
-  HloInstruction* tuple0 =
-      builder.AddInstruction(HloInstruction::CreateTuple({param, add0}));
-  HloInstruction* tuple1 =
-      builder.AddInstruction(HloInstruction::CreateTuple({param, add1}));
-  HloInstruction* sel = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
-  HloInstruction* gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape, sel, 0));
-  HloInstruction* gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(shape, sel, 1));
-  HloInstruction* xpose =
-      builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {4, 2}), gte0, {1, 0}));
-  HloInstruction* dot = builder.AddInstruction(
-      CreateDot(ShapeUtil::MakeShape(F32, {4, 4}), xpose, gte1));
-
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_TRUE(PropagatePrecision(module.get()));
-
-  EXPECT_EQ(computation->root_instruction(), dot);
-  EXPECT_FALSE(OutputsBF16(add0));
-  EXPECT_FALSE(OutputsBF16(add1));
-  EXPECT_FALSE(OutputsBF16(gte0));
-  EXPECT_FALSE(OutputsBF16(gte1));
-  EXPECT_TRUE(OutputsBF16(xpose));
-}
 
 // Tests that BF16 is propagated properly through a while computation with
 // non-tuple input/output.

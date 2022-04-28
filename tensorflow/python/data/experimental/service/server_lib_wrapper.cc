@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "Python.h"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"

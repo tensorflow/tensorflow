@@ -702,8 +702,8 @@ func.func @cluster_ops_keep_replicated_core_attr() {
 
 // -----
 
-func.func @missing_replication_or_compilation_attribute() {
-  // expected-error@+1 {{'tf.opA' op is expected to have either both or none of '_replication_info and _xla_compile_device_type attributes.}}
+func.func @missing_compilation_attribute() {
+  // expected-error@+1 {{'tf.opA' op has '_replication_info' attribute but not '_xla_compile_device_type' attribute which is unsupported}}
   %0 = "tf.opA"() { _replication_info = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
   func.return
@@ -712,7 +712,7 @@ func.func @missing_replication_or_compilation_attribute() {
 // -----
 
 func.func @empty_replication_attribute() {
-  // expected-error@+1 {{'tf.opA' op has an empty _replication_info attribute.}}
+  // expected-error@+1 {{'tf.opA' op has an empty '_replication_info' attribute}}
   %0 = "tf.opA"() { _xla_compile_device_type = "TPU", _replication_info = "", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
   func.return
@@ -720,9 +720,56 @@ func.func @empty_replication_attribute() {
 
 // -----
 
-func.func @empty_compilation_attribute() {
-  // expected-error@+1 {{'tf.opA' op has an empty _xla_compile_device_type attribute.}}
-  %0 = "tf.opA"() { _xla_compile_device_type = "", _replication_info = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
-  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
+func.func @invalid_device_type() {
+  // expected-error@+1 {{'tf.opA' op has invalid '_xla_compile_device_type' value 'XPU'}}
+  "tf.opA"() { _xla_compile_device_type = "XPU", _replication_info = "replicate", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// CHECK: "tf_device.cluster"() ({
+// CHECK:    "tf.opA"()
+// CHECK:    "tf.opB"()
+// CHECK:    tf_device.return
+// CHECK:  })
+func.func @valid_compilation_cluster_no_replication() {
+  "tf.opA"() { _xla_compile_device_type = "CPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "CPU", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-error@+1 {{found different '_xla_compile_device_type' attribute values (GPU,TPU) in same block which is not supported}}
+func.func @invalid_compilation_cluster_mixed_device_types() {
+  "tf.opA"() { _xla_compile_device_type = "GPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-error@+1 {{found different '_xla_compile_device_type' attribute values (CPU,GPU) in same block which is not supported}}
+func.func @invalid_compilation_replication_cluster_mixed_device_types() {
+  "tf.opA"() { _xla_compile_device_type = "CPU", _replication_info = "cluster", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "GPU", _replication_info = "cluster", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-error@+1 {{found mixed replicated and non-replicated compiled ops in same block which is not supported}}
+func.func @mixed_replicated_non_replicated_ops() {
+  "tf.opA"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", _replication_info = "cluster", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-warning@+1 {{TPUReplicateMetadata for associated '_replication_info' attribute 'cluster' is missing}}
+func.func @missing_metadata() {
+  "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
   func.return
 }

@@ -15,6 +15,7 @@
 # ==============================================================================
 
 set -e
+set -x
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../" && pwd)"
@@ -120,6 +121,8 @@ function generate_flex_aar {
   cp ${ROOT_DIR}/tensorflow/lite/java/proguard.flags .
   popd
 
+  # TODO(b/229868128): Remove the workaround to fix libtensorflow_framework.so.2 loading issue.
+  export LD_LIBRARY_PATH=${ROOT_DIR}/bazel-bin/tensorflow:${LD_LIBRARY_PATH}
   # Build the aar package.
   bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++14' \
       --config=monolithic \

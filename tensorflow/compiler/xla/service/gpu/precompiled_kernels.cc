@@ -29,9 +29,11 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-extern void rocm_MakeBatchPointers(void* stream, char* base, int stride, int n, void** ptrs_out);
+extern void rocm_MakeBatchPointers(void* stream, char* base, int stride, int n,
+                                   void** ptrs_out);
 
-}}
+}
+}  // namespace stream_executor
 #endif
 
 namespace xla {
@@ -156,10 +158,9 @@ Status MakeBatchPointers(se::Stream* stream, const se::GpuAsmOpts& asm_opts,
                          se::DeviceMemoryBase base_ptr, int stride_bytes, int n,
                          se::DeviceMemoryBase ptrs_out) {
 #if TENSORFLOW_USE_ROCM
-    stream_executor::gpu::rocm_MakeBatchPointers(
+  stream_executor::gpu::rocm_MakeBatchPointers(
       se::gpu::AsGpuStreamValue(stream),
-      reinterpret_cast<char*>(base_ptr.opaque()),
-      stride_bytes, n,
+      reinterpret_cast<char*>(base_ptr.opaque()), stride_bytes, n,
       reinterpret_cast<void**>(ptrs_out.opaque()));
 #else
   static auto* lazy_kernel =

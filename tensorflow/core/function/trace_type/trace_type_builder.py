@@ -55,8 +55,8 @@ class WeakrefDeletionObserver:
     self.weakref_deleted()
 
 
-class SignatureContext(trace.TracingContext):
-  """Container for variables and flags shared across signature tracing."""
+class InternalTracingContext(trace.TracingContext):
+  """Container for variables and flags shared across TraceType generation."""
 
   def __init__(self, include_tensor_ranks_only: bool = False):
     self._deletion_observer = WeakrefDeletionObserver()
@@ -84,8 +84,8 @@ class SignatureContext(trace.TracingContext):
     return self._deletion_observer
 
 
-def create_trace_type(obj: Any,
-                      context: SignatureContext) -> trace.TraceType:
+def from_object(obj: Any,
+                context: trace.TracingContext = None) -> trace.TraceType:
   """Returns a TraceType corresponding to the object based on the context.
 
   Args:
@@ -96,31 +96,34 @@ def create_trace_type(obj: Any,
     A TraceType object representing the given object.
   """
 
+  if context is None:
+    context = InternalTracingContext()
+
   if isinstance(obj, trace.SupportsTracingProtocol):
     return obj.__tf_tracing_type__(context)
 
   if hasattr(obj, "__wrapped__"):
-    return create_trace_type(obj.__wrapped__, context)
+    return from_object(obj.__wrapped__, context)
 
   if isinstance(obj, list):
-    return default_types.List(*(create_trace_type(c, context) for c in obj))
+    return default_types.List(*(from_object(c, context) for c in obj))
 
   if isinstance(obj, tuple):
     if util.is_namedtuple(obj):
       return default_types.NamedTuple(
-          type(obj), tuple(create_trace_type(c, context) for c in obj))
+          type(obj), tuple(from_object(c, context) for c in obj))
     else:
-      return default_types.Tuple(*(create_trace_type(c, context) for c in obj))
+      return default_types.Tuple(*(from_object(c, context) for c in obj))
 
   if isinstance(obj, collections.abc.Mapping):
     return default_types.Dict(
-        {k: create_trace_type(obj[k], context) for k in obj})
+        {k: from_object(obj[k], context) for k in obj})
 
   if util.is_attrs(obj):
     return default_types.Attrs(
         type(obj),
         tuple(
-            create_trace_type(getattr(obj, a.name), context)
+            from_object(getattr(obj, a.name), context)
             for a in obj.__attrs_attrs__))
 
   try:
@@ -137,18 +140,3 @@ def create_trace_type(obj: Any,
       raise TypeError(
           f"Python object could not be represented through the generic tracing "
           f"type. Consider implementing the Tracing Protocol for it: {obj!r}")
-
-
-def make_function_signature(
-    function_args,
-    signature_context: SignatureContext) -> trace.TraceType:
-  """Returns the trace type specification of a function's arguments.
-
-  Args:
-    function_args: Tuple/List/Dict structure containing the function arguments
-    signature_context: The SignatureContext to be shared during protocol calls.
-
-  Returns:
-    A TraceType object representing all the given inputs.
-  """
-  return create_trace_type(function_args, signature_context)

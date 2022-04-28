@@ -208,7 +208,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     void SetConnected(uint64_t task_incarnation);
     void Disconnect(uint64_t grace_period_duration_us);
     Status RecordHeartbeat(uint64_t task_incarnation);
-    int64 TimeSinceLastHeartbeatMs();
+    int64_t TimeSinceLastHeartbeatMs();
     // This denotes the deadline after which we stop accepting heartbeats from a
     // disconnected task. This grace period accounts for the lag time between
     // the service recording the state change and the agent stopping heartbeats.
@@ -309,7 +309,8 @@ Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
   return Status::OK();
 }
 
-int64 CoordinationServiceStandaloneImpl::TaskState::TimeSinceLastHeartbeatMs() {
+int64_t
+CoordinationServiceStandaloneImpl::TaskState::TimeSinceLastHeartbeatMs() {
   mutex_lock l(last_heartbeat_mu_);
   return (Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
 }
@@ -420,6 +421,10 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               // connection, so shut down service instead. Note: we cannot
               // destroy the thread within its own function. However, this
               // thread will be destroyed once the function returns.
+              LOG(ERROR) << "Stopping coordination service as heartbeat has "
+                            "timed out for "
+                         << stale_task_names[0]
+                         << " and there is no service-to-client connection";
               Stop(/*shut_staleness_thread=*/false);
               return;
             }
@@ -457,6 +462,9 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             // connection, so shut down service instead. Note: we cannot
             // destroy the thread within its own function. However, this
             // thread will be destroyed once the function returns.
+            LOG(ERROR)
+                << "Stopping coordination service as shutdown barrier "
+                   "timed out and there is no service-to-client connection.";
             Stop(/*shut_staleness_thread=*/false);
           }
           // Reset this for the next barrier check.
@@ -522,6 +530,9 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       // or it's already in ERROR state and now register again. In both cases,
       // the service allows it to be registered.
       cluster_state_[task_name]->SetConnected(incarnation);
+      LOG(INFO) << task_name
+                << " has connected to coordination service. Incarnation: "
+                << incarnation;
     }
   }
   if (!status.ok()) {
@@ -587,6 +598,8 @@ Status CoordinationServiceStandaloneImpl::DisconnectTask(
         ", Task: ", task_name)));
     PassBarrier(barrier_id, error, &barriers_[barrier_id]);
   }
+
+  LOG(INFO) << task_name << " has disconnected from coordination service.";
   return Status::OK();
 }
 
@@ -858,6 +871,8 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
         ", Task: ", task_name)));
     PassBarrier(barrier_id, error, &barriers_[barrier_id]);
   }
+
+  LOG(ERROR) << task_name << " has been set to ERROR: " << error;
 }
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
@@ -1025,6 +1040,13 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
 
   // Special hook for shutdown barrier to disconnect tasks at the barrier.
   if (barrier_id == shutdown_barrier_id_) {
+    if (result.ok()) {
+      LOG(INFO) << "Shutdown barrier has passed.";
+    } else {
+      LOG(ERROR) << "Shutdown barrier failed: " << result
+                 << ". This suggests that at least one worker did not complete "
+                    "its job, or was too slow/hanging in its execution.";
+    }
     Status shutdown_error = MakeCoordinationError(errors::Internal(
         absl::StrCat("Shutdown barrier has been passed with status: '",
                      barrier->result.ToString(),

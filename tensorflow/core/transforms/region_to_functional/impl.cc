@@ -421,7 +421,7 @@ Operation *BasePattern::MakeChainConstant(Operation *parent, Value ctl,
   state.addTypes({tensor_type, ctl.getType()});
 
   // Inherit `tfg.tpu_replicate`, `assigned_device`, and `device`.
-  for (StringAttr attr_name : {dialect_.getTfgTpuReplicateAttrIdentifier(),
+  for (StringAttr attr_name : {StringAttr::get(ctx_, "_tpu_replicate"),
                                dialect_.getAssignedDeviceAttrIdentifier(),
                                dialect_.getDeviceAttrIdentifier()}) {
     if (Attribute attr = parent->getAttr(attr_name))

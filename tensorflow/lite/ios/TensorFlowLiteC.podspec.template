@@ -20,6 +20,16 @@ Pod::Spec.new do |s|
   s.module_name = 'TensorFlowLiteC'
   s.library = 'c++'
 
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.pod_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+  }
+
   s.default_subspec = 'Core'
 
   s.subspec 'Core' do |core|

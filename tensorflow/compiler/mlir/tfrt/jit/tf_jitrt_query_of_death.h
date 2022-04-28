@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_QUERY_OF_DEATH_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_QUERY_OF_DEATH_H_
 
-namespace mlir {
+#include "tensorflow/core/platform/platform.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.cpp.inc"
+// Include appropriate platform-dependent implementations
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/compiler/mlir/tfrt/jit/google/tf_jitrt_query_of_death.h"
+#else
+#include "tensorflow/compiler/mlir/tfrt/jit/default/tf_jitrt_query_of_death.h"
+#endif
 
-}  // namespace mlir
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_QUERY_OF_DEATH_H_

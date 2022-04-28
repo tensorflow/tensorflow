@@ -738,6 +738,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "UnsortedSegmentProd",
           "UnsortedSegmentSum",
           "UnwrapDatasetVariant",
+          "UpperBound",
           "VarHandleOp",
           "VarIsInitializedOp",
           "Variable",

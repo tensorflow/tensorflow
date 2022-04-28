@@ -72,7 +72,7 @@ cc_library(
         "gemm_pattern.cc",
         "infeed_and_outfeed_pattern.cc",
         "lmhlo_to_gpu.cc",
-        "lmhlo_to_gpu_while.cc",
+        "lmhlo_to_gpu_branch.cc",
         "replica_and_partition_pattern.cc",
         "triangular_solve_pattern.cc",
     ],

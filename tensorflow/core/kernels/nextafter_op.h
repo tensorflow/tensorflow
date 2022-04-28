@@ -24,7 +24,6 @@ namespace functor {
 
 template <typename T>
 struct nextafter_op {
-  EIGEN_EMPTY_STRUCT_CTOR(nextafter_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x1,
                                                            const T& x2) const {
     return std::nextafter(x1, x2);

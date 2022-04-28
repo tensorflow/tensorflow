@@ -87,6 +87,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:framework_stable",
         "//tensorflow/lite/core/shims:jni_utils",
         "//tensorflow/lite/core/shims:xnnpack_plugin",
+        "//tensorflow/lite/core/shims:verifier_internal",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",

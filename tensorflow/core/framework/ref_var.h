@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_IR_INFER_SHAPE_EQUALITY_OP_INTERFACE_H
-#define MLIR_HLO_DIALECT_MHLO_IR_INFER_SHAPE_EQUALITY_OP_INTERFACE_H
+#ifndef TENSORFLOW_CORE_FRAMEWORK_REF_VAR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_REF_VAR_H_
 
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/OpDefinition.h"
+#include <functional>
 
-namespace mlir {
+namespace tensorflow {
+class OpKernelContext;
 
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h.inc"
+void AssignRefVariable(
+    OpKernelContext* context, int input_ref_index, int output_ref_index,
+    int value_index, bool use_locking, bool validate_shape,
+    bool relax_constraints,
+    std::function<void(OpKernelContext*, Tensor*, const Tensor&)> copy);
+}  //  end namespace tensorflow
 
-}  // namespace mlir
-
-#endif  // MLIR_HLO_DIALECT_MHLO_IR_INFER_SHAPE_EQUALITY_OP_INTERFACE_H
+#endif  // TENSORFLOW_CORE_FRAMEWORK_REF_VAR_H_

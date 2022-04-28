@@ -857,12 +857,14 @@ struct ExecuteOptions {
 //   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
 //   + temp_size_in_bytes.
 struct CompiledMemoryStats {
-  int32_t generated_code_size_in_bytes = 0;
-  int32_t argument_size_in_bytes = 0;
-  int32_t output_size_in_bytes = 0;
+  int64_t generated_code_size_in_bytes = 0;
+  int64_t argument_size_in_bytes = 0;
+  int64_t output_size_in_bytes = 0;
   // How much argument is reused for output.
-  int32_t alias_size_in_bytes = 0;
-  int32_t temp_size_in_bytes = 0;
+  int64_t alias_size_in_bytes = 0;
+  int64_t temp_size_in_bytes = 0;
+
+  std::string DebugString() const;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -926,6 +928,9 @@ class PjRtExecutable {
   //     execute has completed.
   //   else:
   //     *returned_futures is undefined.
+  //
+  // The caller is *NOT* required to ensure that PjRtExecutable stays alive
+  // until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,

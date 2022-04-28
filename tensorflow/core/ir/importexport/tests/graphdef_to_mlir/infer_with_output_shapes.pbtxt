@@ -1,7 +1,7 @@
 # RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
 
 # CHECK: Add
-# CHECK-SAME: -> (tensor<4xi32>)
+# CHECK-SAME: -> (tensor<*xi32>)
 # CHECK: Add
 # CHECK-SAME: -> (tensor<*xi32>)
 

@@ -218,7 +218,7 @@ class MlirAbstractOp : public TracingOperation {
 class MlirFunction : public AbstractFunction {
  public:
   explicit MlirFunction(std::unique_ptr<MLIRContext> context,
-                        OwningOpRef<mlir::ModuleOp> module, FuncOp func)
+                        OwningOpRef<mlir::ModuleOp> module, func::FuncOp func)
       : AbstractFunction(kMlir),
         context_(std::move(context)),
         module_(std::move(module)),

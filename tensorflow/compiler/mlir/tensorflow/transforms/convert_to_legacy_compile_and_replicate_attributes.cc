@@ -45,7 +45,7 @@ LogicalResult ConvertToLegacyAttributes(func::FuncOp func_op) {
     if (failed(TF::HasValidCompilationAndReplicationAttributes(*op)))
       return WalkResult::interrupt();
     if (op->hasAttr(TF::kReplicationInfoAttr)) {
-      op->setAttr(TF::kTPUReplicateAttr, op->getAttr(TF::kReplicationInfoAttr));
+      op->setAttr(TF::kTpuReplicateAttr, op->getAttr(TF::kReplicationInfoAttr));
       op->removeAttr(TF::kReplicationInfoAttr);
       op->removeAttr(TF::kCompileDeviceTypeAttr);
     }

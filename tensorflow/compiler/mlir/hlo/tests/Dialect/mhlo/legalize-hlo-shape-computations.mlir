@@ -42,9 +42,7 @@ func.func @multiply_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<i32>) {
 // CHECK-DAG: %[[C2:.+]] = arith.constant 2
 // CHECK-DAG: %[[DIM:.+]] = tensor.dim %arg0, %[[C1]]
 // CHECK-DAG: %[[IDX:.+]] = arith.index_cast %[[DIM]]
-// CHECK-DAG: %[[FROM:.+]] = tensor.from_elements %[[IDX]]
-// CHECK-DAG: %[[EXTRACT:.+]] = tensor.extract %[[FROM]][]
-// CHECK-DAG: %[[MUL:.+]] = arith.muli %[[EXTRACT]], %[[C2]]
+// CHECK-DAG: %[[MUL:.+]] = arith.muli %[[IDX]], %[[C2]]
 // CHECK-DAG: %[[RES:.+]] = tensor.from_elements %[[MUL]]
 // CHECK: return %[[RES]]
 
@@ -60,12 +58,9 @@ func.func @concat_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<2xi32>) {
 }
 
 // CHECK-DAG: %[[C1:.+]] = arith.constant 1
-// CHECK-DAG: %[[C0:.+]] = arith.constant 0
 // CHECK-DAG: %[[C2:.+]] = arith.constant 2
 // CHECK-DAG: %[[DIM:.+]] = tensor.dim %arg0, %[[C1]]
 // CHECK-DAG: %[[IDX:.+]] = arith.index_cast %[[DIM]]
-// CHECK-DAG: %[[FROM:.+]] = tensor.from_elements %[[IDX]]
-// CHECK-DAG: %[[EXTRACT:.+]] = tensor.extract %[[FROM]][%[[C0]]]
-// CHECK-DAG: %[[RES:.+]] = tensor.from_elements %[[EXTRACT]], %[[C2]]
+// CHECK-DAG: %[[RES:.+]] = tensor.from_elements %[[IDX]], %[[C2]]
 // CHECK: return %[[RES]]
 

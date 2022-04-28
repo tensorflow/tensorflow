@@ -86,28 +86,23 @@ def call_with_layout(fn: Callable[...,
 
 @tf_export("experimental.dtensor.run_on", v1=[])
 @contextlib.contextmanager
-def run_on(layout_or_mesh: Union[layout_lib.Layout, layout_lib.Mesh]):
+def run_on(mesh: layout_lib.Mesh):
   """Runs enclosed functions in the DTensor device scope.
 
   This function returns a scope. All the ops and tf.functions in this scope will
-  run on the DTensor device using the mesh provided or attached to the layout.
+  run on the DTensor device using the mesh provided.
   This is useful for wrapping any tf.function that doesn't take a DTensor as
   input but would like to produce DTensor as result. The scope will also make
   sure all small constants be replicated as DTensor.
 
   Args:
-    layout_or_mesh: A Layout or Mesh instance to extract a default mesh from.
+    mesh: A Mesh instance to extract a default mesh from.
 
   Yields:
     A context in which all ops and tf.functions will run on the DTensor device.
   """
-  if isinstance(layout_or_mesh, layout_lib.Layout):
-    mesh = layout_or_mesh.mesh
-  elif isinstance(layout_or_mesh, layout_lib.Mesh):
-    mesh = layout_or_mesh
-  else:
-    raise ValueError("Expect `layout_or_mesh` to be either `Layout` or `Mesh`, "
-                     f"got {type(layout_or_mesh)}")
+  if not isinstance(mesh, layout_lib.Mesh):
+    raise ValueError(f"Expect `mesh` to be `Mesh`, got {type(mesh)}")
 
   with _dtensor_device()._experimental_default_mesh(mesh):  # pylint: disable=protected-access
     with ops.device(device_name()):
@@ -518,12 +513,12 @@ def full_job_name(task_id: Optional[int] = None) -> str:
 
 
 def _task_id(job: str) -> Union[int, str]:
-  """Tries to extract an integer task ID from a Borg job name.
+  """Tries to extract an integer task ID from a job name.
 
-  For example, for `job` = '/bns/.../tpu_worker/0:port_name', return 0.
+  For example, for `job` = '/.../tpu_worker/0:port_name', return 0.
 
   Args:
-    job: A BNS job name to extract task ID from.
+    job: A job name to extract task ID from.
 
   Returns:
     The task ID on success, or the original job name on failure.
@@ -537,7 +532,7 @@ def _task_id(job: str) -> Union[int, str]:
 
 @tf_export("experimental.dtensor.jobs", v1=[])
 def jobs() -> List[str]:
-  """Returns a list of Borg job names of all clients in this DTensor cluster."""
+  """Returns a list of job names of all clients in this DTensor cluster."""
   d_jobs = os.environ.get(_DT_JOBS)
   if d_jobs is None:
     return []

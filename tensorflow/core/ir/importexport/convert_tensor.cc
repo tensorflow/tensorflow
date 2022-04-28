@@ -284,8 +284,8 @@ tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
   if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
 
-  llvm::SmallVector<int64_t, 4> dims;
-  dims.reserve(shape.dim().size());
+  SmallVector<int64_t, 4> dims;
+  dims.reserve(shape.dim_size());
   for (const auto& dim : shape.dim()) {
     dims.push_back(dim.size());
   }

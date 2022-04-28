@@ -233,6 +233,8 @@ class CompiledMemoryStats:
   output_size_in_bytes: int
   alias_size_in_bytes: int
   temp_size_in_bytes: int
+  def __str__(self) -> str: ...
+
 
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...
