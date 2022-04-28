@@ -3,6 +3,10 @@
 # Dependencies only required for Mac
 certifi ~= 2020.12.5
 
+# Install build related dependencies
+twine ~= 3.6.0
+setuptools
+
 # Test dependencies which don't exist on Windows
 jax ~= 0.2.26
 jaxlib ~= 0.1.75
