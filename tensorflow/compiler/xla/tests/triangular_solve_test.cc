@@ -352,11 +352,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-// The following test will results in a call to "BlasTrsm".
-// That operation is currently not supported for the complex type on the ROCm
-// platform.
-XLA_TEST_F(TriangularSolveTest,
-           DISABLED_ON_GPU_ROCM(SimpleRightLowerTransposeConjugate)) {
+XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -382,11 +378,7 @@ XLA_TEST_F(TriangularSolveTest,
       &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
 }
 
-// The following test will results in a call to "BlasTrsm".
-// That operation is currently not supported for the complex type on the ROCm
-// platform.
-XLA_TEST_F(TriangularSolveTest,
-           DISABLED_ON_GPU_ROCM(SimpleLeftUpperTransposeNoconjugate)) {
+XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
