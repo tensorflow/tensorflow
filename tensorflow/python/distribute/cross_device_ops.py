@@ -936,10 +936,11 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
 
   def _gather_implementation(self, per_replica_value, destinations, axis,
                              options):
-    logging.warning("gather/all_gather with NCCL or HierarchicalCopy is not "
-                    "supported. Falling back to gather on one device and "
-                    "then broadcast. We're working on a more efficient "
-                    "implementation.")
+    logging.log_first_n(
+        logging.WARN,
+        "gather/all_gather with NCCL or HierarchicalCopy is not supported. "
+        "Falling back to gather on one device and then broadcast. We're working"
+        " on a more efficient implementation.", 3)
     return ReductionToOneDevice()._gather(per_replica_value, destinations, axis,  # pylint: disable=protected-access
                                           options)
 
