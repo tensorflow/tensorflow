@@ -72,6 +72,7 @@ tf_py_test(
         "no_oss",  # TODO(b/229155465): Test sometimes times out
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test
+        "notap",  # b/230734185
     ],
     deps = [
         ":failure_handling_lib",
