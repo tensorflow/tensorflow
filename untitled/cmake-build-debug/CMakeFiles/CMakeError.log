@@ -1,0 +1,64 @@
+Performing C++ SOURCE FILE Test CXX_SUPPORTS_CLASS_MEMACCESS_FLAG failed with the following output:
+Change Dir: /home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/snap/clion/189/bin/ninja/linux/ninja cmTC_4704c && [1/2] Building CXX object CMakeFiles/cmTC_4704c.dir/src.cxx.o
+warning: unknown warning option '-Wclass-memaccess'; did you mean '-Wclass-varargs'? [-Wunknown-warning-option]
+1 warning generated.
+[2/2] Linking CXX executable cmTC_4704c
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test CXX_SUPPORTS_SUGGEST_OVERRIDE_FLAG failed with the following output:
+Change Dir: /home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/snap/clion/189/bin/ninja/linux/ninja cmTC_3267e && [1/2] Building CXX object CMakeFiles/cmTC_3267e.dir/src.cxx.o
+warning: unknown warning option '-Wsuggest-override'; did you mean '-Wshift-overflow'? [-Wunknown-warning-option]
+1 warning generated.
+[2/2] Linking CXX executable cmTC_3267e
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LINKER_SUPPORTS_COLOR_DIAGNOSTICS failed with the following output:
+Change Dir: /home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/snap/clion/189/bin/ninja/linux/ninja cmTC_f72af && [1/2] Building CXX object CMakeFiles/cmTC_f72af.dir/src.cxx.o
+[2/2] Linking CXX executable cmTC_f72af
+FAILED: cmTC_f72af 
+: && /usr/bin/clang++ -fPIC -fvisibility-inlines-hidden -Werror=date-time -Werror=unguarded-availability-new -Wall -Wextra -Wno-unused-parameter -Wwrite-strings -Wcast-qual -Wmissing-field-initializers -Wimplicit-fallthrough -Wcovered-switch-default -Wno-noexcept-type -Wnon-virtual-dtor -Wdelete-non-virtual-dtor -Wstring-conversion -Wmisleading-indentation -fdiagnostics-color -Wl,--color-diagnostics CMakeFiles/cmTC_f72af.dir/src.cxx.o -o cmTC_f72af   && :
+/usr/bin/ld: unrecognized option '--color-diagnostics'
+/usr/bin/ld: use the --help option for usage information
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+ninja: build stopped: subcommand failed.
+
+
+Source file was:
+int main() { return 0; }
+Determining if the os_signpost_interval_begin exist failed with the following output:
+Change Dir: /home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/snap/clion/189/bin/ninja/linux/ninja cmTC_e51ea && [1/2] Building C object CMakeFiles/cmTC_e51ea.dir/CheckSymbolExists.c.o
+FAILED: CMakeFiles/cmTC_e51ea.dir/CheckSymbolExists.c.o 
+/usr/bin/clang   -fPIC -Werror=date-time -Werror=unguarded-availability-new -Wall -Wextra -Wno-unused-parameter -Wwrite-strings -Wmissing-field-initializers -Wimplicit-fallthrough -Wcovered-switch-default -Wstring-conversion -Wmisleading-indentation -fdiagnostics-color -MD -MT CMakeFiles/cmTC_e51ea.dir/CheckSymbolExists.c.o -MF CMakeFiles/cmTC_e51ea.dir/CheckSymbolExists.c.o.d -o CMakeFiles/cmTC_e51ea.dir/CheckSymbolExists.c.o -c /home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp/CheckSymbolExists.c:2:10: fatal error: 'os/signpost.h' file not found
+#include <os/signpost.h>
+         ^~~~~~~~~~~~~~~
+1 error generated.
+ninja: build stopped: subcommand failed.
+
+
+File /home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <os/signpost.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef os_signpost_interval_begin
+  return ((int*)(&os_signpost_interval_begin))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}

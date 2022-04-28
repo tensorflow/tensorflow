@@ -1,4 +1,3 @@
 # Run manually to reformat a file:
 # clang-format -i --style=file <file>
-BasedOnStyle: Google
-DerivePointerAlignment: false
+BasedOnStyle: LLVM

@@ -95,8 +95,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
 
 StatusOr<std::vector<int>> ParseShapeStr(absl::string_view node_shapes_str) {
   std::vector<int> dims;
-  for (const absl::string_view dim_str :
-        absl::StrSplit(node_shapes_str, ',')) {
+  for (const absl::string_view dim_str : absl::StrSplit(node_shapes_str, ',')) {
     // Treats empty input shape as scalar
     if (dim_str.empty()) continue;
     if (dim_str == "?") {
@@ -110,20 +109,21 @@ StatusOr<std::vector<int>> ParseShapeStr(absl::string_view node_shapes_str) {
   return dims;
 }
 
-static Status 
-HandleSubtype(absl::string_view subtype, ArrayInfo::SubTypeInfo *result) {
+static Status HandleSubtype(absl::string_view subtype,
+                            ArrayInfo::SubTypeInfo* result) {
   std::vector<std::string> shape_and_type = absl::StrSplit(subtype, ':');
 
   std::vector<int> dims;
   if (shape_and_type.size() > 2) {
     return errors::FailedPrecondition(
-      "Invalid argument, the subtype and shape have to be separated with a ':'");
-  } else if(shape_and_type.size() == 2) {
-    const auto &shape_str = shape_and_type[0];
+        "Invalid argument, the subtype and shape have to be separated with a "
+        "':'");
+  } else if (shape_and_type.size() == 2) {
+    const auto& shape_str = shape_and_type[0];
     dims = ParseShapeStr(shape_str).ValueOrDie();
   }
 
-  const auto &subtype_str = shape_and_type.back();
+  const auto& subtype_str = shape_and_type.back();
   DataType subtype_dtype;
   if (!DataType_Parse(subtype_str, &subtype_dtype)) {
     return errors::FailedPrecondition(
@@ -131,7 +131,7 @@ HandleSubtype(absl::string_view subtype, ArrayInfo::SubTypeInfo *result) {
   }
 
   TensorShapeProto subtype_tensor_shape;
-  for (auto &dim : dims) {
+  for (auto& dim : dims) {
     subtype_tensor_shape.add_dim()->set_size(dim);
   }
   *result = {subtype_dtype, subtype_tensor_shape};
@@ -174,7 +174,7 @@ Status ParseInputArrayInfo(
   // StringMap doesn't support reserve else reserve input map size here.
   for (int i = 0, end = node_names.size(); i < end; i++) {
     auto& name = node_names[i];
-    const string &type = used_node_dtypes[i];
+    const string& type = used_node_dtypes[i];
     if (name.empty()) continue;
 
     auto it_inserted_pair = inputs->insert({name, {}});
@@ -184,8 +184,10 @@ Status ParseInputArrayInfo(
 
     ArrayInfo& info = it_inserted_pair.first->second;
     // Splitting the type and subtype into parts
-    std::vector<std::string> parts = absl::StrSplit(type, absl::ByAnyChar("()"));
-    /// If type has subtypes then part[0] = type, part[1] = subtypes, part[2] = ""
+    std::vector<std::string> parts =
+        absl::StrSplit(type, absl::ByAnyChar("()"));
+    /// If type has subtypes then part[0] = type, part[1] = subtypes, part[2] =
+    /// ""
     if (parts.size() != 3 && parts.size() != 1) {
       return errors::InvalidArgument("Invalid type '", type, "'");
     } else if (parts.size() == 3) {
@@ -242,39 +244,41 @@ Status ParseNodeNames(absl::string_view names_str,
   return Status::OK();
 }
 
-StatusOr<std::vector<std::string>> ParseDTypesHelper(absl::string_view data_types_str) {
+StatusOr<std::vector<std::string>> ParseDTypesHelper(
+    absl::string_view data_types_str) {
   bool inside_subtype = false;
   int cur_pos = 0;
   std::vector<std::string> dtypes;
-  for (auto it: llvm::enumerate(data_types_str)) {
+  for (auto it : llvm::enumerate(data_types_str)) {
     char c = it.value();
     int i = it.index();
     // Skip parsing the subtypes of a type
     if (c == '(') {
       if (inside_subtype) {
         return errors::FailedPrecondition(
-          absl::StrCat("Syntax error in data types '", data_types_str, "'"));
+            absl::StrCat("Syntax error in data types '", data_types_str, "'"));
       }
       inside_subtype = true;
     } else if (c == ')') {
       if (!inside_subtype) {
         return errors::FailedPrecondition(
-          absl::StrCat("Syntax error in data types '", data_types_str, "'"));
+            absl::StrCat("Syntax error in data types '", data_types_str, "'"));
       }
       inside_subtype = false;
     }
     if (inside_subtype) continue;
     if (c == ',') {
       dtypes.push_back(std::string(data_types_str.substr(cur_pos, i)));
-      cur_pos = i+1;
+      cur_pos = i + 1;
     }
   }
   if (inside_subtype) {
     return errors::FailedPrecondition(
-          absl::StrCat("Syntax error in data types '", data_types_str, "'"));
+        absl::StrCat("Syntax error in data types '", data_types_str, "'"));
   }
   if (!data_types_str.empty()) {
-    dtypes.push_back(std::string(data_types_str.substr(cur_pos, data_types_str.size())));
+    dtypes.push_back(
+        std::string(data_types_str.substr(cur_pos, data_types_str.size())));
   }
   return dtypes;
 }

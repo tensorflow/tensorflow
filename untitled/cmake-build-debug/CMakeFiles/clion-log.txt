@@ -1,0 +1,25 @@
+/snap/clion/189/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/snap/clion/189/bin/ninja/linux/ninja -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DMLIR_DIR=/home/parsab/dev/llvm-project/build/lib/cmake/mlir -G Ninja -S /home/parsab/dev/tensorflow/untitled -B /home/parsab/dev/tensorflow/untitled/cmake-build-debug
+-- Using MLIRConfig.cmake in: /home/parsab/dev/llvm-project/build/lib/cmake/mlir
+-- Using LLVMConfig.cmake in: /home/parsab/dev/llvm-project/build/lib/cmake/llvm
+-- Building with -fPIC
+CMake Error at CMakeLists.txt:34 (add_subdirectory):
+  add_subdirectory given source "include" which is not an existing directory.
+
+
+CMake Error at CMakeLists.txt:35 (add_subdirectory):
+  add_subdirectory given source "lib" which is not an existing directory.
+
+
+CMake Error at CMakeLists.txt:36 (add_subdirectory):
+  add_subdirectory given source "standalone-opt" which is not an existing
+  directory.
+
+
+CMake Error at CMakeLists.txt:37 (add_subdirectory):
+  add_subdirectory given source "standalone-translate" which is not an
+  existing directory.
+
+
+-- Configuring incomplete, errors occurred!
+See also "/home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeOutput.log".
+See also "/home/parsab/dev/tensorflow/untitled/cmake-build-debug/CMakeFiles/CMakeError.log".

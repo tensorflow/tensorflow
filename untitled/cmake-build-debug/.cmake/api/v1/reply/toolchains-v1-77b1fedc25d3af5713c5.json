@@ -1,0 +1,113 @@
+{
+	"kind" : "toolchains",
+	"toolchains" : 
+	[
+		{
+			"compiler" : 
+			{
+				"id" : "Clang",
+				"implicit" : 
+				{
+					"includeDirectories" : 
+					[
+						"/usr/local/include",
+						"/usr/lib/llvm-10/lib/clang/10.0.0/include",
+						"/usr/include/x86_64-linux-gnu",
+						"/usr/include"
+					],
+					"linkDirectories" : 
+					[
+						"/usr/lib/gcc/x86_64-linux-gnu/9",
+						"/usr/lib/x86_64-linux-gnu",
+						"/usr/lib64",
+						"/lib/x86_64-linux-gnu",
+						"/lib64",
+						"/usr/lib",
+						"/usr/lib/llvm-10/lib",
+						"/lib"
+					],
+					"linkFrameworkDirectories" : [],
+					"linkLibraries" : 
+					[
+						"gcc",
+						"gcc_s",
+						"c",
+						"gcc",
+						"gcc_s"
+					]
+				},
+				"path" : "/usr/bin/clang",
+				"version" : "10.0.0"
+			},
+			"language" : "C",
+			"sourceFileExtensions" : 
+			[
+				"c",
+				"m"
+			]
+		},
+		{
+			"compiler" : 
+			{
+				"id" : "Clang",
+				"implicit" : 
+				{
+					"includeDirectories" : 
+					[
+						"/usr/include/c++/9",
+						"/usr/include/x86_64-linux-gnu/c++/9",
+						"/usr/include/c++/9/backward",
+						"/usr/local/include",
+						"/usr/lib/llvm-10/lib/clang/10.0.0/include",
+						"/usr/include/x86_64-linux-gnu",
+						"/usr/include"
+					],
+					"linkDirectories" : 
+					[
+						"/usr/lib/gcc/x86_64-linux-gnu/9",
+						"/usr/lib/x86_64-linux-gnu",
+						"/usr/lib64",
+						"/lib/x86_64-linux-gnu",
+						"/lib64",
+						"/usr/lib",
+						"/usr/lib/llvm-10/lib",
+						"/lib"
+					],
+					"linkFrameworkDirectories" : [],
+					"linkLibraries" : 
+					[
+						"stdc++",
+						"m",
+						"gcc_s",
+						"gcc",
+						"c",
+						"gcc_s",
+						"gcc"
+					]
+				},
+				"path" : "/usr/bin/clang++",
+				"version" : "10.0.0"
+			},
+			"language" : "CXX",
+			"sourceFileExtensions" : 
+			[
+				"C",
+				"M",
+				"c++",
+				"cc",
+				"cpp",
+				"cxx",
+				"mm",
+				"mpp",
+				"CPP",
+				"ixx",
+				"cppm"
+			]
+		}
+	],
+	"version" : 
+	{
+		"major" : 1,
+		"minor" : 0
+	}
+}

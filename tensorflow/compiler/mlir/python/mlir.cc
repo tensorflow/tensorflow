@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"            // from @llvm-project
+#include "mlir/InitAllPasses.h"            // from @llvm-project
+#include "mlir/Parser/Parser.h"            // from @llvm-project
+#include "mlir/Pass/PassManager.h"         // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"        // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -202,7 +202,8 @@ std::string ImportGraphDef(const std::string &proto,
                            absl::string_view output_names, TF_Status *status) {
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
-  auto s = ParseInputArrayInfo(input_names,input_data_types,input_data_shapes,&specs.inputs);
+  auto s = ParseInputArrayInfo(input_names, input_data_types, input_data_shapes,
+                               &specs.inputs);
   if (!s.ok()) {
     Set_TF_Status_from_Status(status, s);
     return "// error";

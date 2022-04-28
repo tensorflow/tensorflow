@@ -1,0 +1,58 @@
+{
+	"backtrace" : 5,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"find_package"
+		],
+		"files" : 
+		[
+			"/home/parsab/dev/llvm-project/build/lib/cmake/llvm/LLVMConfig.cmake",
+			"/home/parsab/dev/llvm-project/build/lib/cmake/mlir/MLIRConfig.cmake",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 1,
+				"file" : 2,
+				"line" : 6,
+				"parent" : 0
+			},
+			{
+				"file" : 1,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 5,
+				"parent" : 2
+			},
+			{
+				"file" : 0,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 226,
+				"parent" : 4
+			}
+		]
+	},
+	"id" : "acc_gen::@6890427a1f51a3e7e1df",
+	"name" : "acc_gen",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}
