@@ -480,6 +480,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
+#### `AVERAGE_POOL_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `CEIL`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -586,6 +590,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `SPLIT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SOFTMAX`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
