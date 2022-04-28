@@ -86,7 +86,9 @@ class GrpcDataServerBase {
 
 class DispatchGrpcDataServer : public GrpcDataServerBase {
  public:
-  explicit DispatchGrpcDataServer(const experimental::DispatcherConfig& config);
+  explicit DispatchGrpcDataServer(
+      const experimental::DispatcherConfig& config,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
   ~DispatchGrpcDataServer() override;
 
   // Returns the number of workers registered with the dispatcher.

@@ -104,8 +104,10 @@ void GrpcDataServerBase::AddProfilerServiceToBuilder(
 }
 
 DispatchGrpcDataServer::DispatchGrpcDataServer(
-    const experimental::DispatcherConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer"),
+    const experimental::DispatcherConfig& config,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
+    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer",
+                         std::move(options)),
       config_(config) {}
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
