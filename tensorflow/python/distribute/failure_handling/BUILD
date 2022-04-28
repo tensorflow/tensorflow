@@ -40,9 +40,7 @@ py_library(
 tf_py_test(
     name = "failure_handler_test",
     srcs = ["failure_handler_test.py"],
-    tags = [
-        "no_oss",  # TODO(b/230003805): Test sometimes times out
-    ],
+    shard_count = 4,
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
@@ -68,11 +66,10 @@ tf_py_test(
 tf_py_test(
     name = "gce_failure_handler_test",
     srcs = ["gce_failure_handler_test.py"],
+    shard_count = 4,
     tags = [
-        "no_oss",  # TODO(b/229155465): Test sometimes times out
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test
-        "notap",  # b/230734185
     ],
     deps = [
         ":failure_handling_lib",
