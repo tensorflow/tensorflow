@@ -49,41 +49,6 @@ py_test(
     ],
 )
 
-py_library(
-    name = "activity_test_lib",
-    testonly = True,
-    srcs = ["activity_test.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":static_analysis",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
-        "@gast_archive//:gast",
-    ],
-)
-
-py_test(
-    name = "activity_py3_test",
-    srcs = ["activity_py3_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_oss_py35",
-        # TODO(mdan): Remove this tag once no_oss_py35 is properly supported.
-        "no_oss",
-        "no_pip",
-        "nopip",
-    ],
-    deps = [
-        ":activity_test_lib",
-        ":static_analysis",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
-        "@gast_archive//:gast",
-    ],
-)
-
 py_test(
     name = "liveness_test",
     testonly = True,

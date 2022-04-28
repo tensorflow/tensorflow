@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
+#include <string>
+
 #include "absl/base/casts.h"
+#include "absl/strings/substitute.h"
 
 namespace xla {
 
@@ -32,6 +35,20 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
       buffer->AcquireExternalReference());
   const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
   return absl::bit_cast<std::uintptr_t>(ptr);
+}
+
+MultiSliceConfig::~MultiSliceConfig() {}
+
+std::string CompiledMemoryStats::DebugString() const {
+  return absl::Substitute(
+      "CompiledMemoryStats("
+      "generated_code_size_in_bytes=$0, "
+      "argument_size_in_bytes=$1, "
+      "output_size_in_bytes=$2, "
+      "alias_size_in_bytes=$3, "
+      "temp_size_in_bytes=$4)",
+      generated_code_size_in_bytes, argument_size_in_bytes,
+      output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
 }
 
 }  // namespace xla

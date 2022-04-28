@@ -29,9 +29,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -145,8 +145,9 @@ Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
-  if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type, value);
+  if (func::ConstantOp::isBuildableWith(value, type))
+    return builder.create<func::ConstantOp>(loc, type,
+                                            value.cast<FlatSymbolRefAttr>());
   return nullptr;
 }
 
@@ -158,7 +159,8 @@ bool TFRType::classof(Type type) {
 // Custom op methods
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ConstantTensorOp op) {
+LogicalResult ConstantTensorOp::verify() {
+  ConstantTensorOp op = *this;
   auto input_type = op.arg().getType();
   auto output_type = op.out().getType();
 
@@ -195,7 +197,8 @@ static LogicalResult Verify(ConstantTensorOp op) {
   return failure();
 }
 
-static LogicalResult Verify(TFRFuncOp func) {
+LogicalResult TFRFuncOp::verify() {
+  TFRFuncOp func = *this;
   // Collect all attribute names used by the tensor and tensor list arguments
   // and returns. Also, collect the names of all the attribute arguments as the
   // defined list. Later on, the used attribute names will be verified to be in
@@ -208,7 +211,7 @@ static LogicalResult Verify(TFRFuncOp func) {
   // at the end?
   int first_tensor = -1, last_tensor = -1, first_tensor_list = -1,
       last_tensor_list = -1, first_attr = -1;
-  for (auto arg : llvm::enumerate(func.getType().getInputs())) {
+  for (auto arg : llvm::enumerate(func.getFunctionType().getInputs())) {
     Type arg_type = arg.value();
 
     if (auto tensor = arg_type.dyn_cast<TFRTensorType>()) {
@@ -287,7 +290,7 @@ static LogicalResult Verify(TFRFuncOp func) {
   int undefined_input_attrs_number = undefined_attrs.size();
   bool seen_tensor_list = false, has_tensor_list_order_error = false,
        has_multiple_tensor_lists_error = false;
-  for (auto result_type : func.getType().getResults()) {
+  for (auto result_type : func.getFunctionType().getResults()) {
     if (auto tensor = result_type.dyn_cast<TFRTensorType>()) {
       if (seen_tensor_list) {
         has_tensor_list_order_error = true;
@@ -350,19 +353,17 @@ static LogicalResult Verify(TFRFuncOp func) {
   return success();
 }
 
-static ParseResult ParseFuncOp(OpAsmParser &parser, OperationState *result) {
+ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   auto build_func_type =
       [](Builder &builder, ArrayRef<Type> arg_types, ArrayRef<Type> results,
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(arg_types, results); };
   return function_interface_impl::parseFunctionOp(
-      parser, *result, /*allowVariadic=*/false, build_func_type);
+      parser, result, /*allowVariadic=*/false, build_func_type);
 }
 
-static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
-  FunctionType fn_type = op.getType();
-  function_interface_impl::printFunctionOp(
-      p, op, fn_type.getInputs(), /*isVariadic=*/false, fn_type.getResults());
+void TFRFuncOp::print(OpAsmPrinter &p) {
+  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
 }
 
 }  // namespace TFR
@@ -839,54 +840,54 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
 
 }  // namespace
 
-void ConstantTensorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ConvertConstToTensorConst>(context);
+void ConstantTensorOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
+  results.add<ConvertConstToTensorConst>(context);
 }
 
-void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void CastOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedundantCast>(context);
+  results.add<RemoveRedundantCast>(context);
 }
 
-void GetShapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GetShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<GetTensorShape>(context);
+  results.add<GetTensorShape>(context);
 }
 
-void GetElementOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RemoveRedundantGetElement>(context);
+void GetElementOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
+  results.add<RemoveRedundantGetElement>(context);
 }
 
-void GetLengthOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GetLengthOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<RemoveRedundantGetLength>(context);
+  results.add<RemoveRedundantGetLength>(context);
 }
 
-void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void BuildListOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<BuildConstantListAsAttr>(context);
+  results.add<BuildConstantListAsAttr>(context);
 }
 
-void TFRQuantRawDataOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RemoveRawDataOp>(context);
+void TFRQuantRawDataOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
+  results.add<RemoveRawDataOp>(context);
 }
 
-void TFRQuantQParamsOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RemoveQParamsOp>(context);
+void TFRQuantQParamsOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
+  results.add<RemoveQParamsOp>(context);
 }
 
-void TFRQuantRescaleOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RemoveRescaleOp>(context);
+void TFRQuantRescaleOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
+  results.add<RemoveRescaleOp>(context);
 }
 
 void TFRQuantScaleFactorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RemoveScaleFactorOp>(context);
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<RemoveScaleFactorOp>(context);
 }
 
 OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {
@@ -910,7 +911,7 @@ Region *TFRFuncOp::getCallableRegion() {
 
 // CallableOpInterface
 ArrayRef<Type> TFRFuncOp::getCallableResults() {
-  return getType().getResults();
+  return getFunctionType().getResults();
 }
 
 //===----------------------------------------------------------------------===//

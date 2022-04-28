@@ -217,6 +217,7 @@ cc_library(
 tf_native_cc_shared_library(
     name = "_cpu_feature_guard.so",
     static_deps = [
+        # TODO(rostam): Remove Copybara transform.
         # copybara:comment_begin(oss only)
         "@bazel_tools//:__subpackages__",
         "@com_google_absl//:__subpackages__",
@@ -282,6 +283,7 @@ tf_cc_test(
 cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
     ] + tf_platform_deps("dynamic_annotations"),
@@ -1147,6 +1149,11 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "error_payloads",
+    hdrs = ["error_payloads.h"],
+)
+
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
@@ -1155,6 +1162,12 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -1869,6 +1882,7 @@ filegroup(
         "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
+        "png.h",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.cc",

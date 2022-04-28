@@ -29,7 +29,7 @@ py_library(
         ":saveable_object",
         ":saveable_object_util",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
     ],
 )
 
@@ -72,6 +72,8 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:trackable_utils",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

@@ -28,7 +28,7 @@ namespace {
 struct LowerTF : public TestTensorFlowLowerTFPassBase<LowerTF> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     if (default_patterns_) {
       mlir::TF::PopulateLoweringTFPatterns(&getContext(), &patterns);
     }
@@ -42,7 +42,7 @@ struct LowerTF : public TestTensorFlowLowerTFPassBase<LowerTF> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestTFLowerTFPass() {
   return std::make_unique<LowerTF>();
 }
 

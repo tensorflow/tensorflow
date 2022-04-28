@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -59,7 +60,7 @@ limitations under the License.
 #include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -295,11 +296,18 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   return true;
 }
 
-std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::GetAdditionalOperationHooks() {
-  static auto *const additional_operation_hooks =
-      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
-  return additional_operation_hooks;
+// Hook functions which may add additional operations to the dialect.
+// These are invoked at construction time.
+static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>
+    &GetAdditionalOperationHooks() {
+  static auto *additional_operation_hooks =
+      new DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>();
+  return *additional_operation_hooks;
+}
+
+void TensorFlowDialect::RegisterAdditionalOperationHook(
+    TypeID id, AdditionalOpFunction fn) {
+  GetAdditionalOperationHooks().try_emplace(id, std::move(fn));
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
@@ -325,8 +333,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *GetAdditionalOperationHooks()) {
-    hook(*this);
+  for (auto &hook : GetAdditionalOperationHooks()) {
+    hook.second(*this);
   }
 }
 

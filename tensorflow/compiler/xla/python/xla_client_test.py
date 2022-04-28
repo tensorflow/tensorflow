@@ -69,7 +69,7 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_]
+  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
     """Base class for running an XLA Computation through the local client."""
@@ -380,7 +380,9 @@ def TestFactory(xla_backend,
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-          ])
+          ],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
   tests.append(ComputationsWithConstantsTest)
@@ -404,6 +406,25 @@ def TestFactory(xla_backend,
           f, c, [p0, p1], [shape, shape])
       self._ExecuteAndCompareExact(
           c, arguments=[arg0, arg1], expected=[arg0 + arg1, arg0 - arg1])
+      del out, keepalive
+
+    def testPythonCallbackCanHandleExceptions(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x):
+        raise ValueError("Value error raised!")
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      shape = shape.with_major_to_minor_layout_if_absent()
+      p0 = ops.Parameter(c, 0, shape)
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0], [shape], has_side_effects=True)
+      with self.assertRaisesRegex(xla_client.XlaRuntimeError,
+                                  "Value error raised!"):
+        self._Execute(c, [arg0])
       del out, keepalive
 
     def testTokens(self):
@@ -544,7 +565,7 @@ def TestFactory(xla_backend,
       compiled_c = self.backend.compile(c.build())
       arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.delete()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         compiled_c.execute([arg_buffer])
 
     def testXlaShape(self):
@@ -576,14 +597,14 @@ def TestFactory(xla_backend,
       self.assertNotEqual(hash(a), hash(c))
       self.assertNotEqual(hash(b), hash(c))
 
-    def testBlockHostUntilReadyWorks(self):
+    def testBlockUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)
-      arg_buffer.block_host_until_ready()
+      arg_buffer.block_until_ready()
       # This test merely checks that nothing goes awry when we call
-      # block_host_until_ready(); it's difficult to test anything else.
+      # block_until_ready(); it's difficult to test anything else.
 
-    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+    def testBlockUntilReadyRaisesOnDeletedBuffer(self):
       arg = np.array([[1., 2.]], np.float32)
       buffer = self.backend.buffer_from_pyval(arg)
       buffer.delete()
@@ -591,7 +612,7 @@ def TestFactory(xla_backend,
           RuntimeError,
           re.escape(
               "BlockHostUntilReady() called on deleted or donated buffer")):
-        buffer.block_host_until_ready()
+        buffer.block_until_ready()
 
     def testDeviceArrayBaseSignatures(self):
       # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
@@ -610,9 +631,12 @@ def TestFactory(xla_backend,
       self.assertEqual(buffer.ndim, 2)
 
       self.assertIs(buffer, buffer.block_until_ready())
+      self.assertTrue(buffer.is_ready())
       buffer.delete()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         buffer.block_until_ready()
+      with self.assertRaises(xla_client.XlaRuntimeError):
+        buffer.is_ready()
 
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
@@ -1563,7 +1587,9 @@ def TestFactory(xla_backend,
       results = self._Execute(b, [qy_arg, db_arg])
       ground_truth_docids = [set(x) for x in results[0]]
       hits = sum(
-          len(list(x for x in approx_topk_per_q
+          len(
+              list(x
+                   for x in approx_topk_per_q
                    if x in ground_truth_docids[q]))
           for q, approx_topk_per_q in enumerate(results[1]))
       self.assertGreater(hits / (qy_size * k), recall_target)
@@ -2209,6 +2235,12 @@ def TestFactory(xla_backend,
           if self.backend.platform == "cpu" else xla_client.make_cpu_client())
       self.gpu_backend = (
           self.backend if self.backend.platform == "gpu" else None)
+
+    def tearDown(self):
+      super().tearDown()
+      del self.backend
+      del self.cpu_backend
+      del self.gpu_backend
 
     # pylint: disable=g-complex-comprehension
     # pyformat: disable

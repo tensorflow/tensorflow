@@ -286,7 +286,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testBadIndicesType(self):
     with self.assertRaisesRegex(
         (TypeError, errors.InvalidArgumentError),
-        "float.* not in.* list of allowed values: int32, int64"):
+        "float.* not in.* list of allowed values: int16, int32, int64"):
       self.evaluate(array_ops.gather([0], 0.))
 
   @test_util.disable_xla(

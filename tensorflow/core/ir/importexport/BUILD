@@ -3,7 +3,10 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = [":__subpackages__"],
+    default_visibility = [
+        ":__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -11,10 +14,10 @@ cc_library(
     name = "import",
     srcs = [
         "functiondef_import.cc",
-        "functiondef_import.h",
         "import.cc",
     ],
     hdrs = [
+        "functiondef_import.h",
         "import.h",
     ],
     visibility = [
@@ -32,6 +35,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/stream_executor/lib",
@@ -49,10 +53,10 @@ cc_library(
     srcs = [
         "export.cc",
         "functiondef_export.cc",
-        "functiondef_export.h",
     ],
     hdrs = [
         "export.h",
+        "functiondef_export.h",
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
@@ -67,6 +71,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -160,11 +165,60 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:tstring",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "graphdef_import",
+    srcs = ["graphdef_import.cc"],
+    hdrs = ["graphdef_import.h"],
+    deps = [
+        ":convert_attributes",
+        ":convert_types",
+        ":import",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "graphdef_export",
+    srcs = ["graphdef_export.cc"],
+    hdrs = ["graphdef_export.h"],
+    deps = [
+        ":convert_attributes",
+        ":convert_types",
+        ":export",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -180,14 +234,18 @@ cc_library(
         ":mangling",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -198,6 +256,8 @@ tf_cc_binary(
     srcs = ["tfg-translate.cc"],
     deps = [
         ":export",
+        ":graphdef_export",
+        ":graphdef_import",
         ":import",
         ":load_proto",
         "//tensorflow/core:ops",  # Ops need to be registered for import.

@@ -41,8 +41,28 @@ void RecordHloToLlvmDuration(const uint64_t time_usecs) {
   cell->Add(time_usecs);
 }
 
-void RecordLlvmToPtxDuration(const uint64_t time_usecs) {
+void RecordLlvmPassesAndLlvmToPtxDuration(const uint64_t time_usecs) {
+  // When 'llvm_to_ptx' was added, it mistakenly included both llvm
+  // optimization and llvm to ptx compilation, and now changing it would
+  // invalidate historical data.
   static auto* cell = compile_time_usecs_histogram->GetCell("llvm_to_ptx");
+  cell->Add(time_usecs);
+}
+
+void RecordLlvmPassesDuration(const uint64_t time_usecs) {
+  static auto* cell = compile_time_usecs_histogram->GetCell("llvm_passes");
+  cell->Add(time_usecs);
+}
+
+void RecordLlvmToPtxDuration(const uint64_t time_usecs) {
+  // 'llvm_to_ptx' is taken and can't be changed without invalidating
+  // historical data.
+  static auto* cell = compile_time_usecs_histogram->GetCell("llvm_to_ptx_only");
+  cell->Add(time_usecs);
+}
+
+void RecordPtxToCubinDuration(const uint64_t time_usecs) {
+  static auto* cell = compile_time_usecs_histogram->GetCell("ptx_to_cubin");
   cell->Add(time_usecs);
 }
 

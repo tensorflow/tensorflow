@@ -15,6 +15,7 @@
 """Tools to work with checkpoints."""
 
 from collections import abc
+import os
 import time
 
 import six
@@ -442,6 +443,8 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
 
 def _get_checkpoint_filename(ckpt_dir_or_file):
   """Returns checkpoint filename given directory or specific checkpoint file."""
+  if isinstance(ckpt_dir_or_file, os.PathLike):
+    ckpt_dir_or_file = os.fspath(ckpt_dir_or_file)
   if gfile.IsDirectory(ckpt_dir_or_file):
     return checkpoint_management.latest_checkpoint(ckpt_dir_or_file)
   return ckpt_dir_or_file

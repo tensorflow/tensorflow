@@ -88,6 +88,7 @@ cc_library(
     copts = tflite_copts(),
     visibility = op_resolver_internal_visibility_allowlist() + [
         "//tensorflow/lite:__pkg__",
+        "//tensorflow/lite/java/src/main/native:__pkg__",
     ],
     deps = [":op_resolver"],
 )

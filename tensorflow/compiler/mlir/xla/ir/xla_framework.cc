@@ -44,12 +44,6 @@ void XLAFrameworkDialect::initialize() {
       >();
 }
 
-// Default verification if no additional verification is needed.
-template <typename OpTy>
-LogicalResult Verify(OpTy) {
-  return success();
-}
-
 }  // namespace xla_framework
 }  // namespace mlir
 

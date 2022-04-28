@@ -187,6 +187,8 @@ REGISTER_OP("Cast")
     .Attr("SrcT: type")
     .Attr("DstT: type")
     .Attr("Truncate: bool = false")
+    .SetTypeConstructor(full_type::NoOp())
+    .SetForwardTypeFn(full_type::KeepExisting())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_HostCast")
@@ -195,6 +197,8 @@ REGISTER_OP("_HostCast")
     .Attr("SrcT: type")
     .Attr("DstT: type")
     .Attr("Truncate: bool = false")
+    .SetTypeConstructor(full_type::NoOp())
+    .SetForwardTypeFn(full_type::KeepExisting())
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Cast x of type SrcT to y of DstT.
@@ -1133,8 +1137,8 @@ REGISTER_OP("ArgMax")
     .Input("dimension: Tidx")
     .Output("output: output_type")
     .Attr("T: {numbertype, bool}")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
+    .Attr("Tidx: {int16, int32, int64} = DT_INT32")
+    .Attr("output_type: {int16, uint16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
 
 REGISTER_OP("ArgMin")
@@ -1509,7 +1513,8 @@ REGISTER_OP("Range")
     .Output("output: Tidx")
     .Attr(
         "Tidx: "
-        "{bfloat16, half, float, double, int8, int16, int32, int64, uint32} = "
+        "{bfloat16, half, float, double, int8, int16, int32, int64, uint16, "
+        "uint32} = "
         "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1536,6 +1541,8 @@ REGISTER_OP("Range")
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64_t>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_UINT16) {
+        return RangeSize<uint16>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
         return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {

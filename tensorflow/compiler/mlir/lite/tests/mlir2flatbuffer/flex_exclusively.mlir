@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-select-tf-ops=true -emit-builtin-tflite-ops=false -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
+func.func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK:  {
 // CHECK-NEXT:    version: 3,
 // CHECK-NEXT:    operator_codes: [ {
@@ -51,5 +51,5 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:  }
 
   %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
-  return %0 : tensor<3x2xf32>
+  func.return %0 : tensor<3x2xf32>
 }

@@ -219,9 +219,17 @@ class IrArray {
   // Default constructor. Constructs an IrArray in a null status.
   IrArray() : base_ptr_(nullptr) {}
 
-  // Construct an IrArray with the given base pointer and shape. base_ptr is a
-  // pointer type pointing to the first element(lowest address) of the array.
-  IrArray(llvm::Value* base_ptr, Shape shape);
+  // Construct an IrArray with the given base pointer, pointee type, and shape.
+  // base_ptr is a pointer type pointing to the first element(lowest address)
+  // of the array.
+  IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
+
+  // This constructor is deprecated.  getPointerElementType() cannot be used
+  // when pointers are opaque.  Use the other constructor which explicitly
+  // pass in the pointee type.
+  IrArray(llvm::Value* base_ptr, Shape shape)
+      : IrArray(base_ptr, base_ptr->getType()->getPointerElementType(), shape) {
+  }
 
   // Default implementations of copying and moving.
   IrArray(IrArray&& other) = default;
@@ -230,6 +238,7 @@ class IrArray {
   IrArray& operator=(const IrArray& other) = default;
 
   llvm::Value* GetBasePointer() const { return base_ptr_; }
+  llvm::Type* GetBasePointeeType() const { return pointee_type_; }
   llvm::Type* GetElementLlvmType() const { return element_type_; }
 
   const Shape& GetShape() const { return shape_; }
@@ -324,6 +333,9 @@ class IrArray {
 
   // Address of the base of the array as an LLVM Value.
   llvm::Value* base_ptr_;
+
+  // The pointee type of base_ptr_;
+  llvm::Type* pointee_type_;
 
   // The LLVM type of the elements in the array.
   llvm::Type* element_type_;

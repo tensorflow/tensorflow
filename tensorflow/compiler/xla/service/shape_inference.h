@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -351,8 +350,8 @@ class ShapeInference {
   // shape, and scatter dimension numbers that constitute a scatter operation,
   // and returns the result shape of the scatter operation.
   static StatusOr<Shape> InferScatterShape(
-      const Shape& operand_shape, const Shape& scatter_indices_shape,
-      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      absl::Span<const Shape* const> arg_shapes,
+      const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
   // Helper that validates the given input shape to GetDimensionSize.
@@ -391,10 +390,6 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
-  // Helper for inferring the shape of TupleSelect ops.
-  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
-                                               const Shape& on_true,
-                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast

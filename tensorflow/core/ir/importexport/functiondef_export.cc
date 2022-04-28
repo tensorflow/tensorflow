@@ -119,6 +119,11 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
   if (StringAttr type_list_attr =
           arg_attrs.getAs<StringAttr>("tfg.type_list_attr"))
     arg->set_type_attr(type_list_attr.getValue().str());
+  if (auto full_type = arg_attrs.getAs<tf_type::FullTypeAttr>(
+          "tfg.experimental_full_type")) {
+    TF_ASSIGN_OR_RETURN(*arg->mutable_experimental_full_type(),
+                        ConvertAttribute(full_type));
+  }
   TF_RETURN_IF_ERROR(
       ConvertHandleData(arg_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
   if (UnitAttr number_attr = arg_attrs.getAs<UnitAttr>("tfg.is_ref"))
@@ -126,9 +131,8 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
 
   auto sig_arg_attrs = arg_attrs.getAs<DictionaryAttr>("tfg.arg_attrs");
   if (arg_def_attrs && sig_arg_attrs) {
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {};
     TF_RETURN_IF_ERROR(ConvertAttributes(
-        sig_arg_attrs.getValue(), attrs_to_ignore,
+        sig_arg_attrs.getValue(), /*attrs_to_ignore=*/{},
         /*remove_ref_type=*/false, arg_def_attrs->mutable_attr()));
   }
   return Status::OK();
@@ -168,7 +172,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
       func_attr->set_name(attr.getName().str());
       DictionaryAttr dict_attr = attr.getValue().dyn_cast<DictionaryAttr>();
       if (!dict_attr) return InvalidArgument("Expects dict attribute");
-      if (StringAttr type = dict_attr.getAs<StringAttr>("type"))
+      if (StringAttr type = dict_attr.getAs<StringAttr>("function_type"))
         func_attr->set_type(type.getValue().str());
       if (Attribute default_value = dict_attr.get("default_value")) {
         TF_ASSIGN_OR_RETURN((*func_attr->mutable_default_value()),

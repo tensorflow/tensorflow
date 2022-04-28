@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 
 #include <memory>
+#include <queue>
+#include <utility>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -58,7 +60,8 @@ struct CanonicalDebugOptions {
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
-        dump_hlo_metadata(!opts.xla_dump_disable_metadata()) {
+        dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
+        dump_as_long_text(opts.xla_dump_hlo_as_long_text()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -173,7 +176,52 @@ struct CanonicalDebugOptions {
   bool dump_module_metadata;
   bool dump_compress_protos;
   bool dump_hlo_metadata;
+  bool dump_as_long_text;
 };
+
+// Helper class to hold a list of functions that produces data to be written to
+// a file in multiple stages, so that we can lower the peak memory usage.
+// Ideally we should migrate this whole file to use an I/O stream style API.
+class DataProducer {
+ public:
+  void Append(std::function<std::string()> produce_func) {
+    produce_funcs_.push(std::move(produce_func));
+  }
+
+  std::function<std::string()> Next() {
+    if (produce_funcs_.empty()) {
+      return nullptr;
+    }
+    auto next = std::move(produce_funcs_.front());
+    produce_funcs_.pop();
+    return next;
+  }
+
+ private:
+  std::queue<std::function<std::string()>> produce_funcs_;
+};
+
+static Status WriteStringToFile(tensorflow::Env* env, const std::string& fname,
+                                DataProducer& data_producer, bool compressed) {
+  std::unique_ptr<tensorflow::WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  if (compressed) {
+    auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
+    tensorflow::io::ZlibOutputBuffer gz_file(
+        file.get(), gz_opts.input_buffer_size, gz_opts.output_buffer_size,
+        gz_opts);
+    TF_RETURN_IF_ERROR(gz_file.Init());
+    while (auto next_producer = data_producer.Next()) {
+      TF_RETURN_IF_ERROR(gz_file.Append(next_producer()));
+    }
+    return gz_file.Close();
+  } else {
+    while (auto next_producer = data_producer.Next()) {
+      TF_RETURN_IF_ERROR(file->Append(next_producer()));
+    }
+    return file->Close();
+  }
+}
 
 static Status WriteStringToFile(tensorflow::Env* env, const std::string& fname,
                                 absl::string_view data, bool compressed) {
@@ -269,6 +317,23 @@ static absl::optional<std::string> DumpToFileInDirImpl(
   return file_path;
 }
 
+static absl::optional<std::string> DumpToFileInDirImpl(
+    string_view filename, DataProducer& data_producer,
+    const CanonicalDebugOptions& opts, bool compress = false) {
+  auto file_path = GetDumpFilePath(filename, opts);
+  if (!file_path) return absl::nullopt;
+
+  auto status = WriteStringToFile(tensorflow::Env::Default(), *file_path,
+                                  data_producer, compress);
+  if (!status.ok()) {
+    LOG(ERROR) << "Could not write XLA debug data to " << *file_path << ": "
+               << status;
+    return absl::nullopt;
+  }
+
+  return file_path;
+}
+
 static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts) {
@@ -283,14 +348,33 @@ static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
   return DumpToFileInDirImpl(filename, contents, opts);
 }
 
+static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
+    string_view filename, DataProducer& data_producer,
+    const CanonicalDebugOptions& opts) {
+  // Dump to stdout if that's called for.
+  if (opts.dumping_to_stdout()) {
+    std::cout << "*** Begin " << filename << " ***\n";
+    while (auto next_producer = data_producer.Next()) {
+      std::cout << next_producer();
+    }
+    std::cout << "\n*** End " << filename << " ***" << std::endl;
+    return absl::nullopt;
+  }
+
+  // Otherwise, dump to a file.
+  return DumpToFileInDirImpl(filename, data_producer, opts);
+}
+
 // Returns whether the computation is trivial enough not to warrant dumping.
 // Currently skips instructions where the root instruction has only parameters
-// as operands.
+// as operands AND is not a fusion.
 static bool IsTrivial(const HloComputation& computation) {
   const HloInstruction* root = computation.root_instruction();
-  return absl::c_all_of(root->operands(), [&](const HloInstruction* op) {
-    return op->opcode() == HloOpcode::kParameter;
-  });
+  return absl::c_all_of(root->operands(),
+                        [&](const HloInstruction* op) {
+                          return op->opcode() == HloOpcode::kParameter;
+                        }) &&
+         root->opcode() != HloOpcode::kFusion;
 }
 
 // Returns full file paths of all dumps of the module.
@@ -303,17 +387,24 @@ static std::vector<std::string> DumpHloModuleImpl(
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    HloPrintOptions print_options;
+    auto print_options = opts.dump_as_long_text
+                             ? HloPrintOptions()
+                             : HloPrintOptions::ShortParsable();
+    print_options.set_print_large_constants(false);
+    print_options.set_print_control_dependencies(true);
+    print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);
     print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
         StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
+      DataProducer data_producer;
+      data_producer.Append([&] { return buffer_assn->ToString(); });
+      data_producer.Append([&] { return "\n\n"; });
+      data_producer.Append(
+          [&] { return buffer_assn->hlo_live_range().ToString(); });
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"),
-          StrCat(buffer_assn->ToString(), "\n\n",
-                 buffer_assn->hlo_live_range().ToString()),
-          opts));
+          StrCat(filename, "-buffer-assignment.txt"), data_producer, opts));
     }
   }
 
@@ -352,21 +443,16 @@ static std::vector<std::string> DumpHloModuleImpl(
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
-
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
-      StatusOr<std::string> rendered_graph = RenderGraph(
-          *computation,
-          /*label=*/absl::StrCat(filename, "_", computation->name()),
-          module.config().debug_options(),
-          RenderedGraphFormat::kFusionVisualization, profile);
-
       if (IsTrivial(*computation)) {
         VLOG(1) << "Skipping computation " << computation->name()
                 << " as trivial";
         continue;
       }
+
+      StatusOr<std::string> rendered_graph = WrapFusionExplorer(*computation);
       if (!rendered_graph.ok()) {
         VLOG(1) << "Skipping fusion visualization"
                 << " for computation " << computation->name()
@@ -416,7 +502,7 @@ static void DumpHloModuleMetadata(
   }
 }
 
-static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+static absl::Mutex mu(absl::kConstInit);
 
 // Maps a module's unique ID to a counter indicating how many times we've dumped
 // this module during the compilation pipeline.  This lets us keep the filenames
@@ -426,7 +512,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
+static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, int64_t>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
@@ -437,11 +523,11 @@ static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
+static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, uint64_t>();
 
 int64_t StepNumberForModule(const HloModule& module) {
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
 
@@ -453,7 +539,7 @@ std::string TimestampFor(const HloModule& module) {
   if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
   }
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto timestamp_emplace = module_id_to_timestamp.try_emplace(
       module.unique_id(), tensorflow::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
@@ -530,8 +616,9 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   outputFile->keep();
 }
 
-void DumpExecutionOptions(const ExecutionOptions& execution_options,
-                          const DebugOptions& debug_options) {
+void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
+                        const DebugOptions& debug_options,
+                        absl::string_view filename) {
   CanonicalDebugOptions opts(debug_options);
   tensorflow::Env* env = tensorflow::Env::Default();
   const std::string& dir = opts.dump_to;
@@ -544,20 +631,28 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
     }
   }
   if (env->IsDirectory(dir).ok()) {
-    std::string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    const std::string path = tensorflow::io::JoinPath(dir, filename);
     Status status;
     if (opts.dump_as_text) {
-      status = tensorflow::WriteTextProto(env, absl::StrCat(filename, ".txt"),
-                                          execution_options);
+      status =
+          tensorflow::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
     } else {
-      status = tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
-                                            execution_options);
+      status =
+          tensorflow::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
     }
     if (!status.ok()) {
       LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
                  << status;
     }
   }
+}
+
+void DumpPerModuleProtobufToFile(const HloModule& module,
+                                 const tensorflow::protobuf::Message& proto,
+                                 const DebugOptions& debug_options,
+                                 absl::string_view name) {
+  const std::string filename = FilenameFor(module, TimestampFor(module), name);
+  DumpProtobufToFile(proto, debug_options, filename);
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
@@ -651,9 +746,9 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   int64_t execution_count;
   uint64_t timestamp;
   {
-    static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
         module.unique_id(), tensorflow::Env::Default()->NowMicros());
@@ -688,9 +783,9 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   // have to use its name.
   int64_t execution_count;
   {
-    static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
+    static auto& module_name_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<std::string, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_name_to_execution_count[name]++;
   }
   std::string filename = StrFormat("module_%s.execution_%04d.hlo_snapshot.pb",

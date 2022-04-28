@@ -887,8 +887,8 @@ _SLICE_TYPE_ERROR = (
     "tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid "
     "indices")
 
-_SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
-                           dtypes.int64_ref)
+_SUPPORTED_SLICE_DTYPES = (dtypes.int16, dtypes.int32, dtypes.int32_ref,
+                           dtypes.int64, dtypes.int64_ref)
 
 
 def _check_index(idx):
@@ -1002,23 +1002,44 @@ def _slice_helper(tensor, slice_spec, var=None):
   ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _BaseSlice):
+      # Finds the best dtype for begin, end, and strides.
+      dtype = None
+      for t in [s.start, s.stop, s.step]:
+        if t is None or not isinstance(t, ops.Tensor):
+          continue
+        if t.dtype == dtypes.int64:
+          dtype = dtypes.int64
+        elif t.dtype == dtypes.int32 and dtype != dtypes.int64:
+          dtype = dtypes.int32
+        elif t.dtype == dtypes.int16 and dtype is None:
+          dtype = dtypes.int16
+
       if s.start is not None and not _is_undefined_dimension(s.start):
         _check_index(s.start)
         begin.append(s.start)
       else:
-        begin.append(0)
+        if dtype is not None:
+          begin.append(constant_op.constant(0, dtype=dtype))
+        else:
+          begin.append(0)
         begin_mask |= (1 << index)
       if s.stop is not None and not _is_undefined_dimension(s.stop):
         _check_index(s.stop)
         end.append(s.stop)
       else:
-        end.append(0)
+        if dtype is not None:
+          end.append(constant_op.constant(0, dtype=dtype))
+        else:
+          end.append(0)
         end_mask |= (1 << index)
       if s.step is not None and not _is_undefined_dimension(s.step):
         _check_index(s.step)
         strides.append(s.step)
       else:
-        strides.append(1)
+        if dtype is not None:
+          strides.append(constant_op.constant(1, dtype=dtype))
+        else:
+          strides.append(1)
     elif s is Ellipsis:
       begin.append(0)
       end.append(0)
@@ -1033,7 +1054,12 @@ def _slice_helper(tensor, slice_spec, var=None):
       _check_index(s)
       begin.append(s)
       end.append(s + 1)
-      strides.append(1)
+      # TODO(mdan): Investigate why we can't set int32 here.
+      if isinstance(s, ops.Tensor) and (s.dtype == dtypes.int16 or
+                                        s.dtype == dtypes.int64):
+        strides.append(constant_op.constant(1, dtype=s.dtype))
+      else:
+        strides.append(1)
       shrink_axis_mask |= (1 << index)
     index += 1
 
@@ -1045,6 +1071,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
+      # TODO(mdan): Instead of implicitly casting, it's better to enforce the
+      # same dtypes.
       if (packed_begin.dtype == dtypes.int64 or
           packed_end.dtype == dtypes.int64 or
           packed_strides.dtype == dtypes.int64):
@@ -1054,6 +1082,15 @@ def _slice_helper(tensor, slice_spec, var=None):
           packed_end = gen_math_ops.cast(packed_end, dtypes.int64)
         if packed_strides.dtype != dtypes.int64:
           packed_strides = gen_math_ops.cast(packed_strides, dtypes.int64)
+      elif (packed_begin.dtype == dtypes.int16 and
+            packed_end.dtype == dtypes.int16 and
+            packed_strides.dtype == dtypes.int16):
+        if packed_begin.dtype != dtypes.int16:
+          packed_begin = gen_math_ops.cast(packed_begin, dtypes.int16)
+        if packed_end.dtype != dtypes.int16:
+          packed_end = gen_math_ops.cast(packed_end, dtypes.int16)
+        if packed_strides.dtype != dtypes.int16:
+          packed_strides = gen_math_ops.cast(packed_strides, dtypes.int16)
     else:
       var_empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
@@ -5150,7 +5187,7 @@ def gather(params,
          [3, 4],
          [5, 6]], dtype=int32)
 
-  This is is equivalent to:
+  This is equivalent to:
 
   >>> def manually_batched_gather(params, indices, axis):
   ...   batch_dims=1
@@ -5259,7 +5296,7 @@ gather_v2.__doc__ = gather.__doc__
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims=tf.rank(indices) - 1` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -5862,8 +5899,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
 
   ```
   num_updates, index_depth = indices.shape.as_list()
-  inner_shape = tensor.shape[:index_depth]
-  outer_shape = tensor.shape[index_depth:]
+  outer_shape = tensor.shape[:index_depth]
+  inner_shape = tensor.shape[index_depth:]
   assert updates.shape == [num_updates, inner_shape]
   ```
 
@@ -6714,18 +6751,25 @@ def repeat_with_axis(data, repeats, axis, name=None):
          [3, 3, 4, 4, 4]], dtype=int32)>
 
   """
+  # Whether the execution happens on the XLA path.
+  on_xla_path = (
+      control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
+      config.get_optimizer_jit() or pywrap_tf_session.TF_GetXlaAutoJitEnabled())
+
   if not isinstance(axis, int):
     raise TypeError("Argument `axis` must be an int. "
                     f"Received `axis` = {axis} of type {type(axis).__name__}")
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")
-    # Note: We pass dtype=None so that the existing type is maintained instead
-    # of force-casting to int32.
-    if forward_compat.forward_compatible(2022, 3, 30):
-      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
-    else:
+    # Note: We want to pass dtype=None to convert_to_int_tensor so that the
+    # existing type is maintained instead of force-casting to int32. However,
+    # this is not compatible with the implementation used on the XLA path.
+    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
       repeats = convert_to_int_tensor(repeats, name="repeats")
+    else:
+      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
+
     repeats.shape.with_rank_at_most(1)
 
     # If `data` is a scalar, then upgrade it to a vector.
@@ -6756,10 +6800,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # The implementation on the else branch has better performance. However, it
     # does not work on the XLA path since it relies on the range op with a
     # shape that is not a compile-time constant.
-    if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-        config.get_optimizer_jit() or
-        pywrap_tf_session.TF_GetXlaAutoJitEnabled() or
-        not forward_compat.forward_compatible(2022, 3, 30)):
+    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
       repeats_original = repeats
 
       # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.

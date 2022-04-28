@@ -18,22 +18,42 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 
 namespace tflite {
 namespace gpu {
 
-absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
-                                  const OperationDef& op_def, ModelHints hints,
-                                  const std::vector<Value*>& inputs,
-                                  const std::vector<Value*>& outputs,
-                                  const Node& node,
-                                  GPUOperationsSubgraph* gpu_subgraph);
+struct SharedWeightsConvDesc {
+  int weights_id;
+  WeightsDescription desc;
+  std::vector<int> global_const_ids;
+
+  bool operator==(const SharedWeightsConvDesc& t) const {
+    return weights_id == t.weights_id && desc == t.desc;
+  }
+
+  void RemapIds(const absl::flat_hash_map<int, ValueId>& mapping) {
+    for (int i = 0; i < global_const_ids.size(); ++i) {
+      int local_id = -(global_const_ids[i] + 1);
+      if (local_id >= 0) {
+        global_const_ids[i] = mapping.at(local_id);
+      }
+    }
+  }
+};
+
+absl::Status GPUOperationFromNode(
+    const GpuInfo& gpu_info, const OperationDef& op_def, ModelHints hints,
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
+    const Node& node, std::vector<SharedWeightsConvDesc>* shared_conv_weights,
+    GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace gpu
 }  // namespace tflite

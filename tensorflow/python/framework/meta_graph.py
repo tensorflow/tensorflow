@@ -15,7 +15,7 @@
 
 """MetaGraph and related functions."""
 import copy
-from distutils import version as distutils_version  # pylint: disable=g-bad-import-order
+from packaging import version as packaging_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
 
@@ -631,7 +631,7 @@ def read_meta_graph_file(filename):
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   if not file_io.file_exists(filename):
-    raise IOError("File does not exist. Received: {filename}.")
+    raise IOError(f"File does not exist. Received: {filename}.")
   # First try to read it as a binary file.
   with file_io.FileIO(filename, "rb") as f:
     file_content = f.read()
@@ -815,8 +815,7 @@ def import_scoped_meta_graph_with_return_elements(
       variables_have_trainable = True
     else:
       variables_have_trainable = (
-          distutils_version.LooseVersion(tf_version)
-          >= distutils_version.LooseVersion("1.9"))
+          packaging_version.parse(tf_version) >= packaging_version.parse("1.9"))
 
     # Sort collections so we see TRAINABLE_VARIABLES first and can default these
     # variables to trainable if the value is not set in their VariableDef.

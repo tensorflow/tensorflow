@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 
+#include <limits>
+#include <string>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
@@ -198,10 +201,10 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
   TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
       /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
-      params.config.input_descriptor, params.input_buf,
-      params.config.filter_descriptor, params.filter_buf,
-      params.config.output_descriptor, params.output_buf,
-      params.config.conv_desc, /* use_fallback = */ false, scratch_allocator,
+      params.config->input_descriptor, params.input_buf,
+      params.config->filter_descriptor, params.filter_buf,
+      params.config->output_descriptor, params.output_buf,
+      params.config->conv_desc, /* use_fallback = */ false, scratch_allocator,
       &runners));
 
   return runners;
@@ -322,10 +325,10 @@ ConvCacheKey AutotuneCacheKeyfromInstruction(
   return std::make_tuple(se, conv->ToString(options));
 }
 
-tensorflow::mutex autotune_cache_lock(tensorflow::LINKER_INITIALIZED);
-auto& autotune_cache TF_GUARDED_BY(autotune_cache_lock) =
+absl::Mutex autotune_cache_lock(absl::kConstInit);
+auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_lock) =
     *new absl::flat_hash_map<ConvCacheKey, AutotuneResult>();
-auto& autotune_cache_stats TF_GUARDED_BY(autotune_cache_lock) =
+auto& autotune_cache_stats ABSL_GUARDED_BY(autotune_cache_lock) =
     *new ConvCacheStats();
 }  // anonymous namespace
 
@@ -340,7 +343,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // Putting the lock in here rather than in PickBestAlgorithmNoCache lets us
   // avoid ever doing duplicate work.  If we have a cache miss, only one thread
   // will run PickBestAlgorithmImpl for a particular device.
-  tensorflow::mutex_lock lock = LockGpu(stream_exec_);
+  absl::MutexLock lock(&GetGpuMutex(stream_exec_));
 
   // We cache the autotuning results to avoid doing the duplicate work,
   // which can greatly improve both stability (deterministic numeric results
@@ -348,7 +351,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // models).
   ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
   {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
+    absl::MutexLock lock(&autotune_cache_lock);
     auto it = autotune_cache.find(key);
     if (it != autotune_cache.end()) {
       autotune_cache_stats.cache_hits++;
@@ -391,7 +394,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   }
 
   if (result_or.ok()) {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
+    absl::MutexLock lock(&autotune_cache_lock);
     CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
   }
   return result_or;
@@ -479,9 +482,13 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                         "Disqualified for implicit RELU.");
   }
 
+  const int64_t rz_space_limit = hlo_module_config.debug_options()
+                                     .xla_gpu_redzone_scratch_max_megabytes() *
+                                 (1LL << 20);
   se::RedzoneAllocator scratch_allocator(
       stream, allocator,
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options()));
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/rz_space_limit);
   se::dnn::ProfileResult profile_result;
   VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
           << instr->ToString();
@@ -657,7 +664,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   se::RedzoneAllocator input_output_allocator(
       stream, allocator,
       PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
-      /*memory_limit=*/se::RedzoneAllocator::kDefaultMemoryLimit,
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
       /*redzone_size=*/redzone_size);
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
@@ -1004,7 +1011,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::Run(HloModule* module) {
   }
 
   {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
+    absl::MutexLock lock(&autotune_cache_lock);
     autotune_cache_stats.LogStats();
   }
 

@@ -17,7 +17,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Vector/VectorRewritePatterns.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -37,7 +38,7 @@ using mlir::vector::VectorMultiReductionLowering;
 struct RewriteVectorMultiReductionPass
     : public RewriteVectorMultiReductionPassBase<
           RewriteVectorMultiReductionPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     Operation* op = getOperation();
     if (failed(RewriteTwoAndMoreDimReductions(ctx, op))) signalPassFailure();
@@ -74,7 +75,8 @@ struct RewriteVectorMultiReductionPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> createRewriteVectorMultiReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRewriteVectorMultiReductionPass() {
   return std::make_unique<RewriteVectorMultiReductionPass>();
 }
 

@@ -122,7 +122,7 @@ monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label) {
 }
 
 monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
-                                        uint64 filesize) {
+                                        int64_t filesize) {
   return *checkpoint_size->GetCell(std::string(api_label),
                                    std::to_string(filesize));
 }

@@ -96,6 +96,7 @@ tf_cc_test(
     deps = [
         ":gcs_filesystem_impl",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
         "@com_google_absl//absl/strings",

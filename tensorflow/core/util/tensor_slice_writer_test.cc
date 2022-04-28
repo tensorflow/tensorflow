@@ -168,10 +168,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The two slices of the "test" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(0);
       EXPECT_EQ("test", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 5 } "
           "dim { size: 10 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_INT32, ssm.type());
       EXPECT_EQ(2, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -183,10 +186,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The "AA" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(1);
       EXPECT_EQ("AA", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 3 } "
           "dim { size: 2 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_FLOAT, ssm.type());
       EXPECT_EQ(1, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -196,10 +202,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The "int64" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(2);
       EXPECT_EQ("int64", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 5 } "
           "dim { size: 10 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_INT64, ssm.type());
       EXPECT_EQ(1, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -209,10 +218,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The "int16" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(3);
       EXPECT_EQ("int16", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 5 } "
           "dim { size: 10 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_INT16, ssm.type());
       EXPECT_EQ(1, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));

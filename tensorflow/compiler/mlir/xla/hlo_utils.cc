@@ -357,6 +357,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSort;
   } else if (isa<mlir::mhlo::RngBitGeneratorOp>(op)) {
     return xla::HloOpcode::kRngBitGenerator;
+  } else if (isa<mlir::mhlo::XlaRngGetAndUpdateStateOp>(op)) {
+    return xla::HloOpcode::kRngGetAndUpdateState;
   } else if (isa<mlir::mhlo::FusionOp, mlir::lmhlo::FusionOp>(op)) {
     return xla::HloOpcode::kFusion;
   } else if (isa<mlir::mhlo::BitcastOp>(op)) {
@@ -463,8 +465,6 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReverse;
   } else if (isa<mlir::mhlo::PadOp, mlir::lmhlo::PadOp>(op)) {
     return xla::HloOpcode::kPad;
-  } else if (isa<mlir::mhlo::TraceOp>(op)) {
-    return xla::HloOpcode::kTrace;
   } else if (isa<mlir::mhlo::TransposeOp, mlir::lmhlo::TransposeOp>(op)) {
     return xla::HloOpcode::kTranspose;
   } else if (isa<mlir::mhlo::TriangularSolveOp, mlir::lmhlo::TriangularSolveOp>(

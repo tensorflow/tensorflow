@@ -32,7 +32,7 @@ constexpr char kDeviceAttr[] = "device";
 
 struct DeviceAttributeToLaunch
     : public DeviceAttributeToLaunchPassBase<DeviceAttributeToLaunch> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
@@ -53,7 +53,7 @@ void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
   op->moveBefore(return_op);
 }
 
-void DeviceAttributeToLaunch::runOnFunction() {
+void DeviceAttributeToLaunch::runOnOperation() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
 
   getOperation().walk([&](Operation* op) {
@@ -67,7 +67,8 @@ void DeviceAttributeToLaunch::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceAttributeToLaunchPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDeviceAttributeToLaunchPass() {
   return std::make_unique<DeviceAttributeToLaunch>();
 }
 

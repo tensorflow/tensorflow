@@ -30,7 +30,7 @@ namespace {
 // internal variants by introducing _RecvTPUEmbeddingDeduplicationData op.
 struct RewriteTPUEmbeddingOps
     : public RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Rewrites the given op to `OpT` op after adding the given operand at the end.
@@ -100,8 +100,8 @@ LogicalResult RunOnRegion(Region* region) {
   return success();
 }
 
-void RewriteTPUEmbeddingOps::runOnFunction() {
-  FuncOp func = getFunction();
+void RewriteTPUEmbeddingOps::runOnOperation() {
+  func::FuncOp func = getOperation();
   if (failed(RunOnRegion(&func.getBody()))) return signalPassFailure();
 
   func.walk([&](Operation* op) {
@@ -113,7 +113,8 @@ void RewriteTPUEmbeddingOps::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateRewriteTPUEmbeddingOpsPass() {
   return std::make_unique<RewriteTPUEmbeddingOps>();
 }
 

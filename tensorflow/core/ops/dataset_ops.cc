@@ -59,6 +59,8 @@ REGISTER_OP("TensorSliceDataset")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "Toutput_types"))
+    .SetForwardTypeFn(full_type::MultiaryUnstack(TFT_DATASET,
+                                                 full_type::UnstackTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SparseTensorSliceDataset")
@@ -323,6 +325,22 @@ REGISTER_OP("FilterDataset")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParallelFilterDataset")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("predicate: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 // This op is no longer supported.
 REGISTER_OP("FilterByLastComponentDataset")
     .Input("input_dataset: variant")
@@ -392,6 +410,8 @@ REGISTER_OP("BatchDatasetV2")
     .Attr("metadata: string = ''")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::BatchTensor))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // batch_size should be a scalar.
@@ -977,6 +997,7 @@ REGISTER_OP("DatasetToGraphV2")
     .Attr("external_state_policy: int = 0")
     .Attr("strip_device_assignment: bool = false")
     .Output("graph: string")
+    .SetForwardTypeFn(full_type::Encode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptimizeDataset")
@@ -1057,6 +1078,9 @@ REGISTER_OP("IteratorGetNextAsOptional")
     .Output("optional: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_OPTIONAL,
+                                                           "output_types"))
+    .SetForwardTypeFn(full_type::MapCovariant(TFT_ITERATOR, TFT_OPTIONAL, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ModelDataset")

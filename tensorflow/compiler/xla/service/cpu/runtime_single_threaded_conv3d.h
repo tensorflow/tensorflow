@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_CONV3D_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_CONV3D_H_
 
+#include <stdint.h>
+
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/types.h"
 
 extern "C" {
 

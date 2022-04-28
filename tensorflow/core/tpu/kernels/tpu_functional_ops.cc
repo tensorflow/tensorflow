@@ -1341,8 +1341,12 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
 
   NodeDef init_const_ndef;
   init_const_ndef.set_name("initial_value");
+#if defined(LIBTPU_ON_GCE)  // TODO(b/217559071) - Remove once _TPUConst is OSS
+  init_const_ndef.set_op("Const");
+#else
   init_const_ndef.set_op("_TPUConst");
   AddNodeAttr("memory_space", "HBM", &init_const_ndef);
+#endif
   init_const_ndef.set_device(device);
   AddNodeAttr("dtype", var->tensor()->dtype(), &init_const_ndef);
   AddNodeAttr("value", *var->tensor(), &init_const_ndef);
@@ -1725,6 +1729,8 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(InitializeVarOnTPU(ctx, var, &ndef, device_ordinal,
                                               var_info.fast_mem));
+        VLOG(3) << "Initialized variable on TPU: " << sname
+                << " device_ordinal: " << device_ordinal;
       }
       tpu_variables[handle_fp] = new_node;
     }
@@ -2612,7 +2618,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   auto* local_cm = new CancellationManager(ctx->cancellation_manager());
-  auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
+  auto* rendez = new RefCountedIntraProcessRendezvous(device_mgr_);
   opts.cancellation_manager = local_cm;
   opts.rendezvous = rendez;
 
@@ -2621,7 +2627,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
        device_ordinal = device_ordinal, req_id = ordinal_selector_req_id, ctx,
        ordinal_selector = ordinal_selector_](const Status& status) {
         delete local_cm;
-        delete rendez;
+        rendez->Unref();
         if (!status.ok()) {
           ctx->SetStatus(status);
         }

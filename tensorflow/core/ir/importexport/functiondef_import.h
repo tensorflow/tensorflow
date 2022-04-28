@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace mlir {
@@ -25,7 +26,8 @@ namespace tfg {
 
 // Import the FunctionDef `func` as a TFG generic function (see GraphFuncOp
 // documentation). The function will be inserted using the provided `builder`.
-tensorflow::Status ConvertGenericFunction(const tensorflow::FunctionDef& func,
+tensorflow::Status ConvertGenericFunction(GraphFuncOp func_op,
+                                          const tensorflow::FunctionDef& func,
                                           OpBuilder& builder);
 
 }  // namespace tfg

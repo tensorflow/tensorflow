@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <iostream>
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 
 #ifdef ENABLE_MKL
 #include <omp.h>
@@ -151,7 +151,7 @@ void MKLConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
 }  // namespace
 #endif  // ENABLE_MKL
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLConv2DF32(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLConv2DF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,
     int64_t input_batch, int64_t input_rows, int64_t input_cols,
     int64_t input_channels, int64_t kernel_rows, int64_t kernel_cols,

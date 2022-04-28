@@ -43,7 +43,6 @@ using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::HostContext;
 using ::tfrt::RCReference;
-using ::tfrt::SmallVector;
 
 // Op attributes.
 constexpr char kEnableAdaptiveSchedulerAttr[] = "_enable_adaptive_scheduler";
@@ -536,14 +535,14 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
     std::function<void(const Status&)> done) const {
-  SmallVector<AsyncValue*, 8> arguments;
+  llvm::SmallVector<AsyncValue*, 8> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
   arguments.push_back(tfrt::GetReadyChain().release());
   for (auto& input : inputs) {
     arguments.push_back(TFTensorToFallbackTensor(input).release());
   }
-  SmallVector<RCReference<AsyncValue>, 4> results;
+  llvm::SmallVector<RCReference<AsyncValue>, 4> results;
   results.resize(bef_func_->result_types().size());
   assert(results.size() > 1);
   assert(bef_func_->result_types().front().GetName() == "!tfrt.chain");
@@ -571,7 +570,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
   batch_exec_ctx.set_location(exec_ctx.location());
 
-  bef_func_->Execute(batch_exec_ctx, arguments, results);
+  bef_func_->ExecuteAsync(batch_exec_ctx, arguments, results);
   // There is a comment in tensorflow/core/kernels/batch_kernels.cc
   // counterpart of this method that blocking here seems to improve
   // latency/throughput in practice with how the batching library manage
@@ -585,7 +584,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
 
   // The first result is a Chain.
   combined_outputs->reserve(results.size() - 1);
-  SmallVector<const tfrt::DecodedDiagnostic*, 3> errors;
+  llvm::SmallVector<const tfrt::DecodedDiagnostic*, 3> errors;
   for (int i = 1, e = results.size(); i != e; ++i) {
     combined_outputs->emplace_back();
     auto& result = results[i];
@@ -603,12 +602,19 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
       auto last = std::unique(errors.begin(), errors.end());
       errors.erase(last, errors.end());
     }
-    std::string msg;
-    llvm::raw_string_ostream os(msg);
-    for (auto* error : errors) {
-      os << *error << ";\n";
+
+    // If there is only 1 error after deduplication, we emit the error with
+    // proper error code mapping from TFRT to TF.
+    if (errors.size() == 1) {
+      final_status = tfrt::CreateTfErrorStatus(*errors[0]);
+    } else {
+      std::string msg;
+      llvm::raw_string_ostream os(msg);
+      for (auto* error : errors) {
+        os << *error << ";\n";
+      }
+      final_status = errors::Internal(std::move(os.str()));
     }
-    final_status = errors::Internal(std::move(os.str()));
   }
   done(final_status);
 }

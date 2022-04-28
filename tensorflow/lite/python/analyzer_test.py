@@ -70,7 +70,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_path=model_path, experimental_use_mlir=True)
     mlir = mock_stdout.getvalue()
     self.assertIn(
-        '%1 = "tfl.pseudo_const"() {value = opaque<"_", "0xDEADBEEF"> : '
+        '%1 = "tfl.pseudo_const"() {value = opaque<"elided_large_const", "0xDEADBEEF"> : '
         'tensor<3x3x3x8xf32>} : () -> tensor<3x3x3x8xf32>', mlir)
 
   def testTxtWithFlatBufferModel(self):
@@ -180,7 +180,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       with test.mock.patch.object(sys, 'stdout', mock_stdout):
         analyzer.ModelAnalyzer.analyze(model_content=fb_model)
       txt = mock_stdout.getvalue()
-      self.assertIn('Your TFLite model has ‘2’ signature_def(s).', txt)
+      self.assertIn("Your TFLite model has '2' signature_def(s).", txt)
       self.assertIn("Signature#0 key: 'add'", txt)
       self.assertIn("  'a' : T#1", txt)
       self.assertIn("  'b' : T#0", txt)

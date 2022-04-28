@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -68,14 +69,14 @@ struct TPUSpaceToDepthPass
 };
 
 // Updates func argument type to have the updated input shape.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   auto arg_types = func.front().getArgumentTypes();
   auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(func.getContext(), arg_types, result_types));
 }
 
 void HandleFuncOp(Operation* op) {
-  auto func = llvm::cast<FuncOp>(op);
+  auto func = llvm::cast<func::FuncOp>(op);
   UpdateFuncType(func);
 }
 

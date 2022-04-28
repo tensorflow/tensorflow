@@ -426,67 +426,23 @@ class CudnnSupport : public dnn::DnnSupport {
                   const DeviceMemory<float>& input_data,
                   DeviceMemory<float>* output_data, uint64_t options) override;
 
-  bool DoPoolForward(Stream* stream,
-                     const dnn::PoolingDescriptor& pooling_dimensions,
-                     const dnn::BatchDescriptor& input_dimensions,
-                     const DeviceMemory<double>& input_data,
-                     const dnn::BatchDescriptor& output_dimensions,
-                     DeviceMemory<double>* output_data,
-                     ScratchAllocator* workspace_allocator) override;
+  port::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             DeviceMemoryBase input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemoryBase output_data,
+                             ScratchAllocator* workspace_allocator) override;
 
-  bool DoPoolForward(Stream* stream,
-                     const dnn::PoolingDescriptor& pooling_dimensions,
-                     const dnn::BatchDescriptor& input_dimensions,
-                     const DeviceMemory<float>& input_data,
-                     const dnn::BatchDescriptor& output_dimensions,
-                     DeviceMemory<float>* output_data,
-                     ScratchAllocator* workspace_allocator) override;
-
-  bool DoPoolForward(Stream* stream,
-                     const dnn::PoolingDescriptor& pooling_dimensions,
-                     const dnn::BatchDescriptor& input_dimensions,
-                     const DeviceMemory<Eigen::half>& input_data,
-                     const dnn::BatchDescriptor& output_dimensions,
-                     DeviceMemory<Eigen::half>* output_data,
-                     ScratchAllocator* workspace_allocator) override;
-
-  bool DoPoolForward(Stream* stream,
-                     const dnn::PoolingDescriptor& pooling_dimensions,
-                     const dnn::BatchDescriptor& input_dimensions,
-                     const DeviceMemory<int8>& input_data,
-                     const dnn::BatchDescriptor& output_dimensions,
-                     DeviceMemory<int8>* output_data,
-                     ScratchAllocator* workspace_allocator) override;
-
-  bool DoPoolBackward(Stream* stream,
-                      const dnn::PoolingDescriptor& pooling_dimensions,
-                      const dnn::BatchDescriptor& input_dimensions,
-                      const DeviceMemory<double>& input_data,
-                      const dnn::BatchDescriptor& output_dimensions,
-                      const DeviceMemory<double>& output_data,
-                      const DeviceMemory<double>& input_diff_data,
-                      DeviceMemory<double>* output_diff_data,
-                      ScratchAllocator* workspace_allocator) override;
-
-  bool DoPoolBackward(Stream* stream,
-                      const dnn::PoolingDescriptor& pooling_dimensions,
-                      const dnn::BatchDescriptor& input_dimensions,
-                      const DeviceMemory<float>& input_data,
-                      const dnn::BatchDescriptor& output_dimensions,
-                      const DeviceMemory<float>& output_data,
-                      const DeviceMemory<float>& input_diff_data,
-                      DeviceMemory<float>* output_diff_data,
-                      ScratchAllocator* workspace_allocator) override;
-
-  bool DoPoolBackward(Stream* stream,
-                      const dnn::PoolingDescriptor& pooling_dimensions,
-                      const dnn::BatchDescriptor& input_dimensions,
-                      const DeviceMemory<Eigen::half>& input_data,
-                      const dnn::BatchDescriptor& output_dimensions,
-                      const DeviceMemory<Eigen::half>& output_data,
-                      const DeviceMemory<Eigen::half>& input_diff_data,
-                      DeviceMemory<Eigen::half>* output_diff_data,
-                      ScratchAllocator* workspace_allocator) override;
+  port::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
+                              const dnn::PoolingDescriptor& pooling_dimensions,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              DeviceMemoryBase input_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              DeviceMemoryBase output_data,
+                              DeviceMemoryBase input_diff_data,
+                              DeviceMemoryBase output_diff_data,
+                              ScratchAllocator* workspace_allocator) override;
 
   bool DoNormalizeWithDimensions(
       Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
@@ -561,6 +517,8 @@ class CudnnSupport : public dnn::DnnSupport {
                          const dnn::BatchDescriptor& output_desc,
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
+
+  void NotifyStreamDestroyed(Stream* stream) override;
 
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.

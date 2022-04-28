@@ -18,7 +18,8 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -48,7 +49,7 @@ class InitTextFileToImportPass
   }
 
  private:
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 class ConvertInitializeTableFromTextFileV2
@@ -137,12 +138,12 @@ class ConvertInitializeTableFromTextFileV2
   StringRef saved_model_dir_;
 };
 
-void InitTextFileToImportPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void InitTextFileToImportPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
-  FuncOp func = getFunction();
+  func::FuncOp func = getOperation();
 
-  patterns.insert<ConvertInitializeTableFromTextFileV2>(
+  patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
@@ -150,11 +151,10 @@ void InitTextFileToImportPass::runOnFunction() {
 }  // namespace
 
 // Replace InitializeTableFromTextFileV2Ops with LookupTableImportV2Ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateInitTextFileToImportPass(
     std::string saved_model_dir) {
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
-
 
 }  // namespace TF
 }  // namespace mlir

@@ -513,8 +513,8 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
     HloInstruction* pad_val) {
   const int64_t spatial_dim_count = spatial_dimensions_to_split.size();
-  const int64_t additional_batch_size = tensorflow::MathUtil::IPow<int64_t>(
-      ctrl_.number_of_splits, spatial_dim_count);
+  const int64_t additional_batch_size =
+      IPow<int64_t>(ctrl_.number_of_splits, spatial_dim_count);
   const int64_t original_batch_size =
       activations->shape().dimensions(activations_batch_dim) /
       additional_batch_size;
@@ -1115,25 +1115,28 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
 
     VLOG(1) << "Checking if conv is supported for propagation "
             << consumer->ToString();
+    bool found_good_non_window_dilated_conv = true;
     if (IsConvSuitableForSpaceToBatch(consumer)) {
       // Activations must have been space-to-batched to enable propagation.
       if (!old_to_new_instrs_.contains(consumer->mutable_operand(0))) {
-        return false;
+        found_good_non_window_dilated_conv = false;
       }
       auto dim_map_val_op_0 = instr_to_dim_map_[consumer->mutable_operand(0)];
 
       if (!are_conv_dims_compatible(consumer->convolution_dimension_numbers(),
                                     dim_map_val_op_0, /*check_lhs*/ true)) {
-        return false;
+        found_good_non_window_dilated_conv = false;
       }
       // Make sure that the batch dimension is the same across the producer
       // and consumer.
       if (consumer->convolution_dimension_numbers().input_batch_dimension() !=
           dim_map_val_op_0[DimMapper(SpaceToBatchDimMap::kBatch)]) {
-        return false;
+        found_good_non_window_dilated_conv = false;
       }
 
-      return true;
+      if (found_good_non_window_dilated_conv) {
+        return true;
+      }
     }
 
     if (!ctrl_.enable_propagations_on_window_dilations) {
@@ -2305,11 +2308,10 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
   // ..., SN
   std::vector<int64_t> bounds(2 + spatial_dim_count, new_space_size);
   bounds[0] = old_batch_size;
-  bounds[1] =
-      tensorflow::MathUtil::IPow<int64_t>(num_splits, spatial_dim_count);
+  bounds[1] = IPow<int64_t>(num_splits, spatial_dim_count);
 
   const int64_t total_new_space =
-      tensorflow::MathUtil::IPow<int64_t>(new_space_size, spatial_dim_count);
+      IPow<int64_t>(new_space_size, spatial_dim_count);
 
   // Build a constant PRED to decide which elements in the split dimension
   // are from halo.
@@ -2837,8 +2839,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
       activations->shape().dimensions().end());
 
   const int64_t collapsed_batch_size =
-      old_batch_size * tensorflow::MathUtil::IPow<int64_t>(
-                           ctrl_.number_of_splits, spatial_dim_count);
+      old_batch_size * IPow<int64_t>(ctrl_.number_of_splits, spatial_dim_count);
 
   batch_collapse_reshape_dims.erase(
       batch_collapse_reshape_dims.begin() + activations_batch_dim,

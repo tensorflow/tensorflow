@@ -56,8 +56,10 @@ AttrSlice::AttrSlice() : ndef_(nullptr) {
   attrs_ = kEmptyAttrValueMap;
 }
 
+// Do not cache the map field reference because that may be invalidated on
+// Clear.
 AttrSlice::AttrSlice(const NodeDef& node_def)
-    : ndef_(&node_def), attrs_(&ndef_->attr()) {}
+    : ndef_(&node_def), attrs_(nullptr) {}
 
 AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
 
@@ -96,7 +98,7 @@ string AttrSlice::SummarizeNode() const {
 
 string AttrSlice::DebugString() const {
   std::vector<string> attr_key_vals;
-  attr_key_vals.reserve(attrs_->size());
+  attr_key_vals.reserve(attrs()->size());
   for (const auto& it : *this) {
     const string& name = it.first;
     const AttrValue& attr_value = it.second;
@@ -159,9 +161,10 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
   // Because most nodes have a small number of attributes, a simple linear scan
   // is generally more efficient than a hashed lookup.  If google::protobuf::Map
   // changes so that it supports efficient lookups using StringPiece instead of
-  // const string&, then this code could be changed to use attrs_->find() again.
+  // const string&, then this code could be changed to use attrs()->find()
+  // again.
 
-  for (const auto& attr : *attrs_) {
+  for (const auto& attr : *attrs()) {
     if (attr.first == attr_name) {
       return &attr.second;
     }
@@ -170,18 +173,17 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
 }
 
 const AttrValue* AttrSlice::FindByString(const string& attr_name) const {
-  auto iter = attrs_->find(attr_name);
-  if (iter != attrs_->end()) {
+  auto iter = attrs()->find(attr_name);
+  if (iter != attrs()->end()) {
     return &iter->second;
   } else {
     return nullptr;
   }
 }
 
-Status AttrSlice::Find(StringPiece attr_name,
-                       const AttrValue** attr_value) const {
-  *attr_value = Find(attr_name);
-  if (*attr_value != nullptr) {
+Status AttrSlice::CheckFind(StringPiece attr_name,
+                            const AttrValue* attr_value) const {
+  if (attr_value != nullptr) {
     return Status::OK();
   }
   Status s = errors::NotFound("No attr named '", attr_name, "' in NodeDef:");
@@ -194,12 +196,24 @@ Status AttrSlice::Find(StringPiece attr_name,
   return s;
 }
 
+Status AttrSlice::Find(StringPiece attr_name,
+                       const AttrValue** attr_value) const {
+  *attr_value = Find(attr_name);
+  return CheckFind(attr_name, *attr_value);
+}
+
+Status AttrSlice::FindByString(const string& attr_name,
+                               const AttrValue** attr_value) const {
+  *attr_value = FindByString(attr_name);
+  return CheckFind(attr_name, *attr_value);
+}
+
 bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
   if (size() != other.size()) return false;
 
-  for (const auto& attr : *other.attrs_) {
-    auto iter = attrs_->find(attr.first);
-    if (iter == attrs_->end()) return false;
+  for (const auto& attr : *other.attrs()) {
+    auto iter = attrs()->find(attr.first);
+    if (iter == attrs()->end()) return false;
     // TODO(irving): Comparing AttrValues by proto is slightly buggy, since
     // TensorProto is a nonunique representation of Tensor.  This bug will go
     // away once AttrSlice switches over to NodeInfo.
@@ -480,13 +494,14 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
-    TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs).Find(arg_def.type_attr(), &attr_value));
+    TF_RETURN_IF_ERROR(AttrSlice(node_or_attrs)
+                           .FindByString(arg_def.type_attr(), &attr_value));
     sig->push_back(attr_value->type());
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs).Find(arg_def.type_list_attr(), &attr_value));
+        AttrSlice(node_or_attrs)
+            .FindByString(arg_def.type_list_attr(), &attr_value));
     for (int dtype : attr_value->list().type()) {
       sig->push_back(static_cast<DataType>(dtype));
     }

@@ -21,6 +21,8 @@ using TfLiteInterpreterOptions = System.IntPtr;
 using TfLiteModel = System.IntPtr;
 using TfLiteTensor = System.IntPtr;
 
+// TODO(b/218796582): Update TFLite Experimental Unity Plugin to support the SignatureRunner C APIs
+
 namespace TensorFlowLite
 {
   /// <summary>

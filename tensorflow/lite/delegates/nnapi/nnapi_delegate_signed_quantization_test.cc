@@ -169,7 +169,7 @@ TEST_F(NnApiSignedQuantizationTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -205,7 +205,7 @@ TEST_F(NnApiSignedQuantizationTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -355,7 +355,7 @@ TEST_F(NnApiSignedQuantizationTest,
   });
   m.SetBias({1, 2, 3});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -395,7 +395,7 @@ TEST_F(NnApiSignedQuantizationTest,
   });
   m.SetBias({1, 2, 3});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -480,7 +480,7 @@ TEST_F(NnApiSignedQuantizationTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -541,7 +541,7 @@ TEST_F(NnApiSignedQuantizationTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 3);
@@ -601,7 +601,7 @@ TEST_F(NnApiSignedQuantizationTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 4);
@@ -665,7 +665,7 @@ TEST_F(NnApiSignedQuantizationTest, Conv2dSignedPerChannelMapsToSignedOnSdk30) {
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 4);
@@ -727,7 +727,7 @@ TEST_F(NnApiSignedQuantizationTest, QuantizeUint8MapsToUint8OnSdk29) {
                     {TensorType_UINT8, {2, 5}, 0, 0, 0.5, 127});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -749,7 +749,7 @@ TEST_F(NnApiSignedQuantizationTest, QuantizeUint8MapsToUint8OnSdk30) {
                     {TensorType_UINT8, {2, 5}, 0, 0, 0.5, 127});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -772,7 +772,7 @@ TEST_F(NnApiSignedQuantizationTest, QuantizeInt8MapsToInt8OnSdk30) {
                     {TensorType_INT8, {2, 5}, 0, 0, 0.5, -1});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -827,7 +827,7 @@ TEST_F(NnApiSignedQuantizationTest, DequantizeUint8MapsToUint8OnSdk29) {
                       127, 1);
 
   m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -849,7 +849,7 @@ TEST_F(NnApiSignedQuantizationTest, DequantizeUint8MapsToUint8OnSdk30) {
                       127, 1);
 
   m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -873,7 +873,7 @@ TEST_F(NnApiSignedQuantizationTest,
                       2);
 
   m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);
@@ -896,7 +896,7 @@ TEST_F(NnApiSignedQuantizationTest, DequantizeTestInt8MapsToInt8OnSdk30) {
                       2);
 
   m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 
   ASSERT_EQ(tensors_count->size(), 2);

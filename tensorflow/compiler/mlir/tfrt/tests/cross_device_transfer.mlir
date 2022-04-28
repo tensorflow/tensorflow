@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tfrt-cross-device-transfer %s | FileCheck %s
 
 // CHECK-LABEL: test_transfer_op_result
-func @test_transfer_op_result(%arg0: !tfrt.chain) -> () {
+func.func @test_transfer_op_result(%arg0: !tfrt.chain) -> () {
   // CHECK-NEXT: %[[RESULT_0:.*]] = corert.get_op_handler %[[ARG_0:.*]] "cpu"
   %0 = corert.get_op_handler %arg0 "cpu"
   // CHECK-NEXT: %[[RESULT_1:.*]] = corert.get_op_handler %[[ARG_0]] "gpu"
@@ -19,7 +19,7 @@ func @test_transfer_op_result(%arg0: !tfrt.chain) -> () {
 }
 
 // CHECK: func @test_transfer_func_arg(%[[ARG_0:.*]]: !tfrt.chain, %[[ARG_1:.*]]: !corert.tensorhandle
-func @test_transfer_func_arg(%arg0: !tfrt.chain, %arg1: !corert.tensorhandle {tfrt.device = "/device:CPU:0"}) -> () {
+func.func @test_transfer_func_arg(%arg0: !tfrt.chain, %arg1: !corert.tensorhandle {tfrt.device = "/device:CPU:0"}) -> () {
   // CHECK-NEXT: %[[RESULT_0:.*]] = corert.get_op_handler %[[ARG_0]] "gpu"
   %0 = corert.get_op_handler %arg0 "gpu"
   // CHECK-NEXT: %[[RESULT_1:.*]] = tfrt.get_device %[[ARG_0]] {device_name = "/device:GPU:0"}

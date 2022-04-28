@@ -247,41 +247,6 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
       ShapeUtil::GetTupleElementShape(tuple->shape(), 1), constant1->shape()));
 }
 
-TEST_F(LayoutAssignmentTest, TupleSelect) {
-  // Verify layouts of a select with tuple operands is assigned properly.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2WithLayout<float>(
-          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
-  auto tuple0 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant0, constant1}));
-  auto tuple1 = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant0, constant1}));
-
-  auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-
-  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
-
-  auto m = CreateNewVerifiedModule();
-  m->AddEntryComputation(builder.Build());
-
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  Shape result_shape =
-      ShapeUtil::MakeTupleShape({constant0->shape(), constant1->shape()});
-  TF_CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
-      result_shape));
-
-  AssignLayouts(m.get(), &computation_layout);
-
-  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(result_shape, select->shape()));
-}
-
 TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   // Construct following computation which has conflicting layouts for two
   // elements of a tuple which share the same source logicalb buffer:
@@ -1575,6 +1540,73 @@ ENTRY main {
   ExpectLayoutIs(on_true->shape(), {0, 1, 2});
   const HloInstruction* on_false = FindInstruction(m.get(), "reshape.9717");
   ExpectLayoutIs(on_false->shape(), {0, 1, 2});
+}
+
+// Test the ability to propagate operand constraints across multiple operations.
+TEST_F(LayoutAssignmentTest, PropagateOperandLayout) {
+  const char* module_str = R"(
+HloModule ComputationPropagateOperandLayout
+
+%scalar_add_computation.1 (scalar_lhs.1: f32[], scalar_rhs.1: f32[]) -> f32[] {
+  %scalar_lhs.1 = f32[]{:T(256)} parameter(0)
+  %scalar_rhs.1 = f32[]{:T(256)} parameter(1)
+  ROOT %add.25 = f32[]{:T(256)} add(f32[]{:T(256)} %scalar_lhs.1, f32[]{:T(256)} %scalar_rhs.1)
+}
+
+ENTRY main {
+  %convolution-base-dilated = f32[64,243,243,10]{0,3,2,1:T(8,128)} parameter(0)
+  %reduce.13 = f32[64,243,243]{2,1,0:T(8,128)} parameter(1)
+  %divide.2 = f32[64,243,243,10]{2,3,1,0:T(8,128)} parameter(2)
+  %reshape.32 = f32[384,10,1,1]{0,1,3,2:T(8,128)} parameter(3)
+  %subtract = f32[64,243,243,384]{3,0,2,1:T(8,128)} parameter(4)
+  %constant = f32[]{:T(256)} constant(3779136)
+  %broadcast.71 = f32[64,243,243,384]{3,0,2,1:T(8,128)} parameter(5)
+  %broadcast.46 = f32[64,243,243,10] broadcast(f32[64,243,243] %reduce.13), dimensions={0,1,2}
+  %subtract.14 = f32[64,243,243,10] subtract(f32[64,243,243,10] %convolution-base-dilated, f32[64,243,243,10] %broadcast.46)
+  %multiply.22 = f32[64,243,243,10] multiply(f32[64,243,243,10] %subtract.14, f32[64,243,243,10]{2,3,1,0:T(8,128)} %divide.2)
+  %convolution.9 = f32[64,243,243,384] convolution(f32[64,243,243,10] %multiply.22, f32[384,10,1,1] %reshape.32), window={size=1x1}, dim_labels=01bf_oi01->01bf
+  %reduce.14 = f32[384] reduce(f32[64,243,243,384] %convolution.9, f32[]{:T(256)} %constant), dimensions={0,1,2}, to_apply=%scalar_add_computation.1
+  %multiply.24 = f32[64,243,243,384] multiply(f32[64,243,243,384] %convolution.9, f32[64,243,243,384] %subtract)
+  %reduce.15 = f32[384] reduce(f32[64,243,243,384] %multiply.24, f32[] %constant), dimensions={0,1,2}, to_apply=%scalar_add_computation.1
+  %broadcast.47 = f32[64,243,243,384] broadcast(f32[] %constant), dimensions={}
+  %multiply.23 = f32[64,243,243,384] multiply(f32[64,243,243,384] %convolution.9, f32[64,243,243,384] %broadcast.47)
+  %broadcast.48 = f32[64,243,243,384]{3,2,1,0:T(8,128)} broadcast(f32[384]{0:T(512)} %reduce.14), dimensions={3}
+  %subtract.15 = f32[64,243,243,384] subtract(f32[64,243,243,384] %multiply.23, f32[64,243,243,384] %broadcast.48)
+  %broadcast.50 = f32[64,243,243,384] broadcast(f32[384] %reduce.15), dimensions={3}
+  %multiply.25 = f32[64,243,243,384] multiply(f32[64,243,243,384] %broadcast.50, f32[64,243,243,384] %subtract)
+  %divide.7 = f32[64,243,243,384]{3,0,2,1:T(8,128)} divide(f32[64,243,243,384] %multiply.25, f32[64,243,243,384] %broadcast.71)
+  ROOT %subtract.17 = f32[64,243,243,384]{3,0,2,1:T(8,128)} subtract(f32[64,243,243,384] %subtract.15, f32[64,243,243,384] %divide.7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 10}, {0, 3, 2, 1}));
+  *computation_layout.mutable_parameter_layout(1) = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243}, {2, 1, 0}));
+  *computation_layout.mutable_parameter_layout(2) = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 10}, {2, 3, 1, 0}));
+  *computation_layout.mutable_parameter_layout(3) = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {384, 10, 1, 1}, {0, 1, 3, 2}));
+  *computation_layout.mutable_parameter_layout(4) = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 384}, {3, 0, 2, 1}));
+  *computation_layout.mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 243, 243, 384}, {3, 0, 2, 1}));
+  std::cerr << "Entry layout:" << computation_layout.ToString() << "\n";
+  ChannelLayoutConstraints channel_constraints;
+  LayoutAssignment layout_assignment(
+      &computation_layout,
+      /*channel_constraints=*/&channel_constraints);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  const HloInstruction* subtract_15 = FindInstruction(m.get(), "subtract.15");
+  ExpectLayoutIs(subtract_15->shape(), {3, 0, 2, 1});
+  const HloInstruction* broadcast_46 = FindInstruction(m.get(), "broadcast.46");
+  ExpectLayoutIs(broadcast_46->shape(), {2, 3, 1, 0});
+  const HloInstruction* subtract_14 = FindInstruction(m.get(), "subtract.14");
+  ExpectLayoutIs(subtract_14->shape(), {2, 3, 1, 0});
 }
 
 }  // namespace

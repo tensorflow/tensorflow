@@ -14,13 +14,11 @@
 # ==============================================================================
 """Tests tf.data service with local and remote workers."""
 
-import time
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
-from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -125,7 +123,7 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     ds = self.make_distributed_range_dataset(
         num_elements,
         cluster,
-        processing_mode=ShardingPolicy.DYNAMIC,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
         target_workers="LOCAL")
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
@@ -184,26 +182,6 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     num_workers = num_local_workers + num_remote_workers
     self.assertDatasetProduces(
         ds, num_workers * list(range(num_elements)), assert_items_equal=True)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testPreferLocalRead(self):
-    cluster = multi_process_cluster.MultiProcessCluster(
-        num_local_workers=1, num_remote_workers=0)
-    num_elements = 100
-    dataset = self.make_distributed_range_dataset(num_elements, cluster)
-    get_next = self.getNext(dataset)
-    self.assertEqual(self.evaluate(get_next()), 0)
-
-    for i in range(1, 4):
-      cluster.start_remote_worker()
-      # Waits for the new worker to register with the dispatcher.
-      while cluster._dispatcher._num_workers() < i + 1:
-        time.sleep(10 / 1000)  # 10ms
-      # Prefers reading from the local worker.
-      self.assertEqual(self.evaluate(get_next()), i)
-    self.assertCountEqual(
-        self.getIteratorOutput(get_next),
-        list(range(4, num_elements)) + 3 * list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testNoLocalWorker(self):
@@ -448,7 +426,7 @@ class LocalTaskGarbageCollectTest(data_service_test_base.TestBase,
         dataset,
         cluster=cluster,
         job_name=job_name,
-        processing_mode=ShardingPolicy.OFF,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
         target_workers="LOCAL")
 
 

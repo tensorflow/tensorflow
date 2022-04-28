@@ -28,9 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 namespace gpu {
@@ -79,12 +77,12 @@ class KernelThunk : public Thunk {
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;
 
-  mutable tensorflow::mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
-      kernel_cache_ TF_GUARDED_BY(mutex_);
+      kernel_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

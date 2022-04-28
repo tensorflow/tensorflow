@@ -80,7 +80,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
 // miscomparison.
 void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
                   const LiteralSlice& mismatches,
-                  const ShapeIndex& /*shape_index*/) {
+                  const ShapeIndex& /*shape_index*/,
+                  const literal_comparison::ErrorBuckets& /*error_buckets*/) {
   LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape()) << " "
             << literal_comparison::ToStringTruncated(expected);
   LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape()) << " "
@@ -114,7 +115,7 @@ Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
 }  // namespace
 
 Status RunAndCompare(
-    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
@@ -127,14 +128,9 @@ Status RunAndCompare(
     };
   }
 
-  std::unique_ptr<HloModule> test_module =
-      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook)
-          .ValueOrDie();
-
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
-        /*while_execution_count=*/1);
+        HloControlFlowFlattening::Options{/*while_execution_count=*/1});
     TF_RETURN_IF_ERROR(control_flow_flattening.Run(test_module.get()).status());
   }
 
@@ -229,4 +225,20 @@ Status RunAndCompare(
                                   /*detailed_message=*/true, &OnMiscompare);
 }
 
+Status RunAndCompare(
+    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
+    const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto,
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+        reference_module_modifier_hook,
+    std::function<void(HloModuleConfig*)> config_modifier_hook) {
+  std::unique_ptr<HloModule> test_module =
+      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
+                         options.input_format, config_modifier_hook)
+          .ValueOrDie();
+  return RunAndCompare(std::move(test_module), test_runner, reference_runner,
+                       engine, options, iteration_literals_proto,
+                       reference_module_modifier_hook, config_modifier_hook);
+}
 }  // namespace xla

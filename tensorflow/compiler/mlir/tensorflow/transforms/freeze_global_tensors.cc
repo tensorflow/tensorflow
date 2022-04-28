@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/BitVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/DataFlowAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -47,7 +48,8 @@ struct ResourceLatticeValue {
   }
   static ResourceLatticeValue getPessimisticValueState(Value value) {
     if (auto barg = value.dyn_cast<BlockArgument>()) {
-      if (FuncOp func = dyn_cast<FuncOp>(barg.getOwner()->getParentOp())) {
+      if (func::FuncOp func =
+              dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
         SymbolTable symbol_table(func->getParentOfType<ModuleOp>());
         auto global_tensor = LookupBoundInputOfType<GlobalTensorOp>(
             func, barg.getArgNumber(), symbol_table);
@@ -125,7 +127,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   // Collect all those freezable. This is an extra scan but allows for the
   // partial behavior from `allow_mutable_tensor`.
   DenseMap<BlockArgument, bool> freezeable;
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (BlockArgument val : func.getArguments()) {
       if (!getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>())
         continue;
@@ -160,8 +162,8 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   }
 
   DenseSet<GlobalTensorOp> frozen_global_tensors;
-  for (auto func : module.getOps<FuncOp>()) {
-    SmallVector<unsigned, 4> args_to_erase;
+  for (auto func : module.getOps<func::FuncOp>()) {
+    llvm::BitVector args_to_erase(func.getNumArguments());
     DenseMap<Operation *, llvm::BitVector> remove_operands;
     OpBuilder builder(func.getBody());
 
@@ -192,7 +194,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
                                                   global_tensor.value());
-      args_to_erase.push_back(val.getArgNumber());
+      args_to_erase.set(val.getArgNumber());
       for (auto read_op : read_variable_ops_to_erase) {
         read_op.getResult().replaceAllUsesWith(const_op.getResult());
         read_op.erase();

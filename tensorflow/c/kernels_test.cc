@@ -678,6 +678,12 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     EXPECT_EQ(TF_UINT8, TF_ExpectedOutputDataType(ctx, 0));
 
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, 1); },
+                 "Check failed: i < cc_ctx->num_outputs");
+
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, -1); },
+                 "Check failed: i >= 0");
+
     TF_DeleteStatus(s);
     if (input != nullptr) {
       TF_DeleteTensor(input);
@@ -770,7 +776,10 @@ std::string ExpectedString(const char* type) {
     EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
     KernelList list;                                                         \
     list.ParseFromArray(buf->data, buf->length);                             \
-    ASSERT_EQ(ExpectedString(#dtype), list.DebugString());                   \
+    KernelList expected_proto;                                               \
+    protobuf::TextFormat::ParseFromString(ExpectedString(#dtype),            \
+                                          &expected_proto);                  \
+    ASSERT_EQ(expected_proto.DebugString(), list.DebugString());             \
                                                                              \
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
@@ -819,14 +828,17 @@ TEST(TestKernel, TestHostMemory) {
   EXPECT_EQ(TF_OK, TF_GetCode(status));
   KernelList list;
   list.ParseFromArray(buf->data, buf->length);
-  const auto expected_str = R"str(kernel {
+  KernelList expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      R"str(kernel {
   op: "HostMemoryOp"
   device_type: "FakeDeviceName1"
   host_memory_arg: "input2"
   host_memory_arg: "output1"
 }
-)str";
-  ASSERT_EQ(expected_str, list.DebugString());
+)str",
+      &expected_proto);
+  ASSERT_EQ(list.DebugString(), expected_proto.DebugString());
 
   TF_DeleteBuffer(buf);
   TF_DeleteStatus(status);

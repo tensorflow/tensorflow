@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
@@ -99,7 +99,7 @@ getRegisteredOperationsForHardware(mlir::TypeID type_id) {
 
 // A deny list for op cost computation since those ops are not arithemtic.
 inline bool IsNonArithmeticOp(mlir::Operation* op) {
-  if (llvm::isa<ReturnOp, FuncOp>(op)) return true;
+  if (llvm::isa<func::ReturnOp, func::FuncOp>(op)) return true;
   if (op->hasTrait<OpTrait::ConstantLike>()) return true;
   if (llvm::isa<QConstOp, SparseQConstOp>(op)) return true;
   if (!NotTFLQuantDequantizeOp(op)) return true;
@@ -143,7 +143,7 @@ bool TargetHardware::IsOpSupported(mlir::Operation* op) const {
   return hardware_op->second->IsOpSupported(op);
 }
 
-double TargetHardware::GetFuncCost(FuncOp* func) const {
+double TargetHardware::GetFuncCost(func::FuncOp* func) const {
   double total_cost = 0.0;
   func->walk([&](Operation* op) {
     if (IsNonArithmeticOp(op)) return;

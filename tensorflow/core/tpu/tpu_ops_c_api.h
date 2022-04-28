@@ -31,6 +31,7 @@ namespace tensorflow {
 
 class TpuMeshCommonState;
 class TpuEmbeddingEngineState;
+class ResourceMgr;
 
 }  // namespace tensorflow
 
@@ -88,6 +89,8 @@ struct CompilationCacheKeyProperty {
   int32_t num_cores_per_replica;
   int32_t num_replicas;
   const XLA_TpuMeshState* mesh_state;
+  uint64_t session_id;
+  tensorflow::ResourceMgr* resource_mgr;
 };
 
 // Compilation cache key result returning both the key and a more verbose debug
@@ -609,6 +612,7 @@ typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
   int32_t struct_size;
   void* priv;
 
+  int32_t mode;
   int32_t local_device_ordinal;
   TpuEmbedding_TensorBatchFixedState* fixed_state;
 
@@ -656,6 +660,39 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
 
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_RecvActivationsComputation(
     TpuEmbeddingEngine_RecvActivationsComputation_Params* params);
+
+typedef struct
+    TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params {
+  int32_t struct_size;
+  void* priv;
+
+  const XLA_TpuMeshState* tpu_mesh_state;
+  // out
+  TpuSerializedProto* xla_computation;
+  TF_Status* status;
+} TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params;
+
+TFTPU_CAPI_EXPORT void
+TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation(
+    TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params*
+        params);
+
+typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
+  int32_t struct_size;
+  void* priv;
+
+  int32_t num_inputs;
+  const XLA_TpuMeshState* tpu_mesh_state;
+  XLA_Shape* learning_rate_tuple_shape;
+  XLA_Shape* deduplication_data_shape;
+  XLA_Shape* gradient_tuple_shape;
+  // out
+  TpuSerializedProto* xla_computation;
+  TF_Status* status;
+} TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation(
+    TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params* params);
 
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
@@ -752,6 +789,10 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_EnqueueTensorBatch);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_RecvActivationsComputation);
+  TFTPU_ADD_FN_IN_STRUCT(
+      TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
+  TFTPU_ADD_FN_IN_STRUCT(
+      TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
 };
 
 }  // extern "C"

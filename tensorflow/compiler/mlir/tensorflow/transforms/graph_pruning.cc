@@ -41,7 +41,7 @@ class GraphPruningPass
  public:
   GraphPruningPass() = default;
   explicit GraphPruningPass(llvm::ArrayRef<std::string> ops_to_preserve);
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   bool ShouldPreserveOp(Operation* op);
@@ -56,7 +56,7 @@ class GraphPruningPass
 // feeds/fetches/targets we should not attempt to prune. The best approximation
 // here is to check if the graph is of the "main" function and does not have the
 // "tf.entry_function" attribute defined.
-bool CanPruneGraph(FuncOp func) {
+bool CanPruneGraph(func::FuncOp func) {
   return func.getName() != "main" ||
          func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
 }
@@ -111,12 +111,13 @@ GraphPruningPass::GraphPruningPass(
   ops_to_preserve_ = ops_to_preserve;
 }
 
-void GraphPruningPass::runOnFunction() {
+void GraphPruningPass::runOnOperation() {
   for (const auto& op_name : ops_to_preserve_) {
     ops_to_preserve_ids_.insert(mlir::StringAttr::get(&getContext(), op_name));
   }
-  if (!CanPruneGraph(getFunction())) return;
-  getFunction().walk([this](tf_executor::GraphOp graph) { PruneGraph(graph); });
+  if (!CanPruneGraph(getOperation())) return;
+  getOperation().walk(
+      [this](tf_executor::GraphOp graph) { PruneGraph(graph); });
 }
 
 // An op should be preserved if either its identifier is contained in
@@ -185,7 +186,7 @@ void GraphPruningPass::PruneGraph(GraphOp graph) {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFExecutorGraphPruningPass(
     llvm::ArrayRef<std::string> ops_to_preserve) {
   return std::make_unique<GraphPruningPass>(ops_to_preserve);
 }

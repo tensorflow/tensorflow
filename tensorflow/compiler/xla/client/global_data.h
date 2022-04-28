@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 

@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -80,6 +85,15 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
+    case HloOpcode::kFusion:
+      if (instruction->IsCustomFusion() &&
+          ExtractInstruction(instruction, [](const HloInstruction* inst) {
+            return inst->opcode() == HloOpcode::kAllReduce;
+          }) != nullptr) {
+        return true;
+      } else {
+        return false;
+      }
     default:
       return false;
   }
@@ -106,10 +120,10 @@ bool IsNotContainedInLoop(const HloInstruction& while_hlo,
                           const CallGraph& call_graph) {
   const HloComputation* computation = while_hlo.parent();
   while (!computation->IsEntryComputation()) {
-    auto node = call_graph.GetNode(computation);
+    auto& node = call_graph.GetNode(computation);
     CHECK_EQ(node.caller_callsites().size(), 1)
         << "The module is not flattened!";
-    auto callsite = node.caller_callsites()[0];
+    auto& callsite = node.caller_callsites()[0];
     if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
       // Another while loop has been found traversing up the call tree.
       return false;
@@ -118,22 +132,6 @@ bool IsNotContainedInLoop(const HloInstruction& while_hlo,
   }
   // No calling while loops were found.
   return true;
-}
-
-int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
-                                 const CallGraph& call_graph,
-                                 const int default_loop_count,
-                                 const int max_outer_loop_count,
-                                 const int max_loop_count) {
-  int loop_bound = GetLoopBound(while_hlo, default_loop_count, max_loop_count);
-  if (loop_bound > max_outer_loop_count) {
-    // First does the inexpensive loop bound check to avoid as many
-    // expensive graph traversals in IsNotContainedInLoop as possible.
-    if (IsNotContainedInLoop(while_hlo, call_graph)) {
-      return max_outer_loop_count;
-    }
-  }
-  return loop_bound;
 }
 
 }  // namespace
@@ -163,6 +161,22 @@ int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
   return default_loop_count;
 }
 
+int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
+                                 const CallGraph& call_graph,
+                                 const int default_loop_count,
+                                 const int max_outer_loop_count,
+                                 const int max_loop_count) {
+  int loop_bound = GetLoopBound(while_hlo, default_loop_count, max_loop_count);
+  if (loop_bound > max_outer_loop_count) {
+    // First does the inexpensive loop bound check to avoid as many
+    // expensive graph traversals in IsNotContainedInLoop as possible.
+    if (IsNotContainedInLoop(while_hlo, call_graph)) {
+      return max_outer_loop_count;
+    }
+  }
+  return loop_bound;
+}
+
 Status HloControlFlowFlattening::FlattenWhileLoop(
     HloInstruction* while_hlo, const CallGraph& call_graph) const {
   CHECK_EQ(while_hlo->opcode(), HloOpcode::kWhile);
@@ -185,11 +199,34 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
     return ShapeUtil::PopulateShape(S32, {}, subshape);
   };
 
+  // Replace the given tuple-shaped instruction of size N in each of its
+  // non-get-tuple-element users with a new tuple instruction which has the
+  // first N - 1 elements.
+  auto replace_non_gte_users =
+      [](HloInstruction* new_tuple) -> StatusOr<HloInstruction*> {
+    CHECK(new_tuple->shape().IsTuple());
+    HloInstruction* prefix = nullptr;
+    std::vector<HloInstruction*> users(new_tuple->users());
+    for (HloInstruction* user : users) {
+      if (user->opcode() == HloOpcode::kGetTupleElement) {
+        continue;
+      }
+      // Lazily extract the prefix on demand, reuse it as needed.
+      if (prefix == nullptr) {
+        prefix = TupleUtil::ExtractPrefix(
+            new_tuple, new_tuple->shape().tuple_shapes_size() - 1);
+      }
+      TF_RETURN_IF_ERROR(new_tuple->ReplaceUseWithDifferentShape(user, prefix));
+    }
+    return prefix;
+  };
+
   {
     // Add the new variable to the while loop condition.
     HloComputation* condition = while_hlo->while_condition();
     TF_RETURN_IF_ERROR(change_op_shape(condition->parameter_instruction(0)));
-
+    TF_RETURN_IF_ERROR(
+        replace_non_gte_users(condition->parameter_instruction(0)).status());
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Loop condition in " << while_hlo->parent()->name();
       PrintSubexpression(condition->root_instruction(), /*depth=*/3);
@@ -218,6 +255,8 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
     // Add the new variable to the while loop body.
     HloComputation* body = while_hlo->while_body();
     TF_RETURN_IF_ERROR(change_op_shape(body->parameter_instruction(0)));
+    TF_RETURN_IF_ERROR(
+        replace_non_gte_users(body->parameter_instruction(0)).status());
     HloInstruction* old_root = body->root_instruction();
     Shape shape = initialization->shape();
     HloInstruction* induction_variable =
@@ -238,11 +277,8 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
 
   // Take care of the users of this while loop.
   TF_RETURN_IF_ERROR(change_op_shape(while_hlo));
-  HloInstruction* prefix =
-      TupleUtil::ExtractPrefix(while_hlo, new_tuple_size - 1);
-  for (HloInstruction* user : while_users) {
-    TF_RETURN_IF_ERROR(while_hlo->ReplaceUseWithDifferentShape(user, prefix));
-  }
+  TF_ASSIGN_OR_RETURN(HloInstruction * prefix,
+                      replace_non_gte_users(while_hlo));
 
   // If the while loop had been the root of its computation, make the prefix new
   // root.
@@ -250,6 +286,9 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
     // We need to set accept_different_shape=true to reset the root shape to the
     // original, because we have already changed the shape of the old root
     // (while).
+    if (prefix == nullptr) {
+      prefix = TupleUtil::ExtractPrefix(while_hlo, new_tuple_size - 1);
+    }
     while_hlo->parent()->set_root_instruction(prefix,
                                               /*accept_different_shape=*/true);
   }
@@ -350,7 +389,10 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           hlo->shape(), hlo->operands(), kAllocateBuffer));
+  auto replaced_collective_op_str =
+      hlo->ToString(HloPrintOptions().Canonical());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
+  custom_call->set_metadata_replaced_op(replaced_collective_op_str);
   return Status::OK();
 }
 
@@ -387,17 +429,28 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveOutfeed(instruction));
         changed = true;
-      } else if (remove_comm_ &&
-                 instruction->opcode() == HloOpcode::kSendDone) {
-        VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
-        changed = true;
-      } else if (remove_comm_ &&
-                 instruction->opcode() == HloOpcode::kRecvDone) {
-        VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
-        changed = true;
-      } else if (remove_comm_ && IsCollective(instruction)) {
+      } else if (instruction->opcode() == HloOpcode::kSendDone) {
+        auto send_done_instruction =
+            DynCast<HloSendDoneInstruction>(instruction);
+        CHECK(send_done_instruction);
+        if (remove_comm_ || (remove_host_transfer_ &&
+                             send_done_instruction->is_host_transfer())) {
+          VLOG(1) << "Remove " << instruction->name();
+          TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
+          changed = true;
+        }
+      } else if (instruction->opcode() == HloOpcode::kRecvDone) {
+        auto recv_done_instruction =
+            DynCast<HloRecvDoneInstruction>(instruction);
+        CHECK(recv_done_instruction);
+        if (remove_comm_ || (remove_host_transfer_ &&
+                             recv_done_instruction->is_host_transfer())) {
+          VLOG(1) << "Remove " << instruction->name();
+          TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
+          changed = true;
+        }
+      } else if (remove_comm_ && IsCollective(instruction) &&
+                 !instruction->parent()->IsFusionComputation()) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveCollective(instruction));
         changed = true;
@@ -409,6 +462,10 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
       }
     }
   }
+
+  HloDCE hlo_dce;
+  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module));
+  changed |= dce_changed;
 
   // Fix the schedule if the module was scheduled.
   if (changed && module->has_schedule()) {

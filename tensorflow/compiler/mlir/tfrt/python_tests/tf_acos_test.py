@@ -28,17 +28,17 @@ specializations = [
 
 def acos_1d():
   return """
-  func @acos(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  func.func @acos(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Acos"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }"""
 
 
 def acos_2d():
   return """
-  func @acos(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  func.func @acos(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %0 = "tf.Acos"(%arg0): (tensor<?x?xf32>) -> tensor<?x?xf32>
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }"""
 
 
@@ -54,7 +54,7 @@ def test_acos(fn, rank):
       arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
 
       [res] = jitrt.execute(compiled, [arg])
-      np.testing.assert_allclose(res, np.arccos(arg), atol=1e-06)
+      np.testing.assert_allclose(res, np.arccos(arg), atol=3e-04, rtol=3e-04)
 
 
 class TfACosTest(test.TestCase):

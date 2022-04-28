@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -72,10 +72,10 @@ using llvm::dyn_cast;
 using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
-using mlir::FuncOp;
 using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
+using mlir::func::FuncOp;
 using stream_executor::port::StatusOr;
 
 namespace {

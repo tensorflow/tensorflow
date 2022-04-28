@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -125,9 +124,27 @@ XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildRngGetAndUpdateState(XlaBuilder* builder,
+
+                                                  int64_t delta,
+                                                  const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    instr.set_delta(delta);
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr),
+                                   HloOpcode::kRngGetAndUpdateState);
+  });
+}
+
 HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
   return &op.builder()
               ->instructions_[op.builder()->handle_to_index_[op.handle_]];
+}
+
+HloInstructionProto* XlaBuilderFriend::GetInstructionByHandle(
+    XlaBuilder* builder, int64_t handle) {
+  return &builder->instructions_[builder->handle_to_index_[handle]];
 }
 
 }  // namespace internal
@@ -351,7 +368,7 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
         // Set bound is considered constant -- the bound is used as the value.
         break;
       }
-      TF_FALLTHROUGH_INTENDED;
+      ABSL_FALLTHROUGH_INTENDED;
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -1231,13 +1248,12 @@ XlaOp XlaBuilder::Collapse(XlaOp operand,
   });
 }
 
-void XlaBuilder::Trace(const std::string& tag, XlaOp operand) {
-  ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = ShapeUtil::MakeNil().ToProto();
-    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag).ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
-  });
+// Dummy pass-through computation returning it's parameter of shape `shape`.
+static StatusOr<XlaComputation> PassthroughComputation(
+    const xla::Shape& shape) {
+  XlaBuilder builder("dummy");
+  XlaOp out = Parameter(&builder, 0, shape, "p");
+  return builder.Build(out);
 }
 
 XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
@@ -1245,9 +1261,15 @@ XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
     TF_ASSIGN_OR_RETURN(const Shape* true_shape, GetShapePtr(on_true));
     TF_ASSIGN_OR_RETURN(const Shape* false_shape, GetShapePtr(on_false));
     TF_RET_CHECK(true_shape->IsTuple() == false_shape->IsTuple());
-    HloOpcode opcode =
-        true_shape->IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
-    return TernaryOp(opcode, pred, on_true, on_false);
+    if (true_shape->IsTuple()) {
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_true,
+                          PassthroughComputation(*true_shape));
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_false,
+                          PassthroughComputation(*false_shape));
+      return Conditional(pred, on_true, passthrough_true, on_false,
+                         passthrough_false);
+    }
+    return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
   });
 }
 
@@ -1362,22 +1384,20 @@ Status XlaBuilder::VerifyConvolution(
   }
   int num_spatial_dims = num_dims - 2;
 
-  const auto check_spatial_dimensions =
-      [&](const char* const field_name,
-          const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>&
-              numbers) {
-        if (numbers.size() != num_spatial_dims) {
-          return InvalidArgument("Expected %d elements for %s, but got %d.",
-                                 num_spatial_dims, field_name, numbers.size());
-        }
-        for (int i = 0; i < numbers.size(); ++i) {
-          if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
-            return InvalidArgument("Convolution %s[%d] is out of bounds: %d",
-                                   field_name, i, numbers.Get(i));
-          }
-        }
-        return Status::OK();
-      };
+  const auto check_spatial_dimensions = [&](absl::string_view field_name,
+                                            absl::Span<const int64_t> numbers) {
+    if (numbers.size() != num_spatial_dims) {
+      return InvalidArgument("Expected %d elements for %s, but got %d.",
+                             num_spatial_dims, field_name, numbers.size());
+    }
+    for (int i = 0; i < numbers.size(); ++i) {
+      if (numbers[i] < 0 || numbers[i] >= num_dims) {
+        return InvalidArgument("Convolution %s[%d] is out of bounds: %d",
+                               field_name, i, numbers[i]);
+      }
+    }
+    return Status::OK();
+  };
   TF_RETURN_IF_ERROR(
       check_spatial_dimensions("input_spatial_dimensions",
                                dimension_numbers.input_spatial_dimensions()));
@@ -1963,10 +1983,16 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   HloInstructionProto instr;
-  // Bit of a hack: conv-bias-activation-forward custom-calls are created
-  // through this API. Give them a user-friendly name. (This has no effect on
-  // correctness, it's just cosmetic.)
-  if (call_target_name == "__cudnn$convBiasActivationForward") {
+  // Bit of a hack: cudnn conv custom-calls are created through this API. Give
+  // them a user-friendly name. (This has no effect on correctness, it's just
+  // cosmetic.)
+  if (call_target_name == "__cudnn$convForward") {
+    instr.set_name("cudnn-conv");
+  } else if (call_target_name == "__cudnn$convBackwardInput") {
+    instr.set_name("cudnn-conv-bw-input");
+  } else if (call_target_name == "__cudnn$convBackwardFilter") {
+    instr.set_name("cudnn-conv-bw-filter");
+  } else if (call_target_name == "__cudnn$convBiasActivationForward") {
     instr.set_name("cudnn-conv-bias-activation");
   }
   *instr.mutable_shape() = shape.ToProto();
@@ -2288,8 +2314,8 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
                                PrimitiveType_Name(output_shape.element_type()));
     }
     return RngBitGeneratorInternal(
-        ShapeUtil::MakeTupleShape({state_shape, output_shape}), algorithm,
-        initial_state);
+        ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
+        algorithm, initial_state);
   });
 }
 
@@ -2373,10 +2399,10 @@ XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
     TF_ASSIGN_OR_RETURN(const Shape* updates_shape, GetShapePtr(updates));
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         update_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferScatterShape(
-                         *input_shape, *scatter_indices_shape, *updates_shape,
-                         to_apply_shape, dimension_numbers));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferScatterShape(
+                            {input_shape, scatter_indices_shape, updates_shape},
+                            to_apply_shape, dimension_numbers));
     return ScatterInternal(shape, input, scatter_indices, updates,
                            update_computation, dimension_numbers,
                            indices_are_sorted, unique_indices);
@@ -4026,10 +4052,6 @@ XlaOp DynamicUpdateSlice(const XlaOp operand, const XlaOp update,
 XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   int64_t dimension) {
   return builder->ConcatInDim(operands, dimension);
-}
-
-void Trace(const std::string& tag, const XlaOp operand) {
-  return operand.builder()->Trace(tag, operand);
 }
 
 XlaOp Select(const XlaOp pred, const XlaOp on_true, const XlaOp on_false) {

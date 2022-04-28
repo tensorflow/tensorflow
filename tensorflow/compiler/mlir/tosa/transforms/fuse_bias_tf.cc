@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -41,7 +42,7 @@ namespace {
 class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
   explicit FuseBiasTF() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 struct ConvertTFBiasAddOp : public RewritePattern {
@@ -107,19 +108,19 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
   return success();
 }
 
-void FuseBiasTF::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void FuseBiasTF::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   auto* ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Add the generated patterns to the list.
-  patterns.insert<ConvertTFBiasAddOp>(ctx);
+  patterns.add<ConvertTFBiasAddOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass() {
   return std::make_unique<FuseBiasTF>();
 }
 

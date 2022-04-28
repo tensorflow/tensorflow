@@ -250,10 +250,25 @@ class Shape {
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
 
+  template <typename H, bool kIsLayoutSensitive = true>
+  static H Hash(H h, const Shape& s) {
+    if (s.IsTuple()) {
+      for (const Shape& subshape : s.tuple_shapes_) {
+        h = Shape::Hash<H, kIsLayoutSensitive>(std::move(h), subshape);
+      }
+      return H::combine(std::move(h), s.tuple_shapes_size());
+    }
+    h = H::combine(std::move(h), s.element_type_, s.dimensions_,
+                   s.dynamic_dimensions_);
+    if (kIsLayoutSensitive) {
+      h = H::combine(std::move(h), s.layout_);
+    }
+    return std::move(h);
+  }
+
   template <typename H>
   friend H AbslHashValue(H h, const Shape& s) {
-    return H::combine(std::move(h), s.element_type_, s.dimensions_,
-                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+    return Shape::Hash(std::move(h), s);
   }
 
  private:

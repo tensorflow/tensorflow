@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -88,6 +89,7 @@ Value CreateTupleValue(OpBuilder &builder, Location loc,
 
 // Flattens the tuples in the region's arguments and returning values.
 void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
+  Location loc = region.getLoc();
   OpBuilder regionOpBuilder(region);
 
   // Flatten tuples in arguments. The order of arguments must match the order
@@ -101,12 +103,12 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
     llvm::SmallVector<Value, 4> newArguments;
     FlattenTupleType(argument, newTypes);
     for (auto type : newTypes) {
-      newArguments.push_back(region.addArgument(type));
+      newArguments.push_back(region.addArgument(type, loc));
     }
 
     // Replaces uses of the replacing argument.
-    auto tupleValue = CreateTupleValue(regionOpBuilder, region.getLoc(),
-                                       newArguments, argument.getType());
+    auto tupleValue = CreateTupleValue(regionOpBuilder, loc, newArguments,
+                                       argument.getType());
     argument.replaceAllUsesWith(tupleValue);
   }
   // Removes old tuple arguments.
@@ -126,7 +128,7 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
     for (auto operand : returnOp.getOperands()) {
       FlattenTupleValue(builder, returnOp.getLoc(), operand, results);
     }
-    builder.create<mhlo::ReturnOp>(region.getLoc(), results);
+    builder.create<mhlo::ReturnOp>(loc, results);
     rewriter.eraseOp(returnOp);
   }
 }
@@ -209,23 +211,23 @@ struct FlattenWhileOp : public RewritePattern {
 
 template <typename T>
 void ApplyFlatteningTuplePatterns(T target, MLIRContext *context) {
-  OwningRewritePatternList patterns(context);
-  patterns.insert<FlattenWhileOp>(context);
+  RewritePatternSet patterns(context);
+  patterns.add<FlattenWhileOp>(context);
   (void)applyPatternsAndFoldGreedily(target, std::move(patterns));
 }
 
 class FlattenTuplePass : public FlattenTuplePassBase<FlattenTuplePass> {
  public:
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
-    ApplyFlatteningTuplePatterns(getFunction(), ctx);
+    ApplyFlatteningTuplePatterns(getOperation(), ctx);
   }
 };
 }  // end namespace
 
 static PassRegistration<FlattenTuplePass> pass;
 
-std::unique_ptr<FunctionPass> createFlattenTuplePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass() {
   return std::make_unique<FlattenTuplePass>();
 }
 

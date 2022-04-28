@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -251,11 +252,8 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
         all_reduce->operand(i)->shape(), outputs[i]));
   }
 
-  TF_RETURN_IF_ERROR(computation.ReplaceInstruction(
-      all_reduce,
-      (outputs.size() == 1)
-          ? outputs[0]
-          : computation.AddInstruction(HloInstruction::CreateTuple(outputs))));
+  TF_RETURN_IF_ERROR(
+      computation.ReplaceInstruction(all_reduce, MaybeMakeTuple(outputs)));
 
   // Try to apply decomposition recursively.
   TF_RETURN_IF_ERROR(

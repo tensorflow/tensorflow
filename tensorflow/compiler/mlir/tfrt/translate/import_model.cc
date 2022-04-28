@@ -72,6 +72,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
     TfrtTpuCompileOptions tpu_compile_options;
     tpu_compile_options.move_resource_gather_to_host =
         options.tpu_move_resource_gather_to_host;
+    tpu_compile_options.gather_table_width_threshold_bytes =
+        options.tpu_gather_table_width_threshold_bytes;
 
     auto backward_compat_result =
         tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
@@ -122,6 +124,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
+  pass_options.enable_while_parallel_iterations =
+      options.enable_while_parallel_iterations;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;
   pass_options.auto_fusion_min_cluster_size =
       options.auto_fusion_min_cluster_size;

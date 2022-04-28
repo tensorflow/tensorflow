@@ -125,11 +125,11 @@ XLA_TEST_P(ReduceWindowTest, R0ReduceWindow) {
   const auto input =
       CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(42.0), &builder_);
   const auto init =
-      CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(1.0), &builder_);
+      CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(0.0), &builder_);
   ReduceWindow(input, init, CreateScalarAddComputation(FloatType(), &builder_),
                /*window_dimensions=*/{},
                /*window_strides=*/{}, Padding::kSame);
-  ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateR0<float>(43.0), {},
+  ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateR0<float>(42.0), {},
                            ErrorSpec(0.00001));
 }
 

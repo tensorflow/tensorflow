@@ -17,12 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 
 #include <atomic>
+#include <functional>
 #include <list>
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -40,9 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
+
+using LayoutCanonicalizationCallback =
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>;
 
 // Describes a compilation unit at the HLO level.
 //
@@ -149,11 +155,37 @@ class HloModule {
     return config_.entry_computation_layout();
   }
 
+  // Based on module's entry_computation sharded shapes,
+  // layout_canonicalization_callback_ computes and
+  // returns <argument_layouts, result_layout> for module's entry computation.
+  // argument_layouts is std::vector<Shape> and results_layout is Shape.
+  // layout_canonicalization_callback_ is used only when
+  // use_auto_spmd_partitioning_ = true.
+  void set_layout_canonicalization_callback(
+      LayoutCanonicalizationCallback callback) {
+    layout_canonicalization_callback_ = std::move(callback);
+  }
+
+  LayoutCanonicalizationCallback layout_canonicalization_callback() const {
+    return layout_canonicalization_callback_;
+  }
+
   // Generates a hash value of an HLO module. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64_t Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloModule& module) {
+    h = H::combine(std::move(h), module.entry_computation_layout());
+    // Use MakeComputationSorted() instead of MakeComputationPostOrder()
+    // because naming may affect the order of MakeComputationPostOrder() but not
+    // MakeComputationSorted().
+    auto computations = module.MakeComputationSorted();
+    for (auto* computation : computations) {
+      h = H::combine(std::move(h), *computation);
+    }
+    return H::combine(std::move(h), computations.size());
+  }
 
   // Gets the computations in this module.
   //
@@ -239,6 +271,13 @@ class HloModule {
   // param because gdb ignores default params, but does resolve overloads.)
   std::string ToString() const { return ToString(HloPrintOptions()); }
   std::string ToString(const HloPrintOptions& options) const;
+
+  // Returns a Cord representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
@@ -389,27 +428,36 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  void set_autofdo_fingerprint(std::string fingerprint) {
-    autofdo_fingerprint_ = fingerprint;
+  uint64_t profile_handle() const { return profile_handle_; }
+
+  void set_profile_handle(uint64_t profile_handle) {
+    profile_handle_ = profile_handle;
   }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
-
-  void set_autofdo_profile(const void* profile) { autofdo_profile_ = profile; }
-
-  const void* autofdo_profile() const { return autofdo_profile_; }
-
-  void add_profile_info(HloModuleProto::ProfileType profile_type,
-                        double relative_speedup) {
-    HloModuleProto::ProfileInfo profile_info;
-    profile_info.set_profile_type(profile_type);
-    profile_info.set_relative_speedup(relative_speedup);
+  void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
     profile_info_list_.push_back(profile_info);
+  }
+
+  void set_profile_info(
+      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
+    profile_info_list_ = profile_info;
+  }
+
+  const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
+    return profile_info_list_;
   }
 
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }
+
+  // Sets the **unoptimized** fingerprint for the module. This fingerprint is
+  // prior to any optimizations.
+  void set_autofdo_fingerprint(absl::string_view fingerprint) {
+    autofdo_fingerprint_ = std::string(fingerprint);
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
  private:
   HloComputation* AddComputationInternal(
@@ -426,7 +474,7 @@ class HloModule {
   // TODO(b/25995601): Replace with better seed setting or dev/random for
   // where we don't need deterministic execution.
   mutable std::mt19937_64 rng_{42};
-  mutable tensorflow::mutex rng_mutex_;
+  mutable absl::Mutex rng_mutex_;
 
   // Unique name generator for computation and instruction names, which are
   // unique per module.
@@ -468,11 +516,8 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // A fingerprint to search an AutofdoProfile entry.
-  std::string autofdo_fingerprint_;
-
-  // An AutofdoProfile instance pointer.
-  const void* autofdo_profile_ = nullptr;
+  // Optional compilation profile handle.
+  uint64_t profile_handle_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.
@@ -480,6 +525,13 @@ class HloModule {
 
   // Relative speedup of best config compared to default config.
   double relative_speedup_;
+
+  // The unoptimized module fingerprint.
+  std::string autofdo_fingerprint_;
+
+  // Layout canonicalization callback, used only when
+  // use_auto_spmd_partitioning_ = true.
+  LayoutCanonicalizationCallback layout_canonicalization_callback_;
 };
 
 }  // namespace xla

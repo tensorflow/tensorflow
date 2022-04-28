@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -110,7 +111,7 @@ LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
   if (op->getNumResults() != 1) return failure();
 
   // Find a preceding `assuming` op.
-  auto the_block = op->getBlock();
+  auto *the_block = op->getBlock();
   Operation *prev = op->getPrevNode();
   while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();
@@ -432,13 +433,13 @@ struct MergeAssumingOpsPass
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
-    if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       return signalPassFailure();
     }
@@ -448,9 +449,9 @@ struct MergeAssumingOpsPass
 }  // namespace
 
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns) {
+                                      RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       EliminateDuplicateCstrBroadcastableOps,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
@@ -474,7 +475,7 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass() {
   return std::make_unique<MergeAssumingOpsPass>();
 }
 

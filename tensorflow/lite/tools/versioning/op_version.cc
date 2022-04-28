@@ -54,6 +54,9 @@ int GetInputMaxDims(const OpSignature& op_sig) {
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
+      if (op_sig.ext_options.conv_2d.is_grouped_convolution) {
+        return 6;
+      }
       // If the op has signed int16 op_sig.inputs and op_sig.outputs, its
       // version 4.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
@@ -810,8 +813,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
-          op_sig.outputs.at(0).type == kTfLiteInt8) {
+      if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt16) {
+        return 4;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+                 op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       } else if (op_sig.inputs.at(0).type == kTfLiteUInt32 ||
                  op_sig.outputs.at(0).type == kTfLiteUInt32) {
@@ -821,6 +827,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_WHERE:
       if (op_sig.inputs.at(0).type == kTfLiteBool) return 1;
       return 2;
+    case BuiltinOperator_GELU:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8) {
+        return 2;
+      }
+      return 1;
     default:
       return 1;
   }

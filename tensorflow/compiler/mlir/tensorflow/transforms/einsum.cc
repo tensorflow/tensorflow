@@ -35,7 +35,8 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -511,14 +512,14 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
     : public TransformEinsumPassBase<TransformEinsumPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void TransformEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void TransformEinsumPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
 
-  patterns.insert<ConvertTFEinsumOp>(&getContext());
+  patterns.add<ConvertTFEinsumOp>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -543,7 +544,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-std::unique_ptr<FunctionPass> CreateTransformEinsumPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTransformEinsumPass() {
   return std::make_unique<TransformEinsumPass>();
 }
 

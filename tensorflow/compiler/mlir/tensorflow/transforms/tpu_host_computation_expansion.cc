@@ -113,19 +113,20 @@ void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
 struct TPUHostComputationExpansionPass
     : public TF::TPUHostComputationExpansionPassBase<
           TPUHostComputationExpansionPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void TPUHostComputationExpansionPass::runOnFunction() {
+void TPUHostComputationExpansionPass::runOnOperation() {
   OpBuilder builder(&getContext());
-  getFunction().walk([&](tf_device::ClusterOp cluster) {
+  getOperation().walk([&](tf_device::ClusterOp cluster) {
     ExpandHeadOutsideCompiledOps(cluster, &builder);
   });
 }
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUHostComputationExpansionPass() {
   return std::make_unique<TPUHostComputationExpansionPass>();
 }
 

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -168,6 +167,18 @@ class ReferenceUtil {
   // inputs arrays and returns the result.
   static std::unique_ptr<Array2D<float>> MapArray2D(
       const Array2D<float>& lhs, const Array2D<float>& rhs,
+      const std::function<float(float, float)>& map_function);
+
+  // Applies map_function to each element in the input (3D array) and returns
+  // the result.
+  static std::unique_ptr<Array3D<float>> MapArray3D(
+      const Array3D<float>& array,
+      const std::function<float(float)>& map_function);
+
+  // Applies map_function to each pair of corresponding elements in the two
+  // inputs arrays and returns the result.
+  static std::unique_ptr<Array3D<float>> MapArray3D(
+      const Array3D<float>& lhs, const Array3D<float>& rhs,
       const std::function<float(float, float)>& map_function);
 
   // Number of windows in a given dimension. Calculation taken from

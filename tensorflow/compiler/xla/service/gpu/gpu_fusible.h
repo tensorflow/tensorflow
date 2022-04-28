@@ -57,7 +57,6 @@ bool IsLoopFusible(const HloInstruction& instr);
 // such situations it is better not to fuse. Only input params with
 // maximum rank are considered. Params with smaller ranks will be broadcasted
 // and have not been observed to cause data locality issues.
-// TODO(b/111977086): Improve reduce emitters to remove this limitation.
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce);
 

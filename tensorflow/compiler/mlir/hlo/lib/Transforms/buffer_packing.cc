@@ -21,11 +21,11 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
@@ -120,19 +120,18 @@ struct AllocationInfo {
     // The previous gap ending, initially set to 0.
     size_t gapEnd = 0;
 
-    for (auto useRangeIter = userangeIntervals->begin();
+    for (const auto *useRangeIter = userangeIntervals->begin();
          useRangeIter < userangeIntervals->end(); ++useRangeIter) {
       // Add a gap if the end is not equal to the start.
       if (gapEnd < useRangeIter->start)
-        gaps.push_back(std::make_pair(
-            UseInterval(gapEnd, useRangeIter->start - 1), numSegments));
+        gaps.emplace_back(UseInterval(gapEnd, useRangeIter->start - 1),
+                          numSegments);
       gapEnd = useRangeIter->end + 1;
     }
 
     // Add a dummy gap behind the last use of the buffer.
     if (gapEnd < maxUserangeId) {
-      gaps.push_back(
-          std::make_pair(UseInterval(gapEnd, maxUserangeId), numSegments));
+      gaps.emplace_back(UseInterval(gapEnd, maxUserangeId), numSegments);
     }
 
     return gaps;
@@ -182,7 +181,7 @@ class SortedPackingStrategy {
       : windowSize(windowSize), compare(compare) {}
 
   /// Optimize the buffer allocations.
-  void optimze(const mlir::BufferPlacementAllocs &allocs,
+  void optimze(const mlir::bufferization::BufferPlacementAllocs &allocs,
                const UserangeAnalysis &userangeAnalysis,
                std::vector<PackedBuffer> &packedBuffers) {
     AllocInfoList allocInfos;
@@ -293,9 +292,9 @@ class SortedPackingStrategy {
 
   /// Aggreagtes the allocation informations of the allocs and returns the
   /// maximal userange.
-  size_t computeAllocationInfos(AllocInfoList &allocInfos,
-                                const UserangeAnalysis &userangeAnalysis,
-                                const mlir::BufferPlacementAllocs &allocs) {
+  size_t computeAllocationInfos(
+      AllocInfoList &allocInfos, const UserangeAnalysis &userangeAnalysis,
+      const mlir::bufferization::BufferPlacementAllocs &allocs) {
     // Create allocInformations and store them in allocInfos.
     size_t maxUserangeId = 0;
 
@@ -347,7 +346,7 @@ class SortedPackingStrategy {
 /// Pass to pack buffer together to optimize the memeory consumption and to
 /// save allocation operations. A strategy must be passed as a template
 /// argument.
-class BufferPacking : BufferPlacementTransformationBase {
+class BufferPacking : bufferization::BufferPlacementTransformationBase {
  public:
   template <typename StrategyT>
   BufferPacking(Operation *op, StrategyT strategy)
@@ -428,23 +427,23 @@ struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
     this->window_size_ = windowSize;
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     if (window_size_ == 0) {
       SortedPackingStrategy<AllocInfoMemSizeCompare> strategy(
           window_size_, AllocInfoMemSizeCompare());
-      BufferPacking packing(getFunction(), strategy);
+      BufferPacking packing(getOperation(), strategy);
     } else {
       SortedPackingStrategy<AllocInfoWinIdComparator> strategy(
           window_size_, AllocInfoWinIdComparator());
-      BufferPacking packing(getFunction(), strategy);
+      BufferPacking packing(getOperation(), strategy);
     }
   }
 };
 
 /// Pass to find all allocations and to compute memory usage.
 struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
-  void runOnFunction() override {
-    Operation *op = getFunction();
+  void runOnOperation() override {
+    Operation *op = getOperation();
     std::vector<Value> allocs;
     op->walk([&](MemoryEffectOpInterface opInterface) {
       // Try to find a single allocation result.
@@ -474,11 +473,12 @@ struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createBufferPackingPass(unsigned window_size) {
+std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
+    unsigned window_size) {
   return std::make_unique<BufferPackingPass>(window_size);
 }
 
-std::unique_ptr<FunctionPass> createMemoryCountPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass() {
   return std::make_unique<MemoryCountPass>();
 }
 

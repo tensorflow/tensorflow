@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -21,21 +24,22 @@ limitations under the License.
 #include "mlir-hlo/Transforms/register_passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
-#include "mlir/Support/MlirOptMain.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::hlo::registerAllHloPasses();
+  mlir::gml_st::registerGmlStPasses();
+  mlir::gml_st::registerGmlStTestPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::lmhlo::LmhloDialect>();
-  registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
+  registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
+                  mlir::gml_st::GmlStDialect>();
 
-  return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

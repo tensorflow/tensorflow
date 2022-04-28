@@ -3,15 +3,8 @@ load(":roundtrip.bzl", "glob_roundtrip_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//tensorflow/core/ir/importexport:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//tensorflow/tools/tfg_graph_transforms/tests",
-    ],
 )
 
 cc_library(
@@ -54,12 +47,16 @@ tf_cc_binary(
         "//tensorflow/core:ops",  # Ops need to be registered for import.
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:graphdef_export",
+        "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/ir/importexport:import",
         "//tensorflow/core/ir/importexport:load_proto",
+        "//tensorflow/core/transforms/consolidate_attrs:Pass",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
     ],

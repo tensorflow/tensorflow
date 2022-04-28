@@ -40,9 +40,7 @@ from tensorflow.python.util import tf_decorator
 
 ASYNC_STATEFUL_OPS = frozenset((
     "CollectiveGather",
-    "CollectiveGatherV2",
     "CollectiveReduce",
-    "CollectiveReduceV2",
     "CollectiveBcastSend",
     "CollectiveBcastSendV2",
     "CollectiveBcastRecv",
@@ -52,6 +50,7 @@ ASYNC_STATEFUL_OPS = frozenset((
     # in order to avoid being pruned.
     "Recv",
     "CollectiveInitializeCommunicator",
+    "CollectiveAssignGroupV2",
 ))
 
 LEGACY_RANDOM_OPS = frozenset((

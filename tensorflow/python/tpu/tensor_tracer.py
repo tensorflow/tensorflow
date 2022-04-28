@@ -1408,6 +1408,11 @@ class TensorTracer(object):
       else:
         return tensor
 
+    # Check if there are graph operations being profiled.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('Inspect mode has no tensors in the cache to check.')
+      return control_flow_ops.no_op
+
     # Check if the cache includes any nan or inf
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
       # Cache has 1s or 0s if the mode is NaN_INF
@@ -1571,6 +1576,9 @@ class TensorTracer(object):
     """
     # Add a dependency to op and tensor fetches to make sure that all tracing
     # ops are executed before flushing trace results.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('No tensor values being traced. No flush cache op added.')
+      return tensor_fetches
     with ops.control_dependencies(op_fetches +
                                   [tensor.op for tensor in tensor_fetches]):
       flush_cache_op = self._generate_flush_cache_op(

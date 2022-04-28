@@ -30,6 +30,7 @@ limitations under the License.
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
+#include "tensorflow/core/profiler/lib/profiler_collection.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_lock.h"
@@ -58,24 +59,21 @@ tensorflow::Status ProfilerSession::Status() {
   return status_;
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
-#if !defined(IS_MOBILE_PLATFORM)
   LOG(INFO) << "Profiler session collecting data.";
-  for (auto& profiler : profilers_) {
-    profiler->Stop().IgnoreError();
+  if (profilers_ != nullptr) {
+    profilers_->Stop().IgnoreError();
+    profilers_->CollectData(space).IgnoreError();
+    profilers_.reset();  // data has been collected.
   }
-
-  for (auto& profiler : profilers_) {
-    profiler->CollectData(space).IgnoreError();
-  }
-
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
-#endif
   return Status::OK();
 }
+#endif
 
 Status ProfilerSession::CollectData(profiler::XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -117,28 +115,15 @@ ProfilerSession::ProfilerSession(const ProfileOptions& options)
   start_time_ns_ = profiler::GetCurrentTimeNanos();
 
   DCHECK(profiler_lock_.Active());
-  CreateProfilers(options_, &profilers_);
-
-  for (auto& profiler : profilers_) {
-    DCHECK(profiler != nullptr);
-    auto start_status = profiler->Start();
-    if (!start_status.ok()) {
-      LOG(WARNING) << "Encountered error while starting profiler: "
-                   << start_status.ToString();
-    }
-  }
+  profilers_ = absl::make_unique<profiler::ProfilerCollection>(
+      profiler::CreateProfilers(options_));
+  profilers_->Start().IgnoreError();
 #endif
 }
 
 ProfilerSession::~ProfilerSession() {
 #if !defined(IS_MOBILE_PLATFORM)
   LOG(INFO) << "Profiler session tear down.";
-  for (auto& profiler : profilers_) {
-    profiler->Stop().IgnoreError();
-  }
-
-  // Allow another session to start.
-  profiler_lock_.ReleaseIfActive();
 #endif
 }
 

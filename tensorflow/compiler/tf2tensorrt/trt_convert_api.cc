@@ -20,17 +20,22 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/cc/tools/freeze_saved_model.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -42,10 +47,25 @@ namespace tensorflow {
 namespace tensorrt {
 namespace {
 
+// Creates and provisions a new cluster. The caller must call Shutdown before
+// the cluster is destroyed.
+Status NewCluster(grappler::Cluster** cluster) {
+  int num_cpu_cores = grappler::GetNumAvailableLogicalCPUCores();
+  int num_gpus = grappler::GetNumAvailableGPUs();
+  int timeout_s = 60 * 10;
+  *cluster = new grappler::SingleMachine(timeout_s, num_cpu_cores, num_gpus);
+  (*cluster)->DisableDetailedStats(true);
+  (*cluster)->AllowSoftPlacement(true);
+  (*cluster)->SetNumWarmupSteps(10);
+  TF_RETURN_IF_ERROR((*cluster)->Provision());
+  return Status::OK();
+}
+
 Status RunGrappler(const MetaGraphDef& meta_graph_def,
                    const std::vector<std::string>& input_names,
                    const std::vector<std::string>& output_names,
-                   const ConfigProto& config_proto, GraphDef* out_graph_def) {
+                   const ConfigProto& config_proto, grappler::Cluster* cluster,
+                   GraphDef* out_graph_def) {
   grappler::ItemConfig item_config;
 
   for (const string& name : input_names) {
@@ -63,8 +83,9 @@ Status RunGrappler(const MetaGraphDef& meta_graph_def,
         "Failed to create grappler item from MetaGraphDef.");
   }
 
+  tensorflow::DeviceBase* cpu_device = nullptr;
   TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-      std::move(*item), config_proto, nullptr, nullptr, out_graph_def));
+      std::move(*item), config_proto, cpu_device, cluster, out_graph_def));
   VLOG(2) << "Grappler finished\n";
   return Status::OK();
 }
@@ -141,10 +162,16 @@ Status RunTfTrt(const MetaGraphDef& meta_graph_def,
       rewriter_config);
 
   VLOG(4) << "Setting up Grappler parameters\n" << config_proto.DebugString();
-
+  std::unique_ptr<grappler::Cluster> cluster;
+  grappler::Cluster* p_cluster;
+  mutex mu_cluster;  // There can be only one provisioned cluster per process.
+  mutex_lock lock(mu_cluster);
+  TF_RETURN_IF_ERROR(NewCluster(&p_cluster));
+  cluster.reset(p_cluster);
   TF_RETURN_IF_ERROR(RunGrappler(meta_graph_def, input_names, output_names,
-                                 config_proto, segmented_graph_def));
-
+                                 config_proto, cluster.get(),
+                                 segmented_graph_def));
+  TF_RETURN_IF_ERROR(cluster->Shutdown());
   return Status::OK();
 }
 
@@ -397,6 +424,82 @@ StatusOr<GraphDef> ConvertAndBuild(
   }
   VLOG(1) << "TF-TRT conversion finished";
   return output;
+}
+
+Status InlineFunctions(const MetaGraphDef& meta_graph_def,
+                       GraphDef* out_graph_def) {
+  ConfigProto config_proto;
+  auto opt_config =
+      config_proto.mutable_graph_options()->mutable_rewrite_options();
+
+  opt_config->set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
+  opt_config->set_min_graph_nodes(-1);  // do not skip small graphs
+  opt_config->add_optimizers("function");
+
+  TF_RETURN_IF_ERROR(RunGrappler(meta_graph_def, {}, {}, config_proto, nullptr,
+                                 out_graph_def));
+
+  VLOG(2) << "Graph is inlined";
+  return Status::OK();
+}
+
+// Freezes the graph. It is assumed that the functions are inlined and the
+// variables are initialized.
+Status FreezeGraph(SavedModelBundle& bundle, MetaGraphDef* frozen_meta_graph) {
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
+  GraphDef frozen_graph_def;
+  TF_RETURN_IF_ERROR(
+      FreezeSavedModel(bundle, &frozen_graph_def, &inputs, &outputs));
+
+  frozen_meta_graph->CopyFrom(bundle.meta_graph_def);
+  GraphDef* gdef = frozen_meta_graph->mutable_graph_def();
+  gdef->CopyFrom(frozen_graph_def);
+
+  VLOG(2) << "Graph frozen";
+  return Status::OK();
+}
+
+// Returns the name of nodes listed in the signature definition.
+std::vector<std::string> GetNodeNames(
+    const google::protobuf::Map<std::string, tensorflow::TensorInfo>& signature) {
+  std::vector<std::string> names;
+  for (auto const& item : signature) {
+    absl::string_view name = item.second.name();
+    // Remove tensor suffix like ":0".
+    size_t last_colon = name.find_last_of(':');
+    if (last_colon != absl::string_view::npos) {
+      name.remove_suffix(name.size() - last_colon);
+    }
+    names.push_back(std::string(name));
+  }
+  return names;
+}
+
+StatusOr<GraphDef> ConvertAndBuild(
+    SavedModelBundle* bundle, const std::string& signature_key,
+    const std::vector<std::vector<tensorflow::Tensor>>& inputs,
+    const TfTrtConversionParams& conversion_params) {
+  // Inline the functions.
+  GraphDef inlined_graph_def;
+  TF_RETURN_IF_ERROR(
+      InlineFunctions(bundle->meta_graph_def, &inlined_graph_def));
+
+  // Replace the graph_def with the inlined graph. Note that bundle->session
+  // still has the original graph.
+  bundle->meta_graph_def.mutable_graph_def()->CopyFrom(inlined_graph_def);
+
+  // Freeze variables.
+  MetaGraphDef frozen_meta_graph;
+  TF_RETURN_IF_ERROR(FreezeGraph(*bundle, &frozen_meta_graph));
+
+  // Convert.
+  auto signature_map = bundle->GetSignatures();
+  const tensorflow::SignatureDef& signature = signature_map[signature_key];
+  std::vector<std::string> input_names = GetNodeNames(signature.inputs());
+  std::vector<std::string> output_names = GetNodeNames(signature.outputs());
+  return ConvertAndBuild(frozen_meta_graph.graph_def(), input_names,
+                         output_names, inputs, conversion_params);
 }
 
 }  // namespace tensorrt

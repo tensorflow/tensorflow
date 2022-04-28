@@ -105,7 +105,7 @@ class ExtensionTypeField(
     try:
       validate_field_value_type(value_type, allow_forward_references=True)
     except TypeError as e:
-      raise TypeError(f'In field {name!r}: {e}')
+      raise TypeError(f'In field {name!r}: {e}') from e
 
     if default is not cls.NO_DEFAULT:
       default = _convert_value(default, value_type,
@@ -148,8 +148,8 @@ def validate_field_value_type(value_type,
         (isinstance(value_type, type) and
          issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
-      raise TypeError(
-          f"Mapping had a key with type '{type(value_type).__name__}'")
+      raise TypeError(f"Mapping had a key '{value_type.__name__}' with type "
+                      f"'{type(value_type).__name__}'")
   elif (type_annotations.is_generic_tuple(value_type) or
         type_annotations.is_generic_union(value_type)):
     type_args = type_annotations.get_generic_type_args(value_type)

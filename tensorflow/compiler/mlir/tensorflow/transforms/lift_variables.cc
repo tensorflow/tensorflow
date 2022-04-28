@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -153,7 +154,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
 
   SmallSet<StringRef, 4> resource_names;
 
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
       auto resource_arg =
           func.getArgAttrOfType<StringAttr>(i, kResourceNameArgAttr);
@@ -181,7 +182,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
   // Now that we have all global tensors created, we set the corresponding
   // bound_inputs' types correctly.
   SymbolTable symbol_table(module);
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (auto arg : func.getArguments()) {
       unsigned arg_number = arg.getArgNumber();
       auto global_tensor = LookupBoundInputOfType<GlobalTensorOp>(
@@ -214,7 +215,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
     // Update the function type.
     func.setType(mlir::FunctionType::get(module.getContext(),
                                          func.getBody().getArgumentTypes(),
-                                         func.getType().getResults()));
+                                         func.getFunctionType().getResults()));
   }
   return success();
 }

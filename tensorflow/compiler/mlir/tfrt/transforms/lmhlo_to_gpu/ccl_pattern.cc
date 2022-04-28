@@ -19,12 +19,20 @@
 //
 //===----------------------------------------------------------------------===//
 #include <functional>
+#include <iterator>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -85,10 +93,10 @@ FailureOr<ncclDataType_t> ToNcclDataType(xla::PrimitiveType element_type) {
   }
 }
 
-FailureOr<Value> CclOpConversionRewrite(lmhlo::AllGatherOp srcOp, Value chain,
-                                        Value stream, Value handle,
-                                        mlir::BlockAndValueMapping& mapping,
-                                        ConversionPatternRewriter& rewriter) {
+FailureOr<Value> CclOpConversionRewrite(
+    lmhlo::AllGatherOp srcOp, Value chain, Value handle,
+    xla::gpu::NcclCollectiveConfig& /*config*/,
+    mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
   const auto& operands = srcOp.operands();
   const auto& results = srcOp.results();
 
@@ -110,10 +118,10 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllGatherOp srcOp, Value chain,
   return chain;
 }
 
-FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
-                                        Value stream, Value handle,
-                                        mlir::BlockAndValueMapping& mapping,
-                                        ConversionPatternRewriter& rewriter) {
+FailureOr<Value> CclOpConversionRewrite(
+    lmhlo::AllReduceOp srcOp, Value chain, Value handle,
+    xla::gpu::NcclCollectiveConfig& /*config*/,
+    mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
   const auto& operands = srcOp.operands();
   const auto& results = srcOp.results();
 
@@ -146,10 +154,10 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
   return chain;
 }
 
-FailureOr<Value> CclOpConversionRewrite(lmhlo::ReduceScatterOp srcOp,
-                                        Value chain, Value stream, Value handle,
-                                        mlir::BlockAndValueMapping& mapping,
-                                        ConversionPatternRewriter& rewriter) {
+FailureOr<Value> CclOpConversionRewrite(
+    lmhlo::ReduceScatterOp srcOp, Value chain, Value handle,
+    xla::gpu::NcclCollectiveConfig& /*config*/,
+    mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
   const auto& operands = srcOp.operands();
   const auto& results = srcOp.results();
 
@@ -182,10 +190,10 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::ReduceScatterOp srcOp,
   return chain;
 }
 
-FailureOr<Value> CclOpConversionRewrite(lmhlo::AllToAllOp srcOp, Value chain,
-                                        Value stream, Value handle,
-                                        mlir::BlockAndValueMapping& mapping,
-                                        ConversionPatternRewriter& rewriter) {
+FailureOr<Value> CclOpConversionRewrite(
+    lmhlo::AllToAllOp srcOp, Value chain, Value handle,
+    xla::gpu::NcclCollectiveConfig& /*config*/,
+    mlir::BlockAndValueMapping& mapping, ConversionPatternRewriter& rewriter) {
   const auto& operands = srcOp.operands();
   const auto& results = srcOp.results();
 
@@ -218,7 +226,8 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllToAllOp srcOp, Value chain,
 }
 
 FailureOr<Value> CclOpConversionRewrite(lmhlo::CollectivePermuteOp srcOp,
-                                        Value chain, Value stream, Value handle,
+                                        Value chain, Value handle,
+                                        xla::gpu::NcclCollectiveConfig& config,
                                         mlir::BlockAndValueMapping& mapping,
                                         ConversionPatternRewriter& rewriter) {
   const auto& operand = srcOp.operand();
@@ -235,9 +244,28 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::CollectivePermuteOp srcOp,
   Value input = mapping.lookup(operand);
   Value output = mapping.lookup(result);
 
+  auto source_target_pairs_or =
+      xla::ConvertNx2Attribute(srcOp.source_target_pairs());
+  if (!source_target_pairs_or.ok()) {
+    return rewriter.notifyMatchFailure(
+        srcOp, source_target_pairs_or.status().error_message());
+  }
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+      std::move(source_target_pairs_or.ValueOrDie());
+
+  std::vector<int64_t> source_peers, target_peers;
+  source_peers.reserve(source_target_pairs.size());
+  target_peers.reserve(source_target_pairs.size());
+  for (const auto& source_target_pair : source_target_pairs) {
+    source_peers.push_back(source_target_pair.first);
+    target_peers.push_back(source_target_pair.second);
+  }
   return rewriter
-      .create<xla::gpu::CclCollectivePermuteOp>(srcOp.getLoc(), handle, input,
-                                                output, nccl_data_type, chain)
+      .create<xla::gpu::CclCollectivePermuteOp>(
+          srcOp.getLoc(), handle, input, output, nccl_data_type,
+          static_cast<int64_t>(config.group_mode),
+          rewriter.getI64ArrayAttr(source_peers),
+          rewriter.getI64ArrayAttr(target_peers), chain)
       .getResult();
 }
 
@@ -257,10 +285,88 @@ LogicalResult BufferOperandsEqualsOpArguments(lmhlo::CollectivePermuteOp op,
 }
 
 template <class CclOpType>
-struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      CclOpType>::GpuAsyncOpConversionPattern;
+xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(CclOpType op,
+                                                       int /*replica_count*/,
+                                                       int /*num_partitions*/) {
+  return xla::gpu::GetNcclCollectiveConfigForMlir(op,
+                                                  op.use_global_device_ids());
+}
+
+xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(lmhlo::AllToAllOp op,
+                                                       int /*replica_count*/,
+                                                       int /*num_partitions*/) {
+  // TODO(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
+  // attribute and it should be removed.
+  return xla::gpu::GetNcclCollectiveConfigForMlir(op, absl::nullopt);
+}
+
+xla::gpu::NcclCollectiveConfig GetNcclCollectiveConfig(
+    lmhlo::CollectivePermuteOp op, int replica_count, int num_partitions) {
+  return xla::gpu::NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
+      op, replica_count, num_partitions);
+}
+
+template <class CclOpType>
+FailureOr<Value> TryDegenerateToMemCopy(CclOpType op, Value chain, Value stream,
+                                        xla::gpu::NcclCollectiveConfig& config,
+                                        int replica_count, int num_partitions,
+                                        mlir::BlockAndValueMapping& mapping,
+                                        ConversionPatternRewriter& rewriter) {
+  if (!config.IsDegenerate(replica_count, num_partitions)) return failure();
+
+  for (int i = 0; i < op.operands().size(); i++) {
+    Value dst = mapping.lookup(op.results()[i]);
+    Value src = mapping.lookup(op.operands()[i]);
+    chain =
+        rewriter
+            .create<tfrt::gpu::MemCopyOp>(op.getLoc(), dst, src, stream, chain)
+            .getResult();
+  }
+  return chain;
+}
+
+FailureOr<Value> TryDegenerateToMemCopy(lmhlo::CollectivePermuteOp op,
+                                        Value chain, Value stream,
+                                        xla::gpu::NcclCollectiveConfig& config,
+                                        int replica_count, int num_partitions,
+                                        mlir::BlockAndValueMapping& mapping,
+                                        ConversionPatternRewriter& rewriter) {
+  if (!xla::gpu::NcclCollectivePermuteThunk::IsDegenerate(op, replica_count,
+                                                          num_partitions))
+    return failure();
+
+  Value dst = mapping.lookup(op.output());
+  Value src = mapping.lookup(op.operand());
+  return rewriter
+      .create<tfrt::gpu::MemCopyOp>(op.getLoc(), dst, src, stream, chain)
+      .getResult();
+}
+
+bool CanImplement(lmhlo::AllGatherOp op) {
+  return xla::gpu::NcclAllGatherThunk::CanImplement(op);
+}
+
+bool CanImplement(lmhlo::AllReduceOp op) {
+  return xla::gpu::NcclAllReduceThunk::CanImplement(op);
+}
+
+bool CanImplement(lmhlo::ReduceScatterOp op) {
+  return xla::gpu::NcclReduceScatterThunk::CanImplement(op);
+}
+
+bool CanImplement(lmhlo::AllToAllOp op) {
+  return xla::gpu::NcclAllToAllThunk::CanImplement(op);
+}
+
+bool CanImplement(lmhlo::CollectivePermuteOp op) {
+  return xla::gpu::NcclCollectivePermuteThunk::CanImplement(op);
+}
+
+template <class CclOpType>
+struct CclRewritePattern : tfrt::gpu::StreamifyOpConversionPattern<CclOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<CclOpType>::OpAdaptor;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      CclOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       CclOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -276,12 +382,55 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
     for (auto pair : llvm::zip_first(op->getOperands(), adaptor.getOperands()))
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
+    mlir::func::FuncOp func =
+        op->template getParentOfType<mlir::func::FuncOp>();
+    mlir::IntegerAttr replica_count_attr =
+        func->getAttrOfType<mlir::IntegerAttr>("replica_count");
+    mlir::IntegerAttr num_partitions_attr =
+        func->getAttrOfType<mlir::IntegerAttr>("num_partitions");
+    const int replica_count = replica_count_attr.getInt();
+    const int num_partitions = num_partitions_attr.getInt();
+    xla::gpu::NcclCollectiveConfig config =
+        GetNcclCollectiveConfig(op, replica_count, num_partitions);
+
+    // A given collective op can be degenerate if across all groups formed
+    // by it are singleton. In such a case, we don't need to do any
+    // communication and we can just copy the input to the output.
+    auto out_chain_or =
+        TryDegenerateToMemCopy(op, chain, stream, config, replica_count,
+                               num_partitions, mapping, rewriter);
+    if (mlir::succeeded(out_chain_or)) {
+      rewriter.eraseOp(op);
+      return out_chain_or;
+    }
+    if (!CanImplement(op)) {
+      return rewriter.notifyMatchFailure(op, "Collective op not implemented.");
+    }
+
+    auto group_mode_attr = rewriter.getIntegerAttr(
+        rewriter.getIntegerType(64), static_cast<int64_t>(config.group_mode));
+    auto op_id_attr =
+        rewriter.getIntegerAttr(rewriter.getIntegerType(64), config.op_id);
+    SmallVector<NamedAttribute, 8> attributes = {
+        rewriter.getNamedAttr("group_mode", group_mode_attr),
+        rewriter.getNamedAttr("op_id", op_id_attr),
+    };
+    for (int i = 0; i < config.replica_groups.size(); ++i) {
+      SmallVector<int64_t, 8> replica_group;
+      llvm::copy(config.replica_groups[i].replica_ids(),
+                 std::back_inserter(replica_group));
+      auto replica_group_attr = rewriter.getI64ArrayAttr(replica_group);
+      attributes.push_back(rewriter.getNamedAttr(
+          tfrt::StrCat("replica_group", i), replica_group_attr));
+    }
+
     auto context =
         rewriter.create<tfrt::gpu::StreamGetContextOp>(op.getLoc(), stream);
-    auto handle = rewriter.create<xla::gpu::CclCreateOp>(op.getLoc(), context);
+    auto handle = rewriter.create<xla::gpu::CclCreateOp>(
+        op.getLoc(), ValueRange{context, chain}, attributes);
 
-    auto out_chain_or =
-        CclOpConversionRewrite(op, chain, stream, handle, mapping, rewriter);
+    out_chain_or =
+        CclOpConversionRewrite(op, chain, handle, config, mapping, rewriter);
     if (mlir::succeeded(out_chain_or)) {
       out_chain_or = rewriter
                          .create<tfrt::gpu::CclExecuteOp>(op.getLoc(), stream,

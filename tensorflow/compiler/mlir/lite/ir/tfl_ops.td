@@ -43,43 +43,6 @@ def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
                     "TFLite quint8 type">,
               BuildableType<"getType<mlir::TF::Quint8Type>()">;
 
-//===----------------------------------------------------------------------===//
-// Activation function enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed activation function cases
-// These should match the ActivationFunctionType enum in TFLite schema.
-def TFL_AF_None  : StrEnumAttrCase<"NONE">;
-def TFL_AF_Relu  : StrEnumAttrCase<"RELU">;
-def TFL_AF_Relu1 : StrEnumAttrCase<"RELU_N1_TO_1">;
-def TFL_AF_Relu6 : StrEnumAttrCase<"RELU6">;
-def TFL_AF_Tanh  : StrEnumAttrCase<"TANH">;
-def TFL_AF_Sign  : StrEnumAttrCase<"SIGN_BIT">;
-
-def TFL_AFAttr : StrEnumAttr<
-    "ActivationFunctionType", "fused activation enum", [
-      TFL_AF_None,  TFL_AF_Relu, TFL_AF_Relu1,
-      TFL_AF_Relu6, TFL_AF_Tanh, TFL_AF_Sign
-    ]>;
-
-//===----------------------------------------------------------------------===//
-// Padding enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed padding cases
-// These should match the padding enum in TFLite schema.
-def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
-def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
-def TFL_MIRRORPAD_Reflect : StrEnumAttrCase<"REFLECT">;
-def TFL_MIRRORPAD_Symmetric : StrEnumAttrCase<"SYMMETRIC">;
-
-def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
-      TFL_PAD_Same, TFL_PAD_Valid
-    ]>;
-
-def TFL_MirrorPaddingAttr : StrEnumAttr<"Padding", "Mirror pad enum", [
-      TFL_MIRRORPAD_Reflect, TFL_MIRRORPAD_Symmetric
-    ]>;
 
 //===----------------------------------------------------------------------===//
 // TensorType attribute definitions.
@@ -385,6 +348,12 @@ class TFL_IntEqualsTo<int n> : AttrConstraint<
             "$_self.cast<IntegerAttr>().getInt() == " # n>,
     "whose value is " # n>;
 
+// Ensures the given LSTMKernelType attribute has the given value.
+class TFL_LSTMKernelTypeEqualsTo<string value> : AttrConstraint<
+    CPred<"$_self.isa<LSTMKernelTypeAttr>() && "
+            "$_self.cast<LSTMKernelTypeAttr>().getValue() == " # value>,
+    "whose value is " # value>;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
@@ -478,7 +447,9 @@ def TFL_ComparisonBinaryBuilder :
 // TFL op base class.
 //===----------------------------------------------------------------------===//
 
-class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
+// LINT.IfChange
+
+class TFL_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
       [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
   // FlatBuffer generation specific information.
@@ -501,7 +472,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index,
-                 list<OpTrait> additional_traits = []> :
+                 list<Trait> additional_traits = []> :
     TFL_Op<mnemonic,[NoSideEffect,
                      AccumulatorUniformScale<2, 0, 1>,
                      AffineQuantizedOpInterface,
@@ -522,7 +493,7 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index,
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
+    TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
     TFL_AFAttr:$fused_activation_function,
@@ -584,9 +555,16 @@ def TFL_AddOp : TFL_Op<"add", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let hasOptions = 1;
 }
@@ -698,7 +676,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -846,7 +824,7 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let hasFolder = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // SameScalesOpInterface:
@@ -1035,15 +1013,6 @@ def TFL_DepthwiseConv2DOp :
   }];
 }
 
-def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
-def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
-
-def TFL_FullyConnectedOptionsWeightFormatAttr :
-    StrEnumAttr<"FullyConnectedOptionsWeightsFormat",
-                "fully connected options weights format", [
-      TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
-    ]>;
-
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
@@ -1073,7 +1042,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     TFL_VariadicTensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 
@@ -1180,7 +1149,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
@@ -1235,7 +1204,7 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
     TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 }
@@ -1261,9 +1230,16 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let hasOptions = 0;
 }
@@ -1324,9 +1300,16 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let hasOptions = 0;
 }
@@ -1524,9 +1507,16 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
       }]>
   ];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_DivOp : TFL_Op<"div", [
@@ -1552,9 +1542,16 @@ def TFL_DivOp : TFL_Op<"div", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let hasOptions = 1;
 
@@ -1791,9 +1788,16 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_FloorModOp : TFL_Op<"floor_mod", [
@@ -1838,9 +1842,16 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [
@@ -1942,9 +1953,16 @@ def TFL_LessOp : TFL_Op<"less", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
@@ -1960,9 +1978,16 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
 
   let results = (outs TFL_BoolTensor:$output);
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_LogicalNotOp : TFL_Op<"logical_not", [
@@ -1992,9 +2017,16 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
 
   let results = (outs TFL_BoolTensor:$output);
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_LogisticOp: TFL_Op<"logistic", [
@@ -2277,7 +2309,7 @@ equivalent to setting:
     TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }
@@ -2432,9 +2464,16 @@ def TFL_MulOp : TFL_Op<"mul", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let hasOptions = 1;
 }
@@ -2503,7 +2542,7 @@ def TFL_PackOp : TFL_Op<"pack", [
     TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 
@@ -2659,9 +2698,16 @@ def TFL_PowOp : TFL_Op<"pow", [
 
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
@@ -2690,7 +2736,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -2804,7 +2850,8 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
 def TFL_ReshapeOp: TFL_Op<"reshape", [
     QuantizableResult,
     NoSideEffect,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Reshape operator";
 
   let description = [{
@@ -2819,8 +2866,11 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
   let results = (outs AnyTensor:$output);
   let hasCanonicalizer = 0b1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [
@@ -3150,9 +3200,16 @@ def TFL_SubOp : TFL_Op<"sub", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 
   let hasOptions = 1;
 }
@@ -3178,9 +3235,16 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return parseOneResultSameOperandTypeOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      return printOneResultOp(getOperation(), p);
+    }
+  }];
 }
 
 def TFL_TanhOp: TFL_Op<"tanh", [
@@ -3310,7 +3374,7 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
     TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64, QI16]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasFolder = 1;
 
@@ -3371,7 +3435,6 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
 def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultType,
     SameOperandsAndResultShape,
     NoSideEffect]> {
   let summary = "ZerosLike operator";
@@ -3522,7 +3585,7 @@ def TFL_SplitOp : TFL_Op<"split", [
     TFL_VariadicTensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 }
@@ -3550,7 +3613,7 @@ def TFL_SplitVOp : TFL_Op<"split_v", [
     TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 }
@@ -3620,7 +3683,12 @@ def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
       TFL_TCresVTEtIsSameAsOp<0, 3>>,
     TFL_OperandHasRankAtMost<0, 2>,
     TFL_OperandHasRankAtMost<1, 1>,
-    TFL_OperandHasRankAtMost<2, 1>]> {
+    TFL_OperandHasRankAtMost<2, 1>,
+    PredOpTrait<"the first operand should have a rank <= 2, when its rank is 2 and has static shape, the second dim should be <= 4",
+      Or<[TFL_OperandIsUnrankedPred<0>,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() <= 1">,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == 2 && !$_op.getOperand(0).getType().cast<ShapedType>().hasStaticShape()">,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == 2 && $_op.getOperand(0).getType().cast<ShapedType>().getShape()[1] <= 4">]>>]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
   let description = [{
@@ -3692,7 +3760,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   );
 
   // TFLite kernel only supports up to 5D input including added axis.
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 
@@ -3713,10 +3781,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F32, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F32, I1, I16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -3800,6 +3868,7 @@ value of `input` in the unique output `output`. In other words:
 def TFL_GeluOp: TFL_Op<"gelu", [
     NoSideEffect,
     SameOperandsAndResultShape,
+    QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "GELU activation function.";
@@ -3808,13 +3877,37 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$input,
+    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
     DefaultValuedAttr<BoolAttr, "false">:$approximate
   );
 
-  let results = (outs TFL_TensorOf<[F32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
+}
+
+def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "DynamicUpdateSlice.";
+  let description = [{
+    DynamicUpdateSlice op that have the same semantics with XLA
+    DynamicUpdateSlice.
+    Generates a result which is the value of the input array
+    operand, with a slice update overwritten at start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
+    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
+    TFL_I32Tensor:$start_indices
+  );
+
+  let results = (
+    outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3961,15 +4054,6 @@ def TFL_DensifyOp: TFL_Op<"densify", [
 // LSTM Ops
 //===----------------------------------------------------------------------===//
 
-// LSTM Kernel Type attributes
-def TFL_LSTM_KT_FULL  : StrEnumAttrCase<"FULL">;
-def TFL_LSTM_KT_BASIC  : StrEnumAttrCase<"BASIC">;
-
-def TFL_LSTMKernelTypeAttr : StrEnumAttr<"LSTMKernelType", "lstm kernel type enum",
-   [
-     TFL_LSTM_KT_FULL,  TFL_LSTM_KT_BASIC
-   ]>;
-
 def LstmMandatoryInputsConstraint : PredOpTrait<
   "mandatory operands element types should match",
   // TODO(ashwinm): Replace the indices with input tensor names when that
@@ -4050,8 +4134,8 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     Confined<
-      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
-      [TFL_LSTM_KT_BASIC]>:$kernel_type
+      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::BASIC">,
+      [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::BASIC">]>:$kernel_type
   );
 
   let hasOptions = 1;
@@ -4156,8 +4240,8 @@ Ba et al. 'Layer Normalization'
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
-      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
-      [TFL_LSTM_KT_FULL]>:$kernel_type,
+      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::FULL">,
+      [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::FULL">]>:$kernel_type,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
@@ -4184,7 +4268,7 @@ Ba et al. 'Layer Normalization'
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4312,7 +4396,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4513,7 +4597,7 @@ def TFL_BidirectionalSequenceLSTMOp :
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4583,7 +4667,7 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
 
   let customOption = "SequenceRNNOptions";
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4694,7 +4778,7 @@ def TFL_SVDFOp :
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4746,7 +4830,6 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
     SingleBlockImplicitTerminator<"YieldOp">,
     RecursiveSideEffects,
-    QuantizableResult,
     NoRegionArguments,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{if-then-else operation}];
@@ -4819,9 +4902,8 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
 }
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
-    DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+    DeclareOpInterfaceMethods<LoopLikeOpInterface, ["isDefinedOutsideOfLoop"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
-    QuantizableResult,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{While loop}];
 
@@ -4849,7 +4931,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }
@@ -4890,7 +4972,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
@@ -5023,7 +5105,7 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let hasOptions = 1;
 }
 
-def TFL_AssignVariableOp : TFL_Op<"assign_variable", [QuantizableResult]> {
+def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
   let summary = "Assigns a new value to a variable.";
 
   let description = [{
@@ -5039,7 +5121,7 @@ this value or a subsequent newer value of the variable.
   let results = (outs);
 }
 
-def TFL_ReadVariableOp : TFL_Op<"read_variable", [QuantizableResult]> {
+def TFL_ReadVariableOp : TFL_Op<"read_variable", []> {
   let summary = "Reads variable value.";
 
   let description = [{
@@ -5396,7 +5478,28 @@ or unnormalized log-probabilities provided for all classes.
   let customOption = "RandomOptions";
 }
 
+def TFL_NoValueOp : Op<TFL_Dialect, "no_value", [ConstantLike, NoSideEffect]> {
+  let summary = "constant representing no value.";
+
+  let description = [{
+No value constant op.
+  }];
+
+  let arguments = (ins UnitAttr:$value);
+
+  let results = (outs NoneType:$none_val);
+
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true if a constant operation can be built with the given value
+    /// and result type.
+    static bool isBuildableWith(Attribute value, Type type);
+  }];
+}
+
 
 #endif // TFL_OPS
 
+// LINT.ThenChange()
 // LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)

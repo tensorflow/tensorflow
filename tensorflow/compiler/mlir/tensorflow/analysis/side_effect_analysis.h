@@ -57,7 +57,7 @@ class SideEffectAnalysisInfo {
   SideEffectAnalysisInfo() = default;
 
   // Constructs analysis info by analyzing the given function.
-  SideEffectAnalysisInfo(FuncOp func_op,
+  SideEffectAnalysisInfo(func::FuncOp func_op,
                          const OpSideEffectCollector& op_side_effect_collector,
                          const TF::ResourceAliasAnalysis::Info& alias_analysis)
       : op_side_effect_collector_(op_side_effect_collector),
@@ -112,7 +112,7 @@ class SideEffectAnalysisInfo {
  private:
   // Runs the analysis and populates `sorted_control_predecessors_` and
   // `sorted_control_successors_` for `func_op`. Clears `control_predecessors_`.
-  void AnalyzeFunction(FuncOp func_op);
+  void AnalyzeFunction(func::FuncOp func_op);
 
   // Runs the analysis and populates `control_predecessors_` for `region`.
   void AnalyzeRegion(Region* region);

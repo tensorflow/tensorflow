@@ -1080,6 +1080,9 @@ def linspace(  # pylint: disable=missing-docstring
     else:
       result = math_ops.linspace(start, stop, num, axis=axis)
   if dtype:
+    if dtype.is_integer:
+      # Since numpy 1.20, linspace's rounding is towards -inf instead of 0
+      result = math_ops.floor(result)
     result = math_ops.cast(result, dtype)
   if retstep:
     return (result, step)

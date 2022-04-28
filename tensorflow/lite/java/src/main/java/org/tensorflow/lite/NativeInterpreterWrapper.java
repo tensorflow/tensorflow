@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.tensorflow.lite.annotations.UsedByReflection;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
@@ -78,10 +79,16 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // (Alternatively, we could determine this without needing to recreate the interpreter
     // by passing the tflite::Model in to here, and then traversing that?)
     ArrayList<Long> delegateHandles = new ArrayList<Long>();
+    boolean useXnnpack = true;
+    if (options.useXNNPACK != null) {
+      useXnnpack = options.useXNNPACK.booleanValue();
+    }
     this.interpreterHandle =
-        createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
+        createInterpreter(
+            modelHandle, errorHandle, options.getNumThreads(), useXnnpack, delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
+    initDelegatesWithInterpreterFactory();
     delegateHandles.ensureCapacity(delegates.size());
     for (Delegate delegate : delegates) {
       delegateHandles.add(Long.valueOf(delegate.getNativeHandle()));
@@ -90,7 +97,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
       // If there are any delegates enabled, recreate the interpreter with those delegates.
       delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
       this.interpreterHandle =
-          createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
+          createInterpreter(
+              modelHandle, errorHandle, options.getNumThreads(), useXnnpack, delegateHandles);
     }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
@@ -507,25 +515,15 @@ class NativeInterpreterWrapper implements AutoCloseable {
       ownedDelegates.add(optionalNnApiDelegate);
       delegates.add(optionalNnApiDelegate);
     }
-    // Finally add the XNNPACK delegate if enabled.
-    maybeAddXnnpackDelegate(options);
   }
 
-  // Optionally add the XNNPACK delegate.
-  private void maybeAddXnnpackDelegate(InterpreterImpl.Options options) {
-    // Simply use "-1" to represent the default mode.
-    int applyXNNPACKMode = -1;
-    if (options.useXNNPACK != null) {
-      applyXNNPACKMode = options.useXNNPACK.booleanValue() ? 1 : 0;
-    }
-
-    // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
-    // enabled for C++ TfLite library on Android platform.
-    if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
-      XnnpackDelegate xnnpackDelegate =
-          createXNNPACKDelegate(
-              interpreterHandle, errorHandle, applyXNNPACKMode, options.getNumThreads());
-      delegates.add(xnnpackDelegate);
+  // Complete the initialization of any delegates that require an InterpreterFactoryApi instance.
+  void initDelegatesWithInterpreterFactory() {
+    InterpreterFactoryApi interpreterFactoryApi = new InterpreterFactoryImpl();
+    for (Delegate delegate : delegates) {
+      if (delegate instanceof NnApiDelegate) {
+        ((NnApiDelegate) delegate).initWithInterpreterFactoryApi(interpreterFactoryApi);
+      }
     }
   }
 
@@ -567,6 +565,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private long cancellationFlagHandle = 0;
 
+  @UsedByReflection("nativeinterpreterwrapper_jni.cc")
   private long inferenceDurationNanoseconds = -1;
 
   private ByteBuffer modelByteBuffer;
@@ -632,9 +631,6 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
 
-  private static native XnnpackDelegate createXNNPACKDelegate(
-      long interpreterHandle, long errorHandle, int state, int numThreads);
-
   private static native long createErrorReporter(int size);
 
   private static native long createModel(String modelPathOrBuffer, long errorHandle);
@@ -642,7 +638,11 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private static native long createModelWithBuffer(ByteBuffer modelBuffer, long errorHandle);
 
   private static native long createInterpreter(
-      long modelHandle, long errorHandle, int numThreads, List<Long> delegateHandles);
+      long modelHandle,
+      long errorHandle,
+      int numThreads,
+      boolean useXnnpack,
+      List<Long> delegateHandles);
 
   private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 

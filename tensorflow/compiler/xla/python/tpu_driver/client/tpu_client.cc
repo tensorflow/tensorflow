@@ -51,6 +51,12 @@ std::string TpuDevice::DebugString() const {
                          coords_[0], coords_[1], coords_[2], core_on_chip_);
 }
 
+std::string TpuDevice::ToString() const {
+  return absl::StrFormat(
+      "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)", id(),
+      process_index(), absl::StrJoin(coords(), ","), core_on_chip());
+}
+
 xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
 TpuDevice::GetTpuDevices(const tpu_driver::SystemInfo& system_info) {
   std::vector<std::shared_ptr<PjRtDevice>> devices;

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -100,12 +101,12 @@ TfLiteStatus QuantizeWeights(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
 
-  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
-                                                    UnknownLoc::get(&context));
+  OwningOpRef<mlir::ModuleOp> module = tflite::FlatBufferToMlir(
+      serialized_model, &context, UnknownLoc::get(&context));
 
   // Apply quantization passes.
   PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
-  TFL::QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.weight_quantization = true;
   quant_specs.weight_only_quantization = weight_only_quantization;
@@ -114,10 +115,12 @@ TfLiteStatus QuantizeWeights(
   quant_specs.legacy_float_scale = legacy_float_scale;
   quant_specs.ops_blocklist = denylisted_mlir_op_names;
   for (const auto& entry : custom_op_map) {
-    quant_specs.custom_map[entry.first].is_weight_only =
-        entry.second.is_weight_only;
     quant_specs.custom_map[entry.first].quantizable_input_indices =
         entry.second.quantizable_input_indices;
+    quant_specs.custom_map[entry.first].is_weight_only =
+        entry.second.is_weight_only;
+    quant_specs.custom_map[entry.first].no_side_effect =
+        entry.second.no_side_effect;
   }
 
   if (quant_specs.inference_type == tensorflow::DT_INT8)

@@ -37,7 +37,7 @@ namespace xla {
 // b) to add Python-specific functionality.
 //
 // A `PyBuffer` can be used from Python without being wrapped in a Python
-// `DeviceArray` object, at the condition there is no associated LazyExpr.
+// `DeviceArray` object.
 class PyBuffer {
  public:
   // pybind11::object typed subclass for PyBuffer objects.
@@ -80,6 +80,8 @@ class PyBuffer {
 
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
+  std::pair<Status, bool> CopyToRemoteDevice(
+      absl::string_view serialized_descriptor) const;
 
   StatusOr<size_t> OnDeviceSizeInBytes() {
     return buffer_->GetOnDeviceSizeInBytes();
@@ -94,6 +96,21 @@ class PyBuffer {
   // This is useful because we may wish to change JAX metadata (e.g., the sticky
   // device) without copying the buffer.
   object Clone() const;
+
+  // Returns xla::InvalidArgument if the buffer has been deleted.
+  // See `PjRtFuture` for the semantics of `IsReady` and `IsKnownReady`.
+  StatusOr<bool> IsReady() {
+    if (buffer_->IsDeleted()) {
+      return InvalidArgument("DeviceArray has been deleted.");
+    }
+    return buffer_->GetReadyFuture().IsReady();
+  }
+  StatusOr<bool> IsKnownReady() {
+    if (buffer_->IsDeleted()) {
+      return InvalidArgument("DeviceArray has been deleted.");
+    }
+    return buffer_->GetReadyFuture().IsKnownReady();
+  }
 
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();

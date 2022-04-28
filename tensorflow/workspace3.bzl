@@ -15,35 +15,15 @@ def workspace():
         ],
     )
 
-    http_archive(
-        name = "tf_toolchains",
-        sha256 = "e5bf20273961b3e47967a3a3a7812add55ad4732a4efbbdf045c273541599bd0",
-        strip_prefix = "toolchains-1.3.2",
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.3.2.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v1.3.2.tar.gz",
-        ],
-    )
-
     tf_runtime()
 
     # https://github.com/bazelbuild/bazel-skylib/releases
     http_archive(
         name = "bazel_skylib",
-        sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
+        sha256 = "f7be3474d42aae265405a592bb7da8e171919d74c16f082a5457840f06054728",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
-        ],
-    )
-
-    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
-    http_archive(
-        name = "rules_pkg",
-        sha256 = "352c090cc3d3f9a6b4e676cf42a6047c16824959b438895a76c2989c6d7c246a",
-        urls = [
-            "https://github.com/bazelbuild/rules_pkg/releases/download/0.2.5/rules_pkg-0.2.5.tar.gz",
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.2.5/rules_pkg-0.2.5.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.2.1/bazel-skylib-1.2.1.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.2.1/bazel-skylib-1.2.1.tar.gz",
         ],
     )
 

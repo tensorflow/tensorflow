@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/get_compiler_ir.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -925,12 +926,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TFE_ContextSetRunEagerOpAsFunction(tensorflow::InputTFE_Context(ctx),
                                        enable, status.get());
   });
+  m.def("TFE_ContextSetJitCompileRewrite", [](py::handle& ctx, bool enable) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextSetJitCompileRewrite(tensorflow::InputTFE_Context(ctx), enable,
+                                    status.get());
+  });
 
   // TFE_Executor logic
   m.def(
       "TFE_NewExecutor",
-      [](const bool is_async) {
-        TFE_Executor* exc = TFE_NewExecutor(is_async);
+      [](const bool is_async, const bool enable_streaming_enqueue) {
+        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue);
         return exc;
       },
       py::return_value_policy::reference);
@@ -1179,6 +1186,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         [](TFE_ContextOptions* options, bool run_eager_op_as_function) {
           options->run_eager_op_as_function = run_eager_op_as_function;
         });
+  m.def("TFE_ContextOptionsSetJitCompileRewrite",
+        [](TFE_ContextOptions* options, bool jit_compile_rewrite) {
+          options->jit_compile_rewrite = jit_compile_rewrite;
+        });
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
         py::return_value_policy::reference);
@@ -1201,7 +1212,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
   });
   m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
-    TFE_Py_SetCEagerContext(tensorflow::InputTFE_Context(ctx));
+    // TODO(mdan): This cast might need rewriting to ImmediateExecutionContext.
+    tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
+        tensorflow::InputTFE_Context(ctx)));
   });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));

@@ -20,6 +20,7 @@ import functools
 import gc
 import io
 import os
+import pathlib
 import sys
 import tempfile
 import weakref
@@ -63,6 +64,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
@@ -310,6 +312,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(imported.asset1.asset_path.numpy(),
                      imported.asset2.asset_path.numpy())
+
+  def test_asset_fspath(self, cycles):
+    vocab = pathlib.Path(self._make_asset("contents"))
+    root = tracking.AutoTrackable()
+    root.asset = tracking.Asset(vocab)
+    imported = cycle(root, cycles)
+    self.assertTrue(hasattr(imported, "asset"))
 
   def test_implicit_input_signature(self, cycles):
     @def_function.function
@@ -2092,6 +2101,13 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
     load.load(path, tags=set([tag_constants.SERVING]))
+
+  def test_save_load_contains_with_fspath(self):
+    root = tracking.AutoTrackable()
+    path = pathlib.Path(tempfile.mkdtemp(prefix=self.get_temp_dir()))
+    save.save(root, path)
+    self.assertTrue(loader_impl.contains_saved_model(path))
+    load.load(path)
 
   def test_single_restore_op_used(self):
     root = module.Module()

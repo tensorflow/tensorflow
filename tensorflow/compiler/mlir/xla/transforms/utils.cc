@@ -25,6 +25,10 @@ ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
   return builder->create<ConstOp>(loc, hlo::GetScalarOfType(ty, raw_value));
 }
 
+ConstOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder) {
+  return builder->create<ConstOp>(loc, hlo::GetScalarNegZeroOfType(ty));
+}
+
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
   RankedTensorType ty =
       RankedTensorType::get(static_cast<int64_t>(attr.size()),

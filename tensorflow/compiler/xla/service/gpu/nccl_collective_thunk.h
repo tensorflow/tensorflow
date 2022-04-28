@@ -119,6 +119,11 @@ class NcclCollectiveThunk : public Thunk {
 
   // Logging support.
   std::string GetDeviceString(const ExecuteParams& params) const;
+
+ private:
+#if XLA_ENABLE_XCCL
+  bool first_call_to_execute_ = true;
+#endif  // XLA_ENABLE_XCCL
 };
 
 // Returns if the given data type is supported by NCCL.

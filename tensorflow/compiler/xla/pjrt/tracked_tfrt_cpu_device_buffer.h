@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -46,6 +47,8 @@ enum class GpuApi {
 };
 
 enum class AdrenoGpu {
+  // Adreno 7xx series
+  kAdreno730,
   // Adreno 6xx series
   kAdreno685,
   kAdreno680,
@@ -121,6 +124,7 @@ struct AdrenoInfo {
   bool IsAdreno4xx() const;
   bool IsAdreno5xx() const;
   bool IsAdreno6xx() const;
+  bool IsAdreno7xx() const;
   bool IsAdreno6xxOrHigher() const;
 
   // This function returns some not very documented physical parameter of
@@ -164,6 +168,9 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kM1,
+  kM1Pro,
+  kM1Max,
 };
 
 struct AppleInfo {
@@ -176,6 +183,13 @@ struct AppleInfo {
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
+
+  bool IsSIMDMatMulSupported() const;
+  // Often, fp32 alu performance is 1/2 of fp16 alu performance
+  // But, on some devices, fp32 alu performance equal to fp16 alu performance,
+  // at least in some scenarios.
+  // This method returns true if SIMDMatMul performance in fp32 equal to fp16
+  bool IsSIMDMatMulFp32Perf2x() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
@@ -336,8 +350,10 @@ struct OpenClInfo {
   int max_work_group_total_size;
 
   // The row pitch alignment size in pixels for 2D images created from a buffer.
-  // The value returned must be a power of 2.
-  uint64_t image_pitch_alignment;
+  // The value must be a power of 2.
+  uint64_t image_pitch_alignment = 0;
+  // The minimum alignment in pixels. The value must be a power of 2.
+  uint64_t image_base_address_alignment = 0;
   uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST
@@ -348,15 +364,16 @@ struct OpenClInfo {
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
 
-  bool supports_r_f16_tex2d = false;
-  bool supports_rg_f16_tex2d = false;
-  bool supports_rgb_f16_tex2d = false;
-  bool supports_rgba_f16_tex2d = false;
+  struct SupportedImage2dTypes {
+    absl::flat_hash_set<DataType> r_layout;
+    absl::flat_hash_set<DataType> rg_layout;
+    absl::flat_hash_set<DataType> rgb_layout;
+    absl::flat_hash_set<DataType> rgba_layout;
 
-  bool supports_r_f32_tex2d = false;
-  bool supports_rg_f32_tex2d = false;
-  bool supports_rgb_f32_tex2d = false;
-  bool supports_rgba_f32_tex2d = false;
+    bool SupportsImage2D(DataType data_type, int channels) const;
+  };
+
+  SupportedImage2dTypes supported_images_2d;
 
   bool IsImage2dFromBufferSupported() const;
 };

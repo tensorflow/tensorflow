@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-select-tf-ops -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64> {
+func.func @main(tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64> {
 ^bb0(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>):
 // CHECK:  {
 // CHECK-NEXT:  version: 3,
@@ -64,5 +64,5 @@ func @main(tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64> {
 // CHECK-NEXT:}
 
   %0 = "tf.Add"(%arg0, %arg1)  : (tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64> loc("add")
-  return %0 : tensor<4xf64>
+  func.return %0 : tensor<4xf64>
 }

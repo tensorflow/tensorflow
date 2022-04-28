@@ -34,9 +34,8 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
-def HLOClient_Dialect : Dialect {
+def CHLO_Dialect : Dialect {
   let name = "chlo";
   let cppNamespace = "::mlir::chlo";
   let summary = [{
@@ -56,18 +55,15 @@ def HLOClient_Dialect : Dialect {
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
-    Op<HLOClient_Dialect, mnemonic, traits> {
-  // TODO(b/129012527) Much of this custom verification should be expressed as
-  // type constraints.
-  let verifier = [{ return Verify(*this); }];
+class CHLO_Op<string mnemonic, list<Trait> traits> :
+    Op<CHLO_Dialect, mnemonic, traits> {
 }
 
-class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
+class CHLO_NativeOpTrait<string name> : NativeOpTrait<name> {
   let cppNamespace = "::mlir::chlo::OpTrait";
 }
 
-def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
+def CHLO_Broadcasting : CHLO_NativeOpTrait<"Broadcasting"> {
 }
 
 //===----------------------------------------------------------------------===//
@@ -85,11 +81,10 @@ def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 //   https://www.tensorflow.org/xla/broadcasting
 //===----------------------------------------------------------------------===//
 
-class HLOClient_BroadcastBinaryElementwiseOp<
-  string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
-      HLO_BroadcastingElementwise, HLOClient_Broadcasting,
-      DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-      "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+class CHLO_BroadcastBinaryElementwiseOp<
+  string mnemonic, list<Trait> traits> : CHLO_Op<mnemonic, traits # [
+      HLO_BroadcastingElementwise, CHLO_Broadcasting,
+      InferTensorTypeWithReify]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -98,19 +93,21 @@ class HLOClient_BroadcastBinaryElementwiseOp<
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
-  let builders = [
-    OpBuilder<(ins "Value":$left, "Value":$right,
-      "DenseIntElementsAttr":$broadcast_dimensions)>];
-
   let results = (outs HLO_Tensor);
 
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict `:`
     `(` type($lhs) `,` type($rhs) `)` `->` type(results)
   }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
-def HLOClient_BroadcastAddOp : HLOClient_BroadcastBinaryElementwiseOp<"broadcast_add",
+def CHLO_BroadcastAddOp : CHLO_BroadcastBinaryElementwiseOp<"broadcast_add",
     [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Addition operator (with optional broadcasting)";
 
@@ -122,7 +119,7 @@ def HLOClient_BroadcastAddOp : HLOClient_BroadcastBinaryElementwiseOp<"broadcast
   }];
 }
 
-def HLOClient_BroadcastAtan2Op : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastAtan2Op : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_atan2",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Atan2 operator (with optional broadcasting)";
@@ -135,7 +132,7 @@ def HLOClient_BroadcastAtan2Op : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastDivOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastDivOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_divide",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Division operator (with optional broadcasting)";
@@ -148,7 +145,7 @@ def HLOClient_BroadcastDivOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastMaxOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastMaxOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_maximum",
     [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Maximum operator (with optional broadcasting)";
@@ -161,7 +158,7 @@ def HLOClient_BroadcastMaxOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastMinOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastMinOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_minimum",
     [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Minimum operator (with optional broadcasting)";
@@ -174,7 +171,7 @@ def HLOClient_BroadcastMinOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastMulOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastMulOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_multiply",
     [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Multiplication operator (with optional broadcasting)";
@@ -187,7 +184,7 @@ def HLOClient_BroadcastMulOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastNextAfterOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastNextAfterOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_next_after",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "std::nextafter operator (with optional broadcasting)";
@@ -200,7 +197,7 @@ def HLOClient_BroadcastNextAfterOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastPolygammaOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastPolygammaOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_polygamma", [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Polygamma function (with optional broadcasting)";
 
@@ -209,7 +206,7 @@ def HLOClient_BroadcastPolygammaOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastPowOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastPowOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_power",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Power operator (with optional broadcasting)";
@@ -222,7 +219,7 @@ def HLOClient_BroadcastPowOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastRemOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastRemOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_remainder",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Remainder operator (with optional broadcasting)";
@@ -235,7 +232,7 @@ def HLOClient_BroadcastRemOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastShiftLeftOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastShiftLeftOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_shift_left",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Shift left operator (with optional broadcasting)";
@@ -248,7 +245,7 @@ def HLOClient_BroadcastShiftLeftOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastShiftRightArithmeticOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastShiftRightArithmeticOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_shift_right_arithmetic",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Shift right arithmetic operator (with optional broadcasting)";
@@ -261,7 +258,7 @@ def HLOClient_BroadcastShiftRightArithmeticOp : HLOClient_BroadcastBinaryElement
   }];
 }
 
-def HLOClient_BroadcastShiftRightLogicalOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastShiftRightLogicalOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_shift_right_logical",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Shift right logical operator (with optional broadcasting)";
@@ -274,7 +271,7 @@ def HLOClient_BroadcastShiftRightLogicalOp : HLOClient_BroadcastBinaryElementwis
   }];
 }
 
-def HLOClient_BroadcastSubOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastSubOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_subtract",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   string summary = "Subtraction operator (with optional broadcasting)";
@@ -287,7 +284,7 @@ def HLOClient_BroadcastSubOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastZetaOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastZetaOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_zeta",
     [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Hurwitz zeta function";
@@ -315,8 +312,8 @@ def HLOClient_BroadcastZetaOp : HLOClient_BroadcastBinaryElementwiseOp<
 // The same description as the arithmetic binary elementwise ops applies.
 //===----------------------------------------------------------------------===//
 
-class HLOClient_BroadcastBinaryLogicalElementwiseOp<string mnemonic> :
-    HLOClient_BroadcastBinaryElementwiseOp<
+class CHLO_BroadcastBinaryLogicalElementwiseOp<string mnemonic> :
+    CHLO_BroadcastBinaryElementwiseOp<
       mnemonic, [Commutative, NoSideEffect]> {
   let arguments = (ins
     HLO_PredOrIntTensor:$lhs,
@@ -327,7 +324,7 @@ class HLOClient_BroadcastBinaryLogicalElementwiseOp<string mnemonic> :
   );
 }
 
-def HLOClient_BroadcastAndOp: HLOClient_BroadcastBinaryLogicalElementwiseOp<
+def CHLO_BroadcastAndOp: CHLO_BroadcastBinaryLogicalElementwiseOp<
     "broadcast_and"> {
   string summary = "Logical and operator (with optional broadcasting)";
 
@@ -339,7 +336,7 @@ def HLOClient_BroadcastAndOp: HLOClient_BroadcastBinaryLogicalElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastOrOp: HLOClient_BroadcastBinaryLogicalElementwiseOp<
+def CHLO_BroadcastOrOp: CHLO_BroadcastBinaryLogicalElementwiseOp<
     "broadcast_or"> {
   string summary = "Logical or operator (with optional broadcasting)";
 
@@ -351,7 +348,7 @@ def HLOClient_BroadcastOrOp: HLOClient_BroadcastBinaryLogicalElementwiseOp<
   }];
 }
 
-def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
+def CHLO_BroadcastXorOp : CHLO_BroadcastBinaryLogicalElementwiseOp<
     "broadcast_xor"> {
   string summary = "Logical xor operator (with optional broadcasting)";
 
@@ -370,7 +367,7 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
 // not part of the HLO compiler instructions as modelled by the MHLO dialect.
 //===----------------------------------------------------------------------===//
 
-def HLOClient_NextAfterOp : HLOClient_Op<"next_after", [NoSideEffect,
+def CHLO_NextAfterOp : CHLO_Op<"next_after", [NoSideEffect,
     SameOperandsAndResultType]> {
   let summary = "std::nextafter operator";
   let description = [{
@@ -388,7 +385,7 @@ def HLOClient_NextAfterOp : HLOClient_Op<"next_after", [NoSideEffect,
   }];
 }
 
-def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
+def CHLO_PolygammaOp : CHLO_Op<"polygamma", [NoSideEffect,
     SameOperandsAndResultType]> {
   let summary = "Polygamma function";
   let description = [{
@@ -403,7 +400,7 @@ def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
   }];
 }
 
-def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
+def CHLO_ZetaOp : CHLO_Op<"zeta", [NoSideEffect,
     SameOperandsAndResultType]> {
   let summary = "Hurwitz zeta function";
   let description = [{
@@ -426,7 +423,7 @@ def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
 // Broadcasting complex op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastComplexOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_complex", [NoSideEffect]> {
   string summary = "Complex operator (with optional broadcasting)";
 
@@ -449,10 +446,10 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 // Unary op
 //===----------------------------------------------------------------------===//
 
-class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-    Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
-    traits # [InferShapeEqualityOpInterface, NoSideEffect, Elementwise,
-    SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
+class CHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
+    Type ArgTensorType, Type ResultTensorType> : CHLO_Op<mnemonic,
+    traits # [NoSideEffect, Elementwise, SameOperandsAndResultShape,
+    InferShapedTypeOpInterface]> {
   let arguments = (ins ArgTensorType:$operand);
   let results = (outs ResultTensorType:$result);
 
@@ -475,7 +472,7 @@ class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
   }];
 }
 
-def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos",
+def CHLO_AcosOp : CHLO_UnaryElementwiseOp<"acos",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Acos operator";
 
@@ -489,7 +486,7 @@ def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos",
   }];
 }
 
-def HLOClient_AcoshOp : HLOClient_UnaryElementwiseOp<"acosh",
+def CHLO_AcoshOp : CHLO_UnaryElementwiseOp<"acosh",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Acosh operation";
 
@@ -503,7 +500,7 @@ def HLOClient_AcoshOp : HLOClient_UnaryElementwiseOp<"acosh",
   }];
 }
 
-def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin",
+def CHLO_AsinOp : CHLO_UnaryElementwiseOp<"asin",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Asin operator";
 
@@ -516,7 +513,7 @@ def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin",
   }];
 }
 
-def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh",
+def CHLO_AsinhOp : CHLO_UnaryElementwiseOp<"asinh",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Asinh operation";
 
@@ -529,7 +526,7 @@ def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh",
   }];
 }
 
-def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan",
+def CHLO_AtanOp : CHLO_UnaryElementwiseOp<"atan",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Atan operator";
 
@@ -542,7 +539,7 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan",
   }];
 }
 
-def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh",
+def CHLO_AtanhOp : CHLO_UnaryElementwiseOp<"atanh",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Atanh operator";
 
@@ -556,7 +553,7 @@ def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh",
   }];
 }
 
-def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj",
+def CHLO_ConjOp : CHLO_UnaryElementwiseOp<"conj",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Conj operator";
 
@@ -569,7 +566,7 @@ def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj",
   }];
 }
 
-def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh",
+def CHLO_CoshOp : CHLO_UnaryElementwiseOp<"cosh",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Cosh operator";
 
@@ -582,7 +579,7 @@ def HLOClient_CoshOp : HLOClient_UnaryElementwiseOp<"cosh",
   }];
 }
 
-def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh",
+def CHLO_SinhOp : CHLO_UnaryElementwiseOp<"sinh",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Sinh operation";
 
@@ -596,7 +593,7 @@ def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh",
   }];
 }
 
-def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
+def CHLO_TanOp : CHLO_UnaryElementwiseOp<"tan",
     [SameOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Tan operation";
 
@@ -609,12 +606,9 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
   }];
 }
 
-def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
-    HLOClient_Broadcasting, HLO_BroadcastingElementwise,
-    SameOperandsAndResultShape, InferTypeOpInterface,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
-    NativeOpTrait<"InferTensorType">]> {
+def CHLO_ConstantLikeOp : CHLO_Op<"constant_like", [NoSideEffect,
+    CHLO_Broadcasting, HLO_BroadcastingElementwise,
+    SameOperandsAndResultShape, InferTensorTypeWithReify]> {
   let summary = "Constant like operator";
 
   let description = [{
@@ -626,9 +620,10 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
-def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
+def CHLO_DigammaOp : CHLO_UnaryElementwiseOp<"digamma",
     [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Digamma function";
 
@@ -637,7 +632,7 @@ def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
   }];
 }
 
-def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
+def CHLO_ErfOp : CHLO_UnaryElementwiseOp<"erf",
    [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Erfc operator";
 
@@ -649,7 +644,7 @@ def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
   }];
 }
 
-def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
+def CHLO_ErfcOp : CHLO_UnaryElementwiseOp<"erfc",
     [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Erfc operator";
 
@@ -661,7 +656,7 @@ def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
   }];
 }
 
-def HLOClient_IsInfOp : HLOClient_UnaryElementwiseOp<"is_inf",
+def CHLO_IsInfOp : CHLO_UnaryElementwiseOp<"is_inf",
     [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
     HLO_PredTensor> {
   let summary = "IsInf predicate";
@@ -671,7 +666,7 @@ def HLOClient_IsInfOp : HLOClient_UnaryElementwiseOp<"is_inf",
   }];
 }
 
-def HLOClient_IsNegInfOp : HLOClient_UnaryElementwiseOp<"is_neg_inf",
+def CHLO_IsNegInfOp : CHLO_UnaryElementwiseOp<"is_neg_inf",
     [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
     HLO_PredTensor> {
   let summary = "IsNegInf predicate";
@@ -681,7 +676,7 @@ def HLOClient_IsNegInfOp : HLOClient_UnaryElementwiseOp<"is_neg_inf",
   }];
 }
 
-def HLOClient_IsPosInfOp : HLOClient_UnaryElementwiseOp<"is_pos_inf",
+def CHLO_IsPosInfOp : CHLO_UnaryElementwiseOp<"is_pos_inf",
     [DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_FpTensor,
     HLO_PredTensor> {
   let summary = "IsPosInf predicate";
@@ -691,7 +686,7 @@ def HLOClient_IsPosInfOp : HLOClient_UnaryElementwiseOp<"is_pos_inf",
   }];
 }
 
-def HLOClient_LgammaOp : HLOClient_UnaryElementwiseOp<"lgamma",
+def CHLO_LgammaOp : CHLO_UnaryElementwiseOp<"lgamma",
     [SameOperandsAndResultType], HLO_FpTensor, HLO_FpTensor> {
   let summary = "Lgamma function";
 
@@ -704,7 +699,7 @@ def HLOClient_LgammaOp : HLOClient_UnaryElementwiseOp<"lgamma",
 // Broadcasting compare op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
+def CHLO_BroadcastCompareOp : CHLO_BroadcastBinaryElementwiseOp<
     "broadcast_compare", [NoSideEffect]> {
   string summary = "Compare operator (with optional broadcasting)";
 
@@ -730,19 +725,19 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
 // Broadcasting select op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
-    NoSideEffect,
-    HLOClient_Broadcasting,
-    HLO_BroadcastingElementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-    "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+def CHLO_BroadcastSelectOp : CHLO_Op<"broadcast_select",
+    [NoSideEffect, CHLO_Broadcasting, HLO_BroadcastingElementwise,
+     InferTensorTypeWithReify]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{
@@ -764,14 +759,20 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
     $pred `,` $on_true `,` $on_false attr-dict `:`
     `(` type($pred) `,` type($on_true) `,` type($on_false) `)` `->` type(results)
   }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Helper ops
 //===----------------------------------------------------------------------===//
 
-def HLOClient_MinimumBroadcastShapesOp :
-    HLOClient_Op<"minimum_broadcast_shapes", [NoSideEffect]> {
+def CHLO_MinimumBroadcastShapesOp :
+    CHLO_Op<"minimum_broadcast_shapes", [NoSideEffect]> {
   string summary = "Minimizes the rank of two or more shapes to be broadcasted";
 
   string description = [{
@@ -809,10 +810,11 @@ def HLOClient_MinimumBroadcastShapesOp :
 
   let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
 
+  let hasVerifier = 1;
 }
 
-def HLOClient_RankSpecializationClusterOp
-    : HLOClient_Op<"rank_specialization_cluster", [
+def CHLO_RankSpecializationClusterOp
+    : CHLO_Op<"rank_specialization_cluster", [
     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
     SingleBlockImplicitTerminator<"RankSpecializationClusterYieldOp">,
     RecursiveSideEffects]> {
@@ -844,10 +846,12 @@ def HLOClient_RankSpecializationClusterOp
   let arguments = (ins Variadic<HLO_Tensor>:$operands);
   let results = (outs Variadic<HLO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
+
+  let hasVerifier = 1;
 }
 
-def HLOClient_RankSpecializationClusterYieldOp
-    : HLOClient_Op<"rank_specialization_cluster_yield", [NoSideEffect,
+def CHLO_RankSpecializationClusterYieldOp
+    : CHLO_Op<"rank_specialization_cluster_yield", [NoSideEffect,
     ReturnLike, Terminator, HasParent<"RankSpecializationClusterOp">]> {
 
   let summary = "Yield operation for `rank_specialization_cluster`";
@@ -862,7 +866,7 @@ def HLOClient_RankSpecializationClusterYieldOp
   let arguments = (ins Variadic<HLO_Tensor>:$results);
 }
 
-def HLOClient_DynamicReshapeOp: HLOClient_Op<"dynamic_reshape", [NoSideEffect,
+def CHLO_DynamicReshapeOp: CHLO_Op<"dynamic_reshape", [NoSideEffect,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
   let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
   let description = [{

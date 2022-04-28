@@ -97,6 +97,9 @@ class MetricsTest(test.TestCase):
       file.write("Hello! \n")
     self.assertEqual(metrics.CalculateFileSize(filename), 0)
 
+  def test_invalid_file(self):
+    self.assertEqual(metrics.CalculateFileSize("not_a_file.txt"), -1)
+
 
 if __name__ == "__main__":
   test.main()

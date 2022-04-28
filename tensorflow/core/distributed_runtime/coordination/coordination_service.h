@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -45,11 +46,11 @@ class Env;
       }()
 
 // Coordination service is used for controlling and coordinating distributed
-// execution in a cluster of multiple workers.
+// execution in a cluster of multiple tasks.
 //
 // When enabled, the service keeps track of cluster configurations and the state
 // of cluster members. TF runtime and libraries can use it to orchastrate
-// cluster initialization, check the healthiness of workers, and propagate error
+// cluster initialization, check the healthiness of tasks, and propagate error
 // messages to the cluster.
 //
 // Normally, the service should first Start(), then perform the supported
@@ -60,8 +61,6 @@ class Env;
 // coordination. One instance of the service should be deployed in a cluster,
 // handling various requests and stores configuration key-value data for the
 // tasks. Each task interacts with the service through CoordinationServiceAgent.
-//
-// Experimental feature. Not yet implemented in open source.
 class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =
@@ -103,25 +102,39 @@ class CoordinationServiceInterface {
     return *GetCoordinationServiceInstancePtr();
   }
 
-  // Register a worker to the service.
-  virtual void RegisterWorker(const std::string& job_name, int task_id,
-                              uint64 incarnation, StatusCallback done) = 0;
+  // Register a task to the service.
+  virtual Status RegisterTask(const CoordinatedTask& task,
+                              uint64_t incarnation) = 0;
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some
   // error occurs.
-  virtual void WaitForAllTasks(const std::string& job_name, int task_id,
+  virtual void WaitForAllTasks(const CoordinatedTask& task,
                                const CoordinationServiceDeviceInfo& devices,
                                StatusCallback done) = 0;
 
+  // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
+  // specified in the config, blocks until all tasks reach the barrier before
+  // disconnecting together.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task has already disconnected.
+  virtual void ShutdownTaskAsync(const CoordinatedTask& task,
+                                 StatusCallback done) = 0;
+
+  // Disconnects task from the service and cleans up its internal error state.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task has already disconnected.
+  virtual Status ResetTask(const CoordinatedTask& task) = 0;
+
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
-  virtual Status RecordHeartbeat(const std::string& job_name, int task_id,
-                                 uint64 incarnation) = 0;
+  virtual Status RecordHeartbeat(const CoordinatedTask& task,
+                                 uint64_t incarnation) = 0;
 
   // Set a task in error state permanently.
-  virtual Status ReportTaskError(const std::string& job_name, int task_id,
-                                 Status error) = 0;
+  virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
 
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
@@ -141,25 +154,71 @@ class CoordinationServiceInterface {
   // up all key-values under the directory.
   virtual Status DeleteKeyValue(const std::string& key) = 0;
 
+  // Blocks until all (or a subset of) tasks are at the barrier or the barrier
+  // fails.
+  //
+  // `barrier_id` should be unique across barriers. Once the barrier has passed
+  // or failed, subsequent calls will not block, and immediately respond with
+  // the previous response.
+  //
+  // The first WaitAtBarrier() call received by the service for a particular
+  // barrier id is special in that it determines the barrier deadline based on
+  // timeout duration.
+  // However, if subsequent calls by different agents specify a different set of
+  // `participating_tasks` for the same `barrier_id`, the barrier will fail
+  // instantly.
+  //
+  // If no tasks are specified (default), the barrier will block for all the
+  // connected tasks.
+  //
+  // Possible service errors:
+  //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.
+  //      Deadline is determined by the server timestamp when it receives the
+  //      first WaitAtBarrier() + timeout duration.
+  //   - Cancelled: One of the tasks called CancelBarrier().
+  //   - Aborted: Service is shutting down.
+  //   - Internal: Any participating task is in ERROR state.
+  //   - InvalidArgument: (1) Conflicting tasks specified by different agents
+  //       for the same barrier, (2) one of the participating tasks is not in
+  //       the cluster, or (3) task making the request is not included in the
+  //       list of participating tasks.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  virtual void BarrierAsync(
+      const std::string& barrier_id, absl::Duration timeout,
+      const CoordinatedTask& task,
+      const std::vector<CoordinatedTask>& participating_tasks,
+      StatusCallback done) = 0;
+
+  // Aborts the barrier if it is ongoing.
+  // Current and future WaitAtBarrier() calls with the same id will return a
+  // CANCELLED error status.
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
+  virtual Status CancelBarrier(const std::string& barrier_id,
+                               const CoordinatedTask& task) = 0;
+
+ protected:
+  // TODO(haoyuzhang): Remove singleton once we decide on how to access the
+  // coordination service from op kernel.
+  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
+    static CoordinationServiceInterface* instance = nullptr;
+    return &instance;
+  }
+
  private:
   friend class CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
 
   virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
+  virtual uint64_t GetServiceIncarnation() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*
   GetCoordinationServiceFactories() {
     static auto* coordination_service_factories =
         new std::unordered_map<std::string, CoordinationServiceFactory>();
     return coordination_service_factories;
-  }
-
-  // TODO(haoyuzhang): Remove singleton once we decide on how to access the
-  // coordination service from op kernel.
-  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
-    static CoordinationServiceInterface* instance = nullptr;
-    return &instance;
   }
 };
 

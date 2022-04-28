@@ -155,4 +155,40 @@ class SparseSplitOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+// The GPU implementation is async because it requires waiting for a
+// host->device memcpy before the output is allocated (similar to
+// SegmentSumGPUOp).
+template <typename T>
+class SparseSplitGPUOp : public AsyncOpKernel {
+ public:
+  explicit SparseSplitGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("num_split", &num_split_));
+  }
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    SparseSplitOpImpl<GPUDevice, T>(context, num_split_, done);
+  }
+
+ private:
+  int num_split_;
+};
+
+#define REGISTER_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")             \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("split_dim")    \
+                              .HostMemory("shape")        \
+                              .HostMemory("output_shape") \
+                              .TypeConstraint<type>("T"), \
+                          SparseSplitGPUOp<type>)
+TF_CALL_POD_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

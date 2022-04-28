@@ -40,11 +40,11 @@ std::string GetReshapeCode(const OperationDef& op_def) {
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT temps[4];\n";
-  c += "  temps[0] = INIT_FLT(0.0f);\n";
-  c += "  temps[1] = INIT_FLT(0.0f);\n";
-  c += "  temps[2] = INIT_FLT(0.0f);\n";
-  c += "  temps[3] = INIT_FLT(0.0f);\n";
+  c += "  args.src_tensor::scalar_type temps[4];\n";
+  c += "  temps[0] = args.src_tensor::scalar_zero_value;\n";
+  c += "  temps[1] = args.src_tensor::scalar_zero_value;\n";
+  c += "  temps[2] = args.src_tensor::scalar_zero_value;\n";
+  c += "  temps[3] = args.src_tensor::scalar_zero_value;\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int base = B;\n";
   } else {
@@ -65,13 +65,10 @@ std::string GetReshapeCode(const OperationDef& op_def) {
     c += "  int src_b = p / args.src_tensor.Height();\n";
     c += "  args.src_tensor.SetBatchRef(src_b);\n";
   }
-  c += "      int src_z = src_c / 4;\n";
-  c += "      int src_sub_ch = src_c % 4;\n";
-  c += "      FLT4 t = args.src_tensor.Read(src_x, src_y, src_z);\n";
-  c += "      temps[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_sub_ch);\n";
+  c += "      args.src_tensor.ReadPerChannel(temps[i], src_x, src_y, src_c);\n";
   c += "    }\n";
   c += "  }\n";
-  c += "  FLT4 result;\n";
+  c += "  args.src_tensor::type result;\n";
   c += "  result.x = temps[0];\n";
   c += "  result.y = temps[1];\n";
   c += "  result.z = temps[2];\n";

@@ -23,12 +23,14 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -43,8 +45,6 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -106,7 +106,7 @@ using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
       &XLA_TimerStats##counter);
 
 struct TimerStats {
-  tensorflow::mutex stats_mutex;
+  absl::Mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
@@ -180,11 +180,15 @@ bool ContainersEqual(const Container1T& c1,
   return absl::c_equal(c1, c2);
 }
 
-template <int&... ExplicitArgumentBarrier, typename... Types>
-size_t HashOf(const Types&... values) {
-  auto tuple = std::tie(values...);
-  return absl::Hash<decltype(tuple)>{}(tuple);
+#if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying >= 202102L
+using to_underlying = std::to_underlying;
+#else
+// Helper function which implements C++23's std::to_underlying.
+template <typename T>
+constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<absl::underlying_type_t<T>>(value);
 }
+#endif
 
 // Performs a copy of count values from src to dest, using different strides for
 // source and destination. The source starting index is src_base, while the
@@ -390,6 +394,22 @@ T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
+template <typename T>
+struct DivMod {
+  T quotient;
+  T modulo;
+};
+
+// Divide `dividend` by `divisor` such that the quotient is rounded towards
+// negative infinity. The remainder will have the same sign as `divisor`.
+template <typename T>
+DivMod<T> FloorDivMod(T dividend, T divisor) {
+  DivMod<T> div_mod;
+  div_mod.quotient = FloorOfRatio(dividend, divisor);
+  div_mod.modulo = dividend - div_mod.quotient * divisor;
+  return div_mod;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
@@ -404,20 +424,93 @@ std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
+// Used on a function to trap bad calls: any call that matches the specified
+// condition will cause a compile-time error. This macro uses a clang-specific
+// "diagnose_if" attribute, as described at
+// https://clang.llvm.org/docs/AttributeReference.html#diagnose-if
+//
+// Example:
+//
+//   int compute_absolute_value(int c)
+//     XLA_DIAGNOSE_ERROR_IF(c >= 0, "'c' is already positive.");
+#if ABSL_HAVE_ATTRIBUTE(diagnose_if)
+#define XLA_DIAGNOSE_ERROR_IF(...) \
+  __attribute__((diagnose_if(__VA_ARGS__, "error")))
+#else
+#define XLA_DIAGNOSE_ERROR_IF(...)
+#endif
+
+constexpr bool IsRuntimeEvaluated() {
+#ifdef __cpp_lib_is_constant_evaluated
+  return !std::is_constant_evaluated();
+#elif ABSL_HAVE_BUILTIN(__builtin_is_constant_evaluated)
+  return !__builtin_is_constant_evaluated();
+#else
+  return false;
+#endif
+}
+
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-constexpr inline T LsbMask(int width) {
+constexpr inline T LsbMask(int width)
+    XLA_DIAGNOSE_ERROR_IF(width < 0 || width >= std::numeric_limits<T>::digits,
+                          "width must be between [0, sizeof(T)*8)") {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
+  if (IsRuntimeEvaluated()) {
+    DCHECK_GE(width, 0) << "Unsupported width " << width;
+    DCHECK_LE(width, std::numeric_limits<T>::digits)
+        << "Unsupported width " << width;
+  }
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
+}
+
+// Return floor(log2(n)) for positive integer n.  Returns -1 iff n == 0.
+template <typename T>
+constexpr inline int Log2Floor(T x) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  return absl::bit_width(x) - 1;
+}
+
+// Return ceiling(log2(n)) for positive integer n.  Returns -1 iff n == 0.
+template <typename T>
+constexpr inline int Log2Ceiling(T x) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
 // Returns the value with every bit except the lower 'width' bits set to zero.
 template <typename T>
 constexpr inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
+}
+
+// Returns `base` multiplied by itself `exponent` number of times.
+//
+// Note: returns 1 when `exponent` is zero.
+// Precondition: `exponent` is non-negative.
+template <typename T>
+constexpr T IPow(T base, int exponent)
+    XLA_DIAGNOSE_ERROR_IF(exponent < 0, "exponent must be non-negative") {
+  if (IsRuntimeEvaluated()) {
+    // A negative `exponent` is indicative of a logic bug for integral `base`.
+    // We disallow it for floating-point types for symmetry.
+    DCHECK_GE(exponent, 0);
+  }
+  // We use the right-to-left binary exponentiation algorithm.
+  T result{1};
+  while (exponent > 0) {
+    if ((exponent & 1) != 0) {
+      result *= base;
+    }
+    base *= base;
+    exponent >>= 1;
+  }
+  return result;
 }
 
 template <size_t>
@@ -442,6 +535,22 @@ template <>
 struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
+
+template <size_t N>
+struct SignedIntegerTypeForSize {
+  using type = std::make_signed_t<typename UnsignedIntegerTypeForSize<N>::type>;
+};
+
+// Returns the signed magnitude of T.
+template <typename T>
+typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
+  auto as_bits =
+      absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
+  auto sign_mask =
+      absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
+          tensorflow::MathUtil::Sign(as_bits));
+  return as_bits ^ (sign_mask >> 1);
+}
 
 template <typename T>
 constexpr int NanPayloadBits() {

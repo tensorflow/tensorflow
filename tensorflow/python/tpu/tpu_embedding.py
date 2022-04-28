@@ -224,12 +224,12 @@ class EnqueueData(
 class RaggedEnqueueData(
     collections.namedtuple(
         'RaggedEnqueueData',
-        ['embedding_indices', 'row_lengths', 'aggregation_weights'])):
+        ['embedding_indices', 'row_splits', 'aggregation_weights'])):
   """RaggedTensor Data to be enqueued through generate_enqueue_ops()."""
 
   def __new__(cls,
               embedding_indices,
-              row_lengths=None,
+              row_splits=None,
               aggregation_weights=None):
     """Data to be enqueued through generate_enqueue_ops().
 
@@ -238,9 +238,9 @@ class RaggedEnqueueData(
         corresponds to ids.values in embedding_lookup(), when ids is a
         RaggedTensor. Both int32 and int64 are allowed and will be converted to
         int32 internally.
-      row_lengths: A rank 1 Tensor specifying the length of each row to split
-        embedding_indices and aggregation_weights. It corresponds to
-        ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. Both
+      row_splits: A rank 1 Tensor specifying the length of  the break points for
+        splitting embedding_indices and aggregation_weights. It corresponds to
+        ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. Both
         int32 and int64 are allowed and will be converted to int32 internally.
       aggregation_weights: A rank 1 Tensor containing per training example
         aggregation weights. It corresponds to the values field of a
@@ -252,14 +252,14 @@ class RaggedEnqueueData(
 
     """
     return super(RaggedEnqueueData,
-                 cls).__new__(cls, embedding_indices, row_lengths,
+                 cls).__new__(cls, embedding_indices, row_splits,
                               aggregation_weights)
 
   @staticmethod
   def from_ragged_tensor(rg_tensor, weights=None):
     return RaggedEnqueueData(
         rg_tensor.values,
-        rg_tensor.row_lengths(),
+        rg_tensor.row_splits,
         aggregation_weights=weights.values if weights is not None else None)
 
 
@@ -1090,6 +1090,7 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
   def __init__(
       self,
       learning_rate: float,
+      use_gradient_accumulation: bool = True,
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
@@ -1101,6 +1102,9 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
     Args:
       learning_rate: a floating point value. The learning rate.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
       weight_decay_factor: amount of weight decay to apply; None means that the
@@ -1110,13 +1114,6 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
       clip_gradient_min: the minimum value to clip by; None means -infinity.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
     """
-    # Gradient accumulation is generally a no-op for SGD, but if gradient
-    # clipping is enabled, then we must also enable gradient accumulation.
-    # In the other optimizers this up to the user, but we don't give the user
-    # the option to turn gradient accumulation on or off for SGD.
-    use_gradient_accumulation = False
-    if (clip_gradient_min is not None or clip_gradient_max is not None):
-      use_gradient_accumulation = True
     super(StochasticGradientDescentParameters, self).__init__(
         learning_rate=learning_rate,
         use_gradient_accumulation=use_gradient_accumulation,
@@ -1810,12 +1807,12 @@ class TPUEmbedding(object):
                            'aggregation_weights', feature, enqueue_data)
 
         elif isinstance(enqueue_data, RaggedEnqueueData):
-          if enqueue_data.row_lengths is None and combiner:
+          if enqueue_data.row_splits is None and combiner:
             logging.warn(
-                'No row lengths set for features %f table %f but '
+                'No row splits set for features %f table %f but '
                 'combiner is set to %s.', feature,
                 self._feature_to_config_dict[feature].table_id, combiner)
-          _check_agreement(enqueue_data.row_lengths, 'row_lengths', feature,
+          _check_agreement(enqueue_data.row_splits, 'row_splits', feature,
                            enqueue_data)
           _check_agreement(enqueue_data.aggregation_weights,
                            'aggregation_weights', feature, enqueue_data)
@@ -1869,7 +1866,7 @@ class TPUEmbedding(object):
 
     Args:
       enqueue_datas: a `Dict` of `RaggedEnqueueData` objects for embedding.
-      ragged: If True, extract row lengths from the data rather than sample
+      ragged: If True, extract row splits from the data rather than sample
         indices.
 
     Returns:
@@ -1877,7 +1874,7 @@ class TPUEmbedding(object):
     """
 
     kwargs = {
-        'sample_indices_or_row_lengths': [],
+        'sample_indices_or_row_splits': [],
         'embedding_indices': [],
         'aggregation_weights': [],
     }
@@ -1888,9 +1885,9 @@ class TPUEmbedding(object):
       for feature in features:
         enqueue_data = enqueue_datas[feature]
         if ragged:
-          kwargs['sample_indices_or_row_lengths'].append(
-              enqueue_data.row_lengths if enqueue_data
-              .row_lengths is not None else int_zeros)
+          kwargs['sample_indices_or_row_splits'].append(
+              enqueue_data.row_splits if enqueue_data
+              .row_splits is not None else int_zeros)
         else:
           if (self._feature_to_config_dict[feature].max_sequence_length > 0 and
               enqueue_data.sample_indices is not None and
@@ -1898,15 +1895,15 @@ class TPUEmbedding(object):
             # Pad the sample indices as if the enqueued sparse tensor is rank 2.
             sample_indices = array_ops.pad(
                 enqueue_data.sample_indices, paddings=[[0, 0], [0, 1]])
-            kwargs['sample_indices_or_row_lengths'].append(sample_indices)
+            kwargs['sample_indices_or_row_splits'].append(sample_indices)
           else:
             # If the sample_indices is rank 1 or not present, treat it as dense
             # tensor.
             if (enqueue_data.sample_indices is None or
                 enqueue_data.sample_indices.shape[1] == 1):
-              kwargs['sample_indices_or_row_lengths'].append(int_zeros)
+              kwargs['sample_indices_or_row_splits'].append(int_zeros)
             else:
-              kwargs['sample_indices_or_row_lengths'].append(
+              kwargs['sample_indices_or_row_splits'].append(
                   enqueue_data.sample_indices)
 
         kwargs['aggregation_weights'].append(

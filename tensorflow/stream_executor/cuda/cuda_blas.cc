@@ -3038,6 +3038,66 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
 }
 
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 float alpha, const DeviceMemory<float *> &as,
+                                 int lda, DeviceMemory<float *> *bs, int ldb,
+                                 int batch_count) {
+  return DoBlasInternal(cublasStrsmBatched, stream,
+                        true /* = pointer_mode_host */, CUDABlasSide(side),
+                        CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+                        CUDABlasDiagonal(diag), m, n, &alpha, GpuMemory(as),
+                        lda, GpuMemoryMutable(bs), ldb, batch_count);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 double alpha, const DeviceMemory<double *> &as,
+                                 int lda, DeviceMemory<double *> *bs, int ldb,
+                                 int batch_count) {
+  return DoBlasInternal(cublasDtrsmBatched, stream,
+                        true /* = pointer_mode_host */, CUDABlasSide(side),
+                        CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+                        CUDABlasDiagonal(diag), m, n, &alpha, GpuMemory(as),
+                        lda, GpuMemoryMutable(bs), ldb, batch_count);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 std::complex<float> alpha,
+                                 const DeviceMemory<std::complex<float> *> &as,
+                                 int lda,
+                                 DeviceMemory<std::complex<float> *> *bs,
+                                 int ldb, int batch_count) {
+  auto cb_alpha = GpuComplexValue(alpha);
+  return DoBlasInternal(
+      cublasCtrsmBatched, stream, true /* = pointer_mode_host */,
+      CUDABlasSide(side), CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+      CUDABlasDiagonal(diag), m, n, &cb_alpha,
+      reinterpret_cast<float2 *const *>(GpuMemory(as)), lda,
+      reinterpret_cast<float2 **>(GpuMemoryMutable(bs)), ldb, batch_count);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 std::complex<double> alpha,
+                                 const DeviceMemory<std::complex<double> *> &as,
+                                 int lda,
+                                 DeviceMemory<std::complex<double> *> *bs,
+                                 int ldb, int batch_count) {
+  auto cb_alpha = GpuComplexValue(alpha);
+  return DoBlasInternal(
+      cublasZtrsmBatched, stream, true /* = pointer_mode_host */,
+      CUDABlasSide(side), CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+      CUDABlasDiagonal(diag), m, n, &cb_alpha,
+      reinterpret_cast<double2 *const *>(GpuMemory(as)), lda,
+      reinterpret_cast<double2 **>(GpuMemoryMutable(bs)), ldb, batch_count);
+}
+
 // We only use cublasLt from CUDA 11.0 onward.
 #if CUDA_VERSION >= 11000
 

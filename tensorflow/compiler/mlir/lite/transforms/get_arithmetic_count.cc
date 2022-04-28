@@ -16,7 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -35,8 +35,10 @@ namespace TFL {
 namespace {
 
 struct GetArithmeticCountPass
-    : public PassWrapper<GetArithmeticCountPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<GetArithmeticCountPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetArithmeticCountPass)
+
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -49,8 +51,8 @@ struct GetArithmeticCountPass
   }
 };
 
-void GetArithmeticCountPass::runOnFunction() {
-  auto func = getFunction();
+void GetArithmeticCountPass::runOnOperation() {
+  auto func = getOperation();
   OpBuilder builder(func);
   func->walk([&](TflArithmeticCountOpInterface arithmetic_count_op) {
     Operation* op = arithmetic_count_op.getOperation();
@@ -65,7 +67,7 @@ void GetArithmeticCountPass::runOnFunction() {
 
 /// Creates an instance of the TensorFlow Lite dialect GetArithmeticCount
 /// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass() {
   return std::make_unique<GetArithmeticCountPass>();
 }
 

@@ -311,12 +311,11 @@ HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
 HLO_MATCHER(Subtract);
 HLO_MATCHER(Tanh);
-HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
+HLO_MATCHER(OptimizationBarrier);
 
 #define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
   template <>                                                            \

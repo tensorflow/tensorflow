@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/c_api_defn.h"
@@ -378,16 +379,6 @@ std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables) {
   return data;
 }
 
-void Destroy(const TpuEmbeddingEngineParametersData* data) {
-  for (int i = 0; i < 8; i++) {
-    for (int table_id = 0; table_id < data->c_params.num_tables; table_id++) {
-      if (data->c_params.parameters[i][table_id] != nullptr) {
-        Destroy(data->c_params.parameters[i][table_id]);
-      }
-    }
-  }
-}
-
 void Destroy(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
 void Destroy(SE_DeviceMemoryBase*) {}
 
@@ -443,6 +434,11 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.replica_count = config.replica_count();
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
+  hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
+  CreateVector(config.auto_spmd_partitioning_mesh_shape(),
+               &hlo_config.auto_spmd_partitioning_mesh_shape);
+  CreateVector(config.auto_spmd_partitioning_mesh_ids(),
+               &hlo_config.auto_spmd_partitioning_mesh_ids);
   hlo_config.has_static_device_assignment =
       config.has_static_device_assignment();
   hlo_config.has_entry_computation_layout =
@@ -484,6 +480,16 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_replica_count(c_config.replica_count);
   config.set_num_partitions(c_config.num_partitions);
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
+  config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
+  absl::Span<const int64_t> mesh_shape_span =
+      MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
+  std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),
+                                  mesh_shape_span.end());
+  config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+  absl::Span<const int64_t> mesh_ids_span =
+      MakeSpan(c_config.auto_spmd_partitioning_mesh_ids);
+  std::vector<int64_t> mesh_ids(mesh_ids_span.begin(), mesh_ids_span.end());
+  config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
   if (c_config.has_static_device_assignment) {
     auto device_assignment = xla::DeviceAssignment::Deserialize(
         stream_executor::tpu::DeserializeProto<xla::DeviceAssignmentProto>(

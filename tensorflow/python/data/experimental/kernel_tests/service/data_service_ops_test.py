@@ -23,7 +23,6 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
-from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -459,7 +458,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.apply(
         data_service_ops._distribute(
-            processing_mode=ShardingPolicy.OFF,
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=dispatcher.target,
             task_refresh_interval_hint_ms=10000))
     get_next = self.getNext(dataset)
@@ -487,7 +486,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.apply(
         data_service_ops._distribute(
-            processing_mode=ShardingPolicy.OFF,
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=dispatcher.target,
             task_refresh_interval_hint_ms=100))
     get_next = self.getNext(dataset)
@@ -858,7 +857,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.OFF)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.OFF)
     self.assertDatasetProduces(dataset, list(range(20)))
 
 

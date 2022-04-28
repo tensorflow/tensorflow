@@ -53,14 +53,8 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 }
 
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    llvm::StringRef input) {
-  llvm::Optional<mlir::lmhlo_gpu::Activation> activation =
-      mlir::lmhlo_gpu::symbolizeActivation(input);
-  if (!activation) {
-    return InternalError("Unexpected activation");
-  }
-
-  switch (activation.getValue()) {
+    mlir::lmhlo_gpu::Activation activation) {
+  switch (activation) {
     case mlir::lmhlo_gpu::Activation::None:
       return stream_executor::dnn::kNone;
     case mlir::lmhlo_gpu::Activation::Sigmoid:

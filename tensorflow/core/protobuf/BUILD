@@ -183,6 +183,7 @@ exports_files(
         "trackable_object_graph.proto",
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
+        "core_platform_payloads.proto",
     ],
 )
 
@@ -215,6 +216,7 @@ tf_proto_library(
         "trackable_object_graph.proto",
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
+        "core_platform_payloads.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,

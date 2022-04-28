@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {

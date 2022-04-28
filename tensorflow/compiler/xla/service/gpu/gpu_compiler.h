@@ -31,10 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
@@ -179,8 +176,10 @@ GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size);
+    const std::string& platform_name, const se::Platform::Id platform_id,
+    GpuDeviceInfo gpu_device_info,
+    se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size);
 
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment

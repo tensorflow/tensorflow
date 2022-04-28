@@ -15,19 +15,28 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 
+#include <string>
+
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/mangling.h"
+#include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 
 using tensorflow::AttrValue;
 using tensorflow::AttrValueMap;
@@ -62,42 +71,41 @@ Status ConvertLocation(Location inst_loc,
   return Status::OK();
 }
 
-Status ConvertAttribute(const BoolAttr& attr, AttrValue* value) {
+Status ConvertAttribute(BoolAttr attr, AttrValue* value) {
   value->set_b(attr.getValue());
   return Status::OK();
 }
 
-Status ConvertAttribute(const IntegerAttr& attr, AttrValue* value) {
+Status ConvertAttribute(IntegerAttr attr, AttrValue* value) {
   value->set_i(attr.getInt());
   return Status::OK();
 }
 
-Status ConvertAttribute(const FloatAttr& attr, AttrValue* value) {
+Status ConvertAttribute(FloatAttr attr, AttrValue* value) {
   value->set_f(attr.getValueAsDouble());
   return Status::OK();
 }
 
-Status ConvertAttribute(const ElementsAttr& attr, AttrValue* value) {
+Status ConvertAttribute(ElementsAttr attr, AttrValue* value) {
   return ConvertToTensorProto(attr, value->mutable_tensor());
 }
 
-Status ConvertAttribute(const PlaceholderAttr& attr, AttrValue* value) {
+Status ConvertAttribute(PlaceholderAttr attr, AttrValue* value) {
   value->set_placeholder(attr.getValue().str());
   return Status::OK();
 }
 
-Status ConvertAttribute(const ShapeAttr& attr, AttrValue* value) {
+Status ConvertAttribute(ShapeAttr attr, AttrValue* value) {
   SetTensorShapeProto(attr, value->mutable_shape());
   return Status::OK();
 }
 
-Status ConvertAttribute(const FlatSymbolRefAttr& attr, AttrValue* value) {
+Status ConvertAttribute(FlatSymbolRefAttr attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue().str());
   return Status::OK();
 }
 
-Status ConvertAttribute(const FuncAttr& attr, bool remove_ref_type,
-                        AttrValue* value) {
+Status ConvertAttribute(FuncAttr attr, bool remove_ref_type, AttrValue* value) {
   TF_RETURN_IF_ERROR(
       ConvertAttribute(attr.getName().cast<FlatSymbolRefAttr>(), value));
   TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
@@ -106,26 +114,8 @@ Status ConvertAttribute(const FuncAttr& attr, bool remove_ref_type,
   return Status::OK();
 }
 
-Status ConvertAttribute(const StringAttr& attr, AttrValue* value) {
-  absl::string_view attr_value(attr.getValue().data(), attr.getValue().size());
-  switch (mangling_util::GetMangledKind(attr_value)) {
-    case mangling_util::MangledKind::kUnknown: {
-      value->set_s(std::string(attr_value));
-      return Status::OK();
-    }
-    case mangling_util::MangledKind::kDataType: {
-      DataType dtype;
-      TF_RETURN_IF_ERROR(mangling_util::DemangleDataType(attr_value, &dtype));
-      value->set_type(dtype);
-      return Status::OK();
-    }
-    case mangling_util::MangledKind::kTensorShape:
-      TF_RETURN_IF_ERROR(
-          mangling_util::DemangleShape(attr_value, value->mutable_shape()));
-      return Status::OK();
-    default:
-      return Unimplemented("Mangled string couldn't be handled!");
-  }
+Status ConvertAttribute(StringAttr attr, AttrValue* value) {
+  value->set_s(attr.str());
   return Status::OK();
 }
 
@@ -233,21 +223,23 @@ tensorflow::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
                                     /*remove_ref_type=*/false, &value);
           })
           .Default([&](Attribute attr) {
-            return Unimplemented("Unhandled attribute kind for attribute");
+            return Unimplemented("Unhandled attribute kind for attribute: ",
+                                 debugString(attr));
           }));
   return value;
 }
 
-Status ConvertAttributes(
-    const llvm::ArrayRef<NamedAttribute> attrs,
-    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    bool remove_ref_type, AttrValueMap* values) {
+Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
+                         ArrayRef<StringRef> attrs_to_ignore,
+                         bool remove_ref_type, AttrValueMap* values) {
+  StringSet<> ignored_attrs;
+  ignored_attrs.insert(attrs_to_ignore.begin(), attrs_to_ignore.end());
   AttrValueMap func_call_attrs;
   for (const NamedAttribute& named_attr : attrs) {
-    auto name_strref = named_attr.getName().str();
+    std::string name_str = named_attr.getName().str();
     auto attr = named_attr.getValue();
-    absl::string_view name(name_strref.data(), name_strref.size());
-    if (name == "name" || name == "device" || attrs_to_ignore.contains(name)) {
+    absl::string_view name = name_str;
+    if (ignored_attrs.contains(name_str)) {
       // The name, device spec of a TF op or function are not stored as
       // AttrValue inside NodeDef, but we model them using attribute inside
       // MLIR. So we need to ignore them when going back to AttrValue here.
@@ -403,6 +395,66 @@ tensorflow::StatusOr<Attribute> ConvertAttributeValue(
     default:
       return ConvertNonFuncAttributeValue(value, builder, tfgDialect);
   }
+}
+
+tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
+    const tensorflow::FullTypeDef& full_type, Builder& builder,
+    TFGraphDialect* tfgDialect) {
+  using FullTypeAttr = ::mlir::tf_type::FullTypeAttr;
+
+  SmallVector<FullTypeAttr> args;
+  for (const tensorflow::FullTypeDef& it : full_type.args()) {
+    TF_ASSIGN_OR_RETURN(FullTypeAttr arg,
+                        ConvertAttribute(it, builder, tfgDialect));
+    args.push_back(arg);
+  }
+
+  Attribute attr;
+  switch (full_type.attr_case()) {
+    case tensorflow::FullTypeDef::AttrCase::kS:
+      attr = builder.getStringAttr(full_type.s());
+      break;
+    case tensorflow::FullTypeDef::AttrCase::kI:
+      attr = builder.getI64IntegerAttr(full_type.i());
+      break;
+    case tensorflow::FullTypeDef::ATTR_NOT_SET:
+      break;
+    default:
+      return InvalidArgument("Unsupported attr kind in FullType");
+  }
+
+  return FullTypeAttr::get(builder.getContext(), full_type.type_id(), args,
+                           attr);
+}
+
+tensorflow::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
+    tf_type::FullTypeAttr full_type) {
+  using FullTypeDef = tensorflow::FullTypeDef;
+
+  FullTypeDef ret;
+  for (tf_type::FullTypeAttr it : full_type.getArgs()) {
+    TF_ASSIGN_OR_RETURN(*ret.add_args(), ConvertAttribute(it));
+  }
+
+  if (full_type.getAttr()) {
+    bool converted = llvm::TypeSwitch<Attribute, bool>(full_type.getAttr())
+                         .Case<StringAttr>([&](StringAttr sattr) {
+                           ret.set_s(sattr.str());
+                           return true;
+                         })
+                         .Case<IntegerAttr>([&](IntegerAttr iattr) {
+                           ret.set_i(iattr.getInt());
+                           return true;
+                         })
+                         .Default([&](Attribute attr) { return false; });
+    if (!converted)
+      return InvalidArgument("Unsupported attr kind in FullType:",
+                             mlir::debugString(full_type.getAttr()));
+  }
+
+  ret.set_type_id(static_cast<tensorflow::FullTypeId>(full_type.getType_id()));
+
+  return ret;
 }
 
 }  // namespace tfg

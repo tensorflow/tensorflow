@@ -15,7 +15,7 @@
 // CHECK:  gpu.return
 // CHECK: }
 // CHECK: func @fusion(%arg0: memref<4096xf32>) {
-func @fusion(%arg0: memref<4096xf32>) {
+func.func @fusion(%arg0: memref<4096xf32>) {
 
     // CHECK-DAG: %[[bx:.*]] = arith.constant 4 : index
     // CHECK-DAG: %[[by:.*]] = arith.constant 1 : index
@@ -48,8 +48,8 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
 // CHECK-SAME: binary = "
-// CHECK-SAME:   .visible .global .align 64 .b8 zero[4] = {0, 0, 0, 128};
-// CHECK-SAME:   .visible .global .align 64 .b8 ones[32];
+// CHECK-SAME:   .visible .global .align 128 .b8 zero[4] = {0, 0, 0, 128};
+// CHECK-SAME:   .visible .global .align 128 .b8 ones[32];
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0,
 // CHECK-SAME:     .param .u64 _fusion_param_1
@@ -61,7 +61,7 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 // CHECK:   gpu.return
 // CHECK: }
 // CHECK: func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
-func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
+func.func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
 
     %zero = memref.get_global @zero : memref<f32>
     %ones = memref.get_global @ones : memref<8xf32>

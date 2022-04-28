@@ -391,11 +391,9 @@ cc_library(
     name = "inference_context",
     srcs = [
         "inference_context.cc",
-        "serialization.cc",
     ],
     hdrs = [
         "inference_context.h",
-        "serialization.h",
     ],
     deps = [
         ":buffer",

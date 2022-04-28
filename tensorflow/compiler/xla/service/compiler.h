@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -38,10 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
@@ -91,6 +90,13 @@ class AotCompilationOptions {
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool use_auto_spmd_partitioning() const { return false; }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return {};
+  }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return {};
+  }
   virtual bool deduplicate_hlo() const { return false; }
 
   // Optional allocator that may be used for allocating temp space on the device
@@ -134,6 +140,36 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
+  // Optional profile_handle and cache key may be used to trigger recompilation
+  // when a compilation cache is used.
+  uint64_t profile_handle() const { return profile_handle_; }
+  void set_profile_handle(uint64_t profile_handle) {
+    profile_handle_ = profile_handle;
+  }
+
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
+  bool run_backend_only() const { return run_backend_only_; }
+  void set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+  }
+
+  bool sanitize_dataflow() const { return sanitize_dataflow_; }
+  void set_sanitize_dataflow(bool sanitize_dataflow) {
+    sanitize_dataflow_ = sanitize_dataflow;
+  }
+
+  const std::vector<std::string>& sanitize_abilists_dataflow() const {
+    return sanitize_abilists_dataflow_;
+  }
+  void set_sanitize_abilists_dataflow(
+      const std::vector<std::string>& abilists) {
+    sanitize_abilists_dataflow_ = abilists;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -146,6 +182,11 @@ class AotCompilationOptions {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
+  uint64_t profile_handle_ = 0;
+  std::string cache_key_;
+  bool run_backend_only_ = false;
+  bool sanitize_dataflow_ = false;
+  std::vector<std::string> sanitize_abilists_dataflow_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -321,13 +362,13 @@ class Compiler {
     };
   }
 
-  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+  virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
   }
 
  private:
   // Mutex that guards the platform-compiler map.
-  static tensorflow::mutex platform_compiler_mutex_;
+  static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
   static std::map<se::Platform::Id, CompilerFactory>*

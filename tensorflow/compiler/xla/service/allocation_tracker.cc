@@ -33,7 +33,7 @@ namespace xla {
 
 StatusOr<GlobalDataHandle> AllocationTracker::Register(
     ScopedShapedBuffer shaped_buffer, const std::string& tag) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   VLOG(2) << "Register";
   std::vector<ScopedShapedBuffer> replicated_buffers;
   replicated_buffers.emplace_back(std::move(shaped_buffer));
@@ -43,7 +43,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::Register(
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
     std::vector<ScopedShapedBuffer> replicated_buffers,
     const std::string& tag) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
@@ -95,7 +95,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
 }
 
 Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
@@ -128,7 +128,7 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
 
 StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
     const GlobalDataHandle& data) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
@@ -166,13 +166,13 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
 
 StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
     const GlobalDataHandle& data) const {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   return AllocationTracker::ResolveInternal(data);
 }
 
 StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
     const GlobalDataHandle& data, int replica_id) const {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
   if (replica_id >= replicated_buffers.size()) {

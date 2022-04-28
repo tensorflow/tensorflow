@@ -77,7 +77,6 @@ using tfrt::OpInvocation;
 using tfrt::OpMetadataFn;
 using tfrt::raw_ostream;
 using tfrt::RCReference;
-using tfrt::SmallVector;
 using tfrt::string_view;
 using tfrt::TensorMetadata;
 

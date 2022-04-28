@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -95,19 +95,21 @@ void ReplaceBlockArgumentsWithImplicitOperands(
 // `tuple_arg` allows any branch that requires additional arguments to have
 // their values be tupled together. Similarly, `tuple_return` allows the results
 // of the if/while operation to be tupled together.
-void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
+void ImportXlaRegion(mlir::func::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true, bool tuple_arg = true) {
   OpBuilder builder(dest_region);
 
   auto entry_block = builder.createBlock(dest_region);
-  CallOp result;
+  func::CallOp result;
   if (!tuple_arg) {
-    auto args = entry_block->addArguments(func.getType().getInputs());
+    auto inputs = func.getFunctionType().getInputs();
+    auto args = entry_block->addArguments(
+        inputs, SmallVector<Location>(inputs.size(), loc));
     ArrayRef<Value> callop_args(args.begin(), args.end());
-    result = builder.create<CallOp>(loc, func, callop_args);
+    result = builder.create<func::CallOp>(loc, func, callop_args);
   } else {
     auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getType().getInputs()));
+        builder.getTupleType(func.getFunctionType().getInputs()), loc);
     llvm::SmallVector<Value, 4> detupled_args;
     detupled_args.reserve(func.getNumArguments());
 
@@ -116,7 +118,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
       detupled_args.push_back(extract);
     }
 
-    result = builder.create<CallOp>(loc, func, detupled_args);
+    result = builder.create<func::CallOp>(loc, func, detupled_args);
   }
 
   if (!tuple_return) {
@@ -164,7 +166,7 @@ void LowerCase(TF::CaseOp op) {
 
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.num_branches(); ++i) {
-    mlir::FuncOp branch_func = op.branch_function(i);
+    mlir::func::FuncOp branch_func = op.branch_function(i);
     ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
                     /*tuple_return=*/false, /*tuple_arg=*/false);
   }
@@ -204,7 +206,7 @@ void LowerWhile(TF::WhileOp op) {
 // type `tuple_type`. Single block arguments are removed and remapped to
 // get_tuple_element(tuple_arg, index).
 void ReplaceBlockArgs(Block* block, Type tuple_type, OpBuilder* builder) {
-  auto tuple_arg = block->addArgument(tuple_type);
+  auto tuple_arg = block->addArgument(tuple_type, block->getParent()->getLoc());
   Detuple(tuple_arg, block->getArguments().drop_back(1), builder);
   for (int i = block->getNumArguments() - 2; i >= 0; --i)
     block->eraseArgument(i);
@@ -274,7 +276,7 @@ Value TupleImplicitInputs(Region& region, Location loc, OpBuilder* builder) {
   // instead all inputs used by their branch regions are implicitly captured
   // from above.
   assert(block.getNumArguments() == 0);
-  block.addArgument(tuple_input.getType());
+  block.addArgument(tuple_input.getType(), loc);
   builder->setInsertionPointToStart(&block);
   ReplaceImplicitInputsWithTupleElements(&block, /*offset=*/0,
                                          implicit_inputs_ref, builder);
@@ -382,7 +384,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // Add args corresponding to 'implicit_inputs'.
   for (const auto& implicit_input : implicit_inputs)
-    cond_block.addArgument(implicit_input.getType());
+    cond_block.addArgument(implicit_input.getType(), loc);
   ReplaceImplicitInputs(&cond_block, inputs_size,
                         implicit_inputs.getArrayRef());
   // Cond always returns a single result of bool type.
@@ -397,7 +399,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   builder.setInsertionPointToStart(&body_block);
   // Add args corresponding to 'implicit_inputs'.
   for (const auto& implicit_input : implicit_inputs)
-    body_block.addArgument(implicit_input.getType());
+    body_block.addArgument(implicit_input.getType(), loc);
   auto implicit_input_elements = ReplaceImplicitInputs(
       &body_block, inputs_size, implicit_inputs.getArrayRef());
   ReplaceTerminator(&body_block, implicit_input_elements, &builder, false);

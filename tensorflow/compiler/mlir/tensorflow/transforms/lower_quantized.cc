@@ -28,16 +28,16 @@ namespace {
 
 class LowerQuantizedPass : public LowerQuantizedPassBase<LowerQuantizedPass> {
  public:
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateLoweringQuantizedPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerQuantizedPass() {
   return std::make_unique<LowerQuantizedPass>();
 }
 

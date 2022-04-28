@@ -402,11 +402,11 @@ class WhileOp : public AsyncOpKernel {
                                  const Tensor& cond_t, bool* out_result) {
     bool is_pluggable = ctx->op_device_context() &&
                         ctx->op_device_context()->IsPluggableDevice();
-    const DeviceBase::GpuDeviceInfo* gpu_device_info =
-        ctx->device()->tensorflow_gpu_device_info();
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+        ctx->device()->tensorflow_accelerator_device_info();
     const bool is_hostmem_dtype =
         cond_t.dtype() == DT_INT32 || cond_t.dtype() == DT_INT64;
-    if (!is_hostmem_dtype && (is_pluggable || gpu_device_info) &&
+    if (!is_hostmem_dtype && (is_pluggable || accelerator_device_info) &&
         (opts.rets_alloc_attrs.empty() ||
          !opts.rets_alloc_attrs[0].on_host())) {
       // Copy the ret value to host if it's allocated on device.

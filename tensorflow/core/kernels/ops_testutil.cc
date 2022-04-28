@@ -105,12 +105,6 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   CHECK(device_) << "No device provided";
 
   device_ = device.get();
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
-  pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
-      thread_pool_.get());
-
   device_type_ = device_type;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (device_type == DEVICE_GPU) {
@@ -126,6 +120,12 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
          "TENSORFLOW_USE_ROCM.";
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 #endif
+
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(device));
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
+      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
+      thread_pool_.get());
 }
 
 void OpsTestBase::set_node_def(const NodeDef& node_def) {

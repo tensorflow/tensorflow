@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <numeric>
 #include <ostream>
 #include <utility>
 
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 
 namespace xla {
@@ -436,13 +436,9 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
 
 bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
                                        const ShapeIndex& index) const {
-  for (const HloValue* value :
-       dataflow_analysis().GetValueSet(instruction, index).values()) {
-    if (allocation_index_for_value_.contains(value)) {
-      return true;
-    }
-  }
-  return false;
+  return absl::c_any_of(
+      dataflow_analysis().GetValueSet(instruction, index).values(),
+      IsKeyIn(allocation_index_for_value_));
 }
 
 bool BufferAssignment::HasTopLevelAllocation(
@@ -883,8 +879,8 @@ std::string BufferAssignment::BufferInfoString() const {
     }
     // Ordering uses by their use position.
     std::vector<std::pair<int64_t, std::string>> uses;
-    uses.reserve(buffer.uses().size());
-    for (const HloUse& use : buffer.uses()) {
+    uses.reserve(buffer.GetUses().size());
+    for (const HloUse& use : buffer.GetUses()) {
       uses.emplace_back(instruction_schedule.at(use.instruction),
                         use.ToString());
     }

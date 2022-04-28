@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -98,6 +98,12 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64_t metadata_id) {
   return &metadata;
 }
 
+const XStatMetadata* XPlaneBuilder::GetStatMetadata(int64_t metadata_id) const {
+  auto result = plane_->stat_metadata().find(metadata_id);
+  if (result == plane_->stat_metadata().end()) return nullptr;
+  return &(result->second);
+}
+
 XStatMetadata* XPlaneBuilder::CreateStatMetadata() {
   return GetOrCreateStatMetadata(++last_stat_metadata_id_);
 }
@@ -142,7 +148,7 @@ XEventBuilder XLineBuilder::AddEvent(const XEvent& event) {
 }
 
 void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64_t timestamp_ns) {
-  int64_t offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
+  int64_t offset_ps = NanoToPico(line_->timestamp_ns() - timestamp_ns);
   line_->set_timestamp_ns(timestamp_ns);
   if (offset_ps) {
     for (auto& event : *line_->mutable_events()) {

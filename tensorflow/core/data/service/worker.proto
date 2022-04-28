@@ -28,6 +28,10 @@ message GetElementRequest {
   bool skipped_previous_round = 4;
   // Whether to skip the round if data isn't ready fast enough.
   bool allow_skip = 5;
+  // The trainer ID used to read elements from a multi-trainer cache. This cache
+  // enables sharing data across concurrent training jobs. If set, this request
+  // will read the data requested by other trainers, if available.
+  string trainer_id = 6;
 }
 
 message GetElementResponse {
@@ -52,7 +56,7 @@ message GetWorkerTasksResponse {
 }
 
 service WorkerService {
-  // Processes an task for a dataset, making elements available to clients.
+  // Processes a task for a dataset, making elements available to clients.
   rpc ProcessTask(ProcessTaskRequest) returns (ProcessTaskResponse);
 
   // Gets the next dataset element.

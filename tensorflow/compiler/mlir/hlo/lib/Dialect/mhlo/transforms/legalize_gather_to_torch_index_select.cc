@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -132,22 +133,23 @@ struct LegalizeGatherToTorchIndexSelectPass
     : public LegalizeGatherToTorchIndexSelectPassBase<
           LegalizeGatherToTorchIndexSelectPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };
 }  // namespace
 
-void PopulateGatherToTorchIndexSelectPatterns(
-    mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<GatherIsTorchIndexSelect>(context);
+void PopulateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
+                                              RewritePatternSet *patterns) {
+  patterns->add<GatherIsTorchIndexSelect>(context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeGatherToTorchIndexSelectPass() {
   return std::make_unique<LegalizeGatherToTorchIndexSelectPass>();
 }
 

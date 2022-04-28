@@ -42,7 +42,7 @@ we continue enabling more and more use cases.
 *   **Natural Language (NL) APIs**
 
     *   [NLClassifier](nl_classifier.md)
-    *   [BertNLCLassifier](bert_nl_classifier.md)
+    *   [BertNLClassifier](bert_nl_classifier.md)
     *   [BertQuestionAnswerer](bert_question_answerer.md)
 
 *   **Audio APIs**
@@ -71,15 +71,17 @@ and use delegates. The following accelerators are now supported in the Task API:
 
 *   Android
     *   [GPU](https://www.tensorflow.org/lite/performance/gpu): Java / C++
-    *   [NNAPI](https://www.tensorflow.org/lite/performance/nnapi): Java / C++
-    *   [Hexagon](https://www.tensorflow.org/lite/performance/hexagon_delegate):
+    *   [NNAPI](https://www.tensorflow.org/lite/android/delegates/nnapi):
+        Java / C++
+    *   [Hexagon](https://www.tensorflow.org/lite/android/delegates/hexagon):
         C++
 *   Linux / Mac
     *   [Coral Edge TPU](https://coral.ai/): C++
+*   iOS
+    *   [Core ML delegate](https://www.tensorflow.org/lite/performance/coreml_delegate):
+        C++
 
-[Core ML delegate](https://www.tensorflow.org/lite/performance/coreml_delegate)
-for iOS, and acceleration supports in Task Java / Swift / Web API are coming
-soon.
+Acceleration support in Task Swift / Web API are coming soon.
 
 ### Example usage of GPU on Android in Java
 
@@ -132,7 +134,7 @@ deps = [
 
 Note: the `gpu_plugin` target is a separate one from the
 [GPU delegate target](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
-`gpu_plugin` wraps the GPU delegate target, and can provide safty guard, i.e.
+`gpu_plugin` wraps the GPU delegate target, and can provide safety guard, i.e.
 fallback to TFLite CPU path on delegation errors.
 
 Other delegate options include:
@@ -227,3 +229,38 @@ Try out the
 with your Coral Edge TPU devices. Explore more on the
 [pretrained Edge TPU models](https://coral.ai/models/) and
 [advanced Edge TPU settings](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto#L275).
+
+### Example usage of Core ML Delegate in C++
+
+A complete example can be found at
+[Image Classifier Core ML Delegate Test](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/test/task/vision/image_classifier/TFLImageClassifierCoreMLDelegateTest.mm).
+
+Step 1. Depend on the Core ML delegate plugin in your bazel build target, such
+as:
+
+```
+deps = [
+  "//tensorflow_lite_support/acceleration/configuration:coreml_plugin", # for Core ML Delegate
+]
+```
+
+Step 2. Configure Core ML Delegate in the task options. For example, you can set
+up Core ML Delegate in `ImageClassifier` as follows:
+
+```c++
+// Initialization
+ImageClassifierOptions options;
+// Load the TFLite model.
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+// Turn on Core ML delegation.
+options.mutable_base_options()->mutable_compute_settings()->mutable_tflite_settings()->set_delegate(Delegate::CORE_ML);
+// Set DEVICES_ALL to enable Core ML delegation on any device (in contrast to
+// DEVICES_WITH_NEURAL_ENGINE which creates Core ML delegate only on devices
+// with Apple Neural Engine).
+options.mutable_base_options()->mutable_compute_settings()->mutable_tflite_settings()->mutable_coreml_settings()->set_enabled_devices(CoreMLDelegateSettings::DEVICES_ALL);
+// Create ImageClassifier from options.
+std::unique_ptr<ImageClassifier> image_classifier = ImageClassifier::CreateFromOptions(options).value();
+
+// Run inference on Core ML.
+const ClassificationResult result = image_classifier->Classify(*frame_buffer).value();
+```

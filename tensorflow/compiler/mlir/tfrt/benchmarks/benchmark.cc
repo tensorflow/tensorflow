@@ -38,25 +38,7 @@ using ::tfrt::jitrt::MemrefType;
 const bool kStaticDim = false;
 const bool kDynamicDim = true;
 
-std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
-  return std::make_unique<HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
-      },
-      tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue());
-}
-
-std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
-  return std::make_unique<HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                         /*num_blocking_threads=*/1));
-}
-
-mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
+mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx& ctx,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
                                        const Type* runtime_type,
@@ -65,7 +47,9 @@ mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
   // Cast result to the arbitrary chosen memref type and rank because we only
   // need to know the base pointer value.
   auto* memref = static_cast<StridedMemRefType<float, 0>*>(result_ptr);
-  free(memref->basePtr);
+  if (llvm::find(ctx.input_ptrs, memref->data) == ctx.input_ptrs.end()) {
+    free(memref->basePtr);
+  }
   return mlir::success();
 }
 
@@ -79,14 +63,17 @@ JitExecutable& CreateJitExecutable(
   copts.num_worker_threads = host.GetNumWorkerThreads();
 
   CompilationOptions opts;
-  opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_compilation_pipeline =
+  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    mlir::RegisterAllTensorFlowDialects(registry);
+    tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
+  };
+  opts.create_compilation_pipeline =
       [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
         if (lower_from_tensorflow)
           tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
-        tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline(pm, copts);
+        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
       };
-  opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 

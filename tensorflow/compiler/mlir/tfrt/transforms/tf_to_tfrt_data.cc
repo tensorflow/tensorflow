@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements lowering of TF dialect to TFRT data kernels.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tf_to_tfrt_data.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -116,12 +116,13 @@ struct ConstOpConversion : public mlir::OpConversionPattern<TF::ConstOp> {
   }
 };
 
-struct ReturnOpConversion : public mlir::OpConversionPattern<mlir::ReturnOp> {
+struct ReturnOpConversion
+    : public mlir::OpConversionPattern<mlir::func::ReturnOp> {
   explicit ReturnOpConversion(MLIRContext *context)
-      : OpConversionPattern<mlir::ReturnOp>(context) {}
+      : OpConversionPattern<mlir::func::ReturnOp>(context) {}
 
   LogicalResult matchAndRewrite(
-      mlir::ReturnOp op, OpAdaptor adaptor,
+      mlir::func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<tfrt::compiler::ReturnOp>(
         op, adaptor.getOperands());
@@ -227,6 +228,10 @@ class BatchDatasetV2OpConversion
 class TFToTFRTDataRewritePass
     : public mlir::PassWrapper<TFToTFRTDataRewritePass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFToTFRTDataRewritePass)
+
+ private:
   llvm::StringRef getArgument() const final { return "tf-to-tfrt-data"; }
   llvm::StringRef getDescription() const final {
     return "Convert Tensorflow dialect to TFRT's data dialect.";
@@ -244,13 +249,14 @@ class TFToTFRTDataRewritePass
     target.addIllegalDialect<TF::TensorFlowDialect>();
     target.addLegalDialect<tfrt::data::DataDialect>();
     target.addLegalDialect<tfrt::compiler::TFRTDialect>();
-    target.addDynamicallyLegalOp<mlir::FuncOp>([&data_converter](FuncOp op) {
-      return data_converter.isSignatureLegal(op.getType());
-    });
-    mlir::OwningRewritePatternList patterns(&getContext());
-    patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
-                    ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+    target.addDynamicallyLegalOp<mlir::func::FuncOp>(
+        [&data_converter](func::FuncOp op) {
+          return data_converter.isSignatureLegal(op.getFunctionType());
+        });
+    mlir::RewritePatternSet patterns(&getContext());
+    patterns.add<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
+                 ConstOpConversion, ReturnOpConversion>(context);
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
         patterns, data_converter);
 
     auto result =
@@ -276,9 +282,9 @@ void CreateTFExecutorToTFRTDataPipeline(mlir::OpPassManager &pm) {
   pm.addPass(CreateTFToTFRTDataConversionPass());
 }
 
-Status TFDataGraphDefToTFDataMLIR(const GraphDef &graph_def,
-                                  mlir::MLIRContext *mlir_ctx,
-                                  mlir::OwningModuleRef *module_ref) {
+Status TFDataGraphDefToTFDataMLIR(
+    const GraphDef &graph_def, mlir::MLIRContext *mlir_ctx,
+    mlir::OwningOpRef<mlir::ModuleOp> *module_ref) {
   // Import to TF dialect
   string output_node;
   for (const auto &node : graph_def.node()) {
@@ -330,7 +336,7 @@ std::unique_ptr<mlir::Pass> CreateTFToTFRTDataConversionPass() {
 Status TFDataGraphDefToHostBEF(const GraphDef &graph_def,
                                tfrt::BefBuffer *bef) {
   mlir::MLIRContext mlir_ctx;
-  mlir::OwningModuleRef module_ref;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref;
   TF_RETURN_IF_ERROR(
       TFDataGraphDefToTFDataMLIR(graph_def, &mlir_ctx, &module_ref));
   TF_RETURN_IF_ERROR(CompileTFDataMLIRToBEF(module_ref.get(), bef));

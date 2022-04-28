@@ -388,10 +388,10 @@ Status TpuNodeDeviceFactory::CreateDevices(
     options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
-    // The GpuDeviceInfo actually provides information not only for GPU
+    // The AcceleratorDeviceInfo actually provides information not only for GPU
     // devices but also for TPU. The name is a legacy from the pre-TPU
     // dark ages.
-    Status status = device->UseGpuDeviceInfo();
+    Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {
       errors::AppendToMessage(&status, "while setting up ", DEVICE_TPU_XLA_JIT,
                               " device number ", i);

@@ -58,6 +58,10 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
       return tensorflow::DT_FLOAT;
     case ArrayDataType::kUint8:
       return tensorflow::DT_UINT8;
+    case ArrayDataType::kInt16:
+      return tensorflow::DT_INT16;
+    case ArrayDataType::kUint16:
+      return tensorflow::DT_UINT16;
     case ArrayDataType::kInt32:
       return tensorflow::DT_INT32;
     case ArrayDataType::kUint32:

@@ -35,8 +35,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/lhlo_utils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
@@ -69,7 +69,8 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 // AbsOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AbsOp op) {
+LogicalResult AbsOp::verify() {
+  AbsOp op = *this;
   auto operand_type = getElementTypeOrSelf(op.input().getType());
   auto output_type = getElementTypeOrSelf(op.output().getType());
   if (auto complex_type = operand_type.dyn_cast<ComplexType>()) {
@@ -90,27 +91,33 @@ static LogicalResult Verify(AbsOp op) {
 //===----------------------------------------------------------------------===//
 
 // TODO(jurahul): Add verification for output shape.
-static LogicalResult Verify(AllGatherOp op) {
-  return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+LogicalResult AllGatherOp::verify() {
+  AllGatherOp op = *this;
+  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 // TODO(jurahul): Add verification for output shape.
-static LogicalResult Verify(AllToAllOp op) {
-  return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+LogicalResult AllToAllOp::verify() {
+  AllToAllOp op = *this;
+  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 //===----------------------------------------------------------------------===//
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceOp op) { return VerifyAllReduce(op); }
+LogicalResult AllReduceOp::verify() {
+  AllReduceOp op = *this;
+  return VerifyAllReduce(op);
+}
 
 //===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ReduceScatterOp op) {
-  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+LogicalResult ReduceScatterOp::verify() {
+  ReduceScatterOp op = *this;
+  if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
   if (failed(mlir::hlo::VerifyReduceScatter(
           op, /*operand_types=*/op.operands().getTypes(),
@@ -141,7 +148,8 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
 // CollectivePermuteOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(CollectivePermuteOp op) {
+LogicalResult CollectivePermuteOp::verify() {
+  CollectivePermuteOp op = *this;
   return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
       op, op.source_target_pairs());
 }
@@ -173,16 +181,17 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
   }
 };
 
-void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.insert<EraseConstOp>(context);
+  results.add<EraseConstOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
 // CustomCallOp.
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(CustomCallOp op) {
+LogicalResult CustomCallOp::verify() {
+  CustomCallOp op = *this;
   if (op.target_arg_mapping()) {
     CustomCallTargetArgMapping mapping = *op.target_arg_mapping();
     auto verify_mapping = [&](int64_t target_num, size_t op_num,
@@ -229,6 +238,68 @@ static LogicalResult Verify(CustomCallOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+// PadOp's verifier checks if :-
+//  1. Operand and output ranks match.
+//  2. Padding configurations are specified for each dimension.
+//  3. Output shape matches the expected output shape when the padding
+//     configurations are applied to the operand.
+LogicalResult PadOp::verify() {
+  PadOp op = *this;
+  auto operand_type = op.operand().getType().dyn_cast<ShapedType>();
+  auto output_type = op.output().getType().dyn_cast<ShapedType>();
+  if (!(operand_type && output_type && operand_type.hasRank() &&
+        output_type.hasRank())) {
+    return success();
+  }
+
+  unsigned rank = operand_type.getRank();
+  // Checks if operand and output ranks match.
+  if (output_type.getRank() != rank) {
+    return op.emitOpError()
+           << "output's rank(" << output_type.getRank()
+           << ") is not same as operand's rank(" << rank << ")";
+  }
+
+  auto edge_pad_low_ranges = op.edge_padding_low().getValues<int64_t>();
+  auto edge_pad_high_ranges = op.edge_padding_high().getValues<int64_t>();
+  auto interior_pad_ranges = op.interior_padding().getValues<int64_t>();
+  // Checks if padding configurations are specified for each dimension.
+  if (edge_pad_low_ranges.size() != rank ||
+      edge_pad_high_ranges.size() != rank ||
+      interior_pad_ranges.size() != rank) {
+    return op.emitOpError() << "pad configurations to be specified for all "
+                            << rank << " dimensions";
+  }
+
+  // Checks if output shape matches the expected output shape when the padding
+  // configurations are applied to the operand. Expected output shape for each
+  // dimension is calculated as :-
+  //     low_padding + operand_dim_size + total_interior_padding + high_padding
+  //  where, total_interior_padding = (operand_dim_size - 1) * interior_padding.
+  for (const auto& paddings : llvm::enumerate(llvm::zip(
+           edge_pad_low_ranges, edge_pad_high_ranges, interior_pad_ranges,
+           operand_type.getShape(), output_type.getShape()))) {
+    auto index = static_cast<unsigned>(paddings.index());
+    int64_t low_pad, high_pad, interior_pad, operand_dim_size, output_dim_size;
+    std::tie(low_pad, high_pad, interior_pad, operand_dim_size,
+             output_dim_size) = paddings.value();
+    int64_t expected_dim_size = low_pad + operand_dim_size +
+                                (operand_dim_size - 1) * interior_pad +
+                                high_pad;
+    if (expected_dim_size != output_dim_size) {
+      return op.emitOpError()
+             << "expected " << index << "-th dimension size after padding is "
+             << expected_dim_size << " but found " << output_dim_size;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
@@ -255,9 +326,12 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
     if (!the_only_copy) return failure();
 
     auto new_reduce = rewriter.cloneWithoutRegions(reduce);
-    Block* new_block =
-        rewriter.createBlock(&new_reduce.body(), new_reduce.body().end(),
-                             reduce.body().front().getArgumentTypes());
+    auto& old_reduce_body = reduce.body().front();
+    Block* new_block = rewriter.createBlock(
+        &new_reduce.body(), new_reduce.body().end(),
+        old_reduce_body.getArgumentTypes(),
+        SmallVector<Location>(old_reduce_body.getNumArguments(),
+                              reduce.getLoc()));
 
     mlir::BlockAndValueMapping bvm;
     for (auto item : llvm::zip(reduce.body().front().getArguments(),
@@ -278,9 +352,9 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
   }
 };
 
-void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<RemoveCopyInReduceBody>(context);
+  results.add<RemoveCopyInReduceBody>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -288,7 +362,8 @@ void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 //===----------------------------------------------------------------------===//
 
 // For reduce-window, all `inputs` need to have compatible shapes.
-static LogicalResult Verify(ReduceWindowOp op) {
+LogicalResult ReduceWindowOp::verify() {
+  ReduceWindowOp op = *this;
   if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
     return op.emitOpError() << "requires same shape for all operands";
   return success();
@@ -314,15 +389,6 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
 }
 
 Region& WhileOp::getLoopBody() { return body(); }
-
-bool WhileOp::isDefinedOutsideOfLoop(Value value) {
-  return !body().isAncestor(value.getParentRegion());
-}
-
-LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
-  for (auto* op : ops) op->moveBefore(*this);
-  return success();
-}
 
 // suppress warning.
 

@@ -438,6 +438,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -839,6 +840,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -38,7 +39,7 @@ constexpr char kReplicateSharding[] = "";
 struct TPUResourceReadsWritesPartitioningPass
     : public TF::TPUResourceReadsWritesPartitioningPassBase<
           TPUResourceReadsWritesPartitioningPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 bool AllResourceTypesHaveSubtypes(TypeRange resources) {
@@ -139,9 +140,9 @@ void PartitionResourceReadsWrites(tf_device::ClusterFuncOp cluster_func) {
   }
 }
 
-void TPUResourceReadsWritesPartitioningPass::runOnFunction() {
+void TPUResourceReadsWritesPartitioningPass::runOnOperation() {
   llvm::SmallVector<tf_device::ClusterFuncOp, 4> cluster_funcs;
-  getFunction()->walk([&cluster_funcs](tf_device::ClusterFuncOp cluster_func) {
+  getOperation()->walk([&cluster_funcs](tf_device::ClusterFuncOp cluster_func) {
     cluster_funcs.push_back(cluster_func);
   });
   for (tf_device::ClusterFuncOp cluster_func : cluster_funcs)
@@ -150,7 +151,7 @@ void TPUResourceReadsWritesPartitioningPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUResourceReadsWritesPartitioningPass() {
   return std::make_unique<TPUResourceReadsWritesPartitioningPass>();
 }

@@ -23,11 +23,11 @@ namespace tensorflow {
 namespace {
 
 const char* kSoftmaxIR = R"(
-  func @main(%input: {0}) -> {0} {
+  func.func @main(%input: {0}) -> {0} {
     %result = "tf.Softmax"(%input)
       {{device = "/job:localhost/replica:0/task:0/device:CPU:0"}
       : ({0}) -> {0}
-    return %result : {0}
+    func.return %result : {0}
   }
 )";
 
@@ -53,17 +53,11 @@ static void ComputeSoftmax(const Eigen::DefaultDevice& d, InT logits,
 
 // These arrays are used to reduce along the class dimension, and broadcast
 // the resulting value to all classes.
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  Eigen::DSizes<int, 1> along_class(kClassDim);
-  Eigen::DSizes<int, 2> batch_by_one(batch_size, 1);
-  Eigen::DSizes<int, 2> one_by_class(1, num_classes);
-#else
   Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
   Eigen::IndexList<int, Eigen::type2index<1> > batch_by_one;
   batch_by_one.set(0, batch_size);
   Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
   one_by_class.set(1, num_classes);
-#endif
   // shifted_logits = logits - max(logits along classes);
   auto shifted_logits = (logits - logits.maximum(along_class)
                                       .eval()

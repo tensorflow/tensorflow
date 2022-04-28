@@ -16,7 +16,7 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def LinalgTrivialBufferForwarding
-    : FunctionPass<"tf-jitrt-linalg-trivial-buffer-forwarding"> {
+    : Pass<"tf-jitrt-linalg-trivial-buffer-forwarding", "mlir::func::FuncOp"> {
   let summary = "Trivial input to output buffer forwarding for linalg.generic"
                 " operations";
   let constructor = "tensorflow::CreateLinalgTrivialBufferForwardingPass()";
@@ -38,25 +38,28 @@ def LinalgTrivialBufferForwarding
 }
 
 def LinalgTrivialCopyRemoval
-    : FunctionPass<"tf-jitrt-linalg-trivial-copy-removal"> {
-  let summary = "Trivial removal of linalg.copy operations";
+    : Pass<"tf-jitrt-linalg-trivial-copy-removal", "mlir::func::FuncOp"> {
+  let summary = "Trivial removal of memref.copy operations";
   let constructor = "tensorflow::CreateLinalgTrivialCopyRemovalPass()";
   let description = [{
     A simple pass that replaces patterns of the form
 
     %1 = memref.alloc() : memref<1x1xf32>
-    linalg.copy(%0, %1) : memref<1x1xf32>, memref<1x1xf32>
+    memref.copy(%0, %1) : memref<1x1xf32>, memref<1x1xf32>
     memref.dealloc %0 : memref<1x1xf32>
 
     by replacing uses of %1 with %0 and dropping the copy.
   }];
 }
 
-def TileCWise : FunctionPass<"tf-jitrt-tile-cwise"> {
-  let summary = "Tile elementwise ops on tensors";
+def TileCWise : Pass<"tf-jitrt-tile-cwise", "mlir::func::FuncOp"> {
+  let summary = "Tile cwise linalg.generic on tensors.";
   let constructor = "tensorflow::CreateTileCWisePass()";
 
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
 
   let options = [
     Option<"cwise_tile_size", "cwise-tile-size",
@@ -65,18 +68,36 @@ def TileCWise : FunctionPass<"tf-jitrt-tile-cwise"> {
   ];
 }
 
-def PeelTiledLoops : FunctionPass<"tf-jitrt-peel-tiled-loops"> {
-  let summary = "Optimize away padding in tiled loops";
-  let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
+def TileFill : Pass<"tf-jitrt-tile-fill", "mlir::func::FuncOp"> {
+  let summary = "Tile linalg.fill on tensors";
+  let constructor = "tensorflow::CreateTileFillPass()";
+
   let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
+
+  let options = [
+    Option<"cwise_tile_size", "cwise-tile-size",
+           "int64_t", /*default=*/"8",
+           "Tile size for the innermost dimension of an elementwise op.">,
   ];
 }
 
-def TileReduction : FunctionPass<"tf-jitrt-tile-reduction"> {
+def PeelTiledLoops : Pass<"tf-jitrt-peel-tiled-loops", "mlir::func::FuncOp"> {
+  let summary = "Optimize away padding in tiled loops";
+  let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
+}
+
+def TileReduction : Pass<"tf-jitrt-tile-reduction", "mlir::func::FuncOp"> {
   let summary = "Tile and fuse linalg.generic reduction on tensors.";
   let constructor = "tensorflow::CreateTileReductionPass()";
   let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
     "mlir::linalg::LinalgDialect",
     "mlir::memref::MemRefDialect",
     "mlir::scf::SCFDialect"
@@ -93,16 +114,18 @@ def TileReduction : FunctionPass<"tf-jitrt-tile-reduction"> {
     Option<"reduction_1d_tile_size", "reduction-1d-tile-size",
            "int64_t", /*default=*/"32", "Tile size for a 1D reduction.">,
     ListOption<"reduction_2d_tile_sizes", "reduction-2d-tile-sizes", "int64_t",
-               "Tile sizes for a 2D reduction.",
-               "llvm::cl::MiscFlags::CommaSeparated">,
+               "Tile sizes for a 2D reduction.">,
   ];
 }
 
 def FuseFillIntoTiledReduction
-    : FunctionPass<"tf-jitrt-fuse-fill-into-tiled-reduction"> {
+    : Pass<"tf-jitrt-fuse-fill-into-tiled-reduction", "mlir::func::FuncOp"> {
   let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
   let constructor = "tensorflow::CreateFuseFillIntoTiledReductionPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
 
   let description = [{
     Fuses `linalg.fill` producers of output tensor arguments into
@@ -110,7 +133,7 @@ def FuseFillIntoTiledReduction
   }];
 }
 
-def Fission : FunctionPass<"tf-jitrt-fission"> {
+def Fission : Pass<"tf-jitrt-fission", "mlir::func::FuncOp"> {
   let summary = "Split _Fused Tensorflow kernels into primitives";
   let constructor = "tensorflow::CreateFissionPass()";
   let dependentDialects = [
@@ -118,7 +141,7 @@ def Fission : FunctionPass<"tf-jitrt-fission"> {
   ];
 }
 
-def Fusion : FunctionPass<"tf-jitrt-fusion"> {
+def Fusion : Pass<"tf-jitrt-fusion", "mlir::func::FuncOp"> {
   let summary = "Fuse Linalg generic operations on Tensors";
   let constructor = "tensorflow::CreateFusionPass()";
   let description = [{
@@ -140,12 +163,11 @@ def JitRtLegalizeI1Types
   let dependentDialects = [
     "mlir::TF::TensorFlowDialect",
     "mlir::mhlo::MhloDialect",
-    "mlir::StandardOpsDialect",
   ];
 }
 
 def SymbolicShapeOptimization
-    : FunctionPass<"tf-jitrt-symbolic-shape-optimization"> {
+    : Pass<"tf-jitrt-symbolic-shape-optimization", "mlir::func::FuncOp"> {
   let summary = "Optimizes broadcasts based on the symbolic shapes";
   let constructor = "tensorflow::CreateSymbolicShapeOptimizationPass()";
   let description = [{
@@ -167,7 +189,7 @@ def SymbolicShapeOptimization
   ];
 }
 
-def Clustering : FunctionPass<"tf-jitrt-clustering"> {
+def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
   let summary = "Creates `tf_device.cluster` operations according to the TF "
                 "JitRt clustering policy";
 
@@ -184,32 +206,49 @@ def Clustering : FunctionPass<"tf-jitrt-clustering"> {
                "Explicitly allow operations for clustering. Only operations in "
                "this list will be passed to the TF->JitRt clustering policy. "
                "Alternatively use 'tier1', ..., 'all' to allow clustering for "
-               "all operations included in the given clustering tier.",
-               "llvm::cl::MiscFlags::CommaSeparated">
+               "all operations included in the given clustering tier.">
   ];
 }
 
-def VectorizeTiledOps : FunctionPass<"tf-jitrt-vectorize-tiled-ops"> {
+def VectorizeTiledOps : Pass<"tf-jitrt-vectorize-tiled-ops", "mlir::func::FuncOp"> {
   let summary = "Vectorize tiled Linalg ops inside `tiled_loop`";
   let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
+def TileTranspose : Pass<"tf-jitrt-tile-transpose", "mlir::func::FuncOp"> {
+  let summary = "Tile transpose operations";
+  let constructor = "tensorflow::CreateTileTransposePass()";
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
+}
+
+def LowerTranspose : Pass<"tf-jitrt-lower-vector-transpose", "mlir::func::FuncOp"> {
+  let summary = "Lower vector transpose operations";
+  let constructor = "tensorflow::CreateLowerVectorTransposePass()";
+  let dependentDialects = [
+    "mlir::vector::VectorDialect",
+    "mlir::LLVM::LLVMDialect"
+  ];
+}
+
 def RewriteVectorMultiReductionPass :
-    FunctionPass<"tf-jitrt-rewrite-vector-multi-reduction"> {
+    Pass<"tf-jitrt-rewrite-vector-multi-reduction", "mlir::func::FuncOp"> {
   let summary = "Convert `vector.multi_reduction` into `vector.reduction` ops.";
   let constructor = "tensorflow::createRewriteVectorMultiReductionPass()";
   let dependentDialects = ["mlir::memref::MemRefDialect"];
 }
 
 
-def DetensorizeLinalg : FunctionPass<"tf-jitrt-detensorize-linalg"> {
+def DetensorizeLinalg : Pass<"tf-jitrt-detensorize-linalg", "mlir::func::FuncOp"> {
   let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
   let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
-def MathApproximation : FunctionPass<"tf-jitrt-math-approximation"> {
+def MathApproximation : Pass<"tf-jitrt-math-approximation", "mlir::func::FuncOp"> {
   let summary = "Approximate math operations with an implementation meant to "
                 "match Eigen's results. This is a useful property to have when "
                 "comparing results from compiled TF code vs TF1 and TFRT, "
@@ -221,7 +260,6 @@ def MathApproximation : FunctionPass<"tf-jitrt-math-approximation"> {
   let options = [
    ListOption<"oplist", "oplist", "std::string",
               "List of math operations to be approximated. Use 'all' to select "
-              "all supported math operations.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "all supported math operations.">,
   ];
 }

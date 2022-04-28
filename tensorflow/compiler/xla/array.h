@@ -32,9 +32,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -515,6 +514,12 @@ class Array {
     int64_t old_num_elements = num_elements();
     sizes_ = std::vector<int64_t>(new_dimensions.begin(), new_dimensions.end());
     CHECK_EQ(num_elements(), old_num_elements);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Array& array) {
+    return H::combine(std::move(h), absl::MakeSpan(array.begin(), array.end()),
+                      array.dimensions());
   }
 
   // Returns a string representation of the array suitable for debugging.

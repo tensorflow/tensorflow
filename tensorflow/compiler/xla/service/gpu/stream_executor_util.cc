@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
+#include <random>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -61,25 +64,6 @@ int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
     }
   }
   return vals.size();
-}
-
-// Returns a mutex that can be used to lock the given stream executor.
-tensorflow::mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
-                   tensorflow::mutex>();
-
-  tensorflow::mutex_lock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-
-  return it->second;
 }
 
 }  // anonymous namespace
@@ -330,15 +314,23 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
   };
 }
 
-tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
-  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
-  return tensorflow::mutex_lock{mu};
-}
+// Returns a mutex that can be used to lock the given stream executor.
+absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
+  static absl::Mutex mu(absl::kConstInit);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
+                   absl::Mutex>();
 
-tensorflow::tf_shared_lock LockGpuShared(
-    const se::StreamExecutor* stream_exec) {
-  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
-  return tensorflow::tf_shared_lock{mu};
+  absl::MutexLock global_lock(&mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+
+  return it->second;
 }
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
@@ -357,14 +349,33 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   return std::move(kernel_base);
 }
 
+template <int n>
+static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
+    absl::Span<const se::DeviceMemoryBase> args) {
+  auto kernel_args = absl::make_unique<se::KernelArgsArray<n>>();
+  for (const se::DeviceMemoryBase& buf : args) {
+    kernel_args->add_device_memory_argument(buf);
+  }
+  return kernel_args;
+}
+
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
   static constexpr int kKernelArgsLimit = 1024;
-  auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (const se::DeviceMemoryBase& buf : args) {
-    kernel_args->add_device_memory_argument(buf);
+  std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
+  // The KernelArgsArray structure requires at a minimum 48 * args.size()
+  // bytes. It can be expensive to allocate, say, 48KiB, so we add
+  // specializations for smaller sizes. 64 arguments are likely to fit in a
+  // 4KiB page.
+  if (args.size() <= 64) {
+    kernel_args = MakeKernelArgs<64>(args);
+  } else if (args.size() <= 256) {
+    kernel_args = MakeKernelArgs<256>(args);
+  } else {
+    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args);
   }
+
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dims.block_counts();
   return stream->parent()->Launch(

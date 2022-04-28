@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -93,6 +93,9 @@ inline bool IsNonConstQuantizeOp(Operation* op) {
 class RaiseTargetSubgraphsPass
     : public mlir::PassWrapper<RaiseTargetSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseTargetSubgraphsPass)
+
  private:
   llvm::StringRef getArgument() const final {
     return "tfl-raise-target-subgraphs";
@@ -109,10 +112,10 @@ class RaiseTargetSubgraphsPass
   void ExtractSubgraphToFunc(Subgraph* subgraph, OpBuilder* builder,
                              ModuleOp module);
 
-  FuncOp BuildFuncOp(Subgraph* subgraph, OpBuilder* builder, ModuleOp module_op,
-                     SmallVector<Value, 4>* inputs,
-                     SmallVector<Value, 4>* outputs,
-                     InferenceDeviceType* inference_device_type);
+  func::FuncOp BuildFuncOp(Subgraph* subgraph, OpBuilder* builder,
+                           ModuleOp module_op, SmallVector<Value, 4>* inputs,
+                           SmallVector<Value, 4>* outputs,
+                           InferenceDeviceType* inference_device_type);
 
   int subgraph_count_ = 0;
 };
@@ -189,7 +192,7 @@ void GetFunctionName(const Subgraph& subgrpah, std::string* function_name,
       GetInferenceString(subgrpah.inference_device_type.inference_type));
 }
 
-FuncOp RaiseTargetSubgraphsPass::BuildFuncOp(
+func::FuncOp RaiseTargetSubgraphsPass::BuildFuncOp(
     Subgraph* subgraph, OpBuilder* builder, ModuleOp module_op,
     SmallVector<Value, 4>* inputs, SmallVector<Value, 4>* outputs,
     InferenceDeviceType* inference_device_type) {
@@ -222,8 +225,9 @@ FuncOp RaiseTargetSubgraphsPass::BuildFuncOp(
                           subgraph->inference_device_type.inference_type))));
   *inference_device_type = subgraph->inference_device_type;
 
-  FuncOp new_func = FuncOp::create(builder->getUnknownLoc(), function_name,
-                                   function_type, llvm::makeArrayRef(attrs));
+  func::FuncOp new_func =
+      func::FuncOp::create(builder->getUnknownLoc(), function_name,
+                           function_type, llvm::makeArrayRef(attrs));
   new_func.setPrivate();
 
   new_func.addEntryBlock();
@@ -270,7 +274,8 @@ FuncOp RaiseTargetSubgraphsPass::BuildFuncOp(
     auto cloned_output = output_cloned_op_output_mapping.find(output)->second;
     final_outputs.push_back(cloned_output);
   }
-  function_builder.create<mlir::ReturnOp>(new_func.getLoc(), final_outputs);
+  function_builder.create<mlir::func::ReturnOp>(new_func.getLoc(),
+                                                final_outputs);
 
   module_op.push_back(new_func);
   return new_func;
@@ -283,8 +288,8 @@ void RaiseTargetSubgraphsPass::ExtractSubgraphToFunc(Subgraph* subgraph,
   SmallVector<Value, 4> func_outputs;
 
   InferenceDeviceType inference_device_type;
-  FuncOp func = BuildFuncOp(subgraph, builder, module, &func_inputs,
-                            &func_outputs, &inference_device_type);
+  func::FuncOp func = BuildFuncOp(subgraph, builder, module, &func_inputs,
+                                  &func_outputs, &inference_device_type);
 
   // We just use the location of the last ops in the subgraph as the location
   // for the call_op.
@@ -293,7 +298,7 @@ void RaiseTargetSubgraphsPass::ExtractSubgraphToFunc(Subgraph* subgraph,
   // TODO(renjieliu): we should add func attributes to the call op.
   builder->setInsertionPoint(last_output);
   auto call_op =
-      builder->create<CallOp>(last_output->getLoc(), func, func_inputs);
+      builder->create<func::CallOp>(last_output->getLoc(), func, func_inputs);
 
   auto interface_name = GetInterFaceName(func);
 
@@ -338,7 +343,7 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block* block,
   int current_subgraph_id = -1;
   for (auto& op : *block) {
     if (IsNonConstQuantizeOp(&op) && !IsTerminatorOp(&op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       auto current_device_type = GetInferenceDeviceTypeForOp(&op);
       if (!(current_device_type.hasValue() &&
             current_device_type == previous_device_type)) {
@@ -362,7 +367,7 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block* block,
 
 void RaiseTargetSubgraphsPass::runOnOperation() {
   auto module = getOperation();
-  SmallVector<FuncOp, 16> funcs(module.getOps<FuncOp>());
+  SmallVector<func::FuncOp, 16> funcs(module.getOps<func::FuncOp>());
   for (auto func : funcs) {
     for (auto& block : func) {
       auto builder = OpBuilder::atBlockBegin(&block);

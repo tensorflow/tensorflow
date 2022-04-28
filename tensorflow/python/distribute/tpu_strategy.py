@@ -60,6 +60,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
@@ -425,6 +426,17 @@ class TPUStrategyV2(distribute_lib.Strategy):
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
+
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    `tf.distribute.TPUStrategy` provides the associated
+    `tf.distribute.cluster_resolver.ClusterResolver`. If the user provides one
+    in `__init__`, that instance is returned; if the user does not, a default
+    `tf.distribute.cluster_resolver.TPUClusterResolver` is provided.
+    """
+    return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
 
   def experimental_assign_to_logical_device(self, tensor, logical_device_id):
     """Adds annotation that `tensor` will be assigned to a logical device.
@@ -1330,7 +1342,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            f"`reduce_op`={reduce_op} is not supported. Currently we only "
             "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
@@ -1488,6 +1500,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   @property
   def parameter_devices(self):
     return self.worker_devices
+
+  @property
+  def tpu_hardware_feature(self):
+    """Return the `tf.tpu.experimental.HardwareFeature` class."""
+    return tpu_hardware_feature.HardwareFeature(
+        self._tpu_cluster_resolver.tpu_hardware_feature)
 
   def non_slot_devices(self, var_list):
     return self._host_device

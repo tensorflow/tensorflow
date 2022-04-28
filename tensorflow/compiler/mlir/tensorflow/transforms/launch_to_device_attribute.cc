@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -31,7 +32,7 @@ constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
     : public LaunchToDeviceAttributePassBase<LaunchToDeviceAttributePass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Assign all ops in region with specified device from launch.
@@ -90,7 +91,7 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   return success();
 }
 
-void LaunchToDeviceAttributePass::runOnFunction() {
+void LaunchToDeviceAttributePass::runOnOperation() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";
@@ -109,7 +110,8 @@ void LaunchToDeviceAttributePass::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

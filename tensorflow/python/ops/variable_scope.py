@@ -1436,9 +1436,15 @@ class _VariableScopeStore(threading.local):
       self.variable_scopes_count[scope_name] = 1
 
   def close_variable_subscopes(self, scope_name):
-    for k in list(self.variable_scopes_count.keys()):
-      if scope_name is None or k.startswith(scope_name + "/"):
+    if scope_name is None:
+      for k in self.variable_scopes_count:
         self.variable_scopes_count[k] = 0
+    else:
+      startswith_check = scope_name + "/"
+      startswith_len = len(startswith_check)
+      for k in self.variable_scopes_count:
+        if k[:startswith_len] == startswith_check:
+          self.variable_scopes_count[k] = 0
 
   def variable_scope_count(self, scope_name):
     return self.variable_scopes_count.get(scope_name, 0)

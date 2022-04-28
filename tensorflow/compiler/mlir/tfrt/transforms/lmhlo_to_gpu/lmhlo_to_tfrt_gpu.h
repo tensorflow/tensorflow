@@ -25,6 +25,10 @@ void populateLmhloToTfrtGpuPasses(mlir::OpPassManager &pm);
 // Registers the LMHLO to TFRT pass.
 void registerLmhloToTfrtGpuPass();
 
+std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBranchPass();
+
+void registerConvertLmhloToGpuBranchPass();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_LMHLO_TO_TFRT_GPU_H_

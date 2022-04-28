@@ -9,6 +9,8 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -17,6 +19,7 @@ package(
 
 DEFAULT_COPTS = [
     "-Wno-shorten-64-to-32",
+    "-std=c++17",
 ]
 
 objc_library(
@@ -147,9 +150,11 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    features = ["-layering_check"],
     sdk_frameworks = ["Metal"],
     deps = [
         ":compute_task",
+        ":inference_context_cc_fbs",
         ":metal_device",
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:gpu_model",
@@ -169,6 +174,19 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/time",
+    ],
+)
+
+flatbuffer_cc_library(
+    name = "inference_context_cc_fbs",
+    srcs = ["inference_context.fbs"],
+    flatc_args = [
+        "--scoped-enums",
+        "-I " + workspace_root,
+    ],
+    includes = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs_includes",
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
     ],
 )
 

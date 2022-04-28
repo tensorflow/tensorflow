@@ -26,23 +26,27 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
@@ -58,6 +62,54 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+
+ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                            OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
+  Type type;
+  // If the operand list is in-between parentheses, then we have a generic form.
+  // (see the fallback in `printOneResultOp`).
+  SMLoc loc = parser.getCurrentLocation();
+  if (!parser.parseOptionalLParen()) {
+    if (parser.parseOperandList(ops) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) ||
+        parser.parseColon() || parser.parseType(type))
+      return failure();
+    auto fnType = type.dyn_cast<FunctionType>();
+    if (!fnType) {
+      parser.emitError(loc, "expected function type");
+      return failure();
+    }
+    if (parser.resolveOperands(ops, fnType.getInputs(), loc, result.operands))
+      return failure();
+    result.addTypes(fnType.getResults());
+    return success();
+  }
+  return failure(parser.parseOperandList(ops) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(ops, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+void printOneResultOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
+
+  // If not all the operand and result types are the same, just use the
+  // generic assembly form to avoid omitting information in printing.
+  auto resultType = op->getResult(0).getType();
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
+    p.printGenericOp(op, /*printOpName=*/false);
+    return;
+  }
+
+  p << ' ';
+  p.printOperands(op->getOperands());
+  p.printOptionalAttrDict(op->getAttrs());
+  // Now we can output only one type for all operands and the result.
+  p << " : " << resultType;
+}
 
 Operation *getDefiningBroadcastArgsOp(Value operand) {
   auto *defining_op = operand.getDefiningOp();
@@ -227,8 +279,9 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
   LogicalResult matchAndRewrite(ConcreteOpType op,
                                 PatternRewriter &rewriter) const override {
     if (EqualsZero(op.bias())) {
-      auto none_value = rewriter.create<mlir::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      auto none_value = rewriter.create<TFL::NoValueOp>(
+          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+          rewriter.getUnitAttr());
       op.biasMutable().assign(none_value);
     }
 
@@ -351,11 +404,14 @@ struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
   }
 };
 
-TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
-    : Dialect(/*name=*/"tfl", context, TypeID::get<TensorFlowLiteDialect>()) {
+void TFLDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
@@ -728,24 +784,6 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
   return success();
 }
 
-LogicalResult Verify(ConcatenationOp op) {
-  auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
-
-  // If the output type is unranked, there is nothing else to be verified.
-  if (!output_type) return success();
-
-  const int64_t axis = GetConcatenationOpAxis(op);
-  if (axis < 0 || axis >= output_type.getRank())
-    return op.emitOpError("concatenation dimension must be in [-rank, rank)");
-
-  SmallVector<TensorType, 4> operand_types;
-  for (Value operand : op.values())
-    operand_types.push_back(operand.getType().cast<TensorType>());
-
-  return VerifyConcatenationOpTypes(op.getOperation(), output_type,
-                                    operand_types, axis);
-}
-
 // Returns true when all operands are instances of DenseElementsAttr and the
 // output type has a static shape.
 bool IsConcatenationOpConstFoldable(ConcatenationOp op,
@@ -795,6 +833,25 @@ DenseElementsAttr ConstFoldConcatenateOpDense(ArrayRef<Attribute> operands,
 
 }  // end anonymous namespace
 
+LogicalResult ConcatenationOp::verify() {
+  ConcatenationOp op = *this;
+  auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
+
+  // If the output type is unranked, there is nothing else to be verified.
+  if (!output_type) return success();
+
+  const int64_t axis = GetConcatenationOpAxis(op);
+  if (axis < 0 || axis >= output_type.getRank())
+    return op.emitOpError("concatenation dimension must be in [-rank, rank)");
+
+  SmallVector<TensorType, 4> operand_types;
+  for (Value operand : op.values())
+    operand_types.push_back(operand.getType().cast<TensorType>());
+
+  return VerifyConcatenationOpTypes(op.getOperation(), output_type,
+                                    operand_types, axis);
+}
+
 OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() == "NONE") {
     if (auto output_type = output().getType().dyn_cast<RankedTensorType>()) {
@@ -835,7 +892,8 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 // CustomOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(CustomOp op) {
+mlir::LogicalResult CustomOp::verify() {
+  CustomOp op = *this;
   OpaqueElementsAttr opaque_attr =
       op.custom_option().cast<OpaqueElementsAttr>();
   if (!opaque_attr.getType().hasStaticShape())
@@ -878,7 +936,8 @@ bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
 // Gather op
 //===----------------------------------------------------------------------===//
 
-LogicalResult Verify(GatherOp op) {
+LogicalResult GatherOp::verify() {
+  GatherOp op = *this;
   ShapedType params_type = op.params().getType().cast<ShapedType>();
   // TFLite gather kernel supports 1D string input only.
   if (params_type.getElementType().isa<mlir::TF::StringType>()) {
@@ -915,16 +974,17 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
   }
 };
 
-void BroadcastToOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ConvertBroadcastToReshape>(context);
+void BroadcastToOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
+  results.add<ConvertBroadcastToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Verify(FullyConnectedOp op) {
+LogicalResult FullyConnectedOp::verify() {
+  FullyConnectedOp op = *this;
   ShapedType input_type = op.input().getType().cast<ShapedType>();
   ShapedType filter_type = op.filter().getType().cast<ShapedType>();
   if (filter_type.hasRank() && filter_type.getRank() != 2) {
@@ -1068,9 +1128,9 @@ LogicalResult FullyConnectedOp::fold(ArrayRef<Attribute> operands,
   return success();
 }
 
-void FullyConnectedOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
+void FullyConnectedOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
+  results.add<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
 }
 
 int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
@@ -1086,11 +1146,11 @@ int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
 // Conv2DOp
 //===----------------------------------------------------------------------===//
 
-void Conv2DOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void Conv2DOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
-  // results.insert<RemoveOptionalZeroBias<Conv2DOp>>(context);
+  // results.add<RemoveOptionalZeroBias<Conv2DOp>>(context);
 }
 
 static LogicalResult ComputeConvWindowedOutputSize(
@@ -1208,11 +1268,11 @@ int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
 // DepthwiseConv2DO
 //===----------------------------------------------------------------------===//
 
-void DepthwiseConv2DOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void DepthwiseConv2DOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
-  // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
+  // results.add<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
 }
 
 int64_t DepthwiseConv2DOp::GetArithmeticCount(Operation *op) {
@@ -1313,7 +1373,8 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
 // ScatterNdOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ScatterNdOp op) {
+mlir::LogicalResult ScatterNdOp::verify() {
+  ScatterNdOp op = *this;
   auto indices = op.indices();
   auto updates = op.updates();
   auto shape = op.shape();
@@ -1466,7 +1527,8 @@ int64_t DivOp::GetArithmeticCount(Operation *op) {
 
 // TODO(b/133486129): Implement shape inference for pack
 
-static LogicalResult Verify(PackOp op) {
+mlir::LogicalResult PackOp::verify() {
+  PackOp op = *this;
   // TODO(antiagainst): Implement other checks as in
   // tensorflow/lite/kernels/pack.cc
 
@@ -1502,7 +1564,8 @@ static LogicalResult Verify(PackOp op) {
 // PReluOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(PReluOp op) {
+mlir::LogicalResult PReluOp::verify() {
+  PReluOp op = *this;
   auto input_type = op.input().getType().cast<ShapedType>();
   auto alpha_type = op.alpha().getType().cast<ShapedType>();
   auto output_type = op.output().getType().cast<ShapedType>();
@@ -1648,9 +1711,9 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   return nullptr;
 }
 
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.insert<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
+  results.add<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
 }
 
 using ReshapeErrorHandler =
@@ -1749,7 +1812,8 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   return success();
 }
 
-static LogicalResult Verify(ReshapeOp op) {
+mlir::LogicalResult ReshapeOp::verify() {
+  ReshapeOp op = *this;
   auto error_handler = [&op](const llvm::Twine &message) -> LogicalResult {
     return op.emitOpError() << message;
   };
@@ -1776,6 +1840,39 @@ static LogicalResult Verify(ReshapeOp op) {
            << " to be cast compatible with expected type " << expected_ty;
 
   return success();
+}
+
+LogicalResult ReshapeOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  ReshapeOpAdaptor op(operands, attr);
+  const Value input = op.input();
+  const Value shape = op.shape();
+
+  auto error_handler = [&](const llvm::Twine &message) -> LogicalResult {
+    // A dummy error handler.
+    // Errors when computing the output shape will be raised in
+    // ReshapeOp::verify call.
+    return failure();
+  };
+  TensorType output_type;
+  if (GetReshapeOutputType(input, shape, error_handler, output_type)
+          .succeeded()) {
+    inferredReturnTypes.assign({output_type});
+    return success();
+  }
+  Type result_type;
+  result_type = UnrankedTensorType::get(
+      input.getType().cast<ShapedType>().getElementType());
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool ReshapeOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1866,16 +1963,17 @@ struct ReplacePackWithReshape : public RewritePattern {
   }
 };
 
-void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void PackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
+  results.add<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(SliceOp op) {
+mlir::LogicalResult SliceOp::verify() {
+  SliceOp op = *this;
   auto input_type = op.input().getType().cast<ShapedType>();
   auto begin_type = op.begin().getType().cast<ShapedType>();
   auto size_type = op.size().getType().cast<ShapedType>();
@@ -2000,9 +2098,9 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
   }
 };
 
-void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<CastDonwInt64BeginEndToInt32>(context);
+  results.add<CastDonwInt64BeginEndToInt32>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2105,9 +2203,9 @@ struct DropFakeQuant : public RewritePattern {
 };
 }  // end anonymous namespace
 
-void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<DropFakeQuant>(context);
+  results.add<DropFakeQuant>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2224,7 +2322,8 @@ static LogicalResult VerifySplitOpOutputTypes(
   return success();
 }
 
-static LogicalResult Verify(SplitOp op) {
+mlir::LogicalResult SplitOp::verify() {
+  SplitOp op = *this;
   int64_t num_splits = op.num_splits();
   if (op.getNumResults() != num_splits)
     return op.emitOpError("output count should match 'num_splits' attribute");
@@ -2260,7 +2359,8 @@ static LogicalResult Verify(SplitOp op) {
       [expected_output_type](int64_t) { return expected_output_type; });
 }
 
-static LogicalResult Verify(SplitVOp op) {
+mlir::LogicalResult SplitVOp::verify() {
+  SplitVOp op = *this;
   int64_t num_splits = op.num_splits();
   if (op.getNumResults() != num_splits)
     return op.emitOpError("output count should match 'num_splits' attribute");
@@ -2357,7 +2457,8 @@ static LogicalResult Verify(SplitVOp op) {
 // LSTMOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(LSTMOp op) {
+mlir::LogicalResult LSTMOp::verify() {
+  LSTMOp op = *this;
   auto operands = op.GetStatefulOperands();
   if (operands.size() != 2 || operands[0] != 18 || operands[1] != 19) {
     return op.emitOpError("LSTMOp expected to have two stateful operands");
@@ -2431,14 +2532,16 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
   LogicalResult matchAndRewrite(LSTMOp op,
                                 PatternRewriter &rewriter) const override {
     if (EqualsZero(op.input_gate_bias())) {
-      auto none_value = rewriter.create<mlir::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      auto none_value = rewriter.create<TFL::NoValueOp>(
+          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+          rewriter.getUnitAttr());
       op.input_gate_biasMutable().assign(none_value);
     }
 
     if (EqualsZero(op.projection_bias())) {
-      auto none_value = rewriter.create<mlir::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      auto none_value = rewriter.create<TFL::NoValueOp>(
+          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+          rewriter.getUnitAttr());
       op.projection_biasMutable().assign(none_value);
     }
 
@@ -2448,16 +2551,17 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
 
 }  // namespace
 
-void LSTMOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void LSTMOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<RemoveLSTMOpZeroBias>(context);
+  results.add<RemoveLSTMOpZeroBias>(context);
 }
 
 //===----------------------------------------------------------------------===//
 // UnidirectionalSequenceLSTMOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
+mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
+  UnidirectionalSequenceLSTMOp op = *this;
   auto operands = op.GetStatefulOperands();
   if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
     return success();
@@ -2532,7 +2636,8 @@ bool UnidirectionalSequenceLSTMOp::isCompatibleReturnTypes(TypeRange lhs,
 // BidirectionalSequenceLSTMOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(BidirectionalSequenceLSTMOp op) {
+mlir::LogicalResult BidirectionalSequenceLSTMOp::verify() {
+  BidirectionalSequenceLSTMOp op = *this;
   auto operands = op.GetStatefulOperands();
   if (operands.size() == 4 && operands[0] == 35 && operands[1] == 36 &&
       operands[2] == 37 && operands[3] == 38) {
@@ -2546,7 +2651,8 @@ static LogicalResult Verify(BidirectionalSequenceLSTMOp op) {
 // UnidirectionalSequenceRNNOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(UnidirectionalSequenceRNNOp op) {
+mlir::LogicalResult UnidirectionalSequenceRNNOp::verify() {
+  UnidirectionalSequenceRNNOp op = *this;
   auto operands = op.GetStatefulOperands();
   if (operands.size() == 1 && operands[0] == 4) {
     return success();
@@ -2559,7 +2665,8 @@ static LogicalResult Verify(UnidirectionalSequenceRNNOp op) {
 // SvdfOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(SVDFOp op) {
+mlir::LogicalResult SVDFOp::verify() {
+  SVDFOp op = *this;
   auto operands = op.GetStatefulOperands();
   if (operands.size() == 1 && operands[0] == 4) {
     return success();
@@ -2778,9 +2885,10 @@ struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
       rewriter.replaceOpWithNewOp<arith::ConstantOp>(const_op,
                                                      const_op.value());
       return success();
-    } else if (ConstantOp::isBuildableWith(const_op.value(),
-                                           const_op.getType())) {
-      rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+    } else if (TFL::NoValueOp::isBuildableWith(const_op.value(),
+                                               const_op.getType())) {
+      rewriter.replaceOpWithNewOp<NoValueOp>(const_op, rewriter.getNoneType(),
+                                             const_op.value().cast<UnitAttr>());
       return success();
     }
     return failure();
@@ -2789,9 +2897,9 @@ struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
 
 }  // namespace
 
-void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ConstOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<FoldPseudoConstOp>(context);
+  results.add<FoldPseudoConstOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2977,7 +3085,8 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
 // TransposeConvOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(TransposeConvOp op) {
+mlir::LogicalResult TransposeConvOp::verify() {
+  TransposeConvOp op = *this;
   ShapedType output_type = op.output().getType().cast<ShapedType>();
   ShapedType output_shape_type = op.output_shape().getType().cast<ShapedType>();
   if (output_type.hasRank() && output_shape_type.hasStaticShape()) {
@@ -3033,7 +3142,8 @@ int64_t TransposeConvOp::GetArithmeticCount(Operation *op) {
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Verify(StridedSliceOp op) {
+LogicalResult StridedSliceOp::verify() {
+  StridedSliceOp op = *this;
   auto ranked_input_type = op.input().getType().dyn_cast<RankedTensorType>();
 
   // If input is unranked, there is nothing else to be verified.
@@ -3190,7 +3300,8 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   return DenseElementsAttr::get(result_type, new_values);
 }
 
-static LogicalResult Verify(TransposeOp op) {
+mlir::LogicalResult TransposeOp::verify() {
+  TransposeOp op = *this;
   auto input_type = op.input().getType().cast<ShapedType>();
   auto perm_type = op.perm().getType().cast<ShapedType>();
   auto output_type = op.output().getType().cast<ShapedType>();
@@ -3366,9 +3477,9 @@ struct PolyCallResultOperandsMatchAndImplicitCapture
 
 }  // namespace
 
-void PolyCallOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void PolyCallOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<PolyCallResultOperandsMatchAndImplicitCapture>(context);
+  results.add<PolyCallResultOperandsMatchAndImplicitCapture>(context);
 }
 
 void PolyCallOp::getSuccessorRegions(
@@ -3381,7 +3492,8 @@ void PolyCallOp::getSuccessorRegions(
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Verify(WhileOp op) {
+LogicalResult WhileOp::verify() {
+  WhileOp op = *this;
   if (op.getNumOperands() != op.getNumResults())
     return op.emitOpError(llvm::formatv(
         "number of operands does not match number of results ({0} != {1})",
@@ -3517,9 +3629,9 @@ struct WhileResultOperandsMatchAndImplicitCapture
 
 }  // namespace
 
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void WhileOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<WhileResultOperandsMatchAndImplicitCapture>(context);
+  results.add<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
 Region &WhileOp::getLoopBody() { return body(); }
@@ -3528,16 +3640,6 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other
   // than constant hoisting initially.
   return false;
-}
-
-LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
-  if (ops.empty()) return success();
-
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3686,6 +3788,18 @@ OpFoldResult PadV2Op::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// NoValueOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult NoValueOp::fold(ArrayRef<Attribute> operands) {
+  return valueAttr();
+}
+
+bool NoValueOp::isBuildableWith(Attribute value, Type type) {
+  return value.isa<UnitAttr>() && type.isa<NoneType>();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
@@ -3694,6 +3808,10 @@ OpFoldResult PadV2Op::fold(ArrayRef<Attribute> operands) {
 }  // namespace TFL
 }  // namespace mlir
 
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.cc.inc"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
 
@@ -3702,9 +3820,8 @@ namespace TFL {
 
 #include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
-Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
-                                                      Attribute value,
-                                                      Type type, Location loc) {
+Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
   // If this is an opaque elements attribute or the result type doesn't match
   // the attribute type, then generate a tfl.pseudo_const.
   if (value.isa<OpaqueElementsAttr>() ||
@@ -3712,8 +3829,8 @@ Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
-  if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type, value);
+  if (NoValueOp::isBuildableWith(value, type))
+    return builder.create<NoValueOp>(loc, type, value.cast<UnitAttr>());
   return nullptr;
 }
 

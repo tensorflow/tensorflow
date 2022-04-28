@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -58,6 +59,19 @@ def ragged_str():
       ['3', '1', '4', '1'],
       ['3', '1'],
       ['2', '1', '4', '1'],
+  ])
+
+
+def dense_str():
+  return constant_op.constant([
+      ['3', '1', '4', '1'],
+      ['1', '2', '4', '1'],
+      ['2', '3', '4', '1'],
+      ['7', '4', '4', '1'],
+      ['9', '5', '4', '1'],
+      ['6', '6', '4', '1'],
+      ['4', '7', '4', '1'],
+      ['5', '8', '4', '1'],
   ])
 
 
@@ -118,6 +132,27 @@ class RaggedFactoryOpsTest(test_util.TensorFlowTestCase,
 
     result = distributed_dataset_producer(t)
     self.assertAllEqual(self.evaluate(t[0]), self.evaluate(result[0]))
+
+  @parameterized.parameters(
+      (dense_str,),
+      # (ragged_str,),  # TODO(b/194439197) fix ragged tensor of string
+  )
+  def testIntStringWithDistributedDataset(self, string_factory):
+
+    @def_function.function
+    def distributed_dataset_producer(t):
+      strategy = mirrored_strategy.MirroredStrategy(['GPU:0', 'GPU:1'])
+      ragged_ds = dataset_ops.Dataset.from_tensor_slices(t).batch(2)
+      dist_dataset = strategy.experimental_distribute_dataset(ragged_ds)
+      ds = iter(dist_dataset)
+      return strategy.experimental_local_results(next(ds))[0]
+
+    ds_dict = {'int': ragged_int64(), 'str': string_factory()}
+    result = distributed_dataset_producer(ds_dict)
+    self.assertAllEqual(
+        self.evaluate(ds_dict['int'][0]), self.evaluate(result['int'][0]))
+    self.assertAllEqual(
+        self.evaluate(ds_dict['str'][0]), self.evaluate(result['str'][0]))
 
 
 if __name__ == '__main__':

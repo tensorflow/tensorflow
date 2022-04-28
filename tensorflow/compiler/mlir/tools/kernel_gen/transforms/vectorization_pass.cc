@@ -19,13 +19,13 @@ limitations under the License.
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -255,7 +255,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 // is determined by confirming all consumers of all aliases are only creating an
 // alias or writing data to an alias but never reading from or interacting with
 // the memref in other ways.
-void RemoveDeadMemrefCode(FuncOp func) {
+void RemoveDeadMemrefCode(func::FuncOp func) {
   BufferViewFlowAnalysis baa(func);
   llvm::SmallSet<Operation *, 8> to_remove;
 
@@ -266,8 +266,8 @@ void RemoveDeadMemrefCode(FuncOp func) {
     for (auto &alias : baa.resolve(op.getResult())) {
       for (auto user : alias.getUsers()) {
         if (!(isa<ViewLikeOpInterface>(user) ||
-              (isa<linalg::CopyOp>(user) &&
-               alias == cast<linalg::CopyOp>(user).output()) ||
+              (isa<memref::CopyOp>(user) &&
+               alias == cast<memref::CopyOp>(user).target()) ||
               (isa<linalg::FillOp>(user) &&
                alias == cast<linalg::FillOp>(user).output()))) {
           return;
@@ -292,12 +292,12 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                     scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     // This functions in 2 passes:
     // 1. Tile, promote, and vectorize to create elementwise operations on
     //    <(1x)*4xty> memrefs
     // 2. cast <(1x)*4xty> memrefs to <4xty>
-    auto f = getFunction();
+    auto f = getOperation();
 
     // Stage 1: Vectorize to form static shaped computations
     auto tiling_options =
@@ -335,13 +335,13 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                 .enableContractionLowering());
 
     // Created a nested OpPassManager, populate the strategy and run.
-    OpPassManager dynamicPM("builtin.func");
+    OpPassManager dynamicPM("func.func");
     strategy.configurePassPipeline(dynamicPM, f.getContext());
     if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
     auto ctx = f.getContext();
-    OwningRewritePatternList patterns(ctx);
+    RewritePatternSet patterns(ctx);
     mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
@@ -350,7 +350,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateVectorizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass() {
   return std::make_unique<VectorizationPass>();
 }
 
@@ -361,14 +361,14 @@ struct VectorizationCleanupPass
                     vector::VectorDialect>();
   }
 
-  void runOnFunction() override {
-    getFunction().walk([](scf::ForOp op) { SplitSCFForOp(op); });
+  void runOnOperation() override {
+    getOperation().walk([](scf::ForOp op) { SplitSCFForOp(op); });
 
-    RemoveDeadMemrefCode(getFunction());
+    RemoveDeadMemrefCode(getOperation());
   }
 };
 
-std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass() {
   return std::make_unique<VectorizationCleanupPass>();
 }
 

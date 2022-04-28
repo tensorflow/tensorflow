@@ -130,7 +130,7 @@ TEST(Conv3dOpModel, SimpleFloat32Test) {
   m.SetInput(CreateRangeVector<float>(32));
   m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
                1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({30, 6, 26, 10, 22, 14}));
@@ -144,7 +144,7 @@ TEST(Conv3dOpModel, PaddingValidTest) {
   m.SetInput(CreateRangeVector<float>(120));
   m.SetFilter({-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 1,  1, -1, -1,
                1,  1,  -1, 1,  -1, 1,  -1, 1,  -1, -1, -1, 1, -1, 1, 1,  1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 3, 4, 2));
   EXPECT_THAT(
@@ -164,7 +164,7 @@ TEST(Conv3dOpModel, PaddingSameTest) {
   m.SetInput(CreateRangeVector<float>(120));
   m.SetFilter({1,  -1, 1,  -1, 1,  -1, -1, 1, 1, -1, -1, 1, 1,  -1, -1, 1,
                -1, 1,  -1, 1,  -1, -1, -1, 1, 1, 1,  1,  1, -1, 1,  -1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 4, 5, 2));
   EXPECT_THAT(
@@ -192,7 +192,7 @@ TEST(Conv3dOpModel, StrideTest) {
   m.SetInput(CreateRangeVector<float>(96));
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
                1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1, 1, 2, 2));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({52, 8, 68, 8, 244, 8, 260, 8}));
@@ -207,7 +207,7 @@ TEST(Conv3dOpModel, StrideAndPaddingSameTest) {
   m.SetInput(CreateRangeVector<float>(96));
   m.SetFilter({-1, 1, -1, 1,  1,  1,  1,  1,  -1, 1, -1, -1, -1, 1,  1,  1,
                1,  1, -1, -1, -1, -1, -1, -1, 1,  1, 1,  -1, -1, -1, -1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1, 2, 2, 2));
   EXPECT_THAT(m.GetOutput(),
@@ -226,7 +226,7 @@ TEST(Conv3dOpModel, DilationTest) {
 
   m.SetInput(CreateRangeVector<float>(96));
   m.SetFilter(CreateRangeVector<float>(32));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1, 1, 3, 2));
   EXPECT_THAT(m.GetOutput(),
@@ -245,7 +245,7 @@ TEST(Conv3dOpModel, BiasTest) {
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
                1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
   m.SetBias({1, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1, 1, 2, 2));
   EXPECT_THAT(m.GetOutput(),
@@ -259,7 +259,7 @@ TEST(Conv3dOpModel, NoIm2ColTensorTest) {
 
   m.SetInput(CreateRangeVector<float>(32));
   m.SetFilter(CreateRangeVector<float>(16));
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 2, 4));
   EXPECT_THAT(

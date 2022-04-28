@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace cpu {
@@ -88,11 +87,11 @@ class XfeedQueueManager {
  private:
   const std::string queue_name_;
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
   // Condition variable that is signaled every time a buffer is
   // enqueued to an empty queue.
-  tensorflow::condition_variable cv_;
+  absl::CondVar cv_;
 
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.

@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +45,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.9.0'
+_VERSION = '2.10.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -76,17 +75,20 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 1.12',
+    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
+    # issue is resolved.
+    'flatbuffers >= 1.12, <2',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
-    'libclang >= 9.0.1',
+    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
+    'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
+    'packaging',
     'protobuf >= 3.9.2',
-    'setuptools < 60',  # TODO(b/211495558): Breaking change in v60 on distutils
+    'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
@@ -103,12 +105,11 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.7, < 2.8',
-                        'tb-nightly ~= 2.8.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.8.0rc0, < 2.9',
-                        'tf-estimator-nightly ~= 2.9.0.dev'),
-    standard_or_nightly('keras >= 2.8.0rc0, < 2.9',
-                        'keras-nightly ~= 2.9.0.dev'),
+    standard_or_nightly('tensorboard >= 2.8, < 2.9', 'tb-nightly ~= 2.9.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.9.0rc0, < 2.10',
+                        'tf-estimator-nightly ~= 2.10.0.dev'),
+    standard_or_nightly('keras >= 2.9.0rc0, < 2.10',
+                        'keras-nightly ~= 2.10.0.dev'),
 ]
 REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 
@@ -277,7 +278,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
-    long_description_content_type="text/markdown",
+    long_description_content_type='text/markdown',
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -302,6 +303,8 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
+    # Supported Python versions
+    python_requires='>=3.7',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',

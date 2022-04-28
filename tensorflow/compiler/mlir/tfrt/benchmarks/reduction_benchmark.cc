@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/reduction_benchmark.h"
-
-#include <string>
-
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
 namespace tensorflow {
@@ -27,7 +24,7 @@ using ::llvm::SmallVector;
 using ::llvm::StringRef;
 
 const char* kReductionIR = R"(
-  func @main(%input: {1}) -> {2} {
+  func.func @main(%input: {1}) -> {2} {
     %dim_to_reduce = "tf.Const"() {{
       value = {3} : {4},
       device = "/job:localhost/replica:0/task:0/device:CPU:0"
@@ -36,7 +33,7 @@ const char* kReductionIR = R"(
       keep_dims = false,
       device = "/job:localhost/replica:0/task:0/device:CPU:0"
     } : ({1}, {4}) -> {2}
-    return %result : {2}
+    func.return %result : {2}
   }
 )";
 
@@ -60,6 +57,25 @@ std::string GetReductionIR(StringRef op_name, ArrayRef<int32_t> input_shape,
       PrintTensorType(static_cast<int64_t>(dims_to_reduce.size()),
                       "i32")  // Dims to reduce type {4}
   );
+}
+
+std::string GetSumF32IR(llvm::ArrayRef<int32_t> input_shape,
+                        llvm::ArrayRef<bool> dynamic_dims,
+                        llvm::ArrayRef<int32_t> dims_to_reduce) {
+  return GetReductionIR("tf.Sum", input_shape, dynamic_dims, dims_to_reduce,
+                        "f32");
+}
+
+std::string GetMeanF32IR(llvm::ArrayRef<int32_t> input_shape,
+                         llvm::ArrayRef<bool> dynamic_dims,
+                         llvm::ArrayRef<int32_t> dims_to_reduce) {
+  return GetReductionIR("tf.Mean", input_shape, dynamic_dims, dims_to_reduce,
+                        "f32");
+}
+
+llvm::SmallVector<InputTensorSpec> GetInputSpec(
+    llvm::ArrayRef<ssize_t> input_shape) {
+  return {InputTensorSpec(DT_FLOAT, input_shape)};
 }
 
 }  // namespace tensorflow

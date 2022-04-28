@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TRANSFORMS_TAC_PASS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TRANSFORMS_TAC_PASS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tac_module.h"
@@ -32,7 +33,9 @@ template <typename T>
 class TacPass : public OperationPass<T> {
  public:
   using OperationPass<T>::OperationPass;
-  explicit TacPass(const TacModule* module) : module_(module) {}
+  explicit TacPass(const TacModule* module)
+      : OperationPass<T>::OperationPass(mlir::TypeID::get<T>()),
+        module_(module) {}
 
   ~TacPass() override {}
 
@@ -52,18 +55,18 @@ class TacPass : public OperationPass<T> {
 // When adding new Pass to TAC, users should use this class as the base class
 // as it provides access to the TAC module.
 template <typename T>
-class TacFunctionPass : public FunctionPass {
+class TacFunctionPass : public TacPass<func::FuncOp> {
  public:
-  // using FunctionPass::FunctionPass;
-  explicit TacFunctionPass(const TacModule* module)
-      : FunctionPass(mlir::TypeID::get<FuncOp>()), module_(module) {}
+  using TacPass<func::FuncOp>::TacPass;
 
   ~TacFunctionPass() override {}
 
-  const TargetHardware* GetTargetHardware(const std::string& hardware_name) {
-    return module_ != nullptr
-               ? module_->GetTargetHardware(hardware_name)
-               : mlir::TFL::tac::GetTargetHardware(hardware_name);
+  mlir::func::FuncOp getFunction() { return getOperation(); }
+
+  virtual void runOnFunction() = 0;
+
+  void runOnOperation() final {
+    if (!getFunction().isExternal()) runOnFunction();
   }
 
  protected:
@@ -74,8 +77,6 @@ class TacFunctionPass : public FunctionPass {
   std::unique_ptr<Pass> clonePass() const override {
     return std::make_unique<T>(*static_cast<const T*>(this));
   }
-
-  const TacModule* module_ = nullptr;  // Not owned.
 };
 
 }  // namespace tac

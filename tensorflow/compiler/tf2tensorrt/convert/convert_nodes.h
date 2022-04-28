@@ -46,6 +46,19 @@ namespace tensorrt {
 namespace convert {
 using ::stream_executor::port::StatusOr;
 
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
+  do {                                                               \
+    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
+                            " failed to add TRT layer, at: ", node); \
+  } while (0)
+
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
+  do {                                           \
+    if (ptr == nullptr) {                        \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
+    }                                            \
+  } while (0)
+
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -149,6 +162,9 @@ Status ConvertSegmentToGraphDef(
 // - convert_successfully: indicates whether the conversion to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
+// Note: When 'cluster' is not null, it contains the graph to be converted.
+//       We may perform additional optimizations to the graph before converting
+//       the graph.
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
@@ -158,7 +174,8 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision);
+    bool use_explicit_precision,
+    tensorflow::grappler::Cluster* cluster = nullptr);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -368,7 +385,8 @@ class Converter {
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(ITensorProxyPtr input, std::vector<int>* input_dims,
-                       OpConverterParams* params, ITensorProxyPtr* output);
+                       OpConverterParams* params, ITensorProxyPtr* output,
+                       absl::optional<int> op_instance = absl::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -490,27 +508,33 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
-// Map of all supported UnaryOperations
-const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
-// Map of all supported ActivationTypes
-const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
-// Map of all supported BinaryOperations
-const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
-BinaryOperationMap();
+template <typename T>
+using operationMap = std::unordered_map<std::string, T>;
+// Map of all supported UnaryOperations.
+typedef operationMap<nvinfer1::UnaryOperation> unaryOperationMap;
+const unaryOperationMap* UnaryOperationMap();
+const unaryOperationMap* UnaryBooleanOperationMap();
+// Map of all supported ActivationTypes.
+const operationMap<nvinfer1::ActivationType>* ActivationTypeMap();
+// Map of all supported BinaryOperations.
+typedef operationMap<nvinfer1::ElementWiseOperation> binaryOperationMap;
+const binaryOperationMap* BinaryOperationMap();
 
-constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
-    kBinaryOperations = {{
-        {"Add", nvinfer1::ElementWiseOperation::kSUM},
-        {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
-        {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-        {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-        {"Div", nvinfer1::ElementWiseOperation::kDIV},
-        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
-        {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-        {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-        {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-        {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-    }};
+template <typename T>
+absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
+  absl::InlinedVector<std::string, 10> result;
+  absl::c_transform(set, std::back_inserter(result),
+                    [](const auto x) { return x.first; });
+  return result;
+}
+
+// Adds a matrix multiplication operation to the TensorRT graph. The "params"
+// pointer is only used to access the TRT network builder. The inputs and
+// parameters for the op are fully specified by input_[a|b] and transpose_[a|b].
+StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
+                                            TRT_TensorOrWeights input_a,
+                                            TRT_TensorOrWeights input_b,
+                                            bool transpose_a, bool transpose_b);
 
 }  // namespace convert
 }  // namespace tensorrt

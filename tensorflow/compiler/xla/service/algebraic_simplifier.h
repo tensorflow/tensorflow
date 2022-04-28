@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <cstdint>
 #include <functional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -308,6 +310,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleNot(HloInstruction* logical_not) override;
 
+  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
+
   Status HandleOr(HloInstruction* logical_or) override;
 
   Status HandlePad(HloInstruction* pad) override;
@@ -350,6 +354,29 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   bool Run(HloComputation* computation,
            const AlgebraicSimplifierOptions& options,
            AlgebraicSimplifier* simplifier);
+
+  // Compute a function that maps from bitcasted dimensions to the resulting
+  // ones. Returns the function as a vector if successful; absl::optional
+  // otherwise.
+  static absl::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
+      const Shape& bitcast_shape, const Shape& operand_shape);
+  // Invert the directions of the given bitcast dimension map.
+  static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
+      const Shape& original_shape, const Shape& bitcast_shape,
+      const std::vector<std::vector<int64_t>>& original_map);
+
+  // Modify the layout dimensions of result_shape, so that it becomes the
+  // re-shaped result of applying bitcast to the original_shape, by using
+  // dim_map to re-shape layout dimensions of original_shape. Returns the
+  // result_shape with modified layout if the conversion succeeds; Returns
+  // absl::nullopt if fails.
+  static absl::optional<Shape> ReshapeLayoutDimensions(
+      const Shape& original_shape, const Shape& result_shape,
+      const std::vector<std::vector<int64_t>>& original_map,
+      const std::vector<std::vector<int64_t>>& result_map);
+
+  // Allow backend constraints on tiling etc. to invalidate optimizations.
+  virtual bool IsValidLayout(const Shape& shape) { return true; }
 
  private:
   // Removes degenerate dimension from dot.
@@ -398,11 +425,16 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   void ReplaceWithBitcast(HloInstruction* instruction,
                           HloInstruction* operand = nullptr);
 
+  // Change copy(bitcast...(copy)) into copy(bitcast) or bitcast(copy) so that
+  // the replicated copies are combined when allowed by layout/tiling assignment
+  // constraints.
+  bool SwapCopyBitcastCopy(HloInstruction* root_copy);
+
   // Replace old instruction with new instruction if old and new instructions
-  // have the same shape. Updates uses and root instruction. Returns whether a
-  // replacement was made.
-  bool ReplaceInstructionIfSameShape(HloInstruction* old_instruction,
-                                     HloInstruction* new_instruction);
+  // are compatible (have the same shape and replacement preserves sharding).
+  // Updates uses and root instruction. Returns whether a replacement was made.
+  bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
+                                      HloInstruction* new_instruction);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()
@@ -411,15 +443,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
 
-  // Returns whether it was possible to transform `root` to a clamp instruction.
-  // With min a minimum instruction, max a maximum instruction, min_operand a
-  // operand of min and max_operand a operand of max.
-  // Precondition: root is either a minimum or a maximum.
-  bool TransformToClampIfSameShape(HloInstruction* root, HloInstruction* min,
-                                   HloInstruction* min_operand,
-                                   HloInstruction* operand, HloInstruction* max,
-                                   HloInstruction* max_operand);
-
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.
   StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
@@ -427,9 +450,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
-      const HloInstruction& dot, HloInstruction* lhs,
-      int64_t lhs_contracting_dim, HloInstruction* rhs,
-      int64_t rhs_contracting_dim, bool swapped);
+      HloInstruction* dot, HloInstruction* lhs, int64_t lhs_contracting_dim,
+      HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped);
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 

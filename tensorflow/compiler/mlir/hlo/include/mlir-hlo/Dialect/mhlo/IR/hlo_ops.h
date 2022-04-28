@@ -15,12 +15,12 @@ limitations under the License.
 
 // This file defines the operations used in the MHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -37,9 +37,8 @@ limitations under the License.
 // clang-format off
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 // clang-format on
 
 namespace mlir {
@@ -85,6 +84,10 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
+// Returns true if the given types are the same, but while ignoring
+// any sparsity properties of tensor types.
+bool isSameTypesWithoutSparseEncoding(Type tp1, Type tp2);
+
 // Shape derivation function that computes the shape of the result based on an
 // operand. For a 2-dimensional input tensor, this produces IR of the form
 //
@@ -109,4 +112,4 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
-#endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H

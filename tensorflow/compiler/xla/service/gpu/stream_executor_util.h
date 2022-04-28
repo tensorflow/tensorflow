@@ -65,17 +65,12 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& output);
 
 // Generates and returns a unique lock per the provided executor.
-// Guarantees that blocks of code both holding a lock for the same provided
-// executor (as given by this function) will not be running concurrently.
+// Guarantees that blocks of code running for the same provided
+// executor will not be running concurrently if they lock the returned mutex.
 //
 // This is used to prevent other XLA instances from trying to autotune on a
 // device while another thread is using it.
-tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec);
-
-// Generates and returns a shared lock per the provided executor.
-//
-// Threads that call LockGpuShared() may execute concurrently with each other.
-tensorflow::tf_shared_lock LockGpuShared(const se::StreamExecutor* stream_exec);
+absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 
 // Creates a kernel with a provided name, based from provided PTX in ptx.
 // The kernel should be executed using the provided executor.

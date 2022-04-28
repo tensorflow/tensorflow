@@ -14,10 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/task_runner.h"
 
+#include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/logging_utils.h"
+#include "tensorflow/core/data/service/multi_trainer_cache.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -87,6 +94,10 @@ FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
+  return GetNext(result);
+}
+
+Status FirstComeFirstServedTaskRunner::GetNext(GetElementResult& result) {
   TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
   return Status::OK();
 }
@@ -132,6 +143,50 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
 void FirstComeFirstServedTaskRunner::Cancel() {
   VLOG(2) << "Cancelling tf.data service FCFS task.";
   buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
+}
+
+CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
+                                     size_t max_cache_size_bytes)
+    : fcfs_task_runner_(std::move(iterator)),
+      cache_(max_cache_size_bytes,
+             absl::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
+  LOG(INFO) << "Initialized tf.data service multi-trainer cache with "
+            << FormatBytes(max_cache_size_bytes) << " of memory.";
+}
+
+CachingTaskRunner::~CachingTaskRunner() { Cancel(); }
+
+Status CachingTaskRunner::GetNext(const GetElementRequest& req,
+                                  GetElementResult& result) {
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<const GetElementResult> element,
+                      cache_.Get(req.trainer_id()));
+  result = element->Copy();
+  return Status::OK();
+}
+
+CachingTaskRunner::GetElementResultSequence::GetElementResultSequence(
+    FirstComeFirstServedTaskRunner& fcfs_task_runner)
+    : fcfs_task_runner_(fcfs_task_runner) {}
+
+StatusOr<GetElementResult>
+CachingTaskRunner::GetElementResultSequence::GetNext() {
+  GetElementResult result;
+  TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));
+  return result;
+}
+
+size_t CachingTaskRunner::GetElementResultSequence::GetElementSizeBytes(
+    const GetElementResult& element) const {
+  return element.EstimatedMemoryUsageBytes();
+}
+
+void CachingTaskRunner::Cancel() {
+  VLOG(2) << "Cancelling tf.data service multi-trainer cache task.";
+  if (!cache_.IsCancelled()) {
+    cache_.Cancel(errors::Cancelled(
+        "tf.data service multi-trainer cache task is cancelled."));
+  }
+  fcfs_task_runner_.Cancel();
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(

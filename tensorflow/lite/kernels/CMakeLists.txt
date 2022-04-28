@@ -61,7 +61,6 @@ build_flatbuffers(
 )
 
 set(DELEGATE_PROVIDERS_SUPP
-  ${TFLITE_SOURCE_DIR}/delegates/external/external_delegate.cc
   ${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
@@ -252,8 +251,7 @@ set(TEST_WITH_EXTERNAL_MAIN_LIST
   pow_test.cc
   quant_basic_lstm_test.cc
   quantize_test.cc
-  random_standard_normal_test.cc
-  random_uniform_test.cc
+  random_ops_test.cc
   range_test.cc
   rank_test.cc
   reduce_test.cc

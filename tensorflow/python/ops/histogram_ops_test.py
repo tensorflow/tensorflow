@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
@@ -74,6 +75,17 @@ class BinValuesFixedWidth(test.TestCase):
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
+
+  def test_negative_nbins(self):
+    value_range = [0.0, 5.0]
+    values = []
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "must > 0"):
+      with self.session():
+        bins = histogram_ops.histogram_fixed_width_bins(
+            values, value_range, nbins=-1)
+        self.evaluate(bins)
+
 
 
 class HistogramFixedWidthTest(test.TestCase):

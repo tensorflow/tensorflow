@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def BufferReuse : FunctionPass<"buffer-reuse"> {
+def BufferReuse : Pass<"buffer-reuse", "func::FuncOp"> {
   let summary = "Reuses already allocated buffers to save allocation "
                 "operations if it is provably safe.";
   let description = [{
@@ -29,29 +29,26 @@ def BufferReuse : FunctionPass<"buffer-reuse"> {
   let constructor = "createBufferReusePass()";
 }
 
-def ReshapeSimplifier : FunctionPass<"reshape-simplifier"> {
-  let summary = "";
-  let description = [{
-    This pass tries to simplify dynamic reshapes.
-  }];
-  let constructor = "createReshapeSimplifierPass()";
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
 }
 
-def CopyRemoval : FunctionPass<"copy-removal"> {
+def CopyRemoval : Pass<"copy-removal", "func::FuncOp"> {
   let summary = "Removes redundant operations that implement a "
                 "CopyOpInterface, if the intersection of the useranges from"
                 "copy source and target only contains the CopyOp.";
   let constructor = "createCopyRemovalPass()";
 }
 
-def BufferPacking : FunctionPass<"buffer-packing"> {
+def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   let summary = "Pass to pack allocated buffer to reduce memory consumption.";
   let description = [{The pass tries to pack smaller buffers into larger buffers.
   To do this, it sorts all allocated buffers by multiple criteria depends on the
   selected window-size.
   After this sorting, the buffers are checked whether subsequent buffers can be
   packed into them.}];
-  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect",
+  let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
     "arith::ArithmeticDialect"];
   let constructor = "createBufferPackingPass()";
   let options = [
@@ -64,21 +61,33 @@ def BufferPacking : FunctionPass<"buffer-packing"> {
   ];
 }
 
-def MemoryCount : FunctionPass<"memory-count"> {
+def MemoryCount : Pass<"memory-count", "func::FuncOp"> {
   let summary = "Test pass to count the allocated memory of a module.";
   let description = [{A test pass that prints the size of allocated memory of a
   module.}];
   let constructor = "createMemoryCountPass()";
 }
 
-def TestUserange : FunctionPass<"test-print-userange"> {
+def TestUserange : Pass<"test-print-userange", "func::FuncOp"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";
 }
 
-def TestShapeComponentAnalysis : FunctionPass<"test-print-shape-components"> {
+def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
+                                      "func::FuncOp"> {
   let summary = "Test pass for analyzing shape components.";
   let constructor = "createTestShapeComponentAnalysisPass()";
 }
 
+def LowerIndexCastPass
+    : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
+  let summary = "Lower index cast on tensors to tensor dialect";
+  let constructor = "CreateLowerIndexCastPass()";
+}
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "CreateShapeSimplification()";
+}
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

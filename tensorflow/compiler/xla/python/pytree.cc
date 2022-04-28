@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -176,7 +178,7 @@ void PyTreeDef::FlattenIntoImpl(
       case PyTreeKind::kCustom: {
         py::tuple out = py::cast<py::tuple>(node.custom->to_iterable(handle));
         if (out.size() != 2) {
-          throw std::runtime_error(
+          throw xla::XlaRuntimeError(
               "PyTree custom to_iterable function should return a pair");
         }
         node.node_data = out[1];
@@ -414,7 +416,7 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
         py::list keys =
             py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
         if (PyList_Sort(keys.ptr())) {
-          throw std::runtime_error("Dictionary key sort failed.");
+          throw xla::XlaRuntimeError("Dictionary key sort failed.");
         }
         if (keys.not_equal(node.node_data)) {
           throw std::invalid_argument(
@@ -459,7 +461,7 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
         }
         py::tuple out = py::cast<py::tuple>(node.custom->to_iterable(object));
         if (out.size() != 2) {
-          throw std::runtime_error(
+          throw xla::XlaRuntimeError(
               "PyTree custom to_iterable function should return a pair");
         }
         if (node.node_data.not_equal(out[1])) {
@@ -723,8 +725,7 @@ void BuildPytreeSubmodule(py::module& m) {
            [](const PyTreeDef& a, const PyTreeDef& b) { return a == b; })
       .def("__ne__",
            [](const PyTreeDef& a, const PyTreeDef& b) { return a != b; })
-      .def("__hash__",
-           [](const PyTreeDef& t) { return absl::Hash<PyTreeDef>()(t); });
+      .def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); });
 
   pytree.def("register_node", [](py::object type, py::function to_iterable,
                                  py::function from_iterable) {
