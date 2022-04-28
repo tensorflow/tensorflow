@@ -37,8 +37,8 @@ def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // TODO(hinsu): Use signed integers instead of signless integer which is being
 // used for legacy reasons.
-def HLO_SInt : SignlessIntOfWidths<[8, 16, 32, 64]>;
-def HLO_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
+def HLO_SInt : SignlessIntOfWidths<[4, 8, 16, 32, 64]>;
+def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
 
 def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
@@ -82,8 +82,8 @@ class UniformQuantizedUnsignedIntOfWidths<list<int> widths> :
 
 // Integer-based uniform quantized types. The definitions can be used to specify
 // operand's tensor types.
-def HLO_QuantizedSignedInt : UniformQuantizedSignedIntOfWidths<[8, 16, 32]>;
-def HLO_QuantizedUnsignedInt : UniformQuantizedUnsignedIntOfWidths<[8, 16, 32]>;
+def HLO_QuantizedSignedInt : UniformQuantizedSignedIntOfWidths<[4, 8, 16, 32]>;
+def HLO_QuantizedUnsignedInt : UniformQuantizedUnsignedIntOfWidths<[4, 8, 16, 32]>;
 def HLO_QuantizedInt :
     AnyTypeOf<[HLO_QuantizedSignedInt, HLO_QuantizedUnsignedInt]>;
 
