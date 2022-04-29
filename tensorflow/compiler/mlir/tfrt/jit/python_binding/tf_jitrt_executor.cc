@@ -46,7 +46,6 @@ using ::tfrt::AsyncValuePtr;
 using ::tfrt::CreateMallocAllocator;
 using ::tfrt::CreateMultiThreadedWorkQueue;
 using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::GetDType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
@@ -206,9 +205,10 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
 
   // Convert arguments to memrefs.
-  std::vector<MemrefDesc> memrefs(arguments.size());
+  std::vector<MemrefDesc> memrefs;
+  memrefs.reserve(arguments.size());
   for (int i = 0; i < arguments.size(); ++i)
-    ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
+    memrefs.emplace_back(ConvertPyArrayMemrefDesc(arguments[i]));
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
