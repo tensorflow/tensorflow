@@ -1151,7 +1151,12 @@ cc_library(
 
 cc_library(
     name = "error_payloads",
+    srcs = ["error_payloads.cc"],
     hdrs = ["error_payloads.h"],
+    deps = [
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
 )
 
 alias(

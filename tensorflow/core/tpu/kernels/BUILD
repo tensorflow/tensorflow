@@ -72,6 +72,7 @@ cc_library(
         ":tpu_util",
         ":tpu_fingerprint_lookup",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/tpu:tpu_compile_interface",
