@@ -210,13 +210,17 @@ void ShapeInference::runOnOperation() {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }
 
-      inferred_type = tf_type::GetCastCompatibleType(
-                          op_result.getType().cast<ShapedType>(), inferred_type)
-                          .cast<TensorType>();
+      Type refined_type = tf_type::GetCastCompatibleType(
+          op_result.getType().cast<ShapedType>(), inferred_type);
 
-      if (inferred_type == op_result.getType()) continue;
+      // Certain attributes like _output_shapes may have incorrect shape
+      // information. When it's incompatible, use the result of shape inference
+      // context
+      if (!refined_type) refined_type = inferred_type;
 
-      op_result.setType(inferred_type);
+      if (refined_type == op_result.getType()) continue;
+
+      op_result.setType(refined_type);
       updated = true;
     }
 

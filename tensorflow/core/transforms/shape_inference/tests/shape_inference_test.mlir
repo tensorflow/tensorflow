@@ -136,7 +136,7 @@ module {
   tfg.graph #tf_type.version<producer = 1070, min_consumer = 0> {
     %Const, %ctl = Const name("Const") {dtype = i32, value = dense<1> : tensor<1x2x3x4xi32>} : () -> (tensor<1x2x3x4xi32>)
     // CHECK: Shape{{.*}} name("Shape_32") {{.*}} -> (tensor<4xi32>)
-    %Size, %ctl_0 = Shape(%Const) name("Shape_32") {T = i32, out_type = i32} : (tensor<1x2x3x4xi32>) -> (tensor<*xi32>)
+    %Size, %ctl_0 = Shape(%Const) name("Shape_32") {T = i32, out_type = i32} : (tensor<1x2x3x4xi32>) -> (tensor<2x?xi32>)
     // CHECK: Shape{{.*}} name("Shape_64") {{.*}} -> (tensor<4xi64>)
     %Shape_64, %ctl_1 = Shape(%Const, %ctl, %ctl_0) name("Shape_64") {T = i64, out_type = i64} : (tensor<1x2x3x4xi32>, !tf_type.control, !tf_type.control) -> (tensor<*xi64>)
   }
