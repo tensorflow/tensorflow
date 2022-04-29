@@ -818,12 +818,33 @@ struct TensorCastOfLoopInsOutsFolder : public OpRewritePattern<LoopOp> {
   }
 };
 
+/// Removes loops in which at least one lower/upper bound pair consists
+/// of the same values - such loops have an empty iteration domain.
+struct FoldEmptyLoops : public OpRewritePattern<LoopOp> {
+  using OpRewritePattern<LoopOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LoopOp op,
+                                PatternRewriter &rewriter) const override {
+    for (auto dim : llvm::zip(op.lowerBound(), op.upperBound())) {
+      if (std::get<0>(dim) != std::get<1>(dim)) continue;
+      SmallVector<Value> tensor_outputs;
+      for (Value out : op.outputs()) {
+        if (out.getType().isa<RankedTensorType>())
+          tensor_outputs.push_back(out);
+      }
+      rewriter.replaceOp(op, tensor_outputs);
+      return success();
+    }
+    return failure();
+  }
+};
+
 }  // namespace
 
 void LoopOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results
-      .add<LoopInputsFolder, LoopResultsFolder,
+      .add<FoldEmptyLoops, LoopInputsFolder, LoopResultsFolder,
            DimOfLoopInsOutsFolder<tensor::DimOp>,
            DimOfLoopInsOutsFolder<memref::DimOp>,
            DimOfLoopResultFolder<tensor::DimOp>,
