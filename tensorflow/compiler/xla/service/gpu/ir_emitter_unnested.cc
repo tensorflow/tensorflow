@@ -1119,41 +1119,10 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.rhs()));
     TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.output()));
 
-    GpuGemmConfig config;
-    GemmBackendConfig& backend = config.backend_config;
-    config.output_shape = GetShape(op.output());
-    config.lhs_shape = GetShape(op.lhs());
-    config.rhs_shape = GetShape(op.rhs());
-    backend.Clear();
-    if (op.algorithm()) {
-      backend.set_selected_algorithm(*op.algorithm());
-    }
-    backend.set_alpha_real(op.alpha_real().convertToDouble());
-    backend.set_alpha_imag(op.alpha_imag().convertToDouble());
-    backend.set_batch_size(op.batch_size());
-    if (gemm_bias_beta.has_value()) {
-      backend.set_beta(gemm_bias_beta.value());
-    }
-    backend.set_lhs_stride(op.lhs_stride());
-    backend.set_rhs_stride(op.rhs_stride());
-
-    config.use_cublaslt =
+    bool use_cublaslt =
         hlo_module_config_.debug_options().xla_gpu_enable_cublaslt();
 
-    auto& dims = *backend.mutable_dot_dimension_numbers();
-    auto mlir_dims = op.dot_dimension_numbers();
-
-    auto fill_dims = [](llvm::ArrayRef<int64_t> mlir_dim, auto* config_attrs) {
-      for (int64_t e : mlir_dim) config_attrs->Add(e);
-    };
-    fill_dims(mlir_dims.getLhsBatchingDimensions(),
-              dims.mutable_lhs_batch_dimensions());
-    fill_dims(mlir_dims.getRhsBatchingDimensions(),
-              dims.mutable_rhs_batch_dimensions());
-    fill_dims(mlir_dims.getLhsContractingDimensions(),
-              dims.mutable_lhs_contracting_dimensions());
-    fill_dims(mlir_dims.getRhsContractingDimensions(),
-              dims.mutable_rhs_contracting_dimensions());
+    TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(op, use_cublaslt));
 
     return std::unique_ptr<Thunk>(
         new GemmThunk(GetThunkInfo(op), std::move(config), lhs, rhs, output));
