@@ -66,28 +66,6 @@ cc_library(
 )
 
 cc_library(
-    name = "bufferize_tiled_loop",
-    srcs = ["bufferize_tiled_loop.cc"],
-    hdrs = ["rewriters.h"],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:gml_st",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "embed_tf_framework",
     srcs = ["embed_tf_framework.cc"],
     hdrs = ["rewriters.h"],
@@ -223,12 +201,12 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":bufferize",  # buildcleaner: keep
-        ":bufferize_tiled_loop",  # buildcleaner: keep
         ":embed_tf_framework",  # buildcleaner: keep
         ":kernel_gen_passes_inc_gen",
         ":tf_framework_legalize_to_llvm",  # buildcleaner: keep
         ":utils",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:bufferize_pass",
         "//tensorflow/compiler/mlir/hlo:gml_st",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_memref",
         "//tensorflow/compiler/mlir/hlo:lhlo",

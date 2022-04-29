@@ -59,6 +59,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:shape_simplification",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:bufferize",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_no_fallback",

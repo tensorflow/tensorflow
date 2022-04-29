@@ -25,3 +25,8 @@ def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
   let constructor = "::mlir::gml_st::createGmlStToScfPass()";
   let dependentDialects = ["::mlir::scf::SCFDialect"];
 }
+
+def TiledLoopBufferizePass : Pass<"gml-tiled-loop-bufferize", "mlir::func::FuncOp"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "::mlir::gml_st::CreateTiledLoopBufferizePass()";
+}

@@ -29,6 +29,7 @@ add_mlir_library(GmlStTilingInterface
 )
 
 add_mlir_library(GmlStPasses
+  bufferize_tiled_loop.cc
   greedy_tiling.cc
   gml_st_to_scf.cc
 
