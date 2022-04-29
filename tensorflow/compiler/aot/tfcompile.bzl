@@ -377,7 +377,7 @@ def tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
-                "@llvm-project//mlir:mlir_c_runner_utils",
+                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (deps or []),
         tags = tags,
