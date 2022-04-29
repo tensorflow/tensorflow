@@ -216,6 +216,7 @@ def tflite_flex_shared_library(
 
     tflite_cc_shared_object(
         name = name,
+        visibility = visibility,
         linkopts = select({
             "//tensorflow:macos": [
                 "-Wl,-exported_symbols_list,$(location //tensorflow/lite/delegates/flex:exported_symbols.lds)",

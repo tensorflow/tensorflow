@@ -122,6 +122,7 @@ tflite_flex_cc_library(
 #   - Windows: `tensorflowlite_flex.dll`
 tflite_flex_shared_library(
     name = "tensorflowlite_flex",
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

@@ -91,6 +91,34 @@ tf_cc_binary(
     ],
 )
 
+cc_import(
+    name = "libtensorflowlite_flex",
+    shared_library = "//tensorflow/lite/delegates/flex:tensorflowlite_flex",
+)
+
+tf_cc_binary(
+    name = "benchmark_model_plus_flex_dynamic",
+    srcs = [
+        "benchmark_plus_flex_main.cc",
+    ],
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_tflite_model_lib",
+        "//tensorflow/lite/testing:init_tensorflow",
+        "//tensorflow/lite/tools:logging",
+        ":libtensorflowlite_flex",
+    ],
+
+)
+
+
 cc_test(
     name = "benchmark_test",
     srcs = ["benchmark_test.cc"],
