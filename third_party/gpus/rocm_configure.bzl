@@ -179,7 +179,10 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
 
     # Add HIP headers (needs to match $HIP_PATH)
     if int(rocm_config.rocm_version_number) >= 50200:
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
     else:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
@@ -317,7 +320,7 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
 
     return libs
 
-def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
+def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_path, bash_bin):
     """Returns the ROCm libraries on the system.
 
     Args:
@@ -335,8 +338,8 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
             ("rocblas", rocm_config.rocm_toolkit_path),
             (hipfft_or_rocfft, rocm_config.rocm_toolkit_path),
             ("hiprand", rocm_config.rocm_toolkit_path),
-            ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
-            ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
+            ("MIOpen", miopen_path),
+            ("rccl", rccl_path),
             ("hipsparse", rocm_config.rocm_toolkit_path),
             ("roctracer64", rocm_config.rocm_toolkit_path + "/roctracer"),
             ("rocsolver", rocm_config.rocm_toolkit_path),
@@ -552,7 +555,11 @@ def _create_local_rocm_repository(repository_ctx):
     # For ROCm 4.1 and above use hipfft, older ROCm versions use rocfft
     rocm_version_number = int(rocm_config.rocm_version_number)
     hipfft_or_rocfft = "rocfft" if rocm_version_number < 40100 else "hipfft"
- 
+
+    # For ROCm 5.2 and above, find MIOpen and RCCL in the main rocm lib path
+    miopen_path = rocm_config.rocm_toolkit_path + "/miopen" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
+    rccl_path = rocm_config.rocm_toolkit_path + "/rccl" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
+
     # Copy header and library files to execroot.
     # rocm_toolkit_path
     rocm_toolkit_path = rocm_config.rocm_toolkit_path
@@ -570,18 +577,6 @@ def _create_local_rocm_repository(repository_ctx):
             src_dir = rocm_toolkit_path + "/rocblas/lib/library",
             out_dir = "rocm/lib/rocblas/lib/library",
         ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "miopen-include",
-            src_dir = rocm_toolkit_path + "/miopen/include",
-            out_dir = "rocm/include/miopen",
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "rccl-include",
-            src_dir = rocm_toolkit_path + "/rccl/include",
-            out_dir = "rocm/include/rccl",
-        )
     ]
 
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
@@ -615,7 +610,7 @@ def _create_local_rocm_repository(repository_ctx):
             ),
         )
 
-    rocm_libs = _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin)
+    rocm_libs = _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_path, bash_bin)
     rocm_lib_srcs = []
     rocm_lib_outs = []
     for lib in rocm_libs.values():
@@ -671,8 +666,6 @@ def _create_local_rocm_repository(repository_ctx):
         "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
         "%{copy_rules}": "\n".join(copy_rules),
         "%{rocm_headers}": ('":rocm-include",\n' +
-                            '":miopen-include",\n' +
-                            '":rccl-include",\n' +
                             hiprand_include +
                             rocrand_include),
     }

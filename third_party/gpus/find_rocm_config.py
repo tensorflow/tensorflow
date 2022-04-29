@@ -135,8 +135,17 @@ def _find_hipruntime_config(rocm_install_path):
 def _find_miopen_config(rocm_install_path):
 
   def miopen_version_numbers(path):
-    version_file = os.path.join(path, "miopen/include/miopen/version.h")
-    if not os.path.exists(version_file):
+    possible_version_files = [
+            "include/miopen/version.h",         # ROCm 5.2 and prior
+            "miopen/include/miopen/version.h",  # ROCm 5.1 and prior
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
+        break
+    if not version_file:
       raise ConfigError(
           'MIOpen version file "{}" not found'.format(version_file))
     major = _get_header_version(version_file, "MIOPEN_VERSION_MAJOR")
