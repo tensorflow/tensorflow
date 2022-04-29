@@ -277,10 +277,10 @@ class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
       first_mid_level.build(64)
 
     cpu_mid_level_optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    cpu_mid_level = tpu_embedding_v2.TPUEmbedding(feature_config,
-                                                  cpu_mid_level_optimizer)
+    cpu_mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config, cpu_mid_level_optimizer)
 
-    cpu_mid_level.build(64)
+    cpu_mid_level.build()
 
     first_mid_level._load_variables()
 
@@ -351,9 +351,9 @@ class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
       first_mid_level.build(64)
 
     cpu_mid_level_optimizer = optimizer(learning_rate=0.1)
-    cpu_mid_level = tpu_embedding_v2.TPUEmbedding(feature_config,
-                                                  cpu_mid_level_optimizer)
-    cpu_mid_level.build(64)
+    cpu_mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config, cpu_mid_level_optimizer)
+    cpu_mid_level.build()
 
     tpu_checkpoint = util.Checkpoint(model=first_mid_level)
     tpu_checkpoint.save(self._get_tmpdir('save-tpu', 'save'))

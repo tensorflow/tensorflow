@@ -587,24 +587,6 @@ pytype_library(
     ],
 )
 
-pytype_library(
-    name = "tpu_embedding_v2",
-    srcs = ["tpu_embedding_v2.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_embedding_v2_utils",
-        ":tpu_lib",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/distribute:device_util",
-        "//tensorflow/python/distribute:distribute_utils",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/tpu/ops",
-        "//tensorflow/python/training/saving:saveable_hook",
-        "@six_archive//:six",
-    ],
-)
-
 pytype_strict_library(
     name = "tpu_embedding_base",
     srcs = ["tpu_embedding_base.py"],
@@ -680,6 +662,46 @@ pytype_strict_library(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "tpu_embedding_v2",
+    srcs = ["tpu_embedding_v2.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_base",
+        ":tpu_embedding_v2_utils",
+        ":tpu_hardware_feature",
+        ":tpu_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:distribute_utils",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
     ],
 )
 
