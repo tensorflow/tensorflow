@@ -87,8 +87,10 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
   // Create request context and prepare deadline tracker.
   // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
   // contention.
+  int64_t request_id = work_queue->id();
+  if (request_id == 0) request_id = tfrt::GetUniqueInt();
   tfrt::RequestContextBuilder request_context_builder(host, resource_context,
-                                                      work_queue->id());
+                                                      request_id);
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.
