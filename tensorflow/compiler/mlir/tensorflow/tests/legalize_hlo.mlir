@@ -2777,26 +2777,26 @@ func.func @convert_argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>
 }
 
 // CHECK-LABEL:   func @convert_argmax_with_reshaped_iota(
-// CHECK-SAME:                                            %[[VAL_0:.*]]: tensor<1x1x32xf32>) -> (tensor<1x1xf32>, tensor<1x1xi32>) {
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x32x1xf32>) -> (tensor<1x1xf32>, tensor<1x1xi32>) {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0xFF800000> : tensor<f32>} : () -> tensor<f32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<32> : tensor<i32>} : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VAL_6:.*]] = "tf.Range"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32xi32>
-// CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<[1, 1, 32]> : tensor<3xi64>
-// CHECK:           %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_6]], %[[VAL_7]]) : (tensor<32xi32>, tensor<3xi64>) -> tensor<1x1x32xi32>
-// CHECK-DAG:       %[[VAL_9:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
-// CHECK:           %[[VAL_10:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_9]]) {keep_dims = false} : (tensor<1x1x32xf32>, tensor<1xi64>) -> tensor<1x1xf32>
-// CHECK:           %[[VAL_11:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_9]]) : (tensor<1x1x32xf32>, tensor<1xi64>) -> tensor<1x1xi32>
+// CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<[1, 32, 1]> : tensor<3xi64>
+// CHECK:           %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_6]], %[[VAL_7]]) : (tensor<32xi32>, tensor<3xi64>) -> tensor<1x32x1xi32>
+// CHECK-DAG:       %[[VAL_9:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %[[VAL_10:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_9]]) {keep_dims = false} : (tensor<1x32x1xf32>, tensor<1xi64>) -> tensor<1x1xf32>
+// CHECK:           %[[VAL_11:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_9]]) : (tensor<1x32x1xf32>, tensor<1xi64>) -> tensor<1x1xi32>
 // CHECK:           return %[[VAL_10]], %[[VAL_11]] : tensor<1x1xf32>, tensor<1x1xi32>
 // CHECK:         }
-func.func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x1x32xf32>) -> (tensor<1x1xf32>, tensor<1x1xi32>) {
+func.func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x32x1xf32>) -> (tensor<1x1xf32>, tensor<1x1xi32>) {
   %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
   %1 = mhlo.constant dense<0> : tensor<i32>
   %2 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<32xi32>
-  %3 = "mhlo.reshape"(%2) : (tensor<32xi32>) -> tensor<1x1x32xi32>
-  %4:2 = mhlo.reduce(%arg0 init: %0), (%3 init: %1) across dimensions = [2] : (tensor<1x1x32xf32>, tensor<1x1x32xi32>, tensor<f32>, tensor<i32>) -> (tensor<1x1xf32>, tensor<1x1xi32>)
+  %3 = "mhlo.reshape"(%2) : (tensor<32xi32>) -> tensor<1x32x1xi32>
+  %4:2 = mhlo.reduce(%arg0 init: %0), (%3 init: %1) across dimensions = [1] : (tensor<1x32x1xf32>, tensor<1x32x1xi32>, tensor<f32>, tensor<i32>) -> (tensor<1x1xf32>, tensor<1x1xi32>)
    reducer(%arg1: tensor<f32>, %arg3: tensor<f32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
     %5 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     %6 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
