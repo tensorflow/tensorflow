@@ -656,11 +656,15 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   DummyAsyncHelper dummy_async_helper;
 
   CalibrationContext* calib_ctx = cache_res->calib_ctx_.get();
-  const int num_inputs = ctx->num_inputs();
+  int num_inputs = calib_ctx->device_tensors_.size();
+  int j = 0;
   // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
-  for (int i = 0; i < num_inputs; i++) {
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    if(!input_mask_[i]) {
+      continue;
+    }
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
     OP_REQUIRES_ASYNC(ctx, data_address,
@@ -668,9 +672,10 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                           "Unsupported data type encountered in input ", i),
                       dummy_async_helper);
     // Check the allocated buffer is sufficient for input
-    const auto device_tensor = &calib_ctx->device_tensors_.at(i);
+    const auto device_tensor = &calib_ctx->device_tensors_.at(j);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(StrCat(IONamePrefixes::kInputPHName, i), data_address);
+    j++;
   }
   VLOG(2) << "Filled map for sending";
   // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
@@ -1266,21 +1271,30 @@ Status TRTEngineOp::AllocateCalibrationResources(
   auto* cres = cache_res->calib_ctx_.get();
 
   // Get the input shapes.
-  /// TODO: don't add resource shapes!
   const int batch_size = ctx->input(0).dim_size(0);
-  const int num_inputs = ctx->num_inputs();
+  int num_inputs = 0;
+  // Only count TRT engine inputs according to the mask.
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    if(input_mask_[i]) {
+      num_inputs++;
+    }
+  }
+  int j = 0;
   std::vector<TensorShape> shapes;
   cres->device_tensors_.resize(num_inputs);
   VLOG(1) << "Constructing calibrator";
-  for (int i = 0; i < num_inputs; i++) {
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    if(!input_mask_[i]) {
+      continue;
+    }
     // allocate workspace on device for inputs
     const Tensor& t = ctx->input(i);
     shapes.emplace_back(t.shape());
     TF_RETURN_IF_ERROR(
-        ctx->allocate_temp(t.dtype(), t.shape(), &cres->device_tensors_.at(i)));
+        ctx->allocate_temp(t.dtype(), t.shape(), &cres->device_tensors_.at(j)));
     CHECK_EQ(t.TotalBytes(),  // Crash OK
-             (cres->device_tensors_.at(i)).TotalBytes());
-    void* device_address = GetTensorAddress(&cres->device_tensors_.at(i));
+             (cres->device_tensors_.at(j)).TotalBytes());
+    void* device_address = GetTensorAddress(&cres->device_tensors_.at(j));
     if (device_address == nullptr) {
       return errors::InvalidArgument(
           "Unsupported data type encountered in input ", i);
@@ -1288,7 +1302,9 @@ Status TRTEngineOp::AllocateCalibrationResources(
     cres->device_buffers_.emplace(
         StrCat(IONamePrefixes::kInputPHName, i),
         std::pair<void*, size_t>(device_address,
-                                 cres->device_tensors_.at(i).TotalBytes()));
+                                 cres->device_tensors_.at(j).TotalBytes()));
+
+    j++;
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));

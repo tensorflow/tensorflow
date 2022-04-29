@@ -1069,7 +1069,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def _TestVariableHelper(
-    self, variable_op, tf_model_name, tftrt_model_name,output_name):
+    self, variable_op, tf_model_name, tftrt_model_name, output_name,
+    precision_mode="FP16"):
     """Helper with the common code of variable converter tests."""
 
     model_dir = test.test_src_dir_path(
@@ -1078,7 +1079,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Load and convert the TF model.
     conv_params=trt_convert.TrtConversionParams(
-        precision_mode='FP16', minimum_segment_size=3,
+        precision_mode=precision_mode, minimum_segment_size=3,
         max_workspace_size_bytes=1<<20, maximum_cached_engines=1)
     with test_utils.experimental_feature_scope("disable_graph_freezing"):
       converter = trt_convert.TrtGraphConverterV2(
@@ -1086,7 +1087,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           use_dynamic_shape=True,
           dynamic_shape_profile_strategy="Optimal"
       )
-    converter.convert()
 
     # Build and save the converted model.
     input_shapes = [[(4, 1, 1), (4, 1, 1)]]
@@ -1094,6 +1094,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       for shapes in input_shapes:
         # return a list of input tensors
         yield [np.ones(shape=shape).astype(np.float32) for shape in shapes]
+
+    if precision_mode == "INT8":
+      converter.convert(input_fn)
+    else:
+      converter.convert()
+
     converter.build(input_fn)
     converter.save(trt_model_dir)
 
@@ -1138,6 +1144,15 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                              "tf_readvariableop_saved_model",
                              "tftrt_readvariableop_saved_model",
                              "output_0")
+
+  @test_util.run_v2_only
+  def testReadVariableOpInt8(self):
+    """Test conversion of ReadVariableOp nodes in INT8 precision."""
+
+    self._TestVariableHelper("ReadVariableOp",
+                             "tf_readvariableop_saved_model",
+                             "tftrt_readvariableop_saved_model",
+                             "output_0", "INT8")
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()
