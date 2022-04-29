@@ -15,27 +15,49 @@ limitations under the License.
 
 // This file implements conversion of `gml_st.loop` to buffer form.
 
-#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
-#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
+#include <utility>
+
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
+#include "mlir/Dialect/Func/Transforms/Passes.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SCF/Transforms.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/Passes.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Visitors.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-namespace kernel_gen {
-namespace transforms {
 namespace {
 
 using bufferization::ToMemrefOp;
@@ -47,6 +69,48 @@ using tensor::ExtractSliceOp;
 using tensor::InsertSliceOp;
 using vector::TransferReadOp;
 using vector::TransferWriteOp;
+
+static Value materializeToTensor(OpBuilder &builder, TensorType type,
+                                 ValueRange inputs, Location loc) {
+  assert(inputs.size() == 1);
+  assert(inputs[0].getType().isa<BaseMemRefType>());
+  return builder.create<bufferization::ToTensorOp>(loc, type, inputs[0]);
+}
+
+// TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
+class CustomBufferizeTypeConverter
+    : public bufferization::BufferizeTypeConverter {
+ public:
+  CustomBufferizeTypeConverter() {
+    // Keep all types unchanged.
+    addConversion([](Type type) { return type; });
+    // Convert RankedTensorType to MemRefType.
+    addConversion([](RankedTensorType type) -> Type {
+      return MemRefType::get(type.getShape(), type.getElementType());
+    });
+    // Convert UnrankedTensorType to UnrankedMemRefType.
+    addConversion([](UnrankedTensorType type) -> Type {
+      return UnrankedMemRefType::get(type.getElementType(), 0);
+    });
+    addArgumentMaterialization(materializeToTensor);
+    addSourceMaterialization(materializeToTensor);
+    addTargetMaterialization([](OpBuilder &builder, BaseMemRefType type,
+                                ValueRange inputs, Location loc) -> Value {
+      assert(inputs.size() == 1);
+      // Target materialization is invoked if the new operand type does not
+      // match the expected type. A special case is when the new operand type is
+      // a memref with a specified layout, i.e. non-empty affine map.
+      // TODO(pifon) : Change how target materialization is invoked in dialect
+      // conversion.
+      if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
+        assert(!memref_type.getLayout().isIdentity());
+        return inputs[0];
+      }
+      assert(inputs[0].getType().isa<TensorType>());
+      return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
+    });
+  }
+};
 
 /// Convert `tensor.extract_slice` to `memref.subview` in-place.
 struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
@@ -298,9 +362,75 @@ struct BufferizeVectorTransferWriteOp
 
 }  // namespace
 
+namespace gml_st {
+struct TiledLoopBufferizePass
+    : public TiledLoopBufferizePassBase<TiledLoopBufferizePass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect>();
+  }
+
+  void runOnOperation() override {
+    // Bufferize ops using BufferizableOpInterface. This could be switched to
+    // One-Shot Bufferize in the future.
+    mlir::RewritePatternSet patterns(&getContext());
+    mlir::bufferization::BufferizationOptions options =
+        mlir::bufferization::getPartialBufferizationOptions();
+    // TODO(springerm): Add dialects to this filter as more and more dialects
+    // will be migrated to BufferizableOpInterface-based bufferization.
+    options.allowDialectInFilter<shape::ShapeDialect>();
+    if (failed(mlir::bufferization::bufferizeOp(getOperation(), options))) {
+      signalPassFailure();
+      return;
+    }
+
+    // Bufferize the remaining IR with dialect conversion. This will disappear
+    // eventually once all bufferization is done via BufferizableOpInterface.
+    if (failed(runDialectConversionBasedBufferization())) signalPassFailure();
+  }
+
+ private:
+  LogicalResult runDialectConversionBasedBufferization() {
+    mlir::RewritePatternSet patterns(&getContext());
+    auto &context = getContext();
+    ConversionTarget target(context);
+    target.addLegalDialect<
+        mlir::arith::ArithmeticDialect,
+        mlir::bufferization::BufferizationDialect,
+        mlir::complex::ComplexDialect, mlir::lmhlo::LmhloDialect,
+        mlir::AffineDialect, mlir::vector::VectorDialect,
+        mlir::memref::MemRefDialect, mlir::func::FuncDialect,
+        mlir::tensor::TensorDialect, mlir::math::MathDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
+    target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
+
+    CustomBufferizeTypeConverter converter;
+    mlir::mhlo::RemoveSignTypeConverter remove_sign_converter;
+
+    // Configure bufferize pattern.
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
+    mlir::bufferization::populateBufferizeMaterializationLegality(target);
+    populateTiledLoopBufferizePattern(&getContext(), &converter, &patterns);
+    mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
+        converter, patterns, target);
+    // Configure legality.
+    auto isLegalOp = [&](Operation *op) { return converter.isLegal(op); };
+    target.addDynamicallyLegalDialect<mlir::linalg::LinalgDialect>(isLegalOp);
+    target.addDynamicallyLegalOp<mlir::func::CallOp, gml_st::LoopOp,
+                                 gml_st::YieldOp, mlir::LLVM::InlineAsmOp,
+                                 mlir::vector::TransferWriteOp,
+                                 mlir::vector::TransferReadOp>(isLegalOp);
+
+    return applyPartialConversion(getOperation(), target, std::move(patterns));
+  }
+};
+
 void populateTiledLoopBufferizePattern(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns) {
+    mlir::MLIRContext *context,
+    mlir::bufferization::BufferizeTypeConverter *converter,
+    mlir::RewritePatternSet *patterns) {
   // clang-format off
   patterns->add<
     BufferizeExtractSliceOp,
@@ -315,6 +445,9 @@ void populateTiledLoopBufferizePattern(
   // clang-format on
 }
 
-}  // namespace transforms
-}  // namespace kernel_gen
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass() {
+  return std::make_unique<TiledLoopBufferizePass>();
+}
+
+}  // namespace gml_st
 }  // namespace mlir

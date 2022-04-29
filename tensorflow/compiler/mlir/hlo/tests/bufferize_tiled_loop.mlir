@@ -1,5 +1,5 @@
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize \
-// RUN: --tiled-loop-bufferize --cse --canonicalize --final-bufferize \
+// RUN: mlir-hlo-opt %s --computeop-and-func-bufferize \
+// RUN: --gml-tiled-loop-bufferize --cse --canonicalize --final-bufferize \
 // RUN: --split-input-file | FileCheck %s
 
 //      CHECK:  func @tiled_dot
