@@ -740,6 +740,10 @@ class Conv3DBackpropFilterOp : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32>(), &filter_shape));
     } else {
@@ -874,6 +878,10 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32>(), &filter_shape));
     } else {
@@ -1805,6 +1813,10 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, tensor::MakeShape(filter_sizes, &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
