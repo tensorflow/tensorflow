@@ -99,11 +99,6 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
   // Compute the product of the block_shape values.
   int64_t block_shape_product = 1;
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
-    if (block_shape[block_dim] < 1) {
-      return errors::InvalidArgument(
-          "All values in block_shape must be positive, got value, ",
-          block_shape[block_dim], " at index ", block_dim, ".");
-    }
     block_shape_product *= block_shape[block_dim];
   }
   if (block_shape_product <= 0) {
@@ -136,14 +131,8 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
   // The actual output shape exposed to callers.
   TensorShape external_output_shape;
 
-  const int64_t output_shape =
-      orig_input_tensor.dim_size(0) * block_shape_product;
-  if (output_shape < 0) {
-    return errors::InvalidArgument(
-        "Negative output dimension size caused by overflow when multiplying ",
-        orig_input_tensor.dim_size(0), " and ", block_shape_product);
-  }
-  external_output_shape.AddDim(output_shape);
+  external_output_shape.AddDim(orig_input_tensor.dim_size(0) *
+                               block_shape_product);
 
   int64_t input_batch_size = orig_input_tensor.dim_size(0);
   for (int block_dim = 0; block_dim < removed_prefix_block_dims; ++block_dim) {
