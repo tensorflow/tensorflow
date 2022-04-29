@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -47,6 +48,15 @@ std::vector<std::string> GetLabels(const monitoring::Point& point) {
 std::unique_ptr<CollectedMetrics> CollectMetrics() {
   CollectionRegistry::CollectMetricsOptions options;
   return CollectionRegistry::Default()->CollectMetrics(options);
+}
+
+MetricKind GetMetricKind(const CollectedMetrics& metrics,
+                         const std::string& metric_name) {
+  auto metric_descriptor = metrics.metric_descriptor_map.find(metric_name);
+  if (metric_descriptor == metrics.metric_descriptor_map.end()) {
+    return MetricKind::kCumulative;
+  }
+  return metric_descriptor->second->metric_kind;
 }
 
 StatusOr<std::vector<Point>> GetPoints(const CollectedMetrics& metrics,
@@ -131,20 +141,6 @@ Histogram GetValue(const Point& point) {
 template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b) {
   return a - b;
-}
-
-template <>
-std::string GetDelta(const std::string& a, const std::string& b) {
-  // String gauges do not support `CellReader::Delta`. This is called by `Read`
-  // to ignore the initial snapshot collected at the time of construction.
-  return a;
-}
-
-template <>
-bool GetDelta(const bool& a, const bool& b) {
-  // Bool gauges do not support `CellReader::Delta`. This is called by `Read` to
-  // ignore the initial snapshot collected at the time of construction.
-  return a;
 }
 
 template <>
