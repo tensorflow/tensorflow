@@ -91,10 +91,10 @@ TEST_F(QuantizedConv2DTest, Small) {
                             image_quantized.flat<quint8>());
   AddInputFromArray<quint8>(filter_quantized.shape(),
                             filter_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {image_min});
-  AddInputFromArray<float>(TensorShape({1}), {image_max});
-  AddInputFromArray<float>(TensorShape({1}), {filter_min});
-  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+  AddInputFromArray<float>(TensorShape({}), {image_min});
+  AddInputFromArray<float>(TensorShape({}), {image_max});
+  AddInputFromArray<float>(TensorShape({}), {filter_min});
+  AddInputFromArray<float>(TensorShape({}), {filter_max});
   TF_ASSERT_OK(RunOpKernel());
 
   // We're sliding the 3x3 filter across the 3x4 image, with accesses outside
@@ -158,10 +158,10 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
   AddInputFromArray<quint8>(
       TensorShape({filter_size, filter_size, depth, filter_count}),
       {10, 40, 70, 20, 50, 80, 30, 60, 90});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   const int expected_width = image_width;
@@ -201,10 +201,10 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
   AddInputFromArray<quint8>(
       TensorShape({filter_size, filter_size, depth, filter_count}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   const int expected_width = image_width / stride;
@@ -244,10 +244,10 @@ TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
   AddInputFromArray<quint8>(
       TensorShape({filter_size, filter_size, depth, filter_count}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   const int expected_width = image_width / stride;
@@ -302,10 +302,10 @@ TEST_F(QuantizedConv2DTest, SmallWithNoZero) {
                             image_quantized.flat<quint8>());
   AddInputFromArray<quint8>(filter_quantized.shape(),
                             filter_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {image_min});
-  AddInputFromArray<float>(TensorShape({1}), {image_max});
-  AddInputFromArray<float>(TensorShape({1}), {filter_min});
-  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+  AddInputFromArray<float>(TensorShape({}), {image_min});
+  AddInputFromArray<float>(TensorShape({}), {image_max});
+  AddInputFromArray<float>(TensorShape({}), {filter_min});
+  AddInputFromArray<float>(TensorShape({}), {filter_max});
   TF_ASSERT_OK(RunOpKernel());
   const int expected_width = image_width;
   const int expected_height = image_height * filter_count;
