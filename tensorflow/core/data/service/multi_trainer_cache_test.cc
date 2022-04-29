@@ -264,6 +264,28 @@ TEST(MultiTrainerCacheTest, CacheHitMetrics) {
   EXPECT_EQ(cell_reader.Read("false"), 10);
 }
 
+TEST(MultiTrainerCacheTest, CacheSizeMetrics) {
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/multi_trainer_cache_size_bytes");
+
+  const size_t num_elements = 5;
+  MultiTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/num_elements * sizeof(int64_t),
+      std::make_unique<InfiniteRange>());
+
+  for (size_t i = 0; i < num_elements; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
+    EXPECT_EQ(cell_reader.Read(), (i + 1) * sizeof(int64_t));
+  }
+
+  // The cache size does not increase after reaching `num_elements`.
+  for (size_t i = 0; i < 100; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"),
+                IsOkAndHolds(Pointee(num_elements + i)));
+    EXPECT_EQ(cell_reader.Read(), 5 * sizeof(int64_t));
+  }
+}
+
 TEST(MultiTrainerCacheTest, ConcurrentReaders) {
   size_t num_trainers = 10;
   size_t num_elements_to_read = 200;
