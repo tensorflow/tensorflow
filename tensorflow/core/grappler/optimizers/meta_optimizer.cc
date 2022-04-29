@@ -1117,6 +1117,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // Propagate `_tf_data_function` attributes from functions to their callees.
   PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
 
+  // True if this is a TPU graph using the old bridge.
+  bool is_tpu_graph = IsTPUGraphDef(*optimized_graph);
+
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
   while (optimize_function_library) {
@@ -1181,7 +1184,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
-      if (IsTPUGraphDef(*optimized_graph)) {
+      if (is_tpu_graph) {
         // Skip optimizing functions if this is a TPU graph. Currently, Grappler
         // passes do not handle TPU functions correctly in a variety of ways
         // (Note that due to the pre-placement TPU graph rewriting passes, the
@@ -1240,7 +1243,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
 #ifndef __Fuchsia__
-  if (!IsTPUGraphDef(*optimized_graph)) {
+  if (!is_tpu_graph) {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
