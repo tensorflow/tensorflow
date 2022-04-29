@@ -26,6 +26,10 @@ load(
     "tf_fingerprint_deps",
     "tf_kernel_tests_linkstatic",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "mkl_deps",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -56,10 +60,6 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -4561,6 +4561,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
 )
