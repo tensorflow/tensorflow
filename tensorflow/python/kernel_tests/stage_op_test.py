@@ -17,6 +17,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -137,6 +138,16 @@ class StageTest(test.TestCase):
 
       for i in range(10):
         self.assertTrue(sess.run(peek, feed_dict={p: i}) == [i])
+
+  def testPeekBadIndex(self):
+    stager = data_flow_ops.StagingArea([
+        dtypes.int32,
+    ], shapes=[[10]])
+    stager.put([array_ops.zeros([10], dtype=dtypes.int32)])
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                'must be scalar'):
+      self.evaluate(stager.peek([]))
 
   @test_util.run_deprecated_v1
   def testSizeAndClear(self):
