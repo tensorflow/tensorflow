@@ -42,6 +42,23 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_mlir_bridge.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_mlir_bridge.h"
+// Similarly, there are files for testing the MLIR based lowering of HLO to
+// object code for XLA:CPU
+#elif defined(MHLO_LOWERING_TEST)
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfgather_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tftop_k_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_mhlo_lowering.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_mhlo_lowering.h"
 #else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
@@ -472,7 +489,8 @@ TEST(TFCompileTest, Splits) {
   EXPECT_NEAR(expected[2], fn.result0(1, 0), 1e4);
   EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
 }
-
+// TODO(b/220696648): Debug the sort op for tf_compile with HloLowering.
+#if !defined(MHLO_LOWERING_TEST)
 TEST(TFCompileTest, TopK) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -496,6 +514,7 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_indices[0], fn.result1(0));
   EXPECT_EQ(expected_indices[1], fn.result1(1));
 }
+#endif
 
 TEST(TFCompileTest, VariableReadonly) {
   Eigen::ThreadPool tp(1);
@@ -656,6 +675,10 @@ TEST(TFCompileTest, ProgramShape) {
   EXPECT_TRUE(ShapeUtil::Compatible(muladd_result1, f32_2x2));
 }
 
+// tf_compile with mlir_component=HloLowering does not currently support
+// profiling, so we disable the test case here rather than creating a new test
+// target that could allow more divergence.
+#if !defined(MHLO_LOWERING_TEST)
 TEST(TFCompileTest, HloProfiling) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -714,6 +737,7 @@ TEST(TFCompileTest, HloProfiling) {
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
                             add_profile_line, tuple_profile_line}));
 }
+#endif
 
 }  // namespace
 }  // namespace tfcompile
