@@ -490,6 +490,10 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
     entry.second->cached_kernel_keys->clear();
   }
   {
+    mutex_lock dl(device_cache_mu_);
+    device_cache_.clear();
+  }
+  {
     mutex_lock ml(metadata_mu_);
     step_container_.reset(new ScopedStepContainer(
         0, [this](const string& name) { ClearResourceContainer(name); }));
@@ -1065,6 +1069,13 @@ core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
   return new_ref;
 }
 
+Device* EagerContext::GetCachedDevice(Fprint128 device_cache_key) {
+  tf_shared_lock l(device_cache_mu_);
+  auto iter = device_cache_.find(device_cache_key);
+  if (iter == device_cache_.end()) return nullptr;
+  return iter->second;
+}
+
 void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
@@ -1077,6 +1088,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
   }
+}
+
+void EagerContext::AddDeviceToCache(Fprint128 device_cache_key,
+                                    Device* device) {
+  mutex_lock l(device_cache_mu_);
+  device_cache_[device_cache_key] = device;
 }
 
 bool EagerContext::ShouldStoreGraphs() { return should_store_graphs_.load(); }

@@ -150,21 +150,6 @@ struct ComputeOpAndFuncBufferizePass
     options.denyOperationInFilter([](Operation* op) {
       return mlir::isa<gml_st::LoopOp>(op->getParentOp());
     });
-    // Configure bufferization options for mhlo ops.
-    options.addDialectStateInitializer(
-        mhlo::MhloDialect::getDialectNamespace(), []() {
-          auto dialect_state = std::make_unique<mhlo::MhloBufferizationState>();
-          dialect_state->enforce_identity_map_fn = [](Operation* op) {
-            // Force identity maps for several ops which don't support memrefs
-            // with affine_maps.
-            return llvm::any_of(op->getUsers(), [](Operation* user) {
-              return isa<gml_st::LoopOp, func::ReturnOp, mhlo::DynamicReshapeOp,
-                         tensor::CastOp, tensor::CollapseShapeOp,
-                         tensor::ExpandShapeOp>(user);
-            });
-          };
-          return dialect_state;
-        });
 
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();

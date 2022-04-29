@@ -47,9 +47,13 @@
 
 # Bug Fixes and Other Changes
 
-*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*   <NOTES SHOULD BE GROUPED PER AREA>
+*   `tf.keras`:
+
+    *   Changed the TensorBoard tag names produced by the
+        `tf.keras.callbacks.TensorBoard` callback, so that summaries logged
+        automatically for model weights now include either a `/histogram` or
+        `/image` suffix in their tag names, in order to prevent tag name
+        collisions across summary types.
 
 *   When running on GPU (with cuDNN version 7.6.3 or later),
     `tf.nn.depthwise_conv2d` backprop to `filter` (and therefore also
@@ -3566,7 +3570,7 @@ This release introduces several vulnerability fixes:
 
 ## Breaking Changes
 
-*   The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
+*   The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to
     `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
 
 ## Bug Fixes and Other Changes

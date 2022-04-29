@@ -102,7 +102,9 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
     tensorflow::CreateTfJitRtPipeline(pm, opts);
     CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
-  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  if (specialization != Specialization::kDisabled) {
+    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  }
   opts.specialization = specialization;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());

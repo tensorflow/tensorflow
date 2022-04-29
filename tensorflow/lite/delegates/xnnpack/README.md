@@ -172,6 +172,16 @@ if (interpreter1->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
     // cache.
 }
 
+// Finalize the weights cache.
+// Hard finalization has the lowest memory overhead, but requires that all
+// TFLite interpreter instances must be created up front before any finalization
+// and inference.
+TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
+
+// Alternatively, soft-finalizate the weights cache. This is useful if more
+// delegates using the same model will to be created after finalization.
+// TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache);
+
 // Later, after all the interpreters and XNNPACK delegates using the cache are
 // destroyed, release the weights cache.
 TfLiteXNNPackWeightsCacheDelete(weights_cache);
@@ -183,6 +193,13 @@ packed weights can be found in the weights cache, based on the contents of the
 packed weights. If it can be found, we access the packed weights in the
 cache for subsequent operations, and the temporary buffer is freed. Otherwise,
 the packed weights is added to the cache.
+
+The weights cache has to be finalized before any inference, it will be an error
+otherwise. Hard finalization and soft finalization depends on whether new
+XNNPACK delegate instances will be created after finalization. Hard finalization
+does not allow new instances to be created, and has lower memory overhead. Soft
+finalization allows new instances to be created, and has higher memory overhead
+(up to the size of the largest packed weights, rounded up to page alignment).
 
 ## Profiling
 When TfLite profiling is enabled, XNNPACK will time each operator and report the
@@ -463,6 +480,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
+#### `AVERAGE_POOL_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `CEIL`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -569,6 +590,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `SPLIT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SOFTMAX`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 

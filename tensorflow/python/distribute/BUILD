@@ -1635,6 +1635,7 @@ distribute_py_test(
     main = "moving_averages_test.py",
     shard_count = 5,
     tags = [
+        "multi_gpu",
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "notpu",  # TODO(b/210145904)
     ],

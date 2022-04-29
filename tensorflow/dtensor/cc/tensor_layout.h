@@ -212,7 +212,7 @@ class Mesh {
   // the core represented by global device ID of i in this mesh.
   //
   // The entry stored under the empty name key (the so-called "default mapping"
-  // in some comments) is special. Is is always set at the end of TPU
+  // in some comments) is special. It is always set at the end of TPU
   // initialization. It represents the mapping for any mesh whose global device
   // IDs follow TF task-device ordinals. Legacy and test meshes created without
   // using the `create_tpu_mesh` helper follow that rule and can use this entry.

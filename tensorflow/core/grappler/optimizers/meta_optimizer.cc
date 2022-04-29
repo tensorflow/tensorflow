@@ -1234,12 +1234,13 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     }
   }
 
-  // Run module-level TFG optimizations at the end of the meta-optimizer.
+  // Run module-level TFG optimizations at the end of the meta-optimizer, but
+  // skip TPU graphs.
   // TODO(jeffniu): None of the TFG optimizations are meant to create new
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
 #ifndef __Fuchsia__
-  {
+  if (!IsTPUGraphDef(*optimized_graph)) {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(

@@ -709,6 +709,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir:tf_op_registry",
         "//tensorflow/core/ir/importexport:export",
         "//tensorflow/core/ir/importexport:import",
         "//tensorflow/core/platform:errors",

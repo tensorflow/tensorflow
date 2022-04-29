@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "56feb092685610361f0b924f9be34e3c28a978796aae28559a33733a99602885",
-        strip_prefix = "XNNPACK-ba3e06a669b128863eebfab140ae94a5f541b0f9",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/ba3e06a669b128863eebfab140ae94a5f541b0f9.zip"),
+        sha256 = "1be2e5d8380e7a2983f7325d462cba044f8a1016bd3e403ede093c3086595040",
+        strip_prefix = "XNNPACK-d5dc9e245f0d474235f2b0a48e3e8525de02a5db",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/d5dc9e245f0d474235f2b0a48e3e8525de02a5db.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -235,9 +235,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "libxsmm_archive",
         build_file = "//third_party:libxsmm.BUILD",
-        sha256 = "e491ccadebc5cdcd1fc08b5b4509a0aba4e2c096f53d7880062a66b82a0baf84",
-        strip_prefix = "libxsmm-1.16.3",
-        urls = tf_mirror_urls("https://github.com/hfp/libxsmm/archive/1.16.3.tar.gz"),
+        sha256 = "8b642127880e92e8a75400125307724635ecdf4020ca4481e5efe7640451bb92",
+        strip_prefix = "libxsmm-1.17",
+        urls = tf_mirror_urls("https://github.com/libxsmm/libxsmm/archive/refs/tags/1.17.tar.gz"),
     )
 
     tf_http_archive(
@@ -250,10 +250,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_google_crc32c",
-        sha256 = "ac07840513072b7fcebda6e821068aa04889018f24e10e46181068fb214d7e56",
+        sha256 = "6b3b1d861bb8307658b2407bc7a4c59e566855ef5368a60b35c893551e4788e9",
         build_file = "@com_github_googlecloudplatform_google_cloud_cpp//bazel:crc32c.BUILD",
-        strip_prefix = "crc32c-1.1.2",
-        urls = tf_mirror_urls("https://github.com/google/crc32c/archive/1.1.2.tar.gz"),
+        strip_prefix = "crc32c-1.0.6",
+        urls = tf_mirror_urls("https://github.com/google/crc32c/archive/1.0.6.tar.gz"),
     )
 
     tf_http_archive(
@@ -281,9 +281,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_googleapis",
         build_file = "//third_party/googleapis:googleapis.BUILD",
-        sha256 = "7ebab01b06c555f4b6514453dc3e1667f810ef91d1d4d2d3aa29bb9fcb40a900",
-        strip_prefix = "googleapis-541b1ded4abadcc38e8178680b0677f65594ea6f",
-        urls = tf_mirror_urls("https://github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip"),
+        sha256 = "249d83abc5d50bf372c35c49d77f900bff022b2c21eb73aa8da1458b6ac401fc",
+        strip_prefix = "googleapis-6b3fdcea8bc5398be4e7e9930c693f0ea09316a0",
+        urls = tf_mirror_urls("https://github.com/googleapis/googleapis/archive/6b3fdcea8bc5398be4e7e9930c693f0ea09316a0.tar.gz"),
     )
 
     tf_http_archive(
@@ -318,10 +318,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "six_archive",
         build_file = "//third_party:six.BUILD",
-        sha256 = "30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259",
-        strip_prefix = "six-1.15.0",
+        sha256 = "1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
+        strip_prefix = "six-1.16.0",
         system_build_file = "//third_party/systemlibs:six.BUILD",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/source/s/six/six-1.15.0.tar.gz"),
+        urls = tf_mirror_urls("https://pypi.python.org/packages/source/s/six/six-1.16.0.tar.gz"),
     )
 
     tf_http_archive(
@@ -459,10 +459,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "nsync",
         patch_file = ["//third_party:nsync.patch"],
-        sha256 = "caf32e6b3d478b78cff6c2ba009c3400f8251f646804bcb65465666a9cea93c4",
-        strip_prefix = "nsync-1.22.0",
+        sha256 = "47a6eb2a295be5121a1904a6a775722338a20dc02ee3eec4169ed2c3f203617a",
+        strip_prefix = "nsync-1.24.0",
         system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.22.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.24.0.tar.gz"),
     )
 
     tf_http_archive(
@@ -482,10 +482,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "ac8e1087711084548d788ef18b9b732c8de887457b81f616fc681d1044b32f98",
-        strip_prefix = "curl-7.81.0",
+        sha256 = "c0e64302a33d2fb79e0fc4e674260a22941e92ee2f11b894bf94d32b8f5531af",
+        strip_prefix = "curl-7.83.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.81.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.83.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -574,10 +574,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "snappy",
         build_file = "//third_party:snappy.BUILD",
-        sha256 = "75c1fbb3d618dd3a0483bff0e26d0a92b495bbe5059c8b4f1c962b478b6e06e7",
-        strip_prefix = "snappy-1.1.9",
+        sha256 = "16b677f07832a612b0836178db7f374e414f94657c138e6993cbfc5dcc58651f",
+        strip_prefix = "snappy-1.1.8",
         system_build_file = "//third_party/systemlibs:snappy.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/snappy/archive/1.1.9.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/snappy/archive/1.1.8.tar.gz"),
     )
 
     tf_http_archive(
@@ -679,10 +679,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "cython",
         build_file = "//third_party:cython.BUILD",
-        sha256 = "e2e38e1f0572ca54d6085df3dec8b607d20e81515fb80215aed19c81e8fe2079",
-        strip_prefix = "cython-0.29.21",
+        sha256 = "d530216e015fd365bf3327a176e0073d0e5b8d48781f387336459f10032d776f",
+        strip_prefix = "cython-3.0.0a10",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
-        urls = tf_mirror_urls("https://github.com/cython/cython/archive/0.29.21.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.0a10.tar.gz"),
     )
 
     # LINT.IfChange
@@ -834,11 +834,12 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/nlohmann/json/archive/v3.10.5.tar.gz"),
     )
 
+    # Pybind11 2.9.x causes seg faults in TF Text, see cl/442586909
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.9.2.tar.gz"),
-        sha256 = "6bd528c4dbe2276635dc787b6b1f2e5316cf6b49ee3e150264e455a0d68d19c1",
-        strip_prefix = "pybind11-2.9.2",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.8.1.tar.gz"),
+        sha256 = "f1bcc07caa568eb312411dde5308b1e250bd0e1bc020fae855bf9f43209940cc",
+        strip_prefix = "pybind11-2.8.1",
         build_file = "//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
