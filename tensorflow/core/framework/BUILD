@@ -878,6 +878,7 @@ cc_library(
         "//tensorflow/core/lib/strings:scanner",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/memory",
     ],
 )

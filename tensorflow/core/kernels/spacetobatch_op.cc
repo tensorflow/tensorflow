@@ -21,8 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/kernels/spacetobatch_functor.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,8 +29,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/spacetobatch_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -99,7 +99,13 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
   // Compute the product of the block_shape values.
   int64_t block_shape_product = 1;
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
-    block_shape_product *= block_shape[block_dim];
+    if (block_shape[block_dim] < 1) {
+      return errors::InvalidArgument(
+          "All values in block_shape must be positive, got value, ",
+          block_shape[block_dim], " at index ", block_dim, ".");
+    }
+    block_shape_product =
+        MultiplyWithoutOverflow(block_shape_product, block_shape[block_dim]);
   }
   if (block_shape_product <= 0) {
     return errors::InvalidArgument(
@@ -131,8 +137,14 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
   // The actual output shape exposed to callers.
   TensorShape external_output_shape;
 
-  external_output_shape.AddDim(orig_input_tensor.dim_size(0) *
-                               block_shape_product);
+  const int64_t output_shape = MultiplyWithoutOverflow(
+      orig_input_tensor.dim_size(0), block_shape_product);
+  if (output_shape < 0) {
+    return errors::InvalidArgument(
+        "Negative output dimension size caused by overflow when multiplying ",
+        orig_input_tensor.dim_size(0), " and ", block_shape_product);
+  }
+  external_output_shape.AddDim(output_shape);
 
   int64_t input_batch_size = orig_input_tensor.dim_size(0);
   for (int block_dim = 0; block_dim < removed_prefix_block_dims; ++block_dim) {
