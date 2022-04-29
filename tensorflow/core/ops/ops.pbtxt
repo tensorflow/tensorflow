@@ -710,6 +710,7 @@ op {
     name: "split_count"
     type: "int"
   }
+  is_stateful: true
 }
 op {
   name: "Angle"
@@ -8555,6 +8556,7 @@ op {
       }
     }
   }
+  is_stateful: true
 }
 op {
   name: "CollectiveReduce"
@@ -10436,6 +10438,7 @@ op {
       }
     }
   }
+  is_stateful: true
 }
 op {
   name: "CudnnRNN"
