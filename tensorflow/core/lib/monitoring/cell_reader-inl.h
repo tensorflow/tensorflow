@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -34,6 +35,10 @@ namespace internal {
 
 // Returns a snapshot of the metrics collected at the time of calling.
 std::unique_ptr<CollectedMetrics> CollectMetrics();
+
+// Returns whether this is a cumulative or gauge metric.
+MetricKind GetMetricKind(const CollectedMetrics& metrics,
+                         const std::string& metric_name);
 
 // Returns the points collected for `metric_name` associated with the `labels`.
 // A `Point` represents a data point collected for the metric. For example,
@@ -61,8 +66,8 @@ StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
 // supported.
 template <typename ValueType>
 ValueType GetValue(const Point& point) {
-  LOG(FATAL) << "Not implemented: Tensorflow CellReader currently only "
-                "supports counters and samplers.";
+  LOG(FATAL) << "Not implemented: Tensorflow CellReader currently does not "
+                "support percentiles.";
 }
 
 template <>
@@ -100,18 +105,12 @@ ValueType GetLatestValueOrDefault(const CollectedMetrics& metrics,
 // values are supported.
 template <typename ValueType>
 ValueType GetDelta(const ValueType& a, const ValueType& b) {
-  LOG(FATAL) << "Not implemented: Tensorflow CellReader currently only "
-                "supports counters and samplers.";
+  LOG(FATAL) << "Not implemented: Tensorflow CellReader currently does not "
+                "support percentiles.";
 }
 
 template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b);
-
-template <>
-std::string GetDelta(const std::string& a, const std::string& b);
-
-template <>
-bool GetDelta(const bool& a, const bool& b);
 
 template <>
 Histogram GetDelta(const Histogram& a, const Histogram& b);

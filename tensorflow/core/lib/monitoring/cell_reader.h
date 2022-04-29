@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/lib/monitoring/cell_reader-inl.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 
 namespace tensorflow {
 namespace monitoring {
@@ -122,6 +123,9 @@ ValueType CellReader<ValueType>::Read(const LabelType&... labels) {
   std::unique_ptr<CollectedMetrics> metrics = internal::CollectMetrics();
   ValueType value = internal::GetLatestValueOrDefault<ValueType>(
       *metrics, metric_name_, labels_list);
+  if (internal::GetMetricKind(*metrics, metric_name_) == MetricKind::kGauge) {
+    return value;
+  }
   ValueType initial_value = internal::GetLatestValueOrDefault<ValueType>(
       *initial_metrics_, metric_name_, labels_list);
   return internal::GetDelta<ValueType>(value, initial_value);
