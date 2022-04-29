@@ -378,6 +378,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
 
+ protected:
+  // The backend-specific options selected for the algebraic simplifier.
+  const AlgebraicSimplifierOptions& options_;
+
  private:
   // Removes degenerate dimension from dot.
   StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
@@ -516,9 +520,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
-
-  // The backend-specific options selected for the algebraic simplifier.
-  const AlgebraicSimplifierOptions& options_;
 
   // Cached computation for adding two scalars of a given type.
   absl::flat_hash_map<PrimitiveType, HloComputation*> scalar_add_computations_;
