@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -519,6 +521,27 @@ class SpaceToBatchNDErrorHandlingTest(test.TestCase):
         array_ops.placeholder(
             dtypes.float32, shape=(3, 2, 3, 2)), [2, 3], [[1, 1], [0, 0]])
     self.assertEqual([3 * 2 * 3, 2, 1, 2], t.get_shape().as_list())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidBlockShape(self):
+    tf_in = constant_op.constant(
+        -3.5e+35, shape=[10, 20, 20], dtype=dtypes.float32)
+    block_shape = constant_op.constant(-10, shape=[2], dtype=dtypes.int64)
+    paddings = constant_op.constant(0, shape=[2, 2], dtype=dtypes.int32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "block_shape must be positive"):
+      array_ops.space_to_batch_nd(tf_in, block_shape, paddings)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOutputSizeOutOfBounds(self):
+    tf_in = constant_op.constant(
+        -3.5e+35, shape=[10, 19, 22], dtype=dtypes.float32)
+    block_shape = constant_op.constant(
+        1879048192, shape=[2], dtype=dtypes.int64)
+    paddings = constant_op.constant(0, shape=[2, 2], dtype=dtypes.int32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Negative.* dimension size caused by overflow"):
+      array_ops.space_to_batch_nd(tf_in, block_shape, paddings)
 
 
 class SpaceToBatchGradientTest(test.TestCase, PythonOpImpl):

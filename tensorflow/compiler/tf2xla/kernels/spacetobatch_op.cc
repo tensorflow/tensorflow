@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace {
@@ -60,10 +61,14 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
     int64 pad_end = paddings.Get<int64>({i, 1});
     OP_REQUIRES(ctx, pad_start >= 0 && pad_end >= 0,
                 errors::InvalidArgument("Paddings must be non-negative"));
+    OP_REQUIRES(ctx, block_shape[i] >= 1,
+                errors::InvalidArgument(
+                    "All values in block_shape must be positive, got value, ",
+                    block_shape[i], " at index ", i, "."));
     dim->set_edge_padding_low(pad_start);
     dim->set_edge_padding_high(pad_end);
     padded_shape[1 + i] += pad_start + pad_end;
-    block_num_elems *= block_shape[i];
+    block_num_elems = MultiplyWithoutOverflow(block_num_elems, block_shape[i]);
   }
   // Don't pad the remainder dimensions.
   for (int i = 0; i < remainder_shape.size(); ++i) {
@@ -72,6 +77,16 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   OP_REQUIRES(ctx, block_num_elems > 0,
               errors::InvalidArgument(
                   "The product of the block dimensions must be positive"));
+  const int64_t batch_size = input_shape[0];
+  const int64_t output_dim =
+      MultiplyWithoutOverflow(batch_size, block_num_elems);
+  if (output_dim < 0) {
+    OP_REQUIRES(
+        ctx, output_dim >= 0,
+        errors::InvalidArgument("Negative output dimension size caused by "
+                                "overflow when multiplying ",
+                                batch_size, " and ", block_num_elems));
+  }
 
   xla::XlaOp padded =
       xla::Pad(input, XlaHelpers::Zero(b, input_dtype), padding_config);
@@ -134,7 +149,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   // Determine the length of the prefix of block dims that can be combined
   // into the batch dimension due to having no padding and block_shape=1.
   std::vector<int64> output_shape(input_rank);
-  output_shape[0] = batch_size * block_num_elems;
+  output_shape[0] = output_dim;
   for (int i = 0; i < block_rank; ++i) {
     output_shape[1 + i] = padded_shape[1 + i] / block_shape[i];
   }
