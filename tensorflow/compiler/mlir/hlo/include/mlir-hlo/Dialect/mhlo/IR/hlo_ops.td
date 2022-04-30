@@ -25,7 +25,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
 class HLO_Op<string mnemonic, list<Trait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
@@ -120,13 +119,12 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
-    Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
-    InferShapedTypeOpInterface, InferShapeEqualityOpInterface,
-    SameOperandsAndResultShape]> {
-  let arguments = (ins TensorType:$operand);
-  let results = (outs TensorType);
+    Type OperandType, Type ResultType = OperandType> : HLO_Op<mnemonic, traits # [Elementwise,
+    InferShapedTypeOpInterface, SameOperandsAndResultShape]> {
+  let arguments = (ins OperandType:$operand);
+  let results = (outs ResultType:$result);
   let extraClassDeclaration = [{
-    static  LogicalResult inferReturnTypeComponents(
+    static LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location,
         ValueRange operands, DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
@@ -152,6 +150,15 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
       return true;
     }
   }];
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return ::mlir::mhlo::parseUnaryOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      ::mlir::mhlo::printUnaryOp(getOperation(), p);
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -442,7 +449,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 
 class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
-    InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
+    SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -508,6 +515,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
+
 def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
@@ -1017,8 +1025,7 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
 def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">,
-      InferShapeEqualityOpInterface
+      SingleBlockImplicitTerminator<"ReturnOp">
     ]> {
   let summary = "Reduce operator";
   let description = [{
@@ -1055,7 +1062,8 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
 //===----------------------------------------------------------------------===//
 // MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
-def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
+def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "GetTupleElement operator";
   let description = [{
     Returns a member of a tuple specified by an index.
@@ -1071,12 +1079,10 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
 
   let hasFolder = 1;
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "Value":$value, "int32_t":$index)>];
 }
 
-def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
+def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "XLA's tuple op";
   let description = [{
      Groups a set of tensor inputs into a single tuple object.
@@ -1086,14 +1092,11 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
   let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
-  let builders = [
-    OpBuilder<(ins "ValueRange":$values)>];
-
   let hasCanonicalizer = 1;
   let hasVerifier = 1;
 }
 
-def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
+def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameOperandsElementType,
     SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
   let summary = "Comparison operator";
   let description = [{
@@ -1123,6 +1126,12 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   ];
 
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1296,7 +1305,7 @@ def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
 }
 
 def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+    [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Broadcast a tensor to a higher rank by prepending dimensions";
   let description = [{
     Broadcasts the operand tensor to a higher rank by prepending
@@ -1617,9 +1626,10 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
-                      "CustomCallApiVersion::API_VERSION_ORIGINAL">:
-                      $api_version,
+    DefaultValuedAttr<
+        HLO_CustomCallApiVersionAttr,
+        "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
+        $api_version,
     DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
@@ -2333,32 +2343,34 @@ def HLO_XlaRngGetAndUpdateStateOp: HLO_Op<"xla.rng_get_and_update_state", [Decla
 //===----------------------------------------------------------------------===//
 // MHLO Quantize Operator.
 //===----------------------------------------------------------------------===//
-def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]> {
-  let summary = "Dequantize operator";
+
+// TODO(b/230662142): Implement unknown scales/zero_point cases.
+def HLO_UniformQuantizeOp : HLO_UnaryElementwiseOp<"uniform_quantize",
+      [NoSideEffect], TensorOf<[F32, BF16, HLO_QuantizedInt]>,
+      HLO_QuantizedIntTensor> {
+  let summary = "Uniform quantize operator";
   let description = [{
-    Dequantize the quantized input of packed uint32 to bfloat16. Only uint8 or
-    uint16 is supported for the original unpacked input.
-
-    Returns a tensor of shape [d0,..., dn * unpack_size] if unpacked input shape
-    is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T), where T is
-    the unpacked input type. If transpose_output is true, will return a tensor
-    of shape [dn * unpack_size, dn-1, ..., d1, d0]. transpose_output is faster
-    when input's rank higher than 1. The input needs to be transposed to use
-    transpose_output feature.
+    Converts floating point tensors or uniform quantized integer tensors to
+    uniform quantized integer tensors according to the quantization parameters
+    defined by the output type.
   }];
-  let arguments = (ins
-    TensorOf<[I32]>:$input,
-    F32Attr:$min_range,
-    F32Attr:$max_range,
-    HLO_DequantizeModeAttr:$mode,
-    BoolAttr:$transpose_output,
-    DefaultValuedAttr<BoolAttr, "false">:$is_16bits
-  );
 
-  let results = (outs TensorOf<[BF16]>:$output);
-
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
+}
+
+def HLO_UniformDequantizeOp : HLO_UnaryElementwiseOp<"uniform_dequantize",
+      [NoSideEffect], HLO_QuantizedIntTensor, TensorOf<[F32, BF16]>> {
+  let summary = "Uniform dequantize operator";
+  let description = [{
+    Converts quantized array of integers to floating-points according to the
+    quantization parameters defined by the input type.
+  }];
+
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_FusionOp : HLO_Op<"fusion", []> {

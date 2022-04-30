@@ -2626,12 +2626,15 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
           ragged_rank=value.ragged_rank,
           row_splits_dtype=value.row_splits.dtype)
     else:
+      flat_values_spec = type_spec.type_spec_from_value(value.flat_values)
+      # Relax shape[0] to None, as it is connected to dynamic ragged shapes.
+      flat_values_spec = flat_values_spec._unbatch()._batch(None)  # pylint: disable=protected-access
       return cls(
           shape=value.shape,
           dtype=value.values.dtype,
           ragged_rank=value.ragged_rank,
           row_splits_dtype=value.row_splits.dtype,
-          flat_values_spec=type_spec.type_spec_from_value(value.flat_values))
+          flat_values_spec=flat_values_spec)
 
 
 type_spec.register_type_spec_from_value_converter(
@@ -3031,6 +3034,8 @@ def _add_supported_value_type(cls):
   """Register the `cls` as supported value type of RaggedTenosr.
 
   The cls must be a subclass of CompositeTensor, and must support:
+   - Spec:
+     The Spec must be a `BatchableTypeSpec`
    - Properties:
      - x.shape
      - x.dtype

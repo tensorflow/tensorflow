@@ -113,20 +113,4 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
   return ExecuteWithExecutable(executable, argument_pointers, nullptr);
 }
 
-void HloRunnerInterface::UpdateEntryComputationLayout(
-    HloModule* module, DeviceShapeRepresentationFn shape_representation_fn) {
-  CHECK(shape_representation_fn != nullptr);
-  // Make sure entry computation shapes are in device representation.
-  for (int i = 0; i < module->entry_computation_layout().parameter_count();
-       i++) {
-    Shape shape =
-        module->entry_computation_layout().parameter_layout(i).shape();
-    *module->mutable_entry_computation_layout()->mutable_parameter_layout(i) =
-        ShapeLayout(shape_representation_fn(shape));
-  }
-  *module->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(shape_representation_fn(
-          module->entry_computation_layout().result_layout().shape()));
-}
-
 }  // namespace xla

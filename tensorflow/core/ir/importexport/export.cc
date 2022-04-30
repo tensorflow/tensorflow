@@ -78,56 +78,62 @@ using tensorflow::GraphDef;
 using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::Status;
+using tensorflow::StatusOr;
 using tensorflow::VersionDef;
 using tensorflow::errors::InvalidArgument;
 
 namespace mlir {
 namespace tfg {
+
+StatusOr<GraphOp> ValidateModuleForExport(ModuleOp module) {
+  GraphOp graph_op;
+  for (Operation &op : *module.getBody()) {
+    if (isa<GraphFuncOp>(op)) continue;
+    if (auto new_graph_op = dyn_cast<GraphOp>(op)) {
+      if (graph_op) {
+        return InvalidArgument(
+            "Can't export module with two different tfg.graph");
+      }
+      graph_op = new_graph_op;
+      continue;
+    }
+    return InvalidArgument(
+        "Can't export module with other ops than tfg.graph or tfg.func, has: ",
+        op.getName().getStringRef().str());
+  }
+  return graph_op;
+}
+
+void ExportVersionAttr(VersionAttr attr, VersionDef *version) {
+  version->set_producer(attr.getProducer());
+  version->set_min_consumer(attr.getMinConsumer());
+  for (int32_t bad_consumer : attr.getBadConsumers())
+    version->add_bad_consumers(bad_consumer);
+}
+
+void ExtractExperimentalDebugInfoFromLocation(
+    Location inst_loc, NodeDef::ExperimentalDebugInfo *debug_info) {
+  auto add_name_loc = [&](mlir::NameLoc name_loc) {
+    StringRef node, func;
+    std::tie(node, func) = name_loc.getName().strref().split('@');
+    debug_info->add_original_node_names(node.str());
+    if (!func.empty()) debug_info->add_original_func_names(func.str());
+  };
+  if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
+    for (Location loc : fused.getLocations())
+      if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) add_name_loc(name_loc);
+    return;
+  }
+  if (auto name_loc = inst_loc.dyn_cast<mlir::NameLoc>())
+    add_name_loc(name_loc);
+}
+
 namespace {
 
 constexpr StringRef kNameAttr = TFGraphDialect::getNameAttrKey();
 constexpr StringRef kDeviceAttr = TFGraphDialect::getDeviceAttrKey();
 constexpr StringRef kFullTypeAttr = TFGraphDialect::getFullTypeAttrKey();
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
-
-// Compute the name to use in GraphDef for a given Value (either the result of
-// an operation or a block operand if a function argument) and store the result
-// in the provided name string. The `control_ty` is the instance of the
-// `ControlType` to compare against and detect a control dependency case.
-static Status GetValueName(Value operand, std::string &name, Type control_ty) {
-  OpResult op_result = operand.dyn_cast<OpResult>();
-  if (!op_result) {
-    BlockArgument block_operand = operand.dyn_cast<BlockArgument>();
-    bool is_control = (block_operand.getType() == control_ty);
-    int arg_num = block_operand.getArgNumber();
-    name.clear();
-    // Function arguments are coming as pair: the even are the actual tensors
-    // while the odd position are the associated control input.
-    if (is_control) name = "^";
-    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
-        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
-    if (!arg_attrs)
-      return InvalidArgument("Missing attribute for argument #", arg_num);
-    StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
-    if (!arg_name)
-      return InvalidArgument(
-          "Can't export graph with missing op-name for function parameter #",
-          arg_num);
-    absl::StrAppend(&name, arg_name.getValue().str());
-    return {};
-  }
-  Operation *producer = op_result.getDefiningOp();
-  auto nameAttr = producer->getAttrOfType<StringAttr>(kNameAttr);
-  if (!nameAttr)
-    return InvalidArgument("Can't export graph with missing op-name");
-
-  name.clear();
-  if (op_result.getType() == control_ty) name = "^";
-  absl::StrAppend(&name, nameAttr.getValue().str());
-  if (op_result.getType() != control_ty && op_result.getResultNumber())
-    absl::StrAppend(&name, ":", op_result.getResultNumber());
-  return {};
-}
 
 Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
                        StringRef name) {
@@ -148,15 +154,8 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
         SetTensorShapeProto(subtype,
                             handle_shapes_attr.mutable_list()->add_shape());
       }
-
-      (*node_def->mutable_attr())["_handle_dtypes"] = handle_dtypes_attr;
-      (*node_def->mutable_attr())["_handle_shapes"] = handle_shapes_attr;
     }
   }
-
-  if (arg_type.isa<RankedTensorType>())
-    TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes", arg_type,
-                                         node_def->mutable_attr()));
 
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(arg_type.getElementType(), &dtype));
@@ -224,27 +223,6 @@ Status GetReturnNode(GraphFuncOp function, Value operand, unsigned index,
                         /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
-}
-
-// Converts a location to the debug information for the node def, if we find
-// supported location, that is a top-level NameLoc or any NameLoc nested inside
-// a FusedLoc. Other kind of location are ignored. If a NameLoc is of the form
-// "name@func" we parse it and import the two appropriately.
-void ExtractExperimentalDebugInfoFromLocation(
-    mlir::Location inst_loc, NodeDef::ExperimentalDebugInfo *debug_info) {
-  auto add_name_loc = [&](mlir::NameLoc name_loc) {
-    StringRef node, func;
-    std::tie(node, func) = name_loc.getName().strref().split('@');
-    debug_info->add_original_node_names(node.str());
-    if (!func.empty()) debug_info->add_original_func_names(func.str());
-  };
-  if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
-    for (Location loc : fused.getLocations())
-      if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) add_name_loc(name_loc);
-    return;
-  }
-  if (auto name_loc = inst_loc.dyn_cast<mlir::NameLoc>())
-    add_name_loc(name_loc);
 }
 
 // Convert an MLIR operation to a NodeDef. The `control_ty` is the instance of
@@ -396,33 +374,11 @@ Status BuildFunctionSignature(GraphFuncOp func_op, FunctionDef &fdef) {
 
 // Given an MLIR module, returns a GraphDef.
 Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
-  // Check that this module is valid for export: it should only contains at most
-  // a single Graph operation and one or more GraphFunc operations.
-  GraphOp graph_op;
-  for (Operation &op : *module.getBody()) {
-    if (isa<GraphFuncOp>(op)) continue;
-    if (auto new_graph_op = dyn_cast<GraphOp>(op)) {
-      if (graph_op) {
-        return InvalidArgument(
-            "Can't export module with two different tfg.graph");
-      }
-      graph_op = new_graph_op;
-      continue;
-    }
-    return InvalidArgument(
-        absl::StrCat("Can't export module with other ops than tfg.graph or "
-                     "tfg.func, has: ",
-                     op.getName().getStringRef().data()));
-  }
+  TF_ASSIGN_OR_RETURN(GraphOp graph_op, ValidateModuleForExport(module));
   if (graph_op) {
+    ExportVersionAttr(graph_op.version(), graphdef->mutable_versions());
     // A graph is mostly a flat "sea of nodes" to export.
     auto control_ty = tfg::ControlType::get(graph_op.getContext());
-    VersionDef *version = graphdef->mutable_versions();
-    tfg::VersionAttr versionAttr = graph_op.version();
-    version->set_producer(versionAttr.getProducer());
-    version->set_min_consumer(versionAttr.getMinConsumer());
-    for (int32_t bad_consumer : versionAttr.getBadConsumers())
-      version->add_bad_consumers(bad_consumer);
     for (Operation &op : *graph_op.getBody()) {
       NodeDef *node = graphdef->add_node();
       TF_RETURN_IF_ERROR(ConvertOperationToNode(
@@ -462,7 +418,9 @@ Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
     LLVM_DEBUG(llvm::dbgs()
                << "Exporting function @" << func_op.getName() << "\n");
     if (func_op.generic()) continue;
-    TF_RETURN_IF_ERROR(ExportFunction(func_op, flib));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        ExportFunction(func_op, flib),
+        "While exporting function: ", func_op.sym_name().str());
   }
   *graphdef->mutable_library() = flib.ToProto();
 
@@ -470,6 +428,45 @@ Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
 }
 
 }  // namespace
+
+// Compute the name to use in GraphDef for a given Value (either the result of
+// an operation or a block operand if a function argument) and store the result
+// in the provided name string. The `control_ty` is the instance of the
+// `ControlType` to compare against and detect a control dependency case.
+Status GetValueName(Value operand, std::string &name, Type control_ty) {
+  OpResult op_result = operand.dyn_cast<OpResult>();
+  if (!op_result) {
+    BlockArgument block_operand = operand.dyn_cast<BlockArgument>();
+    bool is_control = (block_operand.getType() == control_ty);
+    int arg_num = block_operand.getArgNumber();
+    name.clear();
+    // Function arguments are coming as pair: the even are the actual tensors
+    // while the odd position are the associated control input.
+    if (is_control) name = "^";
+    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
+        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
+    if (!arg_attrs)
+      return InvalidArgument("Missing attribute for argument #", arg_num);
+    StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
+    if (!arg_name)
+      return InvalidArgument(
+          "Can't export graph with missing op-name for function parameter #",
+          arg_num);
+    absl::StrAppend(&name, arg_name.getValue().str());
+    return {};
+  }
+  Operation *producer = op_result.getDefiningOp();
+  auto nameAttr = producer->getAttrOfType<StringAttr>(kNameAttr);
+  if (!nameAttr)
+    return InvalidArgument("Can't export graph with missing op-name");
+
+  name.clear();
+  if (op_result.getType() == control_ty) name = "^";
+  absl::StrAppend(&name, nameAttr.getValue().str());
+  if (op_result.getType() != control_ty && op_result.getResultNumber())
+    absl::StrAppend(&name, ":", op_result.getResultNumber());
+  return {};
+}
 
 Status ExportFunction(GraphFuncOp func_op,
                       tensorflow::FunctionLibraryDefinition &flib) {
@@ -631,17 +628,16 @@ Status ExportFunction(GraphFuncOp func_op,
   if (unique_ids_keys) {
     auto unique_ids_values = func_op->getAttrOfType<DenseIntElementsAttr>(
         "resource_arg_unique_ids_values");
-    if (!unique_ids_values)
+    if (!unique_ids_values) {
       return InvalidArgument(
-          "Can't export function ", func_name,
-          " because \"resource_arg_unique_ids_keys\" attribute is present "
-          "but "
-          "\"resource_arg_unique_ids_values\" is missing");
-    if (unique_ids_keys.size() != unique_ids_values.size())
+          "'resource_arg_unique_ids_keys' is present but "
+          "'resource_arg_unique_ids_values' is missing");
+    }
+    if (unique_ids_keys.size() != unique_ids_values.size()) {
       return InvalidArgument(
-          "Can't export function ", func_name,
-          " because \"resource_arg_unique_ids_keys\" array does not have the "
-          "same size as \"resource_arg_unique_ids_values\"");
+          "'resource_arg_unique_ids_keys' is not the same size as "
+          "'resource_arg_unique_ids_values'");
+    }
 
     auto *unique_ids_map = func_def.mutable_resource_arg_unique_id();
     for (auto key_value : llvm::zip(unique_ids_keys.getValues<int32_t>(),

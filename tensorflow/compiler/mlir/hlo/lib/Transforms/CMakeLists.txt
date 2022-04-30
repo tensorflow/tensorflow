@@ -17,8 +17,12 @@
 add_mlir_library(MLIRBufferTransforms
   buffer_packing.cc
   buffer_reuse.cc
+  bufferize.cc
+  bufferize_pass.cc
   copy_removal.cc
+  lower_index_cast_pass.cc
   symbolic_shape_optimization.cc
+  shape_simplification.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen

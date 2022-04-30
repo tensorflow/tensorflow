@@ -37,6 +37,9 @@ _XlaOpMetadata = Any
 
 _T = TypeVar("_T")
 
+class XlaRuntimeError(RuntimeError):
+  pass
+
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
@@ -128,7 +131,7 @@ class XlaComputation:
   def as_hlo_text(self, print_large_constants: bool=False) -> str: ...
   def as_hlo_dot_graph(self) -> str: ...
   def hash(self) -> int: ...
-  def as_hlo_module(elf) -> HloModule: ...
+  def as_hlo_module(self) -> HloModule: ...
 
 class HloPrintOptions:
   def __init__(self) -> None: ...
@@ -230,6 +233,8 @@ class CompiledMemoryStats:
   output_size_in_bytes: int
   alias_size_in_bytes: int
   temp_size_in_bytes: int
+  def __str__(self) -> str: ...
+
 
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...
@@ -241,6 +246,8 @@ class ExecutableBuildOptions:
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
   use_auto_spmd_partitioning: bool
+  auto_spmd_partitioning_mesh_shape: List[int]
+  auto_spmd_partitioning_mesh_ids: List[int]
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
@@ -290,22 +297,18 @@ class Device:
   platform: str
   device_kind: str
   client: Client
+  def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
 
-class CpuDevice(Device):
-  def __repr__(self) -> str: ...
-
 class GpuDevice(Device):
   device_vendor: str
-  def __repr__(self) -> str: ...
 
 class TpuDevice(Device):
   coords: Tuple[int, ...]
   core_on_chip: int
-  def __repr__(self) -> str: ...
 
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int
@@ -358,6 +361,10 @@ class Client:
       device: Device = ...,
       force_copy: bool = ...,
       host_buffer_semantics: HostBufferSemantics = ...) -> Buffer: ...
+  def make_cross_host_receive_buffers(
+      self,
+      shapes: Sequence[Shape],
+      device: Device) -> List[Tuple[Buffer, bytes]]: ...
   def compile(
       self,
       computation: XlaComputation,
@@ -373,6 +380,9 @@ class Client:
       options: CompileOptions) -> Executable: ...
   def heap_profile(self) -> bytes: ...
   def defragment(self) -> _Status: ...
+  def get_emit_python_callback_descriptor(
+      self, callable: Callable, operand_shapes: Sequence[XlaOp],
+      results_shapes: Sequence[Shape]) -> Tuple[Any, Any]: ...
   def emit_python_callback(
       self, callable: Callable, builder: XlaBuilder, operands: Sequence[XlaOp],
       results_shapes: Sequence[Shape],
@@ -405,6 +415,8 @@ class DeviceArray(DeviceArrayBase):
   ndim: int
   _value: np.ndarray
   def copy_to_device(self, dst_device: Device) -> DeviceArray: ...
+  def copy_to_remote_device(self,
+                            descriptor: bytes) -> Tuple[_Status, bool]: ...
   def on_device_size_in_bytes(self) -> int: ...
   def delete(self) -> None: ...
   def is_ready(self) -> bool: ...

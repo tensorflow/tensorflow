@@ -26,7 +26,7 @@ Other implementations of TraceType include tf.TypeSpec and its subclasses.
 """
 
 
-from tensorflow.core.function.trace_type.signature_builder import make_function_signature
-from tensorflow.core.function.trace_type.signature_builder import SignatureContext
-from tensorflow.core.function.trace_type.signature_builder import WeakrefDeletionObserver
+from tensorflow.core.function.trace_type.trace_type_builder import from_object
+from tensorflow.core.function.trace_type.trace_type_builder import InternalTracingContext
+from tensorflow.core.function.trace_type.trace_type_builder import WeakrefDeletionObserver
 

@@ -55,9 +55,9 @@ class TacPass : public OperationPass<T> {
 // When adding new Pass to TAC, users should use this class as the base class
 // as it provides access to the TAC module.
 template <typename T>
-class TacFunctionPass : public TacPass<FuncOp> {
+class TacFunctionPass : public TacPass<func::FuncOp> {
  public:
-  using TacPass<FuncOp>::TacPass;
+  using TacPass<func::FuncOp>::TacPass;
 
   ~TacFunctionPass() override {}
 

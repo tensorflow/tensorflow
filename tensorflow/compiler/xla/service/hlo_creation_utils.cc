@@ -396,8 +396,7 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
   if (ShapeUtil::IsScalar(pred->shape())) {
     if (!ShapeUtil::IsScalar(op_shape) && !op_shape.IsTuple()) {
       // If the output is not scalar, we need to broadcast the condition
-      // to match the contract of kSelect. For tuples, we use kTupleSelect
-      // which expects the condition to be a scalar.
+      // to match the contract of kSelect.
       pred = computation->AddInstruction(HloInstruction::CreateBroadcast(
           ShapeUtil::ChangeElementType(op_shape, PrimitiveType::PRED), pred,
           {}));
@@ -406,8 +405,8 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
       }
     }
   }
-  HloOpcode select_op_code =
-      op_shape.IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
+  TF_RET_CHECK(!op_shape.IsTuple());
+  HloOpcode select_op_code = HloOpcode::kSelect;
   TF_ASSIGN_OR_RETURN(Shape select_shape,
                       ShapeInference::InferTernaryOpShape(select_op_code, pred,
                                                           on_true, on_false));
@@ -418,6 +417,15 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
     derived_from->SetupDerivedInstruction(select);
   }
   return select;
+}
+
+HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands) {
+  CHECK(!operands.empty());
+  if (operands.size() == 1) {
+    return operands[0];
+  }
+  return operands[0]->parent()->AddInstruction(
+      HloInstruction::CreateTuple(operands));
 }
 
 StatusOr<HloInstruction*> MakeSortHlo(

@@ -125,7 +125,8 @@ void TPUHostComputationExpansionPass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUHostComputationExpansionPass() {
   return std::make_unique<TPUHostComputationExpansionPass>();
 }
 

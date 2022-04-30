@@ -290,7 +290,9 @@ std::vector<T> BuildSparsityParameterAttribute(
 //     4.2. If no matching block config is found, encode the weight with random
 //          sparsity, and add Densify() op to fall back to dense execution.
 struct DenseToSparse
-    : public PassWrapper<DenseToSparse, OperationPass<FuncOp>> {
+    : public PassWrapper<DenseToSparse, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparse)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {
@@ -305,7 +307,7 @@ struct DenseToSparse
 };
 
 void DenseToSparse::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   OpBuilder builder(func);
 
   func.walk([&](SparseOpInterface sparse_op) {
@@ -439,7 +441,7 @@ void DenseToSparse::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect DenseToSparse pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDenseToSparsePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass() {
   return absl::make_unique<DenseToSparse>();
 }
 

@@ -54,8 +54,10 @@ namespace TFL {
 namespace {
 
 struct LegalizeJaxRandomPass
-    : public PassWrapper<LegalizeJaxRandomPass, OperationPass<FuncOp>> {
+    : public PassWrapper<LegalizeJaxRandomPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
+
   StringRef getArgument() const final { return "tfl-legalize-random"; }
   StringRef getDescription() const final {
     return "Replace jax.random.uniform/normal with tfl.custom.";
@@ -122,7 +124,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
 static PassRegistration<LegalizeJaxRandomPass> pass;
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeJaxRandomPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeJaxRandomPass() {
   return std::make_unique<LegalizeJaxRandomPass>();
 }
 

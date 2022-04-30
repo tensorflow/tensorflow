@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -53,11 +54,11 @@ Operation* EmitMemRefPrint(Location loc, Type element_type, Value arg,
          "Did not find a print function for the element type");
 
   auto caller_func =
-      b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
+      b->getInsertionBlock()->getParent()->getParentOfType<func::FuncOp>();
   auto func_name_attr = b->getStringAttr(func_name);
 
-  auto callee_func =
-      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name_attr);
+  auto callee_func = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+      caller_func, func_name_attr);
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
@@ -65,7 +66,8 @@ Operation* EmitMemRefPrint(Location loc, Type element_type, Value arg,
     b->setInsertionPointToStart(module.getBody());
     auto func_type = FunctionType::get(b->getContext(), arg.getType(),
                                        /*results=*/llvm::None);
-    callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
+    callee_func =
+        b->create<func::FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
   return b->create<func::CallOp>(loc, callee_func, arg);
@@ -153,7 +155,7 @@ struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    module.walk([&](FuncOp func) {
+    module.walk([&](func::FuncOp func) {
       if (func.isDeclaration()) return;
       Block* body = &func.getBody().front();
 

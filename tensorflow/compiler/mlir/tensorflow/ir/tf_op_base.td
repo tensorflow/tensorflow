@@ -30,7 +30,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 // TensorFlow dialect definitions
 //===----------------------------------------------------------------------===//
 
-def TF_Dialect : Dialect {
+def TensorFlowDialect : Dialect {
   let name = "tf";
 
   let description = [{
@@ -245,7 +245,7 @@ def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 //===----------------------------------------------------------------------===//
 
 class TF_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TF_Dialect, mnemonic, traits>;
+    Op<TensorFlowDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow attribute definitions
@@ -479,7 +479,7 @@ def TF_Tensor : TensorOf<[TF_ElementType]>;
 // Tensorflow devices metadata
 
 // Tensorflow GPU device metadata.
-def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TF_Dialect, [
+def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TensorFlowDialect, [
     // GPU device compute capability: major:minor.
     StructFieldAttr<"cc_major", I32Attr>,
     StructFieldAttr<"cc_minor", I32Attr>

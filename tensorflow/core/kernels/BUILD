@@ -26,6 +26,11 @@ load(
     "tf_fingerprint_deps",
     "tf_kernel_tests_linkstatic",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -56,10 +61,6 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -844,6 +845,7 @@ cc_library(
     defines = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -860,6 +862,7 @@ cc_library(
     ] + select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -1858,7 +1861,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/stream_executor/cuda:cudnn_plugin",
-    ],
+    ] + if_mkl(["//tensorflow/core/kernels/mkl:mkl_conv_op"]),
 )
 
 tf_cuda_cc_test(
@@ -3094,6 +3097,7 @@ tf_cc_test(
     srcs = select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
+        "//tensorflow:fuchsia_x86_64": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
@@ -4129,15 +4133,15 @@ tf_kernel_library(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
-    ]) + if_cuda_or_rocm([":gpu_utils"]),
+    ]),
 )
 
 tf_kernel_library(
@@ -4154,6 +4158,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]),
@@ -4561,6 +4566,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
 )
@@ -4989,7 +4995,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_slice_grad_op",
     prefix = "sparse_slice_grad_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+    ]),
 )
 
 tf_kernel_library(
@@ -6357,6 +6365,7 @@ filegroup(
         "scatter_functor.h",
         "scatter_nd_op.h",
         "scatter_nd_util.h",
+        "searchsorted_op.h",
         "segment_reduction_ops.h",
         "segment_reduction_ops_impl.h",
         "softplus_op.h",
@@ -6643,6 +6652,7 @@ filegroup(
         "scatter_nd_op_cpu_impl_6.cc",
         "scatter_nd_op_cpu_impl_7.cc",
         "scatter_nd_util.cc",
+        "searchsorted_op.cc",
         "segment_reduction_ops_impl_1.cc",
         "segment_reduction_ops_impl_2.cc",
         "segment_reduction_ops_impl_3.cc",
@@ -6720,6 +6730,7 @@ filegroup(
         "transpose_op.cc",
         "unicode_ops.cc",
         "unique_op.cc",
+        "unsorted_segment_join_op.cc",
         "where_op.cc",
         "whole_file_read_ops.cc",
         "xent_op.cc",

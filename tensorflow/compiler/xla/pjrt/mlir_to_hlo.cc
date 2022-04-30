@@ -63,7 +63,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   options.legalize_node_names = false;
   TF_RETURN_IF_ERROR(
       ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple,
-                          /*shape_representation_fn=*/nullptr, options));
+                          /*shape_determination_fns=*/{}, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return Status::OK();
@@ -74,7 +74,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::HloClientDialect>();
+  context.loadDialect<mlir::chlo::ChloDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),

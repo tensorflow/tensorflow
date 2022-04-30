@@ -55,7 +55,7 @@ class AlgorithmSelectorImpl {
 
   bool IsTrtVersionGE(const TRTVersion& version) const;
 
-  // Returns true if we know at compile time that the the algorithm selector
+  // Returns true if we know at compile time that the algorithm selector
   // should be required. This is a conservative estimate.
   bool IsAlgorithmSelectorRequired() const;
 

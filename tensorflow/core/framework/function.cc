@@ -72,9 +72,9 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
                   bool* is_type_list, DataTypeVector* dtypes) {
   dtypes->clear();
   if (!arg_def.type_list_attr().empty()) {
-    const AttrValue* v = attrs.Find(arg_def.type_list_attr());
+    const AttrValue* v = attrs.FindByString(arg_def.type_list_attr());
     if (v == nullptr) {
-      return errors::NotFound("type attr not found: ",
+      return errors::NotFound("type list attr not found: ",
                               arg_def.type_list_attr());
     }
     *is_type_list = true;
@@ -87,9 +87,9 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   *is_type_list = false;
   int num = 1;
   if (!arg_def.number_attr().empty()) {
-    const AttrValue* v = attrs.Find(arg_def.number_attr());
+    const AttrValue* v = attrs.FindByString(arg_def.number_attr());
     if (v == nullptr) {
-      return errors::NotFound("type attr not found: ", arg_def.type_attr());
+      return errors::NotFound("number attr not found: ", arg_def.number_attr());
     }
     num = v->i();
   }
@@ -100,7 +100,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   } else if (arg_def.type_attr().empty()) {
     dtype = DT_INVALID;
   } else {
-    const AttrValue* v = attrs.Find(arg_def.type_attr());
+    const AttrValue* v = attrs.FindByString(arg_def.type_attr());
     if (v == nullptr) {
       return errors::NotFound("type attr not found: ", arg_def.type_attr());
     }
@@ -121,7 +121,7 @@ Status ValidateSignatureWithAttrs(const OpDef& sig, AttrSlice attr_values) {
   // attr_values should specify all attrs defined in fdef, except for those
   // which have a default value
   for (const auto& attr : sig.attr()) {
-    const AttrValue* attr_value = attr_values.Find(attr.name());
+    const AttrValue* attr_value = attr_values.FindByString(attr.name());
     if (attr_value) {
       Status status = AttrValueHasType(*attr_value, attr.type());
       if (!status.ok()) {
@@ -776,9 +776,9 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     }
   }
 
-  auto substitute = [attr_values, &sig](StringPiece name, AttrValue* val) {
+  auto substitute = [attr_values, &sig](const string& name, AttrValue* val) {
     // Look for a specified value...
-    if (const AttrValue* v = attr_values.Find(name)) {
+    if (const AttrValue* v = attr_values.FindByString(name)) {
       *val = *v;
       return true;
     }

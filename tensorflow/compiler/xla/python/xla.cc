@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
@@ -80,6 +79,10 @@ bool IsOptimizedBuild() {
 
 PYBIND11_MODULE(xla_extension, m) {
   CHECK(tensorflow::RegisterNumpyBfloat16());
+
+  // Exceptions
+  py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
+                                          PyExc_RuntimeError);
 
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
@@ -135,6 +138,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "client",
           [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
       .def("__str__", &PjRtDevice::DebugString)
+      .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
            [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -163,18 +167,8 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>>(
-      m, "CpuDevice")
-      .def("__repr__", [](const TfrtCpuDevice& device) {
-        return absl::StrFormat("CpuDevice(id=%i)", device.id());
-      });
-
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
-      .def_property_readonly("device_vendor", &GpuDevice::device_vendor)
-      .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
-                               device.id(), device.process_index());
-      });
+      .def_property_readonly("device_vendor", &GpuDevice::device_vendor);
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
       m, "TpuDevice")
@@ -186,13 +180,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "The coordinates of this TpuDevice's chip in the TPU mesh network.")
       .def_property_readonly(
           "core_on_chip", &PjRtTpuDevice::core_on_chip,
-          "The index of this TpuDevice's core on the TPU chip.")
-      .def("__repr__", [](const PjRtTpuDevice& device) {
-        return absl::StrFormat(
-            "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
-            device.id(), device.process_index(),
-            absl::StrJoin(device.coords(), ","), device.core_on_chip());
-      });
+          "The index of this TpuDevice's core on the TPU chip.");
 
   // Local XLA client methods.
 
@@ -241,6 +229,9 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("device") = nullptr, py::arg("force_copy") = false,
            py::arg("host_buffer_semantics") =
                PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def("make_cross_host_receive_buffers",
+           &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
+           py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("compile", &PyClient::CompileMlir, py::arg("computation"),
@@ -256,6 +247,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
+      .def("get_emit_python_callback_descriptor",
+           &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
+           py::arg("operand_shapes"), py::arg("result_shapes") = absl::nullopt)
+      // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback", &PyClient::EmitPythonCallback,
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
            py::arg("result_shapes"), py::arg("operand_layouts") = absl::nullopt,
@@ -322,7 +317,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_readwrite("alias_size_in_bytes",
                      &CompiledMemoryStats::alias_size_in_bytes)
       .def_readwrite("temp_size_in_bytes",
-                     &CompiledMemoryStats::temp_size_in_bytes);
+                     &CompiledMemoryStats::temp_size_in_bytes)
+      .def("__str__", &CompiledMemoryStats::DebugString);
 
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");

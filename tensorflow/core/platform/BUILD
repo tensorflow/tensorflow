@@ -1149,6 +1149,16 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "error_payloads",
+    srcs = ["error_payloads.cc"],
+    hdrs = ["error_payloads.h"],
+    deps = [
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
@@ -1157,6 +1167,12 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
 )
 

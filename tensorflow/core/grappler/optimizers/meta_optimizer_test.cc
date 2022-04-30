@@ -327,7 +327,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
                                            output.library());
 
   // Specialized and optimized functions should be added to the graph.
-  EXPECT_EQ(5, optimized_flib.num_functions());
+  EXPECT_EQ(3, optimized_flib.num_functions());
 
   // Get a specialized function name.
   const auto specialized_name = [](const string& fn, const string& node,
@@ -471,7 +471,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneUnusedOutputs) {
                                            output.library());
 
   // Specialized functions should be added to the graph.
-  EXPECT_EQ(3, optimized_flib.num_functions());
+  EXPECT_EQ(2, optimized_flib.num_functions());
 
   // Expected names of the specialized functions.
   const string specialized_my_fwd = "Fwd_specialized_for_fwd_at_tf_graph";
@@ -1031,6 +1031,149 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
   for (int i = 0; i < 2; ++i) {
     test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
   }
+}
+
+TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
+  using test::function::NDef;
+
+  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
+      &optimization_options);
+
+  // Define a simple function library with one branch function.
+  //   def branch_func(x, y):
+  //     z = tf.Mul(x, x)
+  //     return z
+  FunctionDef case_func = FunctionDefHelper::Create(
+      "branch_func", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
+
+  // Tensorflow graph:
+  //
+  //   idx = tf.Placeholder(tf.int32);
+  //   x = tf.Placeholder(tf.float);
+  //   y = tf.Placeholder(tf.float);
+  //
+  //   case = tf.Case(idx, x, y, branches=[branch_func])
+  GrapplerItem item;
+  item.id = "main";
+
+  AttrValue branches;
+  branches.mutable_list()->add_func()->set_name("branch_func");
+  AttrValue output_shapes;
+  output_shapes.mutable_list()->add_shape();
+  item.graph = test::function::GDef(
+      {NDef("idx", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+       NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("y", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("case", "Case", {"idx", "x", "y"},
+            {{"branches", std::move(branches)},
+             {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"output_shapes", std::move(output_shapes)}},
+            kDevice)},
+      /*funcs=*/
+      {case_func});
+  item.fetch = {"case"};
+
+  GraphDef output;
+  ConfigProto config_proto;
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(output.library().function_size(), 1);
+  // One of the arguments was removed.
+  auto& func = output.library().function(0);
+  EXPECT_EQ(func.signature().input_arg_size(), 1);
+  EXPECT_EQ(func.signature().input_arg(0).name(), "x_tfg_result_0");
+}
+
+TEST_F(MetaOptimizerTest, TestTFGControlFlowSink) {
+  using test::function::NDef;
+
+  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
+      &optimization_options);
+
+  // Define a branch function.
+  //   def branch_func(x, y):
+  //     z = tf.Mul(x, y)
+  //     return z
+  FunctionDef case_func = FunctionDefHelper::Create(
+      "branch_func", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
+
+  // Define a function with a control-flow op.
+  //   def Foo(idx, a, b):
+  //     x_foo = Add(a, b)
+  //     y_foo = Mul(a, b)
+  //     case = Case(idx, x_foo, y_foo, branches=[branch_func[)
+  //     return case
+  AttrValue branches;
+  branches.mutable_list()->add_func()->set_name("branch_func");
+  AttrValue output_shapes;
+  output_shapes.mutable_list()->add_shape();
+  FunctionDef foo_func = FunctionDefHelper::Create(
+      "Foo", {"idx:int32", "a:float", "b:float"}, {"c:float"}, {},
+      {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
+       {{"mul"}, "Mul", {"a", "b"}, {{"T", DT_FLOAT}}},
+       {{"case"},
+        "Case",
+        {"idx", "add:z:0", "mul:z:0"},
+        {{"branches", std::move(branches)},
+         {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+         {"Tout", DataTypeSlice{DT_FLOAT}},
+         {"output_shapes", std::move(output_shapes)}}}},
+      /*ret_def=*/
+      {{"c", "case:output:0"}});
+  (*foo_func.mutable_attr())["_noinline"].set_b(true);
+
+  // Tensorflow graph:
+  //
+  //   idx = tf.Placeholder(tf.int32);
+  //   a = tf.Placeholder(tf.float);
+  //   b = tf.Placeholder(tf.float);
+  //
+  //   foo_val = Foo(idx, a, b)
+  GrapplerItem item;
+  item.id = "main";
+
+  item.graph = test::function::GDef(
+      {NDef("idx", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+       NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("foo", "Foo", {"idx", "a", "b"}, {}, kDevice)},
+      /*funcs=*/
+      {case_func, foo_func});
+  item.fetch = {"foo"};
+
+  GraphDef output;
+  ConfigProto config_proto;
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(output.library().function_size(), 2);
+
+  const FunctionDef* optimized_foo_func = nullptr;
+  const FunctionDef* specialized_branch_func = nullptr;
+  for (const FunctionDef& func : output.library().function()) {
+    if (func.signature().name() == "Foo")
+      optimized_foo_func = &func;
+    else if (absl::StartsWith(func.signature().name(), "branch_func"))
+      specialized_branch_func = &func;
+  }
+  ASSERT_TRUE(optimized_foo_func);
+  EXPECT_EQ(optimized_foo_func->node_def_size(), 1);
+  ASSERT_TRUE(specialized_branch_func);
+  EXPECT_EQ(specialized_branch_func->node_def_size(), 3);
 }
 
 // Tests for checking expected behavior when skipping tf.data functions in

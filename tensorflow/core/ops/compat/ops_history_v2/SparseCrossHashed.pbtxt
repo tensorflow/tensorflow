@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SparseCrossHashed"
   input_arg {
     name: "indices"

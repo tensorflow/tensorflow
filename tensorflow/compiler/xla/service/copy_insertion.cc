@@ -350,7 +350,8 @@ Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                       in_place_op->parent()->DeepCopyInstruction(operand));
-  TF_RETURN_IF_ERROR(operand->ReplaceUseWith(in_place_op, deep_copy));
+  TF_RETURN_IF_ERROR(
+      operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
   return Status::OK();
 }
 
@@ -864,8 +865,10 @@ class ComputeRelativeLocation {
         return false;
       }
       return absl::c_any_of(
-          in_place, [&](const std::pair<HloUse, ShapeIndex>& a) {
-            auto* op2 = instr->operand(a.first.operand_number);
+          in_place, [&](const std::pair<HloOperandIndex, ShapeIndex>&
+                            operand_and_output_index) {
+            auto* op2 =
+                instr->operand(operand_and_output_index.first.operand_number);
             return (op == nullptr) ? (op2->opcode() == HloOpcode::kCopy)
                                    : (op2 == op);
           });
@@ -962,7 +965,6 @@ class ComputeRelativeLocation {
       case HloOpcode::kWhile:
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
-      case HloOpcode::kTupleSelect:
         return false;
       default:
         return true;
@@ -1823,13 +1825,13 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
         absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
-          const HloUse& operand = operand_and_output_index.first;
-          if (copied_operands.contains(operand.operand_number)) {
+          const HloOperandIndex& operand_index = operand_and_output_index.first;
+          if (copied_operands.contains(operand_index.operand_number)) {
             continue;
           }
-          copied_operands.insert(operand.operand_number);
+          copied_operands.insert(operand_index.operand_number);
           TF_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand.operand_number));
+              *alias_analysis, instruction, operand_index.operand_number));
         }
       }
     }

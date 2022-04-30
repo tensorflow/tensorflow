@@ -40,7 +40,6 @@ py_library(
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
-        "//tensorflow/python/keras/wrappers",
         "//tensorflow/python/saved_model",
     ],
 )

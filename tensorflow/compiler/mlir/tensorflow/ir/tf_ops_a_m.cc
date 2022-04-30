@@ -830,7 +830,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()
@@ -882,8 +882,6 @@ LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) {
     return llvm::formatv("branch #{0}", index).str();
   };
-  // TODO(jpienaar): Remove.
-  if (failed(CaseOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(symbol_table, *this,
                                          branches().getValue(), branch_name);
 }
@@ -1722,10 +1720,10 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
 template <typename OpT,
           typename std::enable_if<llvm::is_one_of<
               OpT, Conv2DOpAdaptor, Conv3DOpAdaptor>::value>::type * = nullptr>
-static LogicalResult inferConvReturnTypes(
-    OpT op, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes,
-    llvm::Optional<mlir::Location> location,
-    ArrayRef<Attribute> explicit_padding) {
+static LogicalResult inferConvReturnTypeComponents(
+    llvm::Optional<mlir::Location> location, OpT op,
+    ArrayRef<Attribute> explicit_padding,
+    llvm::SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   const int64_t num_spatial_dims = std::is_same<OpT, Conv2DOpAdaptor>() ? 2 : 3;
   const int64_t num_dims = 2 + num_spatial_dims;
   const Value input = op.input();
@@ -1794,17 +1792,15 @@ static LogicalResult inferConvReturnTypes(
     }
   }
 
-  inferredReturnTypes.assign(
-      {RankedTensorType::get(return_shape, input_ty.getElementType())});
+  inferredReturnShapes.emplace_back(return_shape, input_ty.getElementType());
   return success();
 }
 
-LogicalResult Conv2DOp::inferReturnTypes(
-    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
-    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  Conv2DOpAdaptor op(operands, attributes);
+LogicalResult Conv2DOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Conv2DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
       attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
@@ -1813,8 +1809,8 @@ LogicalResult Conv2DOp::inferReturnTypes(
   }
   explicit_padding = explicit_pad.getValue();
 
-  return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding);
+  return inferConvReturnTypeComponents(location, op, explicit_padding,
+                                       inferredReturnShapes);
 }
 
 StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
@@ -1997,12 +1993,11 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 // Conv3DOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Conv3DOp::inferReturnTypes(
-    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
-    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  Conv3DOpAdaptor op(operands, attributes);
+LogicalResult Conv3DOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Conv3DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
       attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
@@ -2011,8 +2006,8 @@ LogicalResult Conv3DOp::inferReturnTypes(
   }
   explicit_padding = explicit_pad.getValue();
 
-  return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding);
+  return inferConvReturnTypeComponents(location, op, explicit_padding,
+                                       inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2525,18 +2520,15 @@ void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 // Expm1Op
 //===----------------------------------------------------------------------===//
-LogicalResult Expm1Op::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+
+LogicalResult Expm1Op::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  if (operands.empty()) {
-    return emitOptionalError(location, "requires at least one operand.");
-  }
-  auto input_ty = operands[0].getType().dyn_cast<TensorType>();
-  if (!input_ty) {
-    return emitOptionalError(location, "requires input to be of Tensor type");
-  }
-  inferredReturnTypes.assign({input_ty});
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  ShapeAdaptor adaptor = operands.getShape(0);
+  ShapedTypeComponents component(adaptor.getElementType());
+  if (adaptor.hasRank()) adaptor.getDims(component);
+  inferredReturnShapes.push_back(component);
   return success();
 }
 
@@ -2864,8 +2856,6 @@ LogicalResult IfOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) -> std::string {
     return index == 0 ? "'then_branch'" : "'else_branch'";
   };
-  // TODO(jpienaar): Remove.
-  if (failed(IfOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(
       symbol_table, *this, {then_branchAttr(), else_branchAttr()}, branch_name);
 }
@@ -3122,6 +3112,15 @@ void MaxOp::build(OpBuilder &builder, OperationState &result, Value input,
                   Value reduction_indices, BoolAttr keep_dims) {
   Type out_ty = InferReductionOpType(input, reduction_indices, keep_dims);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+//===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+void MaximumOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<MaximumOfZeroToRelu>(context);
 }
 
 //===----------------------------------------------------------------------===//

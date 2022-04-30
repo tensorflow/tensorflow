@@ -26,8 +26,15 @@ static NSString *const TFLInterpreterErrorDomain = @"org.tensorflow.lite.interpr
 + (void)saveInterpreterErrorWithCode:(TFLInterpreterErrorCode)code
                          description:(NSString *)description
                                error:(NSError **)error {
+  [self setError:error withDomain:TFLInterpreterErrorDomain code:code description:description];
+}
+
++ (void)setError:(NSError **)error
+      withDomain:(NSErrorDomain)domain
+            code:(NSInteger)code
+     description:(NSString *)description {
   if (error) {
-    *error = [NSError errorWithDomain:TFLInterpreterErrorDomain
+    *error = [NSError errorWithDomain:domain
                                  code:code
                              userInfo:@{NSLocalizedDescriptionKey : description}];
   }

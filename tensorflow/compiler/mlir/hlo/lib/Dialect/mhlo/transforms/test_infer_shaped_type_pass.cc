@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -104,7 +105,8 @@ struct TestInferShapedTypeMethodsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 

@@ -71,8 +71,9 @@ and use delegates. The following accelerators are now supported in the Task API:
 
 *   Android
     *   [GPU](https://www.tensorflow.org/lite/performance/gpu): Java / C++
-    *   [NNAPI](https://www.tensorflow.org/lite/performance/nnapi): Java / C++
-    *   [Hexagon](https://www.tensorflow.org/lite/performance/hexagon_delegate):
+    *   [NNAPI](https://www.tensorflow.org/lite/android/delegates/nnapi):
+        Java / C++
+    *   [Hexagon](https://www.tensorflow.org/lite/android/delegates/hexagon):
         C++
 *   Linux / Mac
     *   [Coral Edge TPU](https://coral.ai/): C++

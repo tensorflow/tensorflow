@@ -240,6 +240,9 @@ class MergeTfIfOpsPass
 
     return branch.getSymName();
   }
+
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MergeTfIfOpsPass)
 };
 
 }  // namespace

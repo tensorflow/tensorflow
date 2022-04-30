@@ -96,6 +96,24 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   return None;
 }
 
+// Extracts a PartialTensorShape from the MLIR attr.
+Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
+  // Function arguments may have shape attr to describe its output shape.
+  if (auto arg = v.dyn_cast<BlockArgument>()) {
+    Operation* parent_op = arg.getOwner()->getParentOp();
+    if (auto func_op = llvm::dyn_cast<FunctionOpInterface>(parent_op)) {
+      int arg_idx = arg.getArgNumber();
+      auto attrs =
+          func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
+      if (!attrs || attrs.empty()) return None;
+      auto shape_attr = attrs[0].cast<tf_type::ShapeAttr>();
+      if (shape_attr.hasRank())
+        return tensorflow::PartialTensorShape(shape_attr.getShape());
+    }
+  }
+  return None;
+}
+
 // Gets the subtype's shape and data type for `type`. Templated to support both
 // ResourceType and VariantType.
 template <typename T>
@@ -235,6 +253,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
 
     Type operand_type = operand.getType();
     if (auto shape = GetShapeFromMlirType(operand_type)) {
+      input_shapes[index] = *shape;
+    } else if (auto shape = GetShapeFromMlirAttr(operand)) {
       input_shapes[index] = *shape;
     }
     // Collect the handle shapes and types for a resource/variant.

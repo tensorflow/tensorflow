@@ -124,7 +124,6 @@ generic_dawsn_interval_3(const Scalar& x) {
 
 template <typename Scalar>
 struct dawsn_op {
-  EIGEN_EMPTY_STRUCT_CTOR(dawsn_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     const Scalar half = Scalar(0.5);
@@ -376,7 +375,6 @@ generic_expint_interval_7(const Scalar& x) {
 
 template <typename Scalar>
 struct expint_op {
-  EIGEN_EMPTY_STRUCT_CTOR(expint_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     const Scalar zero = Scalar(0.0);
@@ -533,7 +531,6 @@ generic_fresnel_asymp(const Scalar& x, bool use_sin) {
 
 template <typename Scalar>
 struct fresnel_cos_op {
-  EIGEN_EMPTY_STRUCT_CTOR(fresnel_cos_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     const Scalar zero = Scalar(0.);
@@ -567,7 +564,6 @@ struct fresnel_cos_op {
 
 template <typename Scalar>
 struct fresnel_sin_op {
-  EIGEN_EMPTY_STRUCT_CTOR(fresnel_sin_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     const Scalar zero = Scalar(0.);
@@ -602,7 +598,6 @@ struct fresnel_sin_op {
 // Implementation of Spence's Integral based on Cephes.
 template <typename Scalar>
 struct spence_op {
-  EIGEN_EMPTY_STRUCT_CTOR(spence_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
     const Scalar A[] = {

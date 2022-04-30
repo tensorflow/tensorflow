@@ -1345,7 +1345,7 @@ func.func @mirror_pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   func.return %0#0 : tensor<? x f32>
 
   // CHECK-LABEL: mirror_pad
-  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = "SYMMETRIC"} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
+  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = #tfl<"mirror_pad_attr SYMMETRIC">} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return
 }
 
@@ -1355,7 +1355,7 @@ func.func @mirror_pad_reflect(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x 
   func.return %0#0 : tensor<? x f32>
 
   // CHECK-LABEL: mirror_pad_reflect
-  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = "REFLECT"} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
+  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = #tfl<"mirror_pad_attr REFLECT">} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return
 }
 
@@ -2284,4 +2284,24 @@ func.func @dynamic_update_slice(%arg0: tensor<4x5xi32>, %arg1: tensor<1x5xi32>, 
 
 // CHECK-LABEL:dynamic_update_slice
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xi32>, tensor<1x5xi32>, tensor<2xi32>) -> tensor<4x5xi32>
+}
+
+func.func @testReluI32(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
+  func.return %0: tensor<1xi32>
+
+// CHECK-LABEL: testReluI32
+// CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:  return %[[RES0]] : tensor<1xi32>
+}
+
+func.func @testReluI64(%arg0: tensor<1xi64>) -> tensor<1xi64> {
+  %0 = "tf.Relu"(%arg0) : (tensor<1xi64>) -> tensor<1xi64>
+  func.return %0: tensor<1xi64>
+
+// CHECK-LABEL: testReluI64
+// CHECK:  %[[CONST_0:.*]] = arith.constant dense<0> : tensor<i64>
+// CHECK:  %[[RES0:.*]] = "tfl.maximum"(%arg0, %[[CONST_0]]) : (tensor<1xi64>, tensor<i64>) -> tensor<1xi64>
+// CHECK:  return %[[RES0]] : tensor<1xi64>
 }

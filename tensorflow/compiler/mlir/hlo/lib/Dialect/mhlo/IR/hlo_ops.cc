@@ -94,7 +94,17 @@ namespace {
 // expand a single element splat to a multi-GB large tensor.
 // The limit is arbitrary set low to allow expanding small computations, like
 // shape manipulations for example.
+// TODO(b/210478841): Define a constant folding policy that generalizes this.
 constexpr int64_t kFoldExpandSplatEltLimit = 16;
+
+// Similarly to the constant above, this is an arbitrary limit into how many
+// elements can be folded by a binary operation folder.
+// This limit doesn't apply to the following special cases:
+//   1) Adding a zero.
+//   2) Multiplying by one.
+//   3) When both operands are splats.
+// TODO(b/210478841): Define a constant folding policy that generalizes this.
+constexpr int64_t kFoldBinaryOpEltLimit = 65536;
 
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
@@ -594,6 +604,19 @@ LogicalResult verifyReducerShape(
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterOp::verify() {
+  if (failed(mlir::hlo::VerifyReplicaGroups(*this, /*is_uniform_sized=*/true)))
+    return failure();
+  auto operand_type = operand().getType().cast<TensorType>();
+  bool operand_type_ranked = operand_type.isa<RankedTensorType>();
+  Block& block = computation().front();
+  SmallVector<TensorType> accumulator_subshapes;
+  if (failed(verifyReducerShape(
+          this->getLoc(), block, {operand_type},
+          {RankedTensorType::get({}, operand_type.getElementType())},
+          /*numInputs=*/1, /*allowedDimensions=*/{},
+          /*allInputsUnranked=*/!operand_type_ranked, accumulator_subshapes)))
+    return failure();
+
   return mlir::hlo::VerifyReduceScatter(
       *this,
       /*operand_types=*/{operand().getType()},
@@ -1695,44 +1718,6 @@ void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
-// DequantizeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult DequantizeOp::verify() {
-  auto input_type = input().getType().dyn_cast<ShapedType>();
-  auto output_type = output().getType().dyn_cast<ShapedType>();
-  if (!input_type || !output_type) {
-    return emitError() << "ranked input and output.";
-  }
-  auto input_shape = input_type.getShape();
-  auto output_shape = output_type.getShape().vec();
-  if (transpose_output()) {
-    std::reverse(output_shape.begin(), output_shape.end());
-  }
-
-  // Check the input rank and output rank are same, and also the lower
-  // dimensions are same.
-  if (input_shape.size() != output_shape.size() ||
-      !std::equal(input_shape.begin(),
-                  std::next(input_shape.begin(), input_shape.size() - 1),
-                  output_shape.begin())) {
-    return emitError() << "mismatched dimensions.";
-  }
-
-  // Check that the last dimension of the output is 2x or 4x of that of the
-  // input depending on the unpacked input is 16 or 8 bits.
-  int input_last_dim = *input_shape.rbegin();
-  int output_last_dim = *output_shape.rbegin();
-  int scale_factor = is_16bits() ? 2 : 4;
-  if (output_last_dim != scale_factor * input_last_dim) {
-    return emitError() << "last dimension of output should be " << scale_factor
-                       << "x of the input.";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 
@@ -2058,34 +2043,6 @@ LogicalResult BroadcastOp::verify() {
         "broadcast_sizes has rank {0} instead of rank 1", sizesRank));
   }
 
-  auto resultType = getResult().getType().cast<RankedTensorType>();
-  auto resultRank = resultType.getRank();
-  auto operandType = operand().getType().cast<RankedTensorType>();
-  auto operandRank = operandType.getRank();
-  auto sizesSize = sizesType.getNumElements();
-  auto expectedRank = operandRank + sizesSize;
-
-  if (resultRank != expectedRank) {
-    return emitOpError(
-        llvm::formatv("result rank ({0}) does not match operand rank "
-                      "({1}) plus size of broadcast_sizes ({2})",
-                      resultRank, operandRank, sizesSize));
-  }
-
-  llvm::SmallVector<int64_t, 10> expectedShape(sizes.getValues<int64_t>());
-
-  auto operandShape = operandType.getShape();
-  expectedShape.insert(expectedShape.end(), operandShape.begin(),
-                       operandShape.end());
-
-  auto resultShape = resultType.getShape();
-  if (resultShape != llvm::makeArrayRef(expectedShape)) {
-    return emitOpError(llvm::formatv(
-        "result has shape [{0}] instead of [{1}]",
-        llvm::make_range(resultShape.begin(), resultShape.end()),
-        llvm::make_range(expectedShape.begin(), expectedShape.end())));
-  }
-
   return success();
 }
 
@@ -2117,6 +2074,29 @@ OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
 
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
+}
+
+LogicalResult BroadcastOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  BroadcastOp::Adaptor adaptor(operands, attributes, regions);
+  Value operand = adaptor.operand();
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  if (!operand_type) return failure();
+
+  Type element_ty = operand_type.getElementType();
+  auto dimension_attr = adaptor.broadcast_sizes();
+  for (int64_t size : dimension_attr.getValues<int64_t>()) {
+    if (size < 0)
+      return emitOptionalError(location,
+                               "Broadcast with negative dimension size ", size);
+  }
+  SmallVector<int64_t> shape_values(dimension_attr.getValues<int64_t>());
+  llvm::append_range(shape_values, operand_type.getShape());
+
+  inferredReturnShapes.emplace_back(shape_values, element_ty);
+  return success();
 }
 
 LogicalResult BroadcastOp::reifyReturnTypeShapes(
@@ -2606,6 +2586,19 @@ OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 namespace {
+class SingleOperandConcatenateToCast : public OpRewritePattern<ConcatenateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.val().size() != 1) return failure();
+
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(),
+                                                op.val().front());
+    return success();
+  }
+};
+
 class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -2615,7 +2608,7 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
     llvm::SmallVector<Value, 6> new_operands;
     for (auto operand : op.getOperands()) {
       auto ty = operand.getType().cast<ShapedType>();
-      if (ty.getDimSize(axis) != 0) {
+      if (!ty.hasRank() || ty.getDimSize(axis) != 0) {
         new_operands.push_back(operand);
       }
     }
@@ -2752,7 +2745,8 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.add<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
+  results.add<ConcatenateOperandRemoval, ConcatenateForwarding,
+              SingleOperandConcatenateToCast>(context);
 }
 
 template <typename T>
@@ -4983,6 +4977,51 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
 // UnaryOps
 //===----------------------------------------------------------------------===//
 
+ParseResult parseUnaryOp(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
+  Type type;
+  // If the operand is in-between parentheses, use generic form.
+  SMLoc loc = parser.getCurrentLocation();
+  if (!parser.parseOptionalLParen()) {
+    if (parser.parseOperandList(operands) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) ||
+        parser.parseColon() || parser.parseType(type))
+      return failure();
+    auto fnType = type.dyn_cast<FunctionType>();
+    if (!fnType) {
+      parser.emitError(loc, "expected function type");
+      return failure();
+    }
+    if (parser.resolveOperands(operands, fnType.getInputs(), loc,
+                               result.operands))
+      return failure();
+    result.addTypes(fnType.getResults());
+    return success();
+  }
+  // Otherwise, use shorthand syntax.
+  return failure(parser.parseOperandList(operands) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(operands, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+void printUnaryOp(Operation* op, OpAsmPrinter& p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
+  assert(op->getNumOperands() == 1 && "op should have one input");
+  // If not all types are the same, use generic form.
+  auto resultType = op->getResult(0).getType();
+  if (resultType != op->getOperandTypes()[0]) {
+    p.printGenericOp(op, /*printOpName=*/false);
+    return;
+  }
+  // Otherwise, use the shorthand syntax.
+  p << ' ';
+  p.printOperands(op->getOperands());
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << resultType;
+}
+
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
 static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
@@ -5132,20 +5171,14 @@ ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
 
 void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   assert(op->getNumResults() == 1 && "op should have one result");
-  // If any type is sparse, use generic form.
+  // If not all types are the same, use generic form.
   auto resultType = op->getResult(0).getType();
-  if (sparse_tensor::getSparseTensorEncoding(resultType) ||
-      llvm::any_of(op->getOperandTypes(), [&](Type tp) {
-        return sparse_tensor::getSparseTensorEncoding(tp);
-      })) {
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
     p.printGenericOp(op, /*printOpName=*/false);
     return;
   }
-  // Otherwise, use the shorthand syntax. Note that this uses the convention
-  // that even congruent types like tensor<10xf32> and tensor<?xf32> are
-  // printed with the static tensor type as representative.
-  // TODO(ajcbik): Should we just do this when types are not the same?
-  //               This seems better, but breaks existing CHECK tests.
+  // Otherwise, use the shorthand syntax.
   p << ' ';
   p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
@@ -5170,6 +5203,22 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
 
   // Evaluate for integer values.
   if (!etype.isa<ElementType>()) {
+    return {};
+  }
+
+  // Special case for folding splats no matter how large.
+  // Only covers the case of both attrs being splats; operation-specific cases
+  // like adding a zero or multiplying by one are handled elsewhere.
+  SplatElementsAttr splat_lhs = lhs.dyn_cast<SplatElementsAttr>();
+  SplatElementsAttr splat_rhs = rhs.dyn_cast<SplatElementsAttr>();
+  if (splat_lhs && splat_rhs) {
+    return SplatElementsAttr::get(
+        type, Convert()(splat_lhs.getSplatValue<ValType>(),
+                        splat_rhs.getSplatValue<ValType>()));
+  }
+
+  // Prevent folding if lhs/rhs are too large.
+  if (lhs.getNumElements() > kFoldBinaryOpEltLimit) {
     return {};
   }
 
@@ -5254,40 +5303,60 @@ BINARY_FOLDER(RemOp, remainder);
 BINARY_FOLDER(MaxOp, max);
 BINARY_FOLDER(MinOp, min);
 
-OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
-  if (attrs[0] && attrs[1]) {
-    BINARY_FOLDER_INTERNAL(AddOp, std::plus)
+bool isSplatZero(SplatElementsAttr attr) {
+  if (!attr) return false;
+  if (attr.getElementType().isa<FloatType>()) {
+    return attr.getSplatValue<APFloat>().isZero();
+  } else if (attr.getElementType().isa<IntegerType>()) {
+    return attr.getSplatValue<APInt>().isZero();
+  } else {
+    return false;
   }
+}
+
+OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
   // Handle special case where one operand is 0:  x + 0 => x
   if (attrs[0] || attrs[1]) {
-    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
-                                      : attrs[1].dyn_cast<SplatElementsAttr>();
-    if (!attr) return {};
-    Value result = attrs[0] ? rhs() : lhs();
-    if (attr.getElementType().isa<FloatType>()) {
-      if (attr.getSplatValue<APFloat>().isZero()) return result;
-    } else if (attr.getElementType().isa<IntegerType>()) {
-      if (attr.getSplatValue<APInt>().isZero()) return result;
-    }
+    SplatElementsAttr splat_lhs =
+        attrs[0].dyn_cast_or_null<SplatElementsAttr>();
+    SplatElementsAttr splat_rhs =
+        attrs[1].dyn_cast_or_null<SplatElementsAttr>();
+    if (isSplatZero(splat_lhs))
+      return splat_rhs ? (OpFoldResult)splat_rhs : rhs();
+    if (isSplatZero(splat_rhs))
+      return splat_lhs ? (OpFoldResult)splat_lhs : lhs();
+  }
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(AddOp, std::plus)
   }
   return {};
 }
 
-OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
-  if (attrs[0] && attrs[1]) {
-    BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
+bool isSplatOne(SplatElementsAttr attr) {
+  if (!attr) return false;
+  if (attr.getElementType().isa<FloatType>()) {
+    return attr.getSplatValue<APFloat>().convertToDouble() == 1.0;
+  } else if (attr.getElementType().isa<IntegerType>()) {
+    return attr.getSplatValue<APInt>().getSExtValue() == 1;
+  } else {
+    return false;
   }
+}
+
+OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
   // Handle special case where one operand is 1: x * 1 => x
   if (attrs[0] || attrs[1]) {
-    SplatElementsAttr attr = attrs[0] ? attrs[0].dyn_cast<SplatElementsAttr>()
-                                      : attrs[1].dyn_cast<SplatElementsAttr>();
-    if (!attr) return {};
-    Value result = attrs[0] ? rhs() : lhs();
-    if (attr.getElementType().isa<FloatType>()) {
-      if (attr.getSplatValue<APFloat>().convertToDouble() == 1.0) return result;
-    } else if (attr.getElementType().isa<IntegerType>()) {
-      if (attr.getSplatValue<APInt>().getSExtValue() == 1) return result;
-    }
+    SplatElementsAttr splat_lhs =
+        attrs[0].dyn_cast_or_null<SplatElementsAttr>();
+    SplatElementsAttr splat_rhs =
+        attrs[1].dyn_cast_or_null<SplatElementsAttr>();
+    if (isSplatOne(splat_lhs))
+      return splat_rhs ? (OpFoldResult)splat_rhs : rhs();
+    if (isSplatOne(splat_rhs))
+      return splat_lhs ? (OpFoldResult)splat_lhs : lhs();
+  }
+  if (attrs[0] && attrs[1]) {
+    BINARY_FOLDER_INTERNAL(MulOp, std::multiplies);
   }
   return {};
 }
@@ -5936,32 +6005,31 @@ LogicalResult TriangularSolveOp::verify() {
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 
-void GetTupleElementOp::build(OpBuilder& builder, OperationState& result,
-                              Value tuple, int32_t index) {
-  if (auto tuple_type = tuple.getType().dyn_cast<TupleType>()) {
-    auto element_type = tuple_type.getType(index);
-    build(builder, result, element_type, tuple,
-          builder.getI32IntegerAttr(index));
-    return;
-  }
+LogicalResult GetTupleElementOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto tuple_type = operands[0].getType().dyn_cast<TupleType>();
+  if (!tuple_type) return failure();
 
-  build(builder, result, tuple.getType(), tuple,
-        builder.getI32IntegerAttr(index));
+  auto index_attr = attributes.get("index").cast<IntegerAttr>();
+  auto index = index_attr.getInt();
+  if (index < 0 || index >= tuple_type.size()) return failure();
+
+  inferredReturnTypes.push_back(tuple_type.getType(index));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
 // TupleOp
 //===----------------------------------------------------------------------===//
 
-void TupleOp::build(OpBuilder& builder, OperationState& result,
-                    ValueRange values) {
-  SmallVector<Type, 4> types;
-  types.reserve(values.size());
-  for (auto val : values) {
-    types.push_back(val.getType());
-  }
-
-  build(builder, result, builder.getTupleType(types), values);
+LogicalResult TupleOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(TupleType::get(context, TypeRange(operands)));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -6577,6 +6645,10 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   auto update_type = updates().getType().dyn_cast<RankedTensorType>();
   auto index_type = index.getType().cast<RankedTensorType>();
   if (!base_type || !index_type || !update_type) return {};
+
+  // TODO(b/228310289): Work around canonicalization crash for complex types.
+  // Remove after upstream MLIR has been fixed.
+  if (base_type.getElementType().isa<ComplexType>()) return {};
 
   // Catch a trivial full replacement of base with update, this does not require
   // these to be constant: just that we know the type.
@@ -7710,10 +7782,12 @@ LogicalResult deriveShapeFromOperand(
 
 Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
                                             Type type, Location loc) {
+  // HLO dialect constants require the type of value and result to match.
+  if (type != value.getType()) return nullptr;
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
-  if (value.isa<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
+  if (auto elementsAttr = value.dyn_cast<ElementsAttr>())
+    return builder.create<mhlo::ConstOp>(loc, type, elementsAttr);
   return nullptr;
 }
 

@@ -103,9 +103,15 @@ class IrEmitterUnnested : public IrEmitter {
     //
     // Same semantics as CreateInBoundsGEP.
     llvm::Value* GEPIntoSharedMemory(
-        llvm::IRBuilder<>* b, llvm::Value* shared,
+        llvm::IRBuilder<>* b, llvm::GlobalVariable* shared,
         absl::Span<llvm::Value* const> idx_major_to_minor,
         const llvm::Twine& name = "") const;
+
+    // Calculuate the pointee type of the llvm::Value returned by
+    // GEPIntoSharedMemory
+    llvm::Type* GEPIntoSharedMemoryType(
+        llvm::GlobalVariable* shared,
+        absl::Span<llvm::Value* const> idx_major_to_minor) const;
 
    private:
     llvm::Value* scaling;
@@ -616,7 +622,8 @@ class IrEmitterUnnested : public IrEmitter {
   // reduction: each one should get the output value.
   void EmitFullWarpShuffleDownLoopForReduce(
       const HloComputation* reducer,
-      absl::Span<llvm::Value* const> partial_result_addresses,
+      absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
+          partial_result_addresses,
       int threads_per_block);
 
   // Allocates a shared tile of given dimensions, applying scaling specified in
@@ -727,7 +734,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.
-  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Type* element_type,
+                                  llvm::Twine name = "");
 
   // Returns the ShapedSlices for the given operands.
   StatusOr<std::vector<ShapedSlice>> GetShapedSlices(

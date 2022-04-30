@@ -23,6 +23,10 @@ def tflite_copts():
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
+        clean_dep("//tensorflow:linux_x86_64"): [
+            "-msse4.2",
+        ],
+        clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
         clean_dep("//tensorflow:windows"): [
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
@@ -560,12 +564,18 @@ def tflite_custom_c_library(
     native.cc_library(
         name = name,
         srcs = ["//tensorflow/lite/c:c_api_srcs"],
-        hdrs = ["//tensorflow/lite/c:c_api.h"],
+        hdrs = [
+            "//tensorflow/lite/c:c_api.h",
+            "//tensorflow/lite/c:c_api_internal.h",
+            "//tensorflow/lite/c:c_api_experimental.h",
+            "//tensorflow/lite/c:c_api_opaque.h",
+        ],
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
             "//tensorflow/lite/c:common",
             "//tensorflow/lite/c:c_api_types",
+            "//tensorflow/lite/kernels:kernel_util",
             "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite:framework",
             "//tensorflow/lite:version",

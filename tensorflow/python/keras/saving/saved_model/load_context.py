@@ -60,4 +60,4 @@ def get_load_options():
 
 def in_load_context():
   """Returns whether under a load context."""
-  return _load_context.in_load_context
+  return _load_context.in_load_context()

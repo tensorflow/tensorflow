@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -41,6 +42,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::monitoring::testing::CellReader;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
 using ::testing::Gt;
@@ -234,6 +236,56 @@ TEST(MultiTrainerCacheTest, AlternateTrainerExtendsCache) {
   EXPECT_THAT(cache.Get("Trainer 3"), IsOkAndHolds(Pointee(Gt(5))));
 }
 
+TEST(MultiTrainerCacheTest, CacheHitMetrics) {
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/multi_trainer_cache_queries");
+  EXPECT_EQ(cell_reader.Delta("true"), 0);
+  EXPECT_EQ(cell_reader.Delta("false"), 0);
+  EXPECT_EQ(cell_reader.Read("true"), 0);
+  EXPECT_EQ(cell_reader.Read("false"), 0);
+
+  const size_t num_elements = 10;
+  MultiTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
+  for (size_t i = 0; i < num_elements; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
+  }
+  EXPECT_EQ(cell_reader.Delta("true"), 0);
+  EXPECT_EQ(cell_reader.Delta("false"), 10);
+  EXPECT_EQ(cell_reader.Read("true"), 0);
+  EXPECT_EQ(cell_reader.Read("false"), 10);
+
+  for (size_t i = 0; i < num_elements; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 2"), IsOkAndHolds(Pointee(i)));
+  }
+  EXPECT_EQ(cell_reader.Delta("true"), 10);
+  EXPECT_EQ(cell_reader.Delta("false"), 0);
+  EXPECT_EQ(cell_reader.Read("true"), 10);
+  EXPECT_EQ(cell_reader.Read("false"), 10);
+}
+
+TEST(MultiTrainerCacheTest, CacheSizeMetrics) {
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/multi_trainer_cache_size_bytes");
+
+  const size_t num_elements = 5;
+  MultiTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/num_elements * sizeof(int64_t),
+      std::make_unique<InfiniteRange>());
+
+  for (size_t i = 0; i < num_elements; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(i)));
+    EXPECT_EQ(cell_reader.Read(), (i + 1) * sizeof(int64_t));
+  }
+
+  // The cache size does not increase after reaching `num_elements`.
+  for (size_t i = 0; i < 100; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"),
+                IsOkAndHolds(Pointee(num_elements + i)));
+    EXPECT_EQ(cell_reader.Read(), 5 * sizeof(int64_t));
+  }
+}
+
 TEST(MultiTrainerCacheTest, ConcurrentReaders) {
   size_t num_trainers = 10;
   size_t num_elements_to_read = 200;
@@ -261,10 +313,7 @@ TEST(MultiTrainerCacheTest, ConcurrentReaders) {
           }
         })));
   }
-
-  for (auto& thread : reader_threads) {
-    thread.reset();
-  }
+  reader_threads.clear();
 
   // Verifies all trainers can read `num_elements_to_read` elements.
   EXPECT_EQ(results.size(), num_trainers);
@@ -300,10 +349,8 @@ TEST(MultiTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
           }
         })));
   }
+  reader_threads.clear();
 
-  for (auto& thread : reader_threads) {
-    thread.reset();
-  }
   // Verifies the readers have read all elements because they have the same
   // trainer ID.
   EXPECT_THAT(results, UnorderedElementsAreArray(GetRange(1000)));
@@ -339,9 +386,7 @@ TEST(MultiTrainerCacheTest, Cancel) {
 
   Env::Default()->SleepForMicroseconds(1000000);
   cache.Cancel(errors::Cancelled("Cancelled"));
-  for (auto& thread : reader_threads) {
-    thread.reset();
-  }
+  reader_threads.clear();
 
   mutex_lock l(mu);
   EXPECT_THAT(status, StatusIs(error::CANCELLED));

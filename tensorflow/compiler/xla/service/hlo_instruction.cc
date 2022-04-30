@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <ostream>
 #include <set>
 #include <string>
@@ -833,8 +834,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto scatter_dimension_numbers =
           absl::make_unique<ScatterDimensionNumbers>(
               proto.scatter_dimension_numbers());
+      auto operands = all_operands();
+      auto operand_span = absl::MakeConstSpan(operands);
+      auto input_count = operands.size() / 2;
       instruction =
-          CreateScatter(shape, operands(0), operands(1), operands(2),
+          CreateScatter(shape, operand_span.first(input_count),
+                        operands[input_count], operand_span.last(input_count),
                         computations(0), *scatter_dimension_numbers,
                         proto.indices_are_sorted(), proto.unique_indices());
       break;
@@ -1038,6 +1043,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCollectivePermuteDone:
@@ -1110,7 +1116,6 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
   switch (opcode) {
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect:
       break;
     default:
       LOG(FATAL) << "Invalid ternary instruction opcode "
@@ -1875,12 +1880,12 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     absl::Span<HloInstruction* const> elements) {
-  std::vector<Shape> element_shapes;
+  std::vector<const Shape*> element_shapes;
   element_shapes.reserve(elements.size());
   for (auto element : elements) {
-    element_shapes.push_back(element->shape());
+    element_shapes.push_back(&element->shape());
   }
-  Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
+  Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
   return CreateVariadic(tuple_shape, HloOpcode::kTuple, elements);
 }
 
@@ -1899,9 +1904,25 @@ bool HloInstruction::HasSideEffect() const {
     HloComputation* update_computation,
     const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
     bool unique_indices) {
-  return absl::make_unique<HloScatterInstruction>(
-      shape, operand, scatter_indices, updates, update_computation,
-      scatter_dim_numbers, indices_are_sorted, unique_indices);
+  return absl::WrapUnique(new HloScatterInstruction(
+      shape, {operand, scatter_indices, updates}, update_computation,
+      scatter_dim_numbers, indices_are_sorted, unique_indices));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloInstruction* scatter_indices, absl::Span<HloInstruction* const> updates,
+    HloComputation* update_computation,
+    const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
+    bool unique_indices) {
+  absl::InlinedVector<HloInstruction*, 3> args;
+  args.reserve(operands.size() + updates.size() + 1);
+  absl::c_copy(operands, std::back_inserter(args));
+  args.push_back(scatter_indices);
+  absl::c_copy(updates, std::back_inserter(args));
+  return std::make_unique<HloScatterInstruction>(
+      shape, args, update_computation, scatter_dim_numbers, indices_are_sorted,
+      unique_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
@@ -1992,6 +2013,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
@@ -2044,7 +2066,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Ternary ops.
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect:
       CHECK_EQ(new_operands.size(), 3);
       clone = CreateTernary(shape, opcode_, new_operands[0], new_operands[1],
                             new_operands[2]);
@@ -2298,7 +2319,8 @@ bool HloInstruction::IdenticalInternal(
         eq_operands,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations,
-    bool layout_sensitive, bool ignore_channel_id_values) const {
+    bool layout_sensitive, bool ignore_channel_id_values,
+    bool ignore_commutative_operand_order) const {
   // An instruction is always identical to itself.
   if (this == &other) {
     return true;
@@ -2317,11 +2339,24 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
 
+  // Check that operands are equal.
+  //
   // Use an explicit loop rather than ContainerEquals, because copying around
   // std::functions may be too expensive in some cases.
-  for (size_t i = 0; i < operands().size(); ++i) {
-    if (!eq_operands(operand(i), other.operand(i))) {
+  if (ignore_commutative_operand_order &&
+      HloOpcodeIsBinaryCommutative(opcode())) {
+    CHECK_EQ(operand_count(), 2);
+    if (!(eq_operands(operand(0), other.operand(0)) &&
+          eq_operands(operand(1), other.operand(1))) &&
+        !(eq_operands(operand(0), other.operand(1)) &&
+          eq_operands(operand(1), other.operand(0)))) {
       return false;
+    }
+  } else {
+    for (size_t i = 0; i < operands().size(); ++i) {
+      if (!eq_operands(operand(i), other.operand(i))) {
+        return false;
+      }
     }
   }
 
@@ -2445,6 +2480,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -2458,7 +2494,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
       return true;
 
     // This opcode has complex or special behavior so just return false.
@@ -2585,6 +2620,33 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
+  return Status::OK();
+}
+
+Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
+                                      HloInstruction* new_producer) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << "this shape: " << ShapeUtil::HumanString(shape())
+      << ", replacement shape: "
+      << ShapeUtil::HumanString(new_producer->shape());
+  return ReplaceUseWithDifferentShape(user, operand_number, new_producer);
+}
+
+Status HloInstruction::ReplaceUseWithDifferentShape(
+    HloInstruction* user, int operand_number, HloInstruction* new_producer) {
+  VLOG(3) << "Replacing operand " << operand_number << " of " << name()
+          << " in " << user->name() << " with " << new_producer->name();
+
+  if (absl::c_count(user->operands_, this) == 1) {
+    RemoveUser(user);
+  }
+
+  TF_RET_CHECK(user->operand(operand_number) == this)
+      << "Expected operand " << operand_number << " of " << user->ToString()
+      << " to be equal to " << ToString();
+  user->operands_[operand_number] = new_producer;
+  new_producer->AddUser(user);
   return Status::OK();
 }
 
@@ -2878,6 +2940,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
@@ -3377,6 +3440,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
+    case HloOpcode::kRoundNearestEven:
+      return visitor->HandleRoundNearestEven(this);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kBatchNormInference:
@@ -3437,8 +3502,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleRemainder(this);
     case HloOpcode::kSelect:
       return visitor->HandleSelect(this);
-    case HloOpcode::kTupleSelect:
-      return visitor->HandleTupleSelect(this);
     case HloOpcode::kConvolution:
       return visitor->HandleConvolution(this);
     case HloOpcode::kFft:
@@ -4729,6 +4792,10 @@ bool HloInstruction::is_cross_program_prefetch() const {
 
 ComparisonDirection HloInstruction::comparison_direction() const {
   return Cast<HloCompareInstruction>(this)->direction();
+}
+
+ComparisonOrder HloInstruction::comparison_order() const {
+  return Cast<HloCompareInstruction>(this)->order();
 }
 
 const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {

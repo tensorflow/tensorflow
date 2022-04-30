@@ -63,18 +63,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
 // using memref descriptors.
 std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
 
-// Pass to tranform compute computations (hlo and linalg) on values to their
-// corresponding counterparts on buffers. Also bufferizes function signatures.
-std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
-
-// Pass to bufferize `linalg.tiled_loop` including the operations contained in
-// its body.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
-
-// Pass to tranform computations on values to their corresponding parts on
-// buffers.
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
-
 // Pass to replace unsigned types with signless integers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
 
@@ -115,12 +103,6 @@ CreateGpuKernelToNvvmPass();
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
 
-// Pass to lower index cast on tensors to tensor dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass();
-
-// Pass to simplify shape ops.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeSimplification();
-
 // Pass to create vectorized code for CPU.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();
 
@@ -130,8 +112,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass();
 // Pass to remove copies which are consumed by a GenericOp.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateCopyCleanupPass();
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
-    uint64_t alignment);
+std::unique_ptr<OperationPass<ModuleOp>> CreateKernelgenFinalBufferizePass();
 
 }  // namespace transforms
 

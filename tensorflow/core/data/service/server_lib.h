@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -37,9 +41,11 @@ class GrpcDataServerBase {
   // Constructs a tf.data server with the specified port. If the port is 0, the
   // server will find an available port in `Start()`. The chosen port can be
   // found by calling `BoundPort()`.
-  GrpcDataServerBase(int requested_port, const std::string& protocol,
-                     const std::string server_type);
-  virtual ~GrpcDataServerBase() {}
+  GrpcDataServerBase(
+      int requested_port, const std::string& protocol,
+      const std::string server_type,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
+  virtual ~GrpcDataServerBase() = default;
 
   // Starts the server running asynchronously.
   Status Start();
@@ -75,14 +81,17 @@ class GrpcDataServerBase {
   std::unique_ptr<::grpc::Server> server_;
   // TensorFlow profiler service implementation.
   std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
+  std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> server_options_;
 };
 
 class DispatchGrpcDataServer : public GrpcDataServerBase {
  public:
-  explicit DispatchGrpcDataServer(const experimental::DispatcherConfig& config);
+  explicit DispatchGrpcDataServer(
+      const experimental::DispatcherConfig& config,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
   ~DispatchGrpcDataServer() override;
 
-  // Returns the number of workers registerd with the dispatcher.
+  // Returns the number of workers registered with the dispatcher.
   Status NumWorkers(int* num_workers);
   // Returns the number of active (non-finished) jobs running on the dispatcher.
   size_t NumActiveJobs();
@@ -99,7 +108,9 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
 
 class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
-  explicit WorkerGrpcDataServer(const experimental::WorkerConfig& config);
+  explicit WorkerGrpcDataServer(
+      const experimental::WorkerConfig& config,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
   ~WorkerGrpcDataServer() override;
 
   // Returns the number of tasks currently being executed by the worker.

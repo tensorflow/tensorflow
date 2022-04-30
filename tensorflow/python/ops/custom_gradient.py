@@ -248,7 +248,8 @@ def custom_gradient(f=None):
   operations.
 
   Note that if the decorated function uses `Variable`s, the enclosing variable
-  scope must be using `ResourceVariable`s.
+  scope must be using 
+  [ResourceVariables](https://www.tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables).
 
   Args:
     f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:

@@ -107,11 +107,18 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
+  std::string ToString() const override;
+
   std::string DebugString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
 
  private:
   const int id_;

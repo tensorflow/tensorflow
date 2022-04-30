@@ -299,9 +299,11 @@ Status CompileMlirToXlaHloViaBuilder(
 
   XlaHelpers::ShapeRepresentationFn shape_representation_fn =
       IdentityShapeRepresentationFn();
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   return PopulateResultIOInfo(module_op, arg_shapes, /*use_tuple_args=*/false,
                               /*use_resource_updates_for_aliases=*/false,
-                              shape_representation_fn, compilation_result);
+                              shape_determination_fns, compilation_result);
 }
 
 static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
@@ -328,7 +330,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
                         module_op, arg_shapes, device_type, emit_use_tuple_arg,
                         /*analyse_graph=*/false, emit_return_tuple,
                         /*use_resource_updates_for_aliases=*/true,
-                        IdentityShapeRepresentationFn(), &compilation_result,
+                        /*shape_determination_fns=*/{}, &compilation_result,
                         custom_legalization_passes);
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
@@ -357,7 +359,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       CompileGraphToXlaHlo(module_op, xla_arguments,
                            /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
                            /*analyse_graph=*/false, emit_return_tuple,
-                           IdentityShapeRepresentationFn(), &compilation_result,
+                           /*shape_determination_fns=*/{}, &compilation_result,
                            /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "

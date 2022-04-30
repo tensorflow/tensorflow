@@ -79,4 +79,33 @@ def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
   let constructor = "createTestShapeComponentAnalysisPass()";
 }
 
+def LowerIndexCastPass
+    : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
+  let summary = "Lower index cast on tensors to tensor dialect";
+  let constructor = "CreateLowerIndexCastPass()";
+}
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "CreateShapeSimplification()";
+}
+
+def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform compute operations (hlo and linalg) on "
+                "values to buffer based ones.";
+  let constructor = "CreateComputeOpAndFuncBufferizePass()";
+}
+
+
+def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform late operations on values to buffer based "
+                "ones.";
+  let constructor = "CreateFinalBufferizePass()";
+  let options = [
+      Option<"alignment_", "alignment", "uint64_t",
+             /*default=*/"64", "Memory alignment">,
+  ];
+}
+
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

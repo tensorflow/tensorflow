@@ -172,6 +172,16 @@ if (interpreter1->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
     // cache.
 }
 
+// Finalize the weights cache.
+// Hard finalization has the lowest memory overhead, but requires that all
+// TFLite interpreter instances must be created up front before any finalization
+// and inference.
+TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
+
+// Alternatively, soft-finalizate the weights cache. This is useful if more
+// delegates using the same model will to be created after finalization.
+// TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache);
+
 // Later, after all the interpreters and XNNPACK delegates using the cache are
 // destroyed, release the weights cache.
 TfLiteXNNPackWeightsCacheDelete(weights_cache);
@@ -184,11 +194,16 @@ packed weights. If it can be found, we access the packed weights in the
 cache for subsequent operations, and the temporary buffer is freed. Otherwise,
 the packed weights is added to the cache.
 
-Note that this weights cache is not thread-safe. If you are creating multiple
-threads of the interpreter based on the same model buffer, you will need to
-ensure that a single thread is writing all the packed weights into the weights
-cache. Afterwards, the weights cache can be shared freely between the threads,
-as there will be no more writes to the cache.
+The weights cache has to be finalized before any inference, it will be an error
+otherwise. Hard finalization and soft finalization depends on whether new
+XNNPACK delegate instances will be created after finalization. Hard finalization
+does not allow new instances to be created, and has lower memory overhead. Soft
+finalization allows new instances to be created, and has higher memory overhead
+(up to the size of the largest packed weights, rounded up to page alignment).
+
+## Profiling
+When TfLite profiling is enabled, XNNPACK will time each operator and report the
+results to TfLite which will print them as part of the overall execution profile.
 
 ## Limitations and supported operators
 
@@ -456,20 +471,50 @@ TfLiteDelegate* xnnpack_delegate =
 
 Below is the list of operators supported in IEEE FP16 inference:
 
+#### `ABS`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `ADD`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
+#### `AVERAGE_POOL_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `CEIL`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `CONV_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `CONCATENATION`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `DEPTH_TO_SPACE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `DEPTHWISE_CONV_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `DIV`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `FLOOR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `FULLY_CONNECTED`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
@@ -489,14 +534,28 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `MAXIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
 #### `MEAN`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MINIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `MUL`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `NEG`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `PAD`
 
@@ -525,6 +584,36 @@ Below is the list of operators supported in IEEE FP16 inference:
 #### `RESIZE_BILINEAR`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `ROUND`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SPLIT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SOFTMAX`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQRT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARED_DIFFERENCE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `SUB`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `TRANSPOSE_CONV`
 

@@ -74,7 +74,7 @@ class TargetHardware {
 
   // Returns the cost of running the whole function on this hardware.
   // By default this is the sum of the cost of individual cost for each op.
-  virtual double GetFuncCost(FuncOp* func) const;
+  virtual double GetFuncCost(func::FuncOp* func) const;
 
   // Returns true if 'op' can run on this Hardware.
   virtual bool IsOpSupported(mlir::Operation* op) const;

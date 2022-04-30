@@ -15,6 +15,11 @@
 """Module for `WorkerPreemptionHandler`.
 
 This is currently under development and the API is subject to change.
+
+WorkerPreemptionHandler reduces loss of training progress caused by termination
+(preemption or maintenance) of workers in multi-worker synchronous training and
+avoid surfacing an error indistinguishable from application errors to the
+job scheduler or users.
 """
 import os
 import signal
@@ -33,11 +38,14 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 
-_RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
+_INITIAL_RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
+_FINAL_RUN_COUNT_KEY = 'LAST_RUN_TO_CHECKPOINT'
+# This key is used to guarantee that only one worker (and it's the earliest
+# one that receives a preemption signal) sets _received_own_sigterm,
+# leads the step resolution, and controls the grace period timeline.
+_PREEMPTION_WORKER_KEY = 'TERMINATED_WORKER'
 _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
-# TODO(wxinyi): Move the hardcoded 42 to an internal module.
-_RESTARTABLE_EXIT_CODE = 42
 _STOP_WATCHING_CLUSTER_VALUE = 'STOP_WATCHER'
 
 
@@ -54,6 +62,7 @@ def _mwms_write_checkpoint_dir(checkpoint_dir, task_type, task_id,
   return os.path.join(dirpath, base)
 
 
+# TODO(wxinyi): rename time_till_termination to grace_period.
 class TerminationConfig(object):
   """Configurations to customize for a platform other than Google's Borg or GCP.
 
@@ -74,16 +83,16 @@ class TerminationConfig(object):
 
   * How to exit the program
 
-  We are asking for an `restart_code` to execute `sys.exit(restart_code)` after
-  saving the checkpoint to exit the training program gracefully. A restart is
+  We are asking for an `exit_fn` to execute after saving the checkpoint to exit
+  the training program gracefully. For MultiWorkerMirroredStrategy, a restart is
   inevitable to reset the program's state. However, you can configure the
-  `restart_code` to facilitate the restart and make the training experience
+  `exit_fn` to facilitate the restart and make the training experience
   smooth. How so? Maybe your platform has an agreement to a RESTART_CODE that’s
   recognized as a program auto-restart signal, or you may have a coordinating
   script that starts up the training, in which you can configure the program to
   auto-restart if it ever exits with this RESTART_CODE. In both cases,
-  you can pass in this RESTART_CODE and then wouldn’t even notice that the
-  training has been interrupted and restarted.
+  you can configure `exit_fn` to be `sys.exit(RESTART_CODE)` and then wouldn’t
+  even notice that the training has been interrupted and restarted.
 
   * How long do we have from receiving a termination event notice till the
   actual termination.
@@ -103,7 +112,7 @@ class TerminationConfig(object):
   * If `termination_event` is `None`, we will treat `signal.SIGTERM` as a
   termination event.
 
-  * If `restart_code` not configured, we exit with an arbitrary choice, 42.
+  * If `exit_fn` not configured, we exit the program with an arbitrary code 42.
 
   * If `time_till_termination` is not configured, the default is 0, and we will
   wrap up the current training step, save a checkpoint, and exit the program as
@@ -112,34 +121,40 @@ class TerminationConfig(object):
 
   def __init__(self,
                termination_watcher_function=None,
-               restart_code=None,
+               exit_fn=None,
                time_till_termination=None):
     self.termination_watcher_function = termination_watcher_function
-    self.restart_code = restart_code
+    self.exit_fn = exit_fn
     self.time_till_termination = time_till_termination
 
 
+# TODO(wxinyi): configure the exit function based on device type (GPU or TPU).
 class GCPTerminationConfig(TerminationConfig):
+  """Configurations for GCP GPU VM."""
 
   def __init__(  # pylint: disable=super-init-not-called
       self,
       termination_watcher_function=None,
-      restart_code=None,
+      exit_fn=None,
       time_till_termination=None):
     self.termination_watcher_function = termination_watcher_function or gce_util.termination_watcher_function_gce
-    self.restart_code = restart_code or gce_util._RESTARTABLE_EXIT_CODE
-    self.time_till_termination = time_till_termination or gce_util.GRACE_PERIOD_GCE
+    self.exit_fn = exit_fn or gce_util.gce_exit_fn
+    self.time_till_termination = (
+        time_till_termination if time_till_termination or
+        time_till_termination is 0 else gce_util.GRACE_PERIOD_GCE)  # pylint: disable=literal-comparison
 
 
 class BorgTerminationConfig(TerminationConfig):
+  """Configurations for Borg."""
 
   def __init__(  # pylint: disable=super-init-not-called
       self,
       termination_watcher_function=None,
-      restart_code=None,
+      exit_fn=None,
       time_till_termination=None):
     self.termination_watcher_function = termination_watcher_function
-    self.restart_code = restart_code or 42
+    default_exit_fn = lambda: sys.exit(42)
+    self.exit_fn = exit_fn or default_exit_fn
     self.time_till_termination = time_till_termination or 0
 
 
@@ -147,7 +162,7 @@ def _complete_config_for_environement(platform_device, termination_config):
   """Complete un-filled fields of TerminationConfig based on platform."""
   if platform_device is gce_util.PlatformDevice.GCE_GPU:
     return GCPTerminationConfig(termination_config.termination_watcher_function,
-                                termination_config.restart_code,
+                                termination_config.exit_fn,
                                 termination_config.time_till_termination)
 
   else:
@@ -155,10 +170,68 @@ def _complete_config_for_environement(platform_device, termination_config):
     # return this.
     return BorgTerminationConfig(
         termination_config.termination_watcher_function,
-        termination_config.restart_code,
+        termination_config.exit_fn,
         termination_config.time_till_termination)
 
 
+# Implementation:
+# Each worker will create its own WorkerPreemptionHandler instance, and the
+# instances communicate through coordination services. Each
+# WorkerPreemptionHandler conduct three tasks in parallel:
+# - Watches out for its own preemption signal. (_poll_termination_signal_thread)
+# - Watches out for a step key from the coordination service made available
+#   by any member in the cluster (_cluster_wise_termination_watcher_thread)
+# - The main thread for training.
+#
+# The life cycle of a WorkerPreemptionHandler is as below:
+#
+# It starts two threads as two watcher as described above. And it starts
+# training. Each time before it starts a training step, it will check if any
+# information has been made available by the two watchers: The
+# _poll_termination_signal_thread will be in charge of the _received_own_sigterm
+# event, the _cluster_wise_termination_watcher_thread will be in charge of the
+# _received_checkpoint_step event.
+#
+# If at any point the local worker receives a preemption signal,
+# _poll_termination_signal_thread will set _received_own_sigterm.
+# Next time before it attempts to run a training step, it will deal with the
+# event, by setting its current finished step + 1 as the step after which a
+# checkpoint should be saved and make it available to all the workers through
+# the coordination service. It will then continue training.
+#
+# This step key will be picked up by the other watcher,
+# _cluster_wise_termination_watcher_thread, both on the worker to be preempted
+# and other workers. And it will set the _received_checkpoint_step event.
+# Now, if there is a long grace period before the training
+# has to terminate (e.g., an hour), we would like to keep training and save a
+# checkpoint again right before the termination. Thus this watcher thread will
+# move on to watch out for a final step-to-save key. Otherwise,
+# it has finished all the task to do.
+#
+# Back to the main training thread. Again, before the next training step, the
+# WorkerPreemptionHandler found that _received_checkpoint_step is set. If the
+# local worker has not finished the required step after which to save a
+# checkpoint, it will not do anything. Continue training and it will revisit
+# after another step. If the step is met, then it will save a checkpoint,
+# which requires participation of all workers.
+#
+# After this checkpoint is saved, if there is NO long grace period, all workers
+# will just exit. If there is, all workers will enter a grace period countdown
+# phase (_final_checkpoint_countdown) and clear the _received_checkpoint_step
+# event. They will then continue training.
+#
+# For the worker to be preempted, during this countdown period, it will check
+# whether the grace period is almost ending before its every step. If not,
+# nothing needs to be done. If so, it will again set a step-to-save key and made
+# it available to all workers. This is still watched by
+# _cluster_wise_termination_watcher_thread and gestured by
+# _received_checkpoint_step. A similar process is repeated: all workers save
+# a checkpoint at an agreed step. And after they finish saving, they recognize
+# that they have finished a countdown period for an extended grace period, and
+# they all exit.
+#
+# When the program restarts and WorkerPreemptionHandler object is created, it
+# will restore the checkpoint.
 class WorkerPreemptionHandler(object):
   """Preemption and error handler for synchronous training.
 
@@ -270,6 +343,14 @@ class WorkerPreemptionHandler(object):
 
     self._read_checkpoint_manager.restore_or_initialize()
 
+    # grace period countdown. Set to True for all workers once they finish
+    # timing saving a checkpoint. Once entering this phase, new
+    # preemption/maintenance notice will not be handled, since the whole cluster
+    # goes down as the worker who first initiates the grace period goes down.
+    self._final_checkpoint_countdown = False
+
+    self._estimated_run_time = 0
+
     # An internal step counter that's restored to checkpointed_iterations when
     # training is restored. It increments by one every time
     # `WorkerPreemptionHandler.run` is called. Note that in this case, the
@@ -282,7 +363,23 @@ class WorkerPreemptionHandler(object):
 
     # Some member (could be oneself) has received preemption signal, and the
     # step number to save a checkpoint has been aligned.
-    self._received_sigterm_and_step = threading.Event()
+    self._received_checkpoint_step = threading.Event()
+
+    self._platform_device = gce_util.detect_platform()
+
+    if self._platform_device in (gce_util.PlatformDevice.GCE_TPU,
+                                 gce_util.PlatformDevice.GCE_CPU):
+      # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
+      # are the same on Borg, GCE CPU VM and GPU VM are different in terms
+      # of live migration, grace period, etc. We can make it work upon request.
+      raise NotImplementedError('WorkerPreemptionHandler does not support '
+                                'training with TPU or CPU device on GCP.')
+
+    completed_termination_config = _complete_config_for_environement(
+        self._platform_device, termination_config)
+    self._termination_watcher_function = completed_termination_config.termination_watcher_function
+    self._exit_fn = completed_termination_config.exit_fn
+    self._grace_period = completed_termination_config.time_till_termination
 
     # When training is interrupted, we explicitly call the cleanup methods for
     # the thread watching for local worker's termination signal and the thread
@@ -292,21 +389,13 @@ class WorkerPreemptionHandler(object):
     # whether __del__ is executed, thus we make the threads daemon to avoid it
     # preventing program from exit.
     self._cluster_wise_termination_watcher_thread = threading.Thread(
-        target=self._wait_for_signal,
+        target=self._watch_step_to_save_key,
         name='PeerTerminationWatcher-%s' % self._id_in_cluster,
         daemon=True)
-    self._cluster_wise_termination_watcher_thread.start()
     logging.info('Start watcher for peer\'s signal.')
+    self._cluster_wise_termination_watcher_thread.start()
 
     self._poll_termination_signal_thread = None
-
-    self._platform_device = gce_util.detect_platform()
-
-    completed_termination_config = _complete_config_for_environement(
-        self._platform_device, termination_config)
-    self._termination_watcher_function = completed_termination_config.termination_watcher_function
-    self._restart_code = completed_termination_config.restart_code
-    self._time_till_termination = completed_termination_config.time_till_termination
 
     if completed_termination_config.termination_watcher_function:
       self._start_polling_for_termination_signal()
@@ -322,23 +411,42 @@ class WorkerPreemptionHandler(object):
         target=self._poll_termination_signal,
         name='WorkerTerminationSignalWatcher-%s' % self._id_in_cluster,
         daemon=True)
-    self._poll_termination_signal_thread.start()
     logging.info('Start polling for termination signal.')
+    self._poll_termination_signal_thread.start()
 
   def _poll_termination_signal(self):
     """Poll maintenance notice and notify peers if receiving one."""
     while True:
-      if self._poll_termination_signal_thread_should_stop.is_set():
+      if self._poll_termination_signal_thread_should_stop.is_set(
+      ) or self._final_checkpoint_countdown:
         return
       if self._termination_watcher_function():
-        # For the countdown.
-        self._signal_receipt_time = time.time()
         break
       time.sleep(1)
 
-    logging.info('Member %s has received termination notice.',
-                 self._id_in_cluster)
-    self._received_own_sigterm.set()
+    self._maybe_set_received_own_sigterm()
+
+  def _maybe_set_received_own_sigterm(self):
+    """Claim earliest preemption if no one else has done it before."""
+    try:
+      context.context().set_config_key_value(_PREEMPTION_WORKER_KEY,
+                                             self._id_in_cluster)
+      logging.info('Member %s has received termination notice.',
+                   self._id_in_cluster)
+      self._received_own_sigterm_time = time.time()
+      self._received_own_sigterm.set()
+
+    # This is to handle the case that a worker has received termination
+    # notice but hasn't come to the next step to set the step key. Other
+    # workers might receive a termination notice too, and attempt to set the
+    # config key again, which causes this error. This can be safely ignored
+    # since checkpoint should be saved as early as the earliest call is made.
+    except errors.AlreadyExistsError:
+      logging.info('Member %s has received termination notice. But some other '
+                   'worker has received it as well! Leaving'
+                   ' it to them to decide when to checkpoint. ',
+                   self._id_in_cluster)
+      return
 
   def _stop_poll_termination_signal_thread(self):
     if self._poll_termination_signal_thread:
@@ -350,23 +458,34 @@ class WorkerPreemptionHandler(object):
       logging.info('Shut down watcher for one\'s own termination signal')
 
   def _stop_cluster_wise_termination_watcher_thread(self):
-    """Stop the thread that is _wait_for_signal."""
+    """Stop the thread that is _watch_step_to_save_key."""
     if self._cluster_wise_termination_watcher_thread:
       try:
-        if self._cluster_wise_termination_watcher_thread.is_alive():
-
-          context.context().set_config_key_value(_RUN_COUNT_KEY,
-                                                 _STOP_WATCHING_CLUSTER_VALUE)
-      except:  # pylint: disable=bare-except
+        context.context().set_config_key_value(_INITIAL_RUN_COUNT_KEY,
+                                               _STOP_WATCHING_CLUSTER_VALUE)
+      except (errors.AlreadyExistsError, errors.UnavailableError):
         # We'll ignore any error in the process of setting this key. There
         # certainly will be a AlreadyExistError since all workers are trying to
         # push this key. Or some worker might have exited already, leading to a
-        # errors.UnavailableError or errors.AbortedError. We'll also ignore
-        # other errors since they are not important to the process.
+        # errors.UnavailableError or errors.AbortedError.
+        pass
+      except Exception as e:  # pylint: disable=broad-except
+        # We'll also ignore other errors since they are not important to the
+        # process.
+        logging.info('Ignoring error when shutting down '
+                     '_stop_cluster_wise_termination_watcher_thread: ' + str(e))
+
+      try:
+        context.context().set_config_key_value(_FINAL_RUN_COUNT_KEY,
+                                               _STOP_WATCHING_CLUSTER_VALUE)
+      except (errors.AlreadyExistsError, errors.UnavailableError):
         pass
 
-      finally:
+      except Exception as e:  # pylint: disable=broad-except
+        logging.info('Ignoring error when shutting down '
+                     '_stop_cluster_wise_termination_watcher_thread: ' + str(e))
 
+      finally:
         self._cluster_wise_termination_watcher_thread.join()
         self._cluster_wise_termination_watcher_thread = None
         logging.info('Shut down watcher for peer\'s termination signal.')
@@ -470,8 +589,13 @@ class WorkerPreemptionHandler(object):
     # training steps.
     try:
       self._checkpoint_if_preempted()
+      run_begin_time = time.time()
       result = distributed_train_function(*args, **kwargs)
+      new_run_time = time.time() - run_begin_time
       self._run_counter += 1
+      # Update the average run time with the new run.
+      self._estimated_run_time = self._estimated_run_time + (
+          new_run_time - self._estimated_run_time) / self._run_counter
 
     except errors.OpError as e:
       logging.info('Propagating error to cluster: %r: %s', e, e)
@@ -483,9 +607,9 @@ class WorkerPreemptionHandler(object):
 
     return result
 
-  def _save_checkpoint_and_exit(self):
+  def _save_checkpoint(self):
     """Saves the checkpoint and exit program."""
-    logging.info('Starting checkpoint and exit')
+    logging.info('WorkerPreemptionHandler: Starting saving a checkpoint.')
     self._checkpointed_runs.assign(self.total_runs)
 
     start_time = time.monotonic()
@@ -506,10 +630,7 @@ class WorkerPreemptionHandler(object):
 
     logging.info('Checkpoint finished at path %s',
                  self._write_checkpoint_manager.directory)
-    logging.info('Checkpoint time: %f', end_time - start_time)
-    self._stop_poll_termination_signal_thread()
-    self._stop_cluster_wise_termination_watcher_thread()
-    sys.exit(self._restart_code)
+    self._checkpoint_time = end_time - start_time
 
   def _checkpoint_if_preempted(self):
     """Checkpoint if any worker has received a preemption signal.
@@ -532,85 +653,144 @@ class WorkerPreemptionHandler(object):
     training; otherwise, checkpoint and exit with a cluster-recognized restart
     code.
     """
-    if self._received_sigterm_and_step.is_set():
+    if self._final_checkpoint_countdown:
+      run_count_config_key = _FINAL_RUN_COUNT_KEY
 
-      run_count_key = context.context().get_config_key_value(_RUN_COUNT_KEY)
+    else:
+      run_count_config_key = _INITIAL_RUN_COUNT_KEY
+
+    if self._received_checkpoint_step.is_set():
+
+      run_count_key = context.context().get_config_key_value(
+          run_count_config_key)
 
       if run_count_key == str(self._run_counter):
-        self._save_checkpoint_and_exit()
+        self._save_checkpoint()
+
+        if self._time_to_exit():
+          self._stop_poll_termination_signal_thread()
+          self._stop_cluster_wise_termination_watcher_thread()
+          logging.info('WorkerPreemptionHandler: checkpoint saved. Exiting.')
+          self._exit_fn()
+
+        else:
+          logging.info('Continue training for the grace period.')
+          self._final_checkpoint_countdown = True
+          self._received_checkpoint_step.clear()
 
     elif self._received_own_sigterm.is_set():
+      # Only the worker who gets termination signal first among the cluster
+      # will enter this branch. The following will happen in chronological
+      # order:
+      # 1. The worker just receives a preemption signal and enters this branch
+      # for the first time. It will set a step-to-checkpoint and let the cluster
+      # know.
+      # 2. If there is a long grace period, it will also set
+      # _final_checkpoint_countdown, so that during this grace period, it will
+      # re-enter this branch to check if grace period is ending.
+      # 3. If it is, set a step-to-checkpoint key again.
+
+      if self._final_checkpoint_countdown:
+        if self._target_time_for_termination < time.time():
+          logging.info(
+              'Grace period almost ended. Final call to save a checkpoint!')
+        else:
+          return
 
       step_to_save_at = str(self._run_counter + 1)
 
-      try:
-        context.context().set_config_key_value(_RUN_COUNT_KEY, step_to_save_at)
-        logging.info('Termination caught in main thread on preempted worker')
-        logging.info('%s set to %s', _RUN_COUNT_KEY, step_to_save_at)
+      logging.info('Termination caught in main thread on preempted worker')
+      context.context().set_config_key_value(run_count_config_key,
+                                             step_to_save_at)
+      logging.info('%s set to %s', run_count_config_key, step_to_save_at)
 
-        n_workers = multi_worker_util.worker_count(
-            self._cluster_resolver.cluster_spec(),
-            self._cluster_resolver.task_type)
-        for i in range(n_workers):
-          context.context().get_config_key_value(f'{_ACKNOWLEDGE_KEY}_{i}')
-          logging.info('Sigterm acknowledgement from replica %d received', i)
-      # This is to handle the case that some other worker receives termination
-      # notice as well, and it has made a step key available right before this
-      # worker attempts to set it. In this case, it incurs a config key
-      # AlreadyExistsError.
-      # With MultiWorkerMirroredStrategy, every step contains collective ops
-      # (all-reduce, all-gather, etc.) that require the participation of all
-      # workers, which forms a synchronization point. Thus the max difference in
-      # the training progresses made by the workers is less than one complete
-      # step (e.g., one worker is finishing up the post-collective ops part of
-      # step N, and another is doing the pre-collective ops part of step N+1.)
-      #
-      # We can safely ignore this AlreadyExistsError. Say both worker-a and
-      # worker-b have received preemption notice, and worker-b encounters an
-      # AlreadyExistsError here because worker-a has already uploaded a value as
-      # the last step to finish before saving a checkpoint. Assume worker-b has
-      # finished step N and attempt to set the last step as N+1. If the training
-      # progress made by worker-a is ahead of that of worker-b, then worker-a
-      # must be running step N+1 due to the mechanism mentioned above and has
-      # set the last step as step N+1. If worker-a is behind worker-b, then it
-      # cannot possibly have set the last step as step N (not to mention a step
-      # number less than N). Because worker-a would only do so before executing
-      # step N. Consider that when a worker resolves and sets the last step to
-      # finish, it waits until receiving acknowledgment from all workers before
-      # continuing to train the next step. And thus, in this case, worker-b
-      # would never have finished step N, which requires the participation of
-      # worker-a. In either case, we can safely ignore the error and revisit the
-      # checkpoint and exit option after finishing the current step, step N+1.
-      # At that time, it will be re-direct to the earlier branch.
-      except errors.AlreadyExistsError:
-        logging.info(
-            'Member %s has received termination notice. But some other'
-            ' worker has received it as well! Leaving'
-            ' it to them to decide when to checkpoint. ', self._id_in_cluster)
+      n_workers = multi_worker_util.worker_count(
+          self._cluster_resolver.cluster_spec(),
+          self._cluster_resolver.task_type)
+      for i in range(n_workers):
+        context.context().get_config_key_value(
+            f'{_ACKNOWLEDGE_KEY}_{run_count_config_key}_{i}')
+        logging.info('Sigterm acknowledgement from replica %d received', i)
 
-        return
+      self._setup_countdown_if_has_grace_period_and_not_already_counting_down()
+
+  def _time_to_exit(self):
+    """Return whether to exit: exit if no grace period or grace period ends."""
+    # we should directly exit in either of the two cases:
+    # 1. if no grace period is provided;
+    # 2. if there is a grace period, and we're in countdown period. This,
+    # together with the fact that _received_checkpoint_step is set (again),
+    # means it's time to exit: when there is a grace period, a worker
+    # receives preemption signal and sets the step key. Then all workers
+    # receive the step key and set their local _received_checkpoint_step
+    # event, enters this branch in _checkpoint_if_preempted, make a
+    # checkpoint. Then they set _final_checkpoint_countdown to True, clear
+    # _received_checkpoint_step, and continue training. New preemption
+    # signals anywhere in the cluster will not be handled, because
+    # _PREEMPTION_WORKER_KEY is occupied. The only chance that
+    # _received_checkpoint_step gets set again is when the worker who has
+    # received the preemption signal earlier decide it's time to do a final
+    # checkpoint (by checking if it already passes
+    # _target_time_for_termination). It will upload a final step key. All
+    # workers receive this key and again set _received_checkpoint_step. So,
+    # if we found out that _received_checkpoint_step is set, and also
+    # _final_checkpoint_countdown is true, it's checkpoint and exit time.
+    return (self._grace_period <= 0) or self._final_checkpoint_countdown
+
+  def _setup_countdown_if_has_grace_period_and_not_already_counting_down(self):
+    """Set up at the beginning of a countdown period for long grace period."""
+    if self._grace_period > 0 and not self._final_checkpoint_countdown:
+      # A factor to provide more buffer / inaccuracy.
+      # TODO(wxinyi): update buffer_factor as needed. Maybe deduct a constant.
+      buffer_factor = 3
+      # Timing by 2 since while the preempted worker needs to do 1 extra step
+      # when time_till_final_call <=0, other workers might need to do x step
+      # where 0<x<2
+      self._target_time_for_termination = (
+          self._received_own_sigterm_time + self._grace_period -
+          buffer_factor * self._estimated_run_time * 2)
 
   def _sigterm_handler_fn(self, signum, frame):
     """Upload the to-be-preempted worker's id to coordination service."""
     del signum, frame
-    logging.info('Member %s has received termination signal.',
-                 self._id_in_cluster)
-    self._received_own_sigterm.set()
+    self._maybe_set_received_own_sigterm()
 
-  def _wait_for_signal(self):
-    """Watch out for peer preemption signal and step-to-save and acknowledge."""
-    step_key = context.context().get_config_key_value(_RUN_COUNT_KEY)
+  def _watch_step_to_save_key(self):
+    """Watch out for step-to-save config key and acknowledge.
+
+    All workers, including the one to be preempted, execute this function to get
+    step-to-save.
+    """
+
+    step_value = context.context().get_config_key_value(_INITIAL_RUN_COUNT_KEY)
 
     # get_config_key_value does not return until it gets some result. Thus at
     # the time to clean up, we upload a _STOP_WATCHING_CLUSTER_VALUE as the
-    # value so we can join the thread executing _wait_for_signal.
-    if step_key != _STOP_WATCHING_CLUSTER_VALUE:
-      # This must be set before we set the ack key below, otherwise its value in
-      # _checkpoint_if_preempted may be outdated.
-      self._received_sigterm_and_step.set()
+    # value so we can join the thread executing _watch_step_to_save_key.
+    if step_value != _STOP_WATCHING_CLUSTER_VALUE:
+      # This must be set before we set the ack key below, otherwise its value
+      # in _checkpoint_if_preempted may be outdated.
+      self._received_checkpoint_step.set()
 
-      ack_key = f'{_ACKNOWLEDGE_KEY}_{self._id_in_cluster}'
+      ack_key = f'{_ACKNOWLEDGE_KEY}_{_INITIAL_RUN_COUNT_KEY}_{self._id_in_cluster}'
       context.context().set_config_key_value(ack_key, '1')
       logging.info(
-          'WorkerPreemptionHandler._wait_for_signal: %s set, '
+          'WorkerPreemptionHandler: %s set, '
           'preemption awareness acknowledged', ack_key)
+
+      # If a positive grace_period is not configured, we get the
+      # _INITIAL_RUN_COUNT_KEY and then we're done. _checkpoint_if_preempted
+      # will save a checkpoint and then exit. Otherwise, we need to move on to
+      # wait for the _FINAL_RUN_COUNT_KEY, the one that the preempted worker
+      # will set after we utilize the extended grace period to train, so that
+      # a final checkpoint should be made right before the termination.
+      if self._grace_period > 0:
+        # Continue to wait until a final call is made.
+        final_step_value = context.context().get_config_key_value(
+            _FINAL_RUN_COUNT_KEY)
+        if final_step_value != _STOP_WATCHING_CLUSTER_VALUE:
+          ack_key = f'{_ACKNOWLEDGE_KEY}_{_FINAL_RUN_COUNT_KEY}_{self._id_in_cluster}'
+          context.context().set_config_key_value(ack_key, '1')
+          logging.info('WorkerPreemptionHandler: %s acknowledged, final '
+                       'checkpoint timing received.', ack_key)
+          self._received_checkpoint_step.set()

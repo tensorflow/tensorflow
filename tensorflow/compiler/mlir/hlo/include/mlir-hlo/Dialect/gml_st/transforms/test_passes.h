@@ -22,9 +22,9 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopPeelingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass();
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopTilingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass();
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc"

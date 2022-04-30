@@ -126,16 +126,8 @@ using tensorflow::shape_inference::ShapeHandle;
 namespace mlir {
 namespace tfg {
 
-namespace {
-
-void LoadDialects(MLIRContext* context) {
-  // Load dialects involved in the conversion
-  context->getOrLoadDialect<TFGraphDialect>();
-}
-
-// Construct the MLIR VersionAttr for the provided GraphDef.
-static VersionAttr getVersionAttr(MLIRContext* context,
-                                  const VersionDef& version) {
+VersionAttr ConvertVersionAttr(MLIRContext* context,
+                               const VersionDef& version) {
   int producer = 0;
   int min_consumer = 0;
   llvm::SmallVector<int32_t> bad_consumers;
@@ -146,6 +138,21 @@ static VersionAttr getVersionAttr(MLIRContext* context,
   return VersionAttr::get(context, /*producer=*/producer,
                           /*minConsumer=*/min_consumer,
                           /*badConsumers=*/bad_consumers);
+}
+
+bool IsGenericFunction(const FunctionDef& fdef) {
+  for (const NodeDef& node : fdef.node_def())
+    for (const auto& named_attr : node.attr()) {
+      if (!named_attr.second.placeholder().empty()) return true;
+    }
+  return false;
+}
+
+namespace {
+
+void LoadDialects(MLIRContext* context) {
+  // Load dialects involved in the conversion
+  context->getOrLoadDialect<TFGraphDialect>();
 }
 
 // Stateful helper class to import a TensorFlow Graph into an MLIR Graph.
@@ -322,28 +329,6 @@ Status GraphImporter::InferOutputTypes(Builder& builder, OperationState& result,
                                        const Node& node) {
   // Exit early if there are no outputs.
   if (node.num_outputs() == 0) return Status::OK();
-
-  // Try to infer an output shape from a shapes attribute.
-  if (Optional<Status> status =
-          InferOutputTypesFromShapesAttribute(builder, result, node))
-    return *status;
-
-  // Handle a special case for `InfeedDequeue`.
-  if (node.type_string() == "InfeedDequeue") {
-    assert(node.num_outputs() == 1 && "expected 1 result");
-    const auto& output_shape = node.attrs().Find("shape")->shape();
-    const auto& element_type = node.attrs().Find("dtype")->type();
-    TF_ASSIGN_OR_RETURN(
-        Type output_type,
-        ConvertToMlirTensorType(output_shape, element_type, &builder));
-    result.addTypes(output_type);
-    return Status::OK();
-  }
-
-  // Try to infer output shapes using shape inference.
-  if (Optional<Status> status =
-          InferOutputTypesWithContext(builder, result, node))
-    return *status;
 
   // If all else fails, fallback to importing tensors as unranked.
   for (int idx : llvm::seq(0, node.num_outputs())) {
@@ -587,10 +572,14 @@ Status GraphImporter::ConvertNode(const Node& node) {
 
   // Handle attributes, reserve `+3` for `device`, `name` and `fulltype`.
   result.attributes.reserve(node.attrs().size() + 3);
-  result.addAttribute(dialect_->getDeviceAttrIdentifier(),
-                      builder_.getStringAttr(node.requested_device()));
-  result.addAttribute(dialect_->getNameAttrIdentifier(),
-                      StringAttr::get(context_, node.name()));
+  if (!node.requested_device().empty()) {
+    result.addAttribute(dialect_->getDeviceAttrIdentifier(),
+                        builder_.getStringAttr(node.requested_device()));
+  }
+  if (!node.name().empty()) {
+    result.addAttribute(dialect_->getNameAttrIdentifier(),
+                        StringAttr::get(context_, node.name()));
+  }
   if (node.def().has_experimental_type()) {
     TF_ASSIGN_OR_RETURN(
         tf_type::FullTypeAttr type,
@@ -603,15 +592,18 @@ Status GraphImporter::ConvertNode(const Node& node) {
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
-    result.addAttribute(PromoteToTFGAttribute(name), attr);
+    result.addAttribute(name, attr);
   }
-  Attribute assigned_device =
-      result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
-  if (!assigned_device ||
-      assigned_device.cast<StringAttr>().getValue().empty()) {
-    result.attributes.erase(dialect_->getAssignedDeviceAttrIdentifier());
-    result.addAttribute(dialect_->getAssignedDeviceAttrIdentifier(),
-                        builder_.getStringAttr(node.assigned_device_name()));
+
+  if (!node.assigned_device_name().empty()) {
+    Attribute assigned_device =
+        result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
+    if (!assigned_device ||
+        assigned_device.cast<StringAttr>().getValue().empty()) {
+      result.attributes.erase(dialect_->getAssignedDeviceAttrIdentifier());
+      result.addAttribute(dialect_->getAssignedDeviceAttrIdentifier(),
+                          builder_.getStringAttr(node.assigned_device_name()));
+    }
   }
 
   // Register the mapping between the TF node and the newly created operation.
@@ -828,9 +820,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
     for (const std::string& sig_name : signature.control_output()) {
       auto it = fdef.control_ret().find(sig_name);
       if (it == fdef.control_ret().end())
-        return InvalidArgument(
-            "Signature control_output not found in fdef.control_ret: ",
-            sig_name);
+        return InvalidArgument("Control output '", sig_name,
+                               "' was not found in 'control_ret'");
       Node* ret = control_ret_nodes[it->second];
       if (!ret)
         return InvalidArgument(
@@ -934,14 +925,6 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   return func_op;
 }
 
-bool IsGenericFunction(FunctionDef fdef) {
-  for (const NodeDef& node : fdef.node_def())
-    for (const auto& named_attr : node.attr()) {
-      if (!named_attr.second.placeholder().empty()) return true;
-    }
-  return false;
-}
-
 }  // namespace
 
 // Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
@@ -977,29 +960,29 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
     const FunctionLibraryDefinition& flib_def) {
   LoadDialects(context);
   // Create the graph operation in which we will convert the individual nodes.
-  OwningOpRef<mlir::ModuleOp> module =
-      ModuleOp::create(UnknownLoc::get(context));
+  auto unknown_loc = UnknownLoc::get(context);
+  OwningOpRef<mlir::ModuleOp> module = ModuleOp::create(unknown_loc);
   OpBuilder builder = OpBuilder::atBlockEnd(module->getBody());
 
   auto graph_op = builder.create<GraphOp>(
-      module->getLoc(), getVersionAttr(context, graph.versions()));
+      module->getLoc(), ConvertVersionAttr(context, graph.versions()));
   graph_op.nodes().push_back(new Block);
 
   // Import the nodes in the graph body.
   GraphImporter importer(context, graph, debug_info);
   TF_RETURN_IF_ERROR(importer.Convert(graph_op.getBody()));
 
-  llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>> values_map;
   for (const std::string& name : flib_def.ListFunctionNames()) {
     const FunctionDef* fdef = flib_def.Find(name);
     if (IsGenericFunction(*fdef)) {
-      TF_RETURN_IF_ERROR(ConvertGenericFunction(*fdef, builder));
+      auto func_op = builder.create<GraphFuncOp>(unknown_loc);
+      TF_RETURN_IF_ERROR(ConvertGenericFunction(func_op, *fdef, builder));
     } else {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           ImportFunctionDef(*module, debug_info, flib_def, *fdef,
                             /*instantiation_attributes=*/{})
               .status(),
-          "While importing FunctionDef: ", fdef->signature().name());
+          "While importing function: ", fdef->signature().name());
     }
   }
   return module;

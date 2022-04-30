@@ -1138,7 +1138,7 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
       return op->emitOpError() << "body terminator is not a Yield op.";
 
     for (int i = 0; i < op.body().getNumArguments(); ++i) {
-      // Inputs should only have one one, a DTensorLayout op.
+      // Inputs should only have one, a DTensorLayout op.
       mlir::Value argument = op.body().getArgument(i);
       if (!argument.hasOneUse())
         return op.emitOpError()

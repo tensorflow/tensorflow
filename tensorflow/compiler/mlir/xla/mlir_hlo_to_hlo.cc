@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -532,17 +533,15 @@ class ConvertToHloModule {
   explicit ConvertToHloModule(
       mlir::ModuleOp module, xla::XlaBuilder& module_builder,
       bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+      tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
+          shape_determination_fns,
       MlirToHloConversionOptions options)
       : module_(module),
         module_builder_(module_builder),
         use_tuple_args_(use_tuple_args),
         return_tuple_(return_tuple),
-        shape_representation_fn_(shape_representation_fn),
-        options_(options) {
-    if (!shape_representation_fn_)
-      shape_representation_fn_ = tensorflow::IdentityShapeRepresentationFn();
-  }
+        shape_determination_fns_(shape_determination_fns),
+        options_(options) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
@@ -554,7 +553,7 @@ class ConvertToHloModule {
       return module_.emitError(
           "conversion requires module with `main` function");
 
-    for (auto func : module_.getOps<FuncOp>()) {
+    for (auto func : module_.getOps<func::FuncOp>()) {
       if (func.empty()) continue;
       if (failed(RunOnFunction(func))) return failure();
     }
@@ -597,12 +596,12 @@ class ConvertToHloModule {
 
   // Look up a symbol with the specified name, returning null if no such name
   // exists.
-  FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
+  func::FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
     return module_.lookupSymbol<mlir::func::FuncOp>(symbol);
   }
 
   // Get Reference to lowered XLA computation for a function.
-  xla::XlaComputation& GetLoweredComputation(FuncOp func) {
+  xla::XlaComputation& GetLoweredComputation(func::FuncOp func) {
     return lowered_computation_[func];
   }
 
@@ -641,9 +640,10 @@ class ConvertToHloModule {
   // Whether to always return a tuple.
   bool return_tuple_;
 
-  // Shape representation function to determine entry function argument and
+  // Shape determination functions to determine entry function argument and
   // result shapes.
-  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
+  tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
+      shape_determination_fns_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -705,19 +705,19 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
 }
 
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
+  auto& value_map = *ctx.values;
   xla::XlaOp operand;
-  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
-  TensorType operandType = op.operand().getType().cast<TensorType>();
-  TensorType resultType = op.getType();
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  TensorType operand_type = op.operand().getType().cast<TensorType>();
+  TensorType result_type = op.getType();
+  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
     return failure();
-  auto allGatherDim = op.all_gather_dim();
-  int64_t shardCount = resultType.getDimSize(allGatherDim) /
-                       operandType.getDimSize(allGatherDim);
-  valueMap[op] = xla::AllGather(operand, allGatherDim, shardCount,
-                                Convert_replica_groups(op.replica_groups()),
-                                Convert_channel_handle(op.channel_handle()));
+  auto all_gather_dim = op.all_gather_dim();
+  int64_t shard_count = result_type.getDimSize(all_gather_dim) /
+                        operand_type.getDimSize(all_gather_dim);
+  value_map[op] = xla::AllGather(operand, all_gather_dim, shard_count,
+                                 Convert_replica_groups(op.replica_groups()),
+                                 Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -739,16 +739,16 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
+  auto& value_map = *ctx.values;
   xla::XlaOp operand;
-  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
-  TensorType operandType = op.operand().getType().cast<TensorType>();
-  TensorType resultType = op.getType();
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  TensorType operand_type = op.operand().getType().cast<TensorType>();
+  TensorType result_type = op.getType();
+  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
     return failure();
-  auto scatterDim = op.scatter_dimension();
-  int64_t shardCount =
-      operandType.getDimSize(scatterDim) / resultType.getDimSize(scatterDim);
+  auto scatter_dim = op.scatter_dimension();
+  int64_t shard_count = operand_type.getDimSize(scatter_dim) /
+                        result_type.getDimSize(scatter_dim);
 
   xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
@@ -756,8 +756,8 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  valueMap[op] =
-      xla::ReduceScatter(operand, computation, scatterDim, shardCount,
+  value_map[op] =
+      xla::ReduceScatter(operand, computation, scatter_dim, shard_count,
                          Convert_replica_groups(op.replica_groups()),
                          Convert_channel_handle(op.channel_handle()));
   return success();
@@ -954,7 +954,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = caseop;
   } else {
-    for (auto item : llvm::enumerate(op.getResults())) {
+    for (const auto& item : llvm::enumerate(op.getResults())) {
       value_map[item.value()] = xla::GetTupleElement(caseop, item.index());
     }
   }
@@ -1085,28 +1085,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       /*literal=*/nullptr,
       /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
-  return success();
-}
-
-LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
-  xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
-                            ConvertAPFloat(op.max_range()));
-  auto& value_map = *ctx.values;
-  xla::XlaOp input;
-  if (failed(GetXlaOp(op.input(), value_map, &input, op))) return failure();
-
-  auto casted = xla::ConvertElementType(input, xla::U32);
-  if (op.is_16bits()) {
-    value_map[op] = xla::Dequantize<uint16>(
-        casted, range,
-        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
-        op.transpose_output());
-  } else {
-    value_map[op] = xla::Dequantize<uint8>(
-        casted, range,
-        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
-        op.transpose_output());
-  }
   return success();
 }
 
@@ -1284,7 +1262,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
   } else {
-    for (auto item : llvm::enumerate(op.getResults())) {
+    for (const auto& item : llvm::enumerate(op.getResults())) {
       value_map[item.value()] = xla::GetTupleElement(result, item.index());
     }
   }
@@ -1313,7 +1291,7 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
   } else {
-    for (auto item : llvm::enumerate(op.getResults())) {
+    for (const auto& item : llvm::enumerate(op.getResults())) {
       value_map[item.value()] = xla::GetTupleElement(result, item.index());
     }
   }
@@ -1517,7 +1495,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   }
 
   // MLIR's sort supports multiple returns, untuple all the results of XLA's.
-  for (auto it : llvm::enumerate(op.getResults())) {
+  for (const auto& it : llvm::enumerate(op.getResults())) {
     value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
   }
   return success();
@@ -1620,7 +1598,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     values[op.getResult(0)] = fusion;
   } else {
-    for (auto item : llvm::enumerate(op.getResults())) {
+    for (const auto& item : llvm::enumerate(op.getResults())) {
       values[item.value()] = xla::GetTupleElement(fusion, item.index());
     }
   }
@@ -1677,6 +1655,18 @@ LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
   return failure();
 }
 
@@ -2083,7 +2073,7 @@ LogicalResult ConvertToHloModule::Lower(
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
         StatusOr<xla::XlaOp> reshape =
             tensorflow::ReshapeWithCorrectRepresentationAndSharding(
-                builder, returns[index], return_shape, shape_representation_fn_,
+                builder, returns[index], return_shape, shape_determination_fns_,
                 ret_shardings[index], /*fast_mem=*/false);
         if (!reshape.ok())
           return inst->emitError() << reshape.status().error_message();
@@ -2237,15 +2227,18 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     if (!status.ok())
       return block->getParentOp()->emitError() << status.error_message();
 
-    tensorflow::DataType dtype;
-    status = tensorflow::ConvertToDataType(arg.getType(), &dtype);
+    tensorflow::DataType arg_dtype;
+    status = tensorflow::ConvertToDataType(arg.getType(), &arg_dtype);
     if (!status.ok())
       return block->getParentOp()->emitError() << status.error_message();
 
-    auto arg_shape_status = shape_representation_fn_(
-        arg_tensor_shape, dtype,
-        /*use_fast_memory=*/false,
-        tensorflow::XlaLayoutPreference::kNoPreference);
+    CHECK(shape_determination_fns_.layout_preference_fn &&  // Crash OK
+          shape_determination_fns_.shape_representation_fn);
+    auto layout_preference = shape_determination_fns_.layout_preference_fn(
+        arg_tensor_shape, arg_dtype, absl::nullopt);
+    auto arg_shape_status = shape_determination_fns_.shape_representation_fn(
+        arg_tensor_shape, arg_dtype, /*use_fast_memory=*/false,
+        layout_preference);
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();
@@ -2268,7 +2261,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
   if (!arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings)) {
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::TUPLE);
-    for (auto arg_sharding : llvm::enumerate(arg_shardings)) {
+    for (const auto& arg_sharding : llvm::enumerate(arg_shardings)) {
       auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
       if (!hlo_sharding.ok())
         return block->getParentOp()->emitError()
@@ -2276,7 +2269,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
 
       auto status = tensorflow::RewriteLayoutWithShardedShape(
           hlo_sharding.ValueOrDie(), /*use_fast_memory=*/false,
-          shape_representation_fn_, &(*arg_shapes)[arg_sharding.index()]);
+          shape_determination_fns_, &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
         return block->getParentOp()->emitError() << status.error_message();
 
@@ -2470,13 +2463,14 @@ Status ConvertRegionToComputation(mlir::Region* region,
 Status ConvertMlirHloToHlo(
     mlir::ModuleOp module, xla::HloProto* hlo_proto, bool use_tuple_args,
     bool return_tuple,
-    const tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
+        shape_determination_fns,
     MlirToHloConversionOptions options) {
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,
-                               return_tuple, shape_representation_fn, options);
+                               return_tuple, shape_determination_fns, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
@@ -2493,7 +2487,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,
                                /*use_tuple_args=*/false, /*return_tuple=*/false,
-                               /*shape_representation_fn=*/nullptr, options);
+                               /*shape_determination_fns=*/{}, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
   // xla_params should only include non-constant parameters the block arguments

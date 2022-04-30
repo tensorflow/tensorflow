@@ -42,7 +42,7 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
                                  StringRef(content.data(), content.size()));
 }
 
-inline LogicalResult HasIntegerArrayWithSize(FuncOp* func,
+inline LogicalResult HasIntegerArrayWithSize(func::FuncOp* func,
                                              const DictionaryAttr& attrs,
                                              const std::string& attr_name,
                                              int N) {
@@ -64,8 +64,9 @@ inline LogicalResult HasIntegerArrayWithSize(FuncOp* func,
 }
 
 inline LogicalResult GetIntegerArraySafe(
-    FuncOp* func, const DictionaryAttr& attrs, const std::string& attr_name,
-    llvm::SmallVectorImpl<int32_t>* results, int N) {
+    func::FuncOp* func, const DictionaryAttr& attrs,
+    const std::string& attr_name, llvm::SmallVectorImpl<int32_t>* results,
+    int N) {
   ArrayAttr array_attr = attrs.get(attr_name).dyn_cast_or_null<ArrayAttr>();
   if (array_attr == nullptr || array_attr.size() != N) {
     return func->emitError()

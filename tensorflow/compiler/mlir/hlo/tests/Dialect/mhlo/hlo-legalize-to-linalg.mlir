@@ -723,7 +723,7 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 // 1.4. Clamp starting index : 0 <= start <= ub
 //      where upper bound (ub) is computed at step 1.3
 // CHECK-NEXT: %[[START0_Int:.*]] = arith.index_cast %[[START0]] : index to i64
-// CHECK-NEXT: %[[UB0:.*]] = arith.index_cast %[[UB]] : index to i64
+// CHECK-NEXT: %[[UB0:.*]] = arith.constant 0 : i64
 // CHECK-NEXT: %[[MIN0:.*]] = arith.minsi %[[START0_Int]], %[[UB0]] : i64
 // CHECK-NEXT: %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[ZERO]] : i64
 // CHECK-NEXT: %[[CLAMPED_START0:.*]] = arith.index_cast %[[MAX0]] : i64 to index
@@ -756,6 +756,24 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 
 // CHECK-NEXT: %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]][%[[CLAMPED_START0]], %[[CLAMPED_START1]]] [256, %[[SIZE1]]] [%[[STRIDE0]], %[[STRIDE1]]] : tensor<256x?xf32> to tensor<256x?xf32>
 // CHECK-NEXT: return %[[SLICE]] : tensor<256x?xf32>
+
+// -----
+
+// CHECK-LABEL: real_dynamic_slice_with_int
+// Verify that legalization of real_dynamic_slice legalization with integer
+// dims work & passes verification.
+func public @real_dynamic_slice_with_int(%arg0: tensor<10xi32> , %arg1: tensor<1xi32> ) -> tensor<?xi32> {
+  %0 = mhlo.constant dense<0> : tensor<1xi32>
+  %1 = mhlo.constant dense<1> : tensor<1xi32>
+  %2 = mhlo.constant dense<0> : tensor<i32>
+// Verify cast is inserted for extracted value feeding into subtraction with
+// result of dim.
+// CHECK: %[[SIZE1:.*]] = arith.ceildivui
+// CHECK: %[[SIZE2:.*]] = arith.index_cast %[[SIZE1]] : i32 to index
+// CHECK: arith.subi %{{.*}}, %[[SIZE2]] : index
+  %4 = "mhlo.real_dynamic_slice"(%arg0, %0, %arg1, %1) : (tensor<10xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<?xi32>
+  return %4 : tensor<?xi32>
+}
 
 // -----
 
@@ -4200,3 +4218,47 @@ func.func @imag_real(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: yield %[[CST]]
   func.return %1 : tensor<?xf32>
 }
+
+// -----
+
+func.func @dot_general(%arg0: tensor<?x?x?xf32>,
+                  %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  func.return %0 : tensor<?x?x?xf32>
+}
+// The iterations are (Batch Dim, LHS Other Dim, RHS Other dim, Contracting Dim)
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d3, d0)>
+// Output is the iterators excluding contracting
+// CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
+// CHECK: func @dot_general(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>)
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
+// Only contracting dims are reductions
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "reduction"]
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x?xf32>, tensor<?x?x?xf32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xf32>)
+// CHECK-SAME: {someattr}
+// CHECK:   ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
+// CHECK:     %[[MUL:.*]] = arith.mulf %[[ARG2]], %[[ARG3]] : f32
+// CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
+// CHECK:     linalg.yield %[[SUM]] : f32
+// CHECK: } -> tensor<?x?x?xf32>

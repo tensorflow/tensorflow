@@ -39,19 +39,12 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     return false;
   }
 
-  // The semantics of TupleSelect are weird: TupleSelect doesn't define a
-  // buffer, but just forwards the buffers in the either left or right side.
-  // This means the two different inputs to TupleSelect must not alias, yet they
-  // should be allocated in the same memory space, and both buffers must be kept
-  // alive for the entire live range of TupleSelect. Instead, just don't
-  // allocate TupleSelect in the alternate memory space.
   // TODO(berkin): Not allocating add-dependencies either since they need to be
   // treated specially. We should revisit this later.
   for (const HloPosition& position : value->positions()) {
-    if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
-        position.instruction->opcode() == HloOpcode::kAddDependency) {
+    if (position.instruction->opcode() == HloOpcode::kAddDependency) {
       VLOG(4) << "Keeping value " << value->ToShortString()
-              << " in default mem because it has a tuple-select or "
+              << " in default mem because it has a "
               << "add-dependency position.";
       return false;
     }

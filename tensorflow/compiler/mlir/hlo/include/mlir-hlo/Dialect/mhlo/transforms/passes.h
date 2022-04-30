@@ -92,6 +92,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass();
 // larger fusions.
 std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
 
+// Iteratively reifies all shape computations in the function.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeReificationPass();
+
+// Fuse shape constraints and merge all assuming regions.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConstraintFusionPass();
+
 // Group reduction and parallel dimensions of reduction operations and realize
 // them through equivalent 1D or 2D reductions.
 std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
@@ -118,6 +124,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
 // Creates a pass for expanding mhlo.tuple ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
     const std::string& entry_function_name = "main");
+
+// Creates a pass for collapsing the mhlo.map if the map only has elementwise
+// op.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
 
 }  // namespace mhlo
 }  // namespace mlir

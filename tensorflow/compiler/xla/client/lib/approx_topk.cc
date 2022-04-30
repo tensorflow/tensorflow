@@ -220,13 +220,14 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   for (const auto& op : init_values) {
     partial_reduce_args.push_back(op);
   }
-  std::vector<Shape> approx_output_shapes;
+  std::vector<const Shape*> approx_output_shapes;
   approx_output_shapes.reserve(operands_shapes.size());
-  for (auto op_shape : operands_shapes) {
+  for (auto& op_shape : operands_shapes) {
     op_shape.mutable_dimensions()[reduction_dim] = approx_output_size;
-    approx_output_shapes.push_back(op_shape);
+    approx_output_shapes.push_back(&op_shape);
   }
-  auto approx_output_shape = ShapeUtil::MakeTupleShape(approx_output_shapes);
+  auto approx_output_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs(approx_output_shapes);
   // PartialReduce option in JSON form
   std::string partial_reduce_option = absl::StrFormat(
       "{\"log2_reduction\": %d, \"reduction_dim\": %d, \"to_apply_type\": "

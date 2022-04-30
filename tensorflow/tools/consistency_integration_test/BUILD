@@ -1,4 +1,4 @@
-"""Tests to improve the the of tensorflow.
+"""Tests to improve the consistency of tensorflow.
 
 Here we would like to include high level tests that stress tf.function and
 autograph in ways users have discovered.  Not everything here has to work,

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 
+#include <string>
+
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
@@ -69,42 +71,41 @@ Status ConvertLocation(Location inst_loc,
   return Status::OK();
 }
 
-Status ConvertAttribute(const BoolAttr& attr, AttrValue* value) {
+Status ConvertAttribute(BoolAttr attr, AttrValue* value) {
   value->set_b(attr.getValue());
   return Status::OK();
 }
 
-Status ConvertAttribute(const IntegerAttr& attr, AttrValue* value) {
+Status ConvertAttribute(IntegerAttr attr, AttrValue* value) {
   value->set_i(attr.getInt());
   return Status::OK();
 }
 
-Status ConvertAttribute(const FloatAttr& attr, AttrValue* value) {
+Status ConvertAttribute(FloatAttr attr, AttrValue* value) {
   value->set_f(attr.getValueAsDouble());
   return Status::OK();
 }
 
-Status ConvertAttribute(const ElementsAttr& attr, AttrValue* value) {
+Status ConvertAttribute(ElementsAttr attr, AttrValue* value) {
   return ConvertToTensorProto(attr, value->mutable_tensor());
 }
 
-Status ConvertAttribute(const PlaceholderAttr& attr, AttrValue* value) {
+Status ConvertAttribute(PlaceholderAttr attr, AttrValue* value) {
   value->set_placeholder(attr.getValue().str());
   return Status::OK();
 }
 
-Status ConvertAttribute(const ShapeAttr& attr, AttrValue* value) {
+Status ConvertAttribute(ShapeAttr attr, AttrValue* value) {
   SetTensorShapeProto(attr, value->mutable_shape());
   return Status::OK();
 }
 
-Status ConvertAttribute(const FlatSymbolRefAttr& attr, AttrValue* value) {
+Status ConvertAttribute(FlatSymbolRefAttr attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue().str());
   return Status::OK();
 }
 
-Status ConvertAttribute(const FuncAttr& attr, bool remove_ref_type,
-                        AttrValue* value) {
+Status ConvertAttribute(FuncAttr attr, bool remove_ref_type, AttrValue* value) {
   TF_RETURN_IF_ERROR(
       ConvertAttribute(attr.getName().cast<FlatSymbolRefAttr>(), value));
   TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
@@ -113,26 +114,8 @@ Status ConvertAttribute(const FuncAttr& attr, bool remove_ref_type,
   return Status::OK();
 }
 
-Status ConvertAttribute(const StringAttr& attr, AttrValue* value) {
-  absl::string_view attr_value(attr.getValue().data(), attr.getValue().size());
-  switch (mangling_util::GetMangledKind(attr_value)) {
-    case mangling_util::MangledKind::kUnknown: {
-      value->set_s(std::string(attr_value));
-      return Status::OK();
-    }
-    case mangling_util::MangledKind::kDataType: {
-      DataType dtype;
-      TF_RETURN_IF_ERROR(mangling_util::DemangleDataType(attr_value, &dtype));
-      value->set_type(dtype);
-      return Status::OK();
-    }
-    case mangling_util::MangledKind::kTensorShape:
-      TF_RETURN_IF_ERROR(
-          mangling_util::DemangleShape(attr_value, value->mutable_shape()));
-      return Status::OK();
-    default:
-      return Unimplemented("Mangled string couldn't be handled!");
-  }
+Status ConvertAttribute(StringAttr attr, AttrValue* value) {
+  value->set_s(attr.str());
   return Status::OK();
 }
 
@@ -240,7 +223,8 @@ tensorflow::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
                                     /*remove_ref_type=*/false, &value);
           })
           .Default([&](Attribute attr) {
-            return Unimplemented("Unhandled attribute kind for attribute");
+            return Unimplemented("Unhandled attribute kind for attribute: ",
+                                 debugString(attr));
           }));
   return value;
 }
@@ -252,8 +236,7 @@ Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
   ignored_attrs.insert(attrs_to_ignore.begin(), attrs_to_ignore.end());
   AttrValueMap func_call_attrs;
   for (const NamedAttribute& named_attr : attrs) {
-    std::string name_str =
-        PrepareTFGAttributeForExport(named_attr.getName()).str();
+    std::string name_str = named_attr.getName().str();
     auto attr = named_attr.getValue();
     absl::string_view name = name_str;
     if (ignored_attrs.contains(name_str)) {
@@ -412,24 +395,6 @@ tensorflow::StatusOr<Attribute> ConvertAttributeValue(
     default:
       return ConvertNonFuncAttributeValue(value, builder, tfgDialect);
   }
-}
-
-static constexpr StringLiteral kTpuReplicate = "_tpu_replicate";
-
-StringRef PromoteToTFGAttribute(StringRef tf_attr_name) {
-  return StringSwitch<StringRef>(tf_attr_name)
-      // `_tpu_replicate` -> `tfg.tpu_replicate`
-      //   This attribute assigns ops to TPU clusters. When transformations
-      //   create new ops, they must ensure that these new ops are assigned to
-      //   the same cluster.
-      .Case(kTpuReplicate, TFGraphDialect::getTfgTpuReplicateAttrKey())
-      .Default(tf_attr_name);
-}
-
-StringRef PrepareTFGAttributeForExport(StringRef tfg_attr_name) {
-  return StringSwitch<StringRef>(tfg_attr_name)
-      .Case(TFGraphDialect::getTfgTpuReplicateAttrKey(), kTpuReplicate)
-      .Default(tfg_attr_name);
 }
 
 tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <cstdint>
 #include <functional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -308,6 +310,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleNot(HloInstruction* logical_not) override;
 
+  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
+
   Status HandleOr(HloInstruction* logical_or) override;
 
   Status HandlePad(HloInstruction* pad) override;
@@ -350,6 +354,33 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   bool Run(HloComputation* computation,
            const AlgebraicSimplifierOptions& options,
            AlgebraicSimplifier* simplifier);
+
+  // Compute a function that maps from bitcasted dimensions to the resulting
+  // ones. Returns the function as a vector if successful; absl::optional
+  // otherwise.
+  static absl::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
+      const Shape& bitcast_shape, const Shape& operand_shape);
+  // Invert the directions of the given bitcast dimension map.
+  static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
+      const Shape& original_shape, const Shape& bitcast_shape,
+      const std::vector<std::vector<int64_t>>& original_map);
+
+  // Modify the layout dimensions of result_shape, so that it becomes the
+  // re-shaped result of applying bitcast to the original_shape, by using
+  // dim_map to re-shape layout dimensions of original_shape. Returns the
+  // result_shape with modified layout if the conversion succeeds; Returns
+  // absl::nullopt if fails.
+  static absl::optional<Shape> ReshapeLayoutDimensions(
+      const Shape& original_shape, const Shape& result_shape,
+      const std::vector<std::vector<int64_t>>& original_map,
+      const std::vector<std::vector<int64_t>>& result_map);
+
+  // Allow backend constraints on tiling etc. to invalidate optimizations.
+  virtual bool IsValidLayout(const Shape& shape) { return true; }
+
+ protected:
+  // The backend-specific options selected for the algebraic simplifier.
+  const AlgebraicSimplifierOptions& options_;
 
  private:
   // Removes degenerate dimension from dot.
@@ -397,6 +428,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // operand of the instruction.
   void ReplaceWithBitcast(HloInstruction* instruction,
                           HloInstruction* operand = nullptr);
+
+  // Change copy(bitcast...(copy)) into copy(bitcast) or bitcast(copy) so that
+  // the replicated copies are combined when allowed by layout/tiling assignment
+  // constraints.
+  bool SwapCopyBitcastCopy(HloInstruction* root_copy);
 
   // Replace old instruction with new instruction if old and new instructions
   // are compatible (have the same shape and replacement preserves sharding).
@@ -484,9 +520,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
-
-  // The backend-specific options selected for the algebraic simplifier.
-  const AlgebraicSimplifierOptions& options_;
 
   // Cached computation for adding two scalars of a given type.
   absl::flat_hash_map<PrimitiveType, HloComputation*> scalar_add_computations_;

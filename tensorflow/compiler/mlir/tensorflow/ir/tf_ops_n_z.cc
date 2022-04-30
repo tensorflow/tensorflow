@@ -467,7 +467,7 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
-      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
+      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
 
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
@@ -724,6 +724,15 @@ void RealDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
+}
+
+//===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+void ReluOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<ReluOfMinimum6ToRelu6>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3068,13 +3077,10 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
 }
 
 LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
-  // TODO(jpienaar): Remove.
-  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
-
   auto cond_fn =
-      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
+      symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
   auto body_fn =
-      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
+      symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
   if (!cond_fn) {
     return emitOpError("cond refers to an undefined function : ") << cond();
   }
@@ -3251,23 +3257,16 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // XlaBroadcastHelperOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto loc = location ? *location : mlir::UnknownLoc::get(context);
-  XlaBroadcastHelperOpAdaptor op(operands, attributes);
-  if (failed(op.verify(loc))) {
-    return failure();
-  }
-
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.lhs();
   Value rhs = op.rhs();
   auto set_unranked_results = [&]() {
-    auto unranked_lhs = UnrankedTensorType::get(getElementTypeOrSelf(lhs));
-    inferredReturnTypes.push_back(unranked_lhs);
-    auto unranked_rhs = UnrankedTensorType::get(getElementTypeOrSelf(rhs));
-    inferredReturnTypes.push_back(unranked_rhs);
+    inferredReturnShapes.emplace_back(getElementTypeOrSelf(lhs));
+    inferredReturnShapes.emplace_back(getElementTypeOrSelf(rhs));
     return success();
   };
 
@@ -3290,8 +3289,8 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
           "if broadcast_dims is empty, both arguments must have equal rank or "
           "at least one argument must be a scalar");
     }
-    inferredReturnTypes.push_back(lhs_ty);
-    inferredReturnTypes.push_back(rhs_ty);
+    inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
+    inferredReturnShapes.emplace_back(rhs_ty.cast<ShapedType>());
     return success();
   }
 
@@ -3322,13 +3321,11 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
   }
 
   if (broadcast_lhs) {
-    inferredReturnTypes.push_back(
-        RankedTensorType::get(broadcast_shape, lhs_ty.getElementType()));
-    inferredReturnTypes.push_back(rhs_ty);
+    inferredReturnShapes.emplace_back(broadcast_shape, lhs_ty.getElementType());
+    inferredReturnShapes.emplace_back(rhs_ty.cast<ShapedType>());
   } else {
-    inferredReturnTypes.push_back(lhs_ty);
-    inferredReturnTypes.push_back(
-        RankedTensorType::get(broadcast_shape, rhs_ty.getElementType()));
+    inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
+    inferredReturnShapes.emplace_back(broadcast_shape, rhs_ty.getElementType());
   }
   return success();
 }
@@ -3337,13 +3334,11 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
 // XlaSetDynamicDimensionSizeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto loc = location ? *location : mlir::UnknownLoc::get(context);
-  XlaSetDynamicDimensionSizeOpAdaptor op(operands, attributes);
-  if (failed(op.verify(loc))) return failure();
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
   TensorType operand_ty = op.input().getType().cast<TensorType>();
   Type element_ty = operand_ty.getElementType();
@@ -3370,7 +3365,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
     result_ty = UnrankedTensorType::get(element_ty);
   }
 
-  inferredReturnTypes.push_back(result_ty);
+  inferredReturnShapes.emplace_back(result_ty.cast<ShapedType>());
   return success();
 }
 

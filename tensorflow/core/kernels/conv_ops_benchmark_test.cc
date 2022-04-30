@@ -26,6 +26,14 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/util.h"
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#define MKL_OP_LABEL mkl_op_registry::kMklNameChangeOpLabel
+#else
+#define MKL_OP_LABEL ""
+#endif  // INTEL_MKL
 
 namespace tensorflow {
 
@@ -90,8 +98,11 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
 
   Node* conv2d;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "Conv2D")
-                  .Input(images)
+  auto builder = IsMKLEnabled()
+                     ? NodeBuilder(graph->NewName("conv"), "_MklNativeConv2D")
+                           .Attr("_kernel", MKL_OP_LABEL)
+                     : NodeBuilder(graph->NewName("conv"), "Conv2D");
+  TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
@@ -237,8 +248,12 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
   std::vector<NodeBuilder::NodeOut> args = {bias};
 
   Node* conv;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
-                  .Input(images)
+  auto builder =
+      IsMKLEnabled()
+          ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
+                .Attr("_kernel", MKL_OP_LABEL)
+          : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
+  TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("num_args", 1)
                   .Input(args)
@@ -282,8 +297,12 @@ static Graph* FusedConv2DWithBatchNorm(
   std::vector<NodeBuilder::NodeOut> args = {scale, offset, mean, variance};
 
   Node* conv;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
-                  .Input(images)
+  auto builder =
+      IsMKLEnabled()
+          ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
+                .Attr("_kernel", MKL_OP_LABEL)
+          : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
+  TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("num_args", 4)
                   .Input(args)

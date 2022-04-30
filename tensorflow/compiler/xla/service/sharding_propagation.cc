@@ -225,6 +225,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
@@ -234,7 +235,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
     case HloOpcode::kXor: {
       // For these opcodes the output sharding can be determined by any operand

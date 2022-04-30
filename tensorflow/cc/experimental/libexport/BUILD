@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

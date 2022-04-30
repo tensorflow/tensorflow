@@ -43,10 +43,9 @@ def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::func::FuncOp"> {
   let constructor = "transforms::CreateTFToJITInvocationPass()";
   let options = [
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
-                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+                 "llvm::cl::ZeroOrMore">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
-                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
-                 "llvm::cl::MiscFlags::CommaSeparated">,
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore">,
       Option<"max_supported_rank_", "max-supported-rank", "int64_t",
              /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
@@ -72,25 +71,10 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform compute operations (hlo and linalg) on "
-                "values to buffer based ones.";
-  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
-}
-
-def TiledLoopBufferizePass : Pass<"tiled-loop-bufferize", "mlir::func::FuncOp"> {
-  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
-  let constructor = "transforms::CreateTiledLoopBufferizePass()";
-}
-
-def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+def KernelgenFinalBufferizePass : Pass<"kernelgen-final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
-  let constructor = "transforms::CreateFinalBufferizePass()";
-  let options = [
-      Option<"alignment_", "alignment", "uint64_t",
-             /*default=*/"64", "Memory alignment">,
-  ];
+  let constructor = "transforms::CreateKernelgenFinalBufferizePass()";
 }
 
 def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
@@ -166,18 +150,6 @@ def FuseInnerParallelLoopsPass
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
   }];
-}
-
-def LowerIndexCastPass
-    : Pass<"kernelgen-lower-index-cast", "mlir::func::FuncOp"> {
-  let summary = "Lower index cast on tensors to tensor dialect";
-  let constructor = "transforms::CreateLowerIndexCastPass()";
-}
-
-def ShapeSimplification
-    : Pass<"kernelgen-shape-simplification", "mlir::func::FuncOp"> {
-  let summary = "Simplify shape ops";
-  let constructor = "transforms::CreateShapeSimplification()";
 }
 
 def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {

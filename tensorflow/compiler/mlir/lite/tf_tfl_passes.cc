@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
@@ -333,6 +333,9 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // quantization passes based on quant_specs.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
       AddQuantizationPasses(pass_config.quant_specs, *pass_manager);
+      // Remove unnecessary QDQs while handling QAT models.
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::CreatePostQuantizeRemoveQDQPass());
     } else if (pass_config.quant_specs
                    .RunAndRewriteDynamicRangeQuantizationPasses()) {
       AddDynamicRangeQuantizationPasses(pass_config.quant_specs, *pass_manager);
@@ -399,7 +402,7 @@ struct StandardPipelineOptions
 // This does not yet include quantization passes.
 void CreateTFLStandardPipeline(OpPassManager& pm,
                                const StandardPipelineOptions& options) {
-  OpPassManager& func_pm = pm.nest<FuncOp>();
+  OpPassManager& func_pm = pm.nest<func::FuncOp>();
 
   // tf_executor dialect passes - Cleaning up the IR.
   mlir::TF::StandardPipelineOptions standard_pipeline_options;

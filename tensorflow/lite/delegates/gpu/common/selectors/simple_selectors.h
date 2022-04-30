@@ -92,7 +92,8 @@ void SelectDepthToSpace(const SpaceToDepthAttributes& attr,
                         const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
+void SelectSplit(const SplitAttributes& attr, const std::vector<int>& channels,
+                 const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr);
 
 std::unique_ptr<GPUOperation> SelectTile(const OperationDef& op_def,
@@ -112,6 +113,9 @@ std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
 
 std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
     const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def);
+
+void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
+                std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace gpu
 }  // namespace tflite

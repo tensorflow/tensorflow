@@ -14,6 +14,7 @@ tf_kernel_library(
     srcs = [
         "aggregate_ops.cc",
         "all_reduce_op.cc",
+        "approx_topk_op.cc",
         "arg_op.cc",
         "batch_matmul_op.cc",
         "batch_norm_op.cc",
@@ -185,6 +186,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:approx_topk",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
@@ -209,6 +211,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateful_random_ops_header",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/util:overflow",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -2159,24 +2159,6 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "stateful_random_ops_test",
-    size = "medium",
-    srcs = ["ops/stateful_random_ops_test.py"],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        ":client_testlib",
-        ":logging_ops",
-        ":random_ops_gen",
-        ":stateful_random_ops",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/kernel_tests/random:util",
-    ],
-)
-
 py_library(
     name = "stateless_random_ops",
     srcs = ["ops/stateless_random_ops.py"],
@@ -3314,7 +3296,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
@@ -3406,7 +3388,7 @@ filegroup(
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
@@ -4616,8 +4598,6 @@ py_library(
     name = "dtensor",
     deps = [
         "//tensorflow/dtensor/python:core",
-        "//tensorflow/dtensor/python:mesh_util",
-        "//tensorflow/dtensor/python:tpu_util",
     ],
 )
 

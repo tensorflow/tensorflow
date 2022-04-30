@@ -68,7 +68,7 @@ Status ForwardTypeInferencePass::Run(
 
   static FullTypeDef* no_type = new FullTypeDef();
 
-  auto process_node = [&flib_def](Node* n, bool& updated) {
+  auto process_node = [&flib_def](Node* n, bool& updated, bool& no_type_info) {
     VLOG(3) << "  processing " << n->name();
     VLOG(4) << "\n  node: " << n->def().DebugString()
             << "\n  op def: " << n->op_def().DebugString();
@@ -77,6 +77,7 @@ Status ForwardTypeInferencePass::Run(
 
     if (reg->fwd_type_fn == nullptr) {
       VLOG(4) << "  " << n->name() << " no type inference function";
+      no_type_info = true;
       return Status::OK();
     }
 
@@ -168,18 +169,19 @@ Status ForwardTypeInferencePass::Run(
       int nid = queue.front();
       Node* n = g->FindNodeId(nid);
       bool updated = false;
+      bool no_type_info = false;
       VLOG(3) << "  visiting " << n->name();
       visits++;
       visit_count[nid]++;
 
-      TF_RETURN_IF_ERROR(process_node(n, updated));
+      TF_RETURN_IF_ERROR(process_node(n, updated, no_type_info));
       VLOG(4) << "  done " << n->def().DebugString();
 
       queue.pop_front();
       in_queue.erase(nid);
       open.erase(nid);
 
-      if (all_inputs_closed(*n, closed)) {
+      if (all_inputs_closed(*n, closed) || no_type_info) {
         VLOG(3) << "  closing " << n->name();
         closed.emplace(nid);
       }

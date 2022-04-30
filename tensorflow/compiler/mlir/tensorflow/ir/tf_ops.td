@@ -611,7 +611,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+    Confined<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
@@ -699,7 +699,7 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+    Confined<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.

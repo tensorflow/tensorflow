@@ -35,7 +35,7 @@ using tensorflow::TensorShapeProto;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::errors::Unimplemented;
 
-Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
+Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
   switch (dtype) {
     case tensorflow::DT_HALF:
       *type = builder.getF16Type();

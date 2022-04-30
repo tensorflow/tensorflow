@@ -28,6 +28,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "approx_topk_test",
+    srcs = ["approx_topk_test.py"],
+    xla_enable_strict_auto_jit = True,
+    xla_enabled = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:nn_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "argmax_op_test",
     size = "small",
     srcs = ["argmax_op_test.py"],

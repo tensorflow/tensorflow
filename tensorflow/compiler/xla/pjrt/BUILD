@@ -112,6 +112,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "cpu_device_test",
+    srcs = ["cpu_device_test.cc"],
+    deps = [
+        ":cpu_device",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "local_device_state",
     srcs = ["local_device_state.cc"],
@@ -330,6 +342,7 @@ cc_library(
         ":pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",

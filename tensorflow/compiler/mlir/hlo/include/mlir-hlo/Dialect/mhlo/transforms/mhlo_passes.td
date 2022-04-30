@@ -109,7 +109,6 @@ def OptimizeMhloPass : Pass<"mhlo-test-optimize", "func::FuncOp"> {
   let constructor = "createOptimizeMhloPass()";
 }
 
-
 def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "func::FuncOp"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
@@ -155,7 +154,6 @@ def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow",
   }];
 }
 
-
 def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods", "func::FuncOp"> {
   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
   let constructor = "createTestInferShapedTypeMethodsPass()";
@@ -173,6 +171,16 @@ def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
     "operations and broadcast the operands rather than the result. This will "
     "eventually allow for larger fusions.";
   let constructor = "createMergeAssumingOpsPass()";
+}
+
+def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
+  let summary = "Iteratively reify all shape computations.";
+  let constructor = "CreateShapeReificationPass()";
+}
+
+def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
+  let summary = "Fuse shape constraints and merge all assuming regions.";
+  let constructor = "CreateConstraintFusionPass()";
 }
 
 def GroupReductionDimensionsPass
@@ -226,4 +234,10 @@ def RankSpecializationToSCFPass
            "The maximum supported rank after rank specialization. Any argument "
            "of greater rank may result in a runtime failure.">,
   ];
+}
+
+def CollapseElementwiseMapPass
+    : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
+  let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
+  let constructor = "createCollapseElementwiseMapPass()";
 }

@@ -488,4 +488,12 @@ TfLiteStatus ModelWriter::SetCustomInputOutput(
                                                                 execution_plan);
 }
 
+TfLiteStatus ModelWriter::RegisterCustomWriter(const std::string& custom_name,
+                                               CustomWriter custom_writer) {
+  for (auto& subgraph_writer : subgraph_writers_) {
+    subgraph_writer.RegisterCustomWriter(custom_name, custom_writer);
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace tflite

@@ -388,7 +388,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim > -1)
+      if (dim != -1)
         os << dim;
       else
         os << "?";
@@ -420,10 +420,9 @@ Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
       llvm::SMLoc loc = parser.getCurrentLocation();
       if (succeeded(parser.parseOptionalQuestion())) {
         shape.back() = ShapedType::kDynamicSize;
-      } else if (failed(parser.parseInteger(shape.back())) ||
-                 shape.back() < 0) {
-        parser.emitError(loc) << "expected a positive integer or `?` when "
-                                 "parsing a tf.shape attribute";
+      } else if (failed(parser.parseInteger(shape.back()))) {
+        parser.emitError(loc)
+            << "expected an integer or `?` when parsing a tf.shape attribute";
         return failure();
       }
       return success();
@@ -765,12 +764,14 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
     // can be more constrained and check subtypes for cast compatibility as
     // well.
     if (a.isa<VariantType>()) return a;
+    if (b.isa<VariantType>()) return b;
 
     // For Resource types, we recursively check the subtypes for cast
     // compatibility, if possible. Otherwise treat them as compatible.
     auto a_wst_st = a_wst.GetSubtypes();
     auto b_wst_st = b_wst.GetSubtypes();
-    if (a_wst_st.empty() || b_wst_st.empty()) return a;
+    if (a_wst_st.empty()) return b;
+    if (b_wst_st.empty()) return a;
     if (a_wst_st.size() != b_wst_st.size()) return nullptr;
     llvm::SmallVector<TensorType, 4> refined_subtypes;
     for (auto subtypes : llvm::zip(a_wst_st, b_wst_st)) {

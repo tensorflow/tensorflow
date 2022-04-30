@@ -177,6 +177,10 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_false,
                                         HloInstruction* derived_from = nullptr);
 
+// Forwards the first operand if operands.size() == 1, or creates a tuple
+// instruction with all the operands. Crashes if `operands` is empty.
+HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands);
+
 // Creates a Sort HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation. Also creates a
 // default compare sub-computation which sorts the first operand into ascending

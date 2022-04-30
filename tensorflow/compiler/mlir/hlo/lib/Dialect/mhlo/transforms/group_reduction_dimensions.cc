@@ -24,6 +24,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
@@ -324,7 +326,7 @@ void populateGroupReductionDimensionsPatterns(MLIRContext* context,
                                                  prefer_columns_reductions);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool prefer_columns_reductions) {
   return std::make_unique<GroupReductionDimensionsPass>(
       prefer_columns_reductions);

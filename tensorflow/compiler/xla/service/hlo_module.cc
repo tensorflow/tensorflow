@@ -21,6 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -508,6 +510,16 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());
@@ -545,8 +557,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
-  TF_RET_CHECK(module.has_host_program_shape())
-      << "No program shape found in the proto";
+  if (!module.has_host_program_shape()) {
+    return tensorflow::errors::FailedPrecondition(
+        "No program shape found in the proto");
+  }
   ProgramShape program_shape(module.host_program_shape());
   return CreateModuleConfigFromShape(program_shape, debug_options,
                                      execution_options);

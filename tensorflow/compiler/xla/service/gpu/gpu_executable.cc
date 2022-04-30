@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
@@ -79,21 +80,19 @@ namespace xla {
 namespace gpu {
 
 bool IsBefExecutableEnabled(const HloModuleConfig& config) {
-#if XLA_ENABLE_XLIR
+#if !XLA_ENABLE_XLIR
+  CHECK(!config.debug_options().xla_gpu_bef_executable())
+      << "Failed to enable BEF backend, because it was not compiled.";
+#endif  // !XLA_ENABLE_XLIR
   return config.debug_options().xla_gpu_bef_executable();
-#else   // XLA_ENABLE_XLIR
-  (void)config;
-  return false;
-#endif  // XLA_ENABLE_XLIR
 }
 
 bool IsBefThunkEnabled(const HloModuleConfig& config) {
-#if XLA_ENABLE_XLIR
+#if !XLA_ENABLE_XLIR
+  CHECK(!config.debug_options().xla_gpu_bef_thunk())
+      << "Failed to enable BEF backend, because it was not compiled.";
+#endif  // !XLA_ENABLE_XLIR
   return config.debug_options().xla_gpu_bef_thunk();
-#else   // XLA_ENABLE_XLIR
-  (void)config;
-  return false;
-#endif  // XLA_ENABLE_XLIR
 }
 
 namespace {
@@ -129,28 +128,40 @@ void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
 #endif
 }
 
+void GpuExecutable::GpuContextCacheDeleter::operator()(
+    tfrt::gpu::GpuContextCache* ptr) const {
+#if XLA_ENABLE_XLIR
+  delete ptr;
+#else
+  LOG(FATAL) << "OwnedGpuContextCache only supported with XLA_ENABLE_XLIR";
+#endif
+}
+
 #if XLA_ENABLE_XLIR
 struct GpuExecutable::BefExecutable {
  private:
-  explicit BefExecutable(OwnedBefBuffer buffer)
+  explicit BefExecutable(OwnedBefBuffer buffer,
+                         OwnedGpuContextCache context_cache)
       : bef_buffer(std::move(buffer)),
-        host_ctx(
-            tfrt::gpu::GetDiagHandler(&mlir_ctx), tfrt::CreateMallocAllocator(),
-            tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
-                                               /*num_blocking_threads=*/16)) {
-    tfrt::RegisterStaticKernels(host_ctx.GetMutableRegistry());
+        host_ctx(tfrt::gpu::CreateHostContext(
+            tfrt::gpu::GetDiagHandler(&mlir_ctx))) {
+    if (context_cache) {
+      gpu_ctx_cache = std::move(context_cache);
+    } else {
+      gpu_ctx_cache = OwnedGpuContextCache(new tfrt::gpu::GpuContextCache);
+    }
   }
 
   Status Initialize() {
     bef_file =
         tfrt::BEFFile::Open({bef_buffer.get(), bef_buffer.get_deleter().size},
-                            host_ctx.GetKernelRegistry(),
-                            host_ctx.diag_handler(), host_ctx.allocator());
+                            host_ctx->GetKernelRegistry(),
+                            host_ctx->diag_handler(), host_ctx->allocator());
     if (!bef_file) {
       return InternalError("Failed to decode BEF buffer");
     }
 
-    auto req_ctx = tfrt::RequestContextBuilder(&host_ctx, nullptr).build();
+    auto req_ctx = tfrt::RequestContextBuilder(host_ctx.get(), nullptr).build();
     if (!req_ctx) {
       return tensorflow::errors::Internal(toString(req_ctx.takeError()));
     }
@@ -173,26 +184,28 @@ struct GpuExecutable::BefExecutable {
   }
 
  public:
-  static StatusOr<BefExecutable*> Create(OwnedBefBuffer buffer) {
-    std::unique_ptr<BefExecutable> result(new BefExecutable(std::move(buffer)));
+  static StatusOr<BefExecutable*> Create(OwnedBefBuffer buffer,
+                                         OwnedGpuContextCache context_cache) {
+    std::unique_ptr<BefExecutable> result(
+        new BefExecutable(std::move(buffer), std::move(context_cache)));
     TF_RETURN_IF_ERROR(result->Initialize());
     return result.release();
   }
 
   OwnedBefBuffer bef_buffer;
   mlir::MLIRContext mlir_ctx;
-  tfrt::HostContext host_ctx;
+  std::unique_ptr<tfrt::HostContext> host_ctx;
   tfrt::RCReference<tfrt::BEFFile> bef_file;
   tfrt::gpu::EntryPoint entry_point;
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
   const tfrt::Function* function;
-  absl::Mutex mutex;
-  tfrt::gpu::GpuContextCache gpu_ctx_cache TF_GUARDED_BY(mutex);
+  OwnedGpuContextCache gpu_ctx_cache;
 };
 #endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto thunks_or_bef = std::move(params.thunks_or_bef);
+  auto gpu_ctx_cache = std::move(params.gpu_ctx_cache);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
   if (absl::holds_alternative<OwnedThunkSchedule>(thunks_or_bef)) {
@@ -203,8 +216,9 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
 #if XLA_ENABLE_XLIR
   if (absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef)) {
     auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef);
-    TF_ASSIGN_OR_RETURN(result->bef_executable_,
-                        BefExecutable::Create(std::move(bef_buffer)));
+    TF_ASSIGN_OR_RETURN(
+        result->bef_executable_,
+        BefExecutable::Create(std::move(bef_buffer), std::move(gpu_ctx_cache)));
     return result;
   }
 #endif  // XLA_ENABLE_XLIR
@@ -661,19 +675,16 @@ static Status ExecuteBef(const std::string& module_name,
   ScopedAnnotation annotation("BefExecution");
 
   se::gpu::GpuStream* stream = se::gpu::AsGpuStream(run_options->stream());
-  auto gpu_context = [&] {
-    absl::MutexLock lock(&bef_executable->mutex);
-    return bef_executable->gpu_ctx_cache.GetOrCreate(
-        se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
-  }();
+  auto gpu_context = bef_executable->gpu_ctx_cache->GetOrCreate(
+      se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   auto gpu_stream =
       tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());
 
   // Create execution context.
   Thunk::ExecuteParams params(*run_options, buffer_allocations,
                               run_options->stream(), nullptr);
-  tfrt::RequestContextBuilder request_context_builder(&bef_executable->host_ctx,
-                                                      gpu_context.second);
+  tfrt::RequestContextBuilder request_context_builder(
+      bef_executable->host_ctx.get(), gpu_context.second);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
       CreateExecutionContext(params, std::move(request_context_builder)));
@@ -709,7 +720,7 @@ static Status ExecuteBef(const std::string& module_name,
   // Execute the function.
   function->Execute(*exec_ctx, args, {result});
 
-  // Wait for async execution to complete.
+  // Wait for async results to be ready.
   tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
 
   // Report error if any, from handler and result.
@@ -1053,7 +1064,8 @@ static void ApplyEntryFunctionAttributes(
 
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
     std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
-    xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version) {
+    xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version,
+    se::StreamExecutor* executor) {
 #if XLA_ENABLE_XLIR
   OwnedBefBuffer bef_buffer = [bef]() {
     auto ptr = static_cast<uint8_t*>(
@@ -1077,8 +1089,12 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
   llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
                                     bef_buffer.get_deleter().size);
   auto module = tfrt::ConvertBEFToMLIR(location, bef_array, &context);
-  TF_ASSIGN_OR_RETURN(BefExecutable * bef_executable,
-                      BefExecutable::Create(std::move(bef_buffer)));
+  TF_ASSIGN_OR_RETURN(
+      OwnedGpuContextCache gpu_ctx_cache,
+      GpuExecutable::CreatePreloadedGpuContextCache(bef_array, executor));
+  TF_ASSIGN_OR_RETURN(
+      BefExecutable * bef_executable,
+      BefExecutable::Create(std::move(bef_buffer), std::move(gpu_ctx_cache)));
   auto func = mlir::cast<mlir::func::FuncOp>(
       module->lookupSymbol(bef_executable->entry_point.function_name));
   // In tfrt_gpu dialect, buffer arguments start from the third parameter (after
@@ -1102,6 +1118,41 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
                         module_name, result_xla_shape, std::move(allocations),
                         std::move(output_info), bef_executable));
   return executable;
+#else   // XLA_ENABLE_XLIR
+  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
+#endif  // XLA_ENABLE_XLIR
+}
+
+StatusOr<GpuExecutable::OwnedGpuContextCache>
+GpuExecutable::CreatePreloadedGpuContextCache(llvm::ArrayRef<uint8_t> bef_array,
+                                              se::StreamExecutor* executor) {
+#if XLA_ENABLE_XLIR
+  mlir::MLIRContext context;
+  std::unique_ptr<tfrt::HostContext> host_ctx =
+      tfrt::gpu::CreateHostContext(tfrt::gpu::GetDiagHandler(&context));
+
+  auto bef_file =
+      tfrt::BEFFile::Open(bef_array, host_ctx->GetKernelRegistry(),
+                          host_ctx->diag_handler(), host_ctx->allocator());
+  if (!bef_file) {
+    return InternalError("Failed to decode BEF buffer");
+  }
+
+  auto gpu_executor =
+      tensorflow::down_cast<se::gpu::GpuExecutor*>(executor->implementation());
+  auto gpu_context =
+      se::gpu::GpuDriver::GetContextHandle(gpu_executor->gpu_context());
+
+  auto gpu_ctx_cache = OwnedGpuContextCache(new tfrt::gpu::GpuContextCache);
+  auto context_and_resource = gpu_ctx_cache->GetOrCreate(gpu_context);
+  auto exec_ctx = tfrt::gpu::CreateExecutionContext(
+      host_ctx.get(), context_and_resource.second);
+
+  if (auto error = tfrt::gpu::PreloadGpuResources(
+          *bef_file, *exec_ctx, context_and_resource.first.CopyRef())) {
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  return gpu_ctx_cache;
 #else   // XLA_ENABLE_XLIR
   return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
 #endif  // XLA_ENABLE_XLIR

@@ -41,7 +41,7 @@ struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
 
 }  // end anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestUserangePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass() {
   return std::make_unique<TestUserangePass>();
 }
 

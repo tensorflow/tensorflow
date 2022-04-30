@@ -10,7 +10,6 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/experimental/mlir/tfr/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )

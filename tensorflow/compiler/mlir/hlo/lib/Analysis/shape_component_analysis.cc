@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
@@ -404,8 +405,8 @@ struct ShapeVisitor {
     //
     // TODO(ezhulenev): Add symbolic shape attribute verifier to the jitrt
     // dialect.
-    if (auto func =
-            dyn_cast_or_null<FuncOp>(argument.getOwner()->getParentOp())) {
+    if (auto func = dyn_cast_or_null<func::FuncOp>(
+            argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
               argument.getArgNumber(), "jitrt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));

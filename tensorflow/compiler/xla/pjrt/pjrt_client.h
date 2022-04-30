@@ -124,7 +124,22 @@ class PjRtDevice {
   // compatible compilation.
   virtual absl::string_view device_kind() const = 0;
 
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current device unambiguously.
   virtual std::string DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse,
+  // for example: "CpuDevice(id=0)".
+  virtual std::string ToString() const = 0;
+
+  // Returns a scoped event that the caller uses to tell the PjRtClient that
+  // there is asynchronous work happening that depends on activity on the
+  // PjRtDevice. See comment on class definition in pjrt_future.h.
+  //
+  // Only some PjRtDevice implementations support ScopedAsyncTrackingEvent, and
+  // those that do not will return nullptr.
+  virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const = 0;
 
   // Transfer the given literal to the infeed queue.
   virtual Status TransferToInfeed(const LiteralSlice& literal) = 0;
@@ -667,18 +682,6 @@ class PjRtBuffer {
   virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                            int64_t transfer_size) = 0;
 
-  // Transfers a sub-range of the on-device representation of the buffer.
-  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. on_ready
-  // is called if and only if CopyRawToHost returns OK. on_ready will be called
-  // with a non-OK status if the buffer asynchronously transitions to an error
-  // state.
-  ABSL_DEPRECATED("Use CopyRawToHost(...).OnReady() instead")
-  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                       std::function<void(Status)> on_ready) {
-    CopyRawToHost(dst, offset, transfer_size).OnReady(std::move(on_ready));
-    return Status::OK();
-  }
-
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
   // operations using the buffer have completed, according to the allocation
@@ -854,12 +857,14 @@ struct ExecuteOptions {
 //   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
 //   + temp_size_in_bytes.
 struct CompiledMemoryStats {
-  int32_t generated_code_size_in_bytes = 0;
-  int32_t argument_size_in_bytes = 0;
-  int32_t output_size_in_bytes = 0;
+  int64_t generated_code_size_in_bytes = 0;
+  int64_t argument_size_in_bytes = 0;
+  int64_t output_size_in_bytes = 0;
   // How much argument is reused for output.
-  int32_t alias_size_in_bytes = 0;
-  int32_t temp_size_in_bytes = 0;
+  int64_t alias_size_in_bytes = 0;
+  int64_t temp_size_in_bytes = 0;
+
+  std::string DebugString() const;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -923,6 +928,9 @@ class PjRtExecutable {
   //     execute has completed.
   //   else:
   //     *returned_futures is undefined.
+  //
+  // The caller is *NOT* required to ensure that PjRtExecutable stays alive
+  // until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,

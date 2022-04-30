@@ -56,7 +56,7 @@ message GetWorkerTasksResponse {
 }
 
 service WorkerService {
-  // Processes an task for a dataset, making elements available to clients.
+  // Processes a task for a dataset, making elements available to clients.
   rpc ProcessTask(ProcessTaskRequest) returns (ProcessTaskResponse);
 
   // Gets the next dataset element.

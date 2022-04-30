@@ -119,11 +119,16 @@ void TFGraphDialect::initialize() {
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
-  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
-  control_ty_ = ControlType::get(getContext());
-  tfg_tpu_replicate_key_ =
-      StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
+  tfg_description_key_ =
+      StringAttr::get(getContext(), getTfgDescriptionAttrKey());
+  tfg_is_ref_key_ = StringAttr::get(getContext(), getTfgIsRefAttrKey());
+  tfg_handle_data_key_ =
+      StringAttr::get(getContext(), getTfgHandleDataAttrKey());
+  tfg_full_type_key_ = StringAttr::get(getContext(), getTfgFullTypeAttrKey());
+
+  control_ty_ = ControlType::get(getContext());
 }
 
 // Provides a hook for op interface.
@@ -145,21 +150,24 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
 
 TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
+// The name of certain optional attributes.
+static std::array<StringRef, 3> keyword_attrs{
+    "_mlir_device", "_mlir_assigned_device", "_mlir_name"};
+
 static void PrintKeywordAttributes(Operation *op, OpAsmPrinter &printer,
                                    ArrayRef<StringRef> elided_attrs = {}) {
   // Handles the optional "device" and "name" attribute.
-  std::array<StringRef, 3> keywords{"_mlir_device", "_mlir_assigned_device",
-                                    "_mlir_name"};
-  for (StringRef keyword : keywords) {
-    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
-      if (!value_attr.getValue().empty())
-        printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
-                << value_attr.getValue() << "\")";
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword)) {
+      assert(!value_attr.getValue().empty());
+      printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
+              << value_attr.getValue() << "\")";
+    }
   }
 
   // Print attributes (other than name and device).
   SmallVector<StringRef> attrs_to_elide = llvm::to_vector(elided_attrs);
-  llvm::append_range(attrs_to_elide, keywords);
+  llvm::append_range(attrs_to_elide, keyword_attrs);
   printer.printOptionalAttrDict(op->getAttrs(), attrs_to_elide);
 }
 
@@ -334,6 +342,18 @@ static bool VerifyGenericTFGOperation(Operation &op) {
   };
   if (!check_ctl_at_end(op.getOperandTypes(), "input")) return false;
   if (!check_ctl_at_end(op.getResultTypes(), "result")) return false;
+
+  // Certain attributes are supposed to be inserted with non-empty value.
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op.getAttrOfType<StringAttr>(keyword)) {
+      if (value_attr.getValue().empty()) {
+        op.emitOpError() << keyword
+                         << " has empty value. Only insert this attribute when "
+                            "it has a value";
+      }
+    }
+  }
+
   return true;
 }
 
@@ -592,7 +612,6 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   if (failed(parser.parseRegion(
           *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
-          /*argLocations=*/{},
           /*enableNameShadowing=*/false)))
     return failure();
 
@@ -880,23 +899,23 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
   if (func.generic()) return success();
 
   for (auto &it : llvm::enumerate(operands)) {
-    auto arg_type = getElementTypeOrSelf(arguments[it.index() * 2]);
-    auto op_type = getElementTypeOrSelf(it.value());
-    if (arg_type != op_type) {
+    Type arg_type = arguments[it.index() * 2];
+    Type op_type = it.value();
+    if (!tf_type::HasCompatibleElementTypes(arg_type, op_type)) {
       return attach_func(
           op->emitOpError(func_name)
-          << " function argument #" << it.index() << " dtype " << arg_type
-          << " does not match corresponding operand dtype: " << op_type);
+          << " function argument #" << it.index() << " type " << arg_type
+          << " is not compatible with corresponding operand type: " << op_type);
     }
   }
   for (auto &it : llvm::enumerate(results)) {
-    auto ret_type = getElementTypeOrSelf(returns[it.index()]);
-    auto res_type = getElementTypeOrSelf(it.value());
-    if (ret_type != res_type) {
+    Type ret_type = returns[it.index()];
+    Type res_type = it.value();
+    if (!tf_type::HasCompatibleElementTypes(ret_type, res_type)) {
       return attach_func(
           op->emitOpError(func_name)
-          << " function result #" << it.index() << " dtype " << ret_type
-          << " does not match corresponding op result dtype: " << res_type);
+          << " function result #" << it.index() << " type " << ret_type
+          << " is not compatible with corresponding result type: " << res_type);
     }
   }
   return success();
@@ -917,10 +936,11 @@ static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
        llvm::zip(llvm::enumerate(values), types.getAsRange<TypeAttr>())) {
     Type type = std::get<0>(it).value().getType();
     Type dtype = std::get<1>(it).getValue();
-    if (getElementTypeOrSelf(type) != dtype) {
+    if (!tf_type::HasCompatibleElementTypes(type,
+                                            UnrankedTensorType::get(dtype))) {
       return op->emitOpError(kind)
-             << " #" << std::get<0>(it).index() << " expected to have dtype "
-             << dtype << " but got: " << type;
+             << " #" << std::get<0>(it).index()
+             << " is incompatible with dtype " << dtype << ", got: " << type;
     }
   }
   return success();
@@ -1036,7 +1056,7 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
 
   auto cond_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
       op, op.cond().getName());
-  auto i1_type = Builder(op.getContext()).getI1Type();
+  auto i1_type = UnrankedTensorType::get(Builder(op.getContext()).getI1Type());
   if (cond_func &&
       failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
     return failure();
@@ -1341,10 +1361,10 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<RankedTensorType>();
-  if (!index || index.getRank() != 0 ||
-      !index.getElementType().isSignlessInteger(32)) {
-    return emitOpError("expected first body block argument to be tensor<i32>");
+  auto index = args.front().getType().dyn_cast<TensorType>();
+  if (!index || !index.getElementType().isSignlessInteger(32)) {
+    return emitOpError(
+        "expected first body block argument to be an i32 tensor");
   }
 
   if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();

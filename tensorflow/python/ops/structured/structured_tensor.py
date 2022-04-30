@@ -484,7 +484,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -1300,8 +1300,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):

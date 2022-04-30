@@ -346,6 +346,10 @@ class HloTestBase : public ManifestCheckingTest {
 
   ErrorSpec error_spec_{0.0001};
 
+  HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
+      HloModule*, std::unique_ptr<HloComputation> computation);
+  void UpdateEntryComputationLayout(HloModule* module);
+
  protected:
   // Helper functions to get test and reference platforms.
   static se::Platform* GetReferencePlatform();

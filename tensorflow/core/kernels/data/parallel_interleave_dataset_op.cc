@@ -415,6 +415,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return model::MakeAsyncInterleaveManyNode(
           std::move(args),
           {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,
+                                /*max=*/dataset()->cycle_length_),
+           model::MakeParameter(kCycleLength, nullptr,
+                                /*min=*/dataset()->cycle_length_,
                                 /*max=*/dataset()->cycle_length_)});
     }
 

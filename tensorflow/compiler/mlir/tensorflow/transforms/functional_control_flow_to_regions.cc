@@ -55,7 +55,7 @@ struct FunctionalControlFlowToRegions
 // the input arguments are used as is (for IfOp) or block arguments of the same
 // type as the input arguments are created and then used as call arguments (for
 // While).
-YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
+YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
                    ValueRange args, bool use_region_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");

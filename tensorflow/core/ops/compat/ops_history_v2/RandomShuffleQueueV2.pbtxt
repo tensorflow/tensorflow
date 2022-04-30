@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RandomShuffleQueueV2"
   output_arg {
     name: "handle"

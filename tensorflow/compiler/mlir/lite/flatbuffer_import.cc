@@ -586,8 +586,8 @@ static StatusOr<Operation*> BuildSparseConstOp(
     if (tensor.sparsity->dim_metadata[i]->format ==
         tflite::DimensionType_DENSE) {
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
-          ::mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
-                                              tfl::DimensionType::DENSE),
+          mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
+                                            tfl::DimensionType::DENSE),
           builder.getI32IntegerAttr(
               tensor.sparsity->dim_metadata[i]->dense_size),
           builder.getI32ArrayAttr({}), builder.getI32ArrayAttr({}),
@@ -603,8 +603,8 @@ static StatusOr<Operation*> BuildSparseConstOp(
           ConvertSparseIndexVector(
               tensor.sparsity->dim_metadata[i]->array_indices, builder));
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
-          ::mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
-                                              tfl::DimensionType::SPARSE_CSR),
+          mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
+                                            tfl::DimensionType::SPARSE_CSR),
           builder.getI32IntegerAttr(0), segments, indices,
           builder.getContext());
     } else {

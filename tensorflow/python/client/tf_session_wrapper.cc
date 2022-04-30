@@ -667,6 +667,15 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
 
+  m.def("TF_OperationGetStackTrace", [](TF_Operation* oper) -> py::object {
+    const std::shared_ptr<tensorflow::AbstractStackTrace> trace =
+        oper->node.GetStackTrace();
+    if (!trace) {
+      return py::none();
+    }
+    return py::cast(*trace, py::return_value_policy::reference);
+  });
+
   m.def("SetRequestedDevice", tensorflow::SetRequestedDevice);
 
   // TF_Buffer util methods

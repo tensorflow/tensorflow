@@ -30,9 +30,7 @@ from tensorflow.python.keras.layers import convolutional_recurrent
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.keras.layers import embeddings
-from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
-from tensorflow.python.keras.layers import noise
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
@@ -101,9 +99,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
                                                                 (2, 3, 3)]),
       ('Embedding', lambda: embeddings.Embedding(4, 4),
        (2, 4), 2e-3, 2e-3, np.random.randint(4, size=(2, 4))),
-      ('LocallyConnected1D', lambda: local.LocallyConnected1D(2, 2), (2, 2, 1)),
-      ('LocallyConnected2D', lambda: local.LocallyConnected2D(2, 2),
-       (2, 2, 2, 1)),
       ('Add', merge.Add, [(2, 2), (2, 2)]),
       ('Subtract', merge.Subtract, [(2, 2), (2, 2)]),
       ('Multiply', merge.Multiply, [(2, 2), (2, 2)]),
@@ -112,9 +107,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('Minimum', merge.Minimum, [(2, 2), (2, 2)]),
       ('Concatenate', merge.Concatenate, [(2, 2), (2, 2)]),
       ('Dot', lambda: merge.Dot(1), [(2, 2), (2, 2)]),
-      ('GaussianNoise', lambda: noise.GaussianNoise(0.5), (2, 2)),
-      ('GaussianDropout', lambda: noise.GaussianDropout(0.5), (2, 2)),
-      ('AlphaDropout', lambda: noise.AlphaDropout(0.5), (2, 2)),
       ('MaxPooling2D', pooling.MaxPooling2D, (2, 2, 2, 1)),
       ('AveragePooling2D', pooling.AveragePooling2D, (2, 2, 2, 1)),
       ('GlobalMaxPooling2D', pooling.GlobalMaxPooling2D, (2, 2, 2, 1)),

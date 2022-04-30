@@ -39,6 +39,9 @@ struct GraphExecutionOptions {
   // optimizations like function inlining will be applied.
   bool enable_grappler_function_optimizer = false;
 
+  // Whether to enable TFRT GPU.
+  bool enable_tfrt_gpu = false;
+
   // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
   // more details. It must not be nullptr;
   const tensorflow::tfrt_stub::Runtime* runtime = nullptr;

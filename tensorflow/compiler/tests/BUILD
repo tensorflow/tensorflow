@@ -1352,6 +1352,7 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_gpu",  # TODO(b/227775473)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1487,7 +1488,7 @@ tf_xla_py_test(
     name = "variable_ops_test",
     size = "small",
     srcs = ["variable_ops_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2241,6 +2242,31 @@ tf_xla_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//tensorflow/python/tpu:tpu_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "approx_topk_test",
+    srcs = ["approx_topk_test.py"],
+    disable_experimental = False,
+    # TODO(b/225357174): Implement MLIR legalization properly.
+    disable_mlir_bridge = True,
+    # TODO(b/225357162): Flaky segfault when transfering from device to host
+    # using TFRT.
+    disable_tfrt = True,
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

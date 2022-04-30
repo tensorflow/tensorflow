@@ -134,8 +134,31 @@ struct DynamicReshapeOpInterface
                    op_result_type.dyn_cast<UnrankedTensorType>()) {
       result_type = UnrankedMemRefType::get(unranked_type.getElementType(), 0);
     }
+    auto operand = *operand_buffer;
+    // If the operand has a non-identity affine map, we will have to add a copy.
+    if (operand_buffer->getType().isa<MemRefType>() &&
+        !operand_buffer->getType()
+             .cast<MemRefType>()
+             .getLayout()
+             .isIdentity()) {
+      // Do not deallocate the buffer if it may be yielded from the enclosing
+      // block.
+      // Note: Unless OneShotAnalysis was run, `dealloc_buffer` is currently
+      // always `false` and we delegate all buffer deallocations to the
+      // BufferDeallocation pass.
+      bool dealloc_buffer =
+          !state.getAnalysisState().isTensorYielded(reshape_op.result());
+      FailureOr<Value> alloc = state.createAlloc(
+          rewriter, op->getLoc(), *operand_buffer, /*dealloc=*/dealloc_buffer);
+      if (failed(alloc)) return failure();
+
+      operand = *alloc;
+      auto copy_status = bufferization::createMemCpy(
+          rewriter, op->getLoc(), *operand_buffer, operand, state.getOptions());
+      if (failed(copy_status)) return failure();
+    }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
-        rewriter, op, result_type, *operand_buffer, *output_shape_buffer);
+        rewriter, op, result_type, operand, *output_shape_buffer);
     return success();
   }
 };
@@ -188,7 +211,7 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   for (int i = 0; i < result_rank; ++i) {
     Value i_val = b->create<arith::ConstantIndexOp>(loc, i);
     Value result_dim_size =
-        b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
+        b->createOrFold<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
     if (!result_dim_size.getType().isIndex()) {
       result_dim_size = b->create<arith::IndexCastOp>(loc, b->getIndexType(),
                                                       result_dim_size);
@@ -235,30 +258,6 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   return transformed_operand;
 }
 
-Value CreateCopy(mhlo::DynamicBroadcastInDimOp op, Value broadcasted,
-                 OpBuilder *b) {
-  MemRefType result_type = broadcasted.getType().cast<MemRefType>();
-  auto loc = op.getLoc();
-  SmallVector<Value, 4> dynamic_operands;
-  for (int i = 0; i < result_type.getRank(); ++i) {
-    if (!result_type.isDynamicDim(i)) continue;
-    auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
-    Value size =
-        b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
-    if (!size.getType().isIndex()) {
-      size = b->create<arith::IndexCastOp>(loc, b->getIndexType(), size);
-    }
-    dynamic_operands.push_back(size);
-  }
-  auto identity_map_memref =
-      MemRefType::get(result_type.getShape(), result_type.getElementType());
-  auto copy = b->create<memref::AllocOp>(op.getLoc(), identity_map_memref,
-                                         dynamic_operands);
-  b->create<memref::CopyOp>(loc, broadcasted, copy);
-
-  return copy;
-}
-
 struct DynamicBroadcastInDimOpInterface
     : public BufferizableOpInterface::ExternalModel<
           DynamicBroadcastInDimOpInterface, mhlo::DynamicBroadcastInDimOp> {
@@ -299,15 +298,6 @@ struct DynamicBroadcastInDimOpInterface
     Value result = InsertDynamicMemrefCastOp(broadcast_in_dim_op,
                                              *operand_buffer, &rewriter);
 
-    // Evaluate `enforce_identity_map_fn` and maybe create a copy.
-    Optional<const MhloBufferizationState *> dialect_state =
-        state.getAnalysisState().getDialectState<MhloBufferizationState>(
-            mhlo::MhloDialect::getDialectNamespace());
-    assert(dialect_state.hasValue() && "mhlo dialect state not initialized");
-    if ((*dialect_state)->enforce_identity_map_fn(op)) {
-      result = CreateCopy(broadcast_in_dim_op, result, &rewriter);
-    }
-
     bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
     return success();
   }
@@ -326,10 +316,6 @@ struct HloLegalizeToMemrefPass
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     options.allowDialectInFilter<mhlo::MhloDialect>();
-    // mhlo dialect state must be explicitly initialized to ease debugging.
-    options.addDialectStateInitializer(
-        mhlo::MhloDialect::getDialectNamespace(),
-        []() { return std::make_unique<MhloBufferizationState>(); });
     if (failed(bufferizeOp(getOperation(), options))) signalPassFailure();
   }
 };

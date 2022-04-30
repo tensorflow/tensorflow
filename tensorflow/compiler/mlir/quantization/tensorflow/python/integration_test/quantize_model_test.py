@@ -43,6 +43,19 @@ def _contains_quantized_function_call(meta_graphdef):
   return False
 
 
+def _contains_op(meta_graphdef, op_name):
+  """Returns true if the graph def contains the given op."""
+  # Check the main graph
+  if any(node.op == op_name for node in meta_graphdef.graph_def.node):
+    return True
+  # Check the graph genederated from user defined functions
+  for func in meta_graphdef.graph_def.library.function:
+    for node in func.node_def:
+      if node.op == op_name:
+        return True
+  return False
+
+
 class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -117,7 +130,19 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
-  def test_conv_ptq_model(self):
+  @parameterized.named_parameters(
+      ('none', None, False, False),
+      ('relu', nn_ops.relu, False, False),
+      ('relu6', nn_ops.relu6, False, False),
+      ('bn', None, False, True),
+      ('bn_and_relu', nn_ops.relu, False, True),
+      ('with_bias', None, True, False),
+      ('with_bias_and_bn', None, True, True),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True),
+      ('with_bias_and_relu', nn_ops.relu, True, False),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False),
+  )
+  def test_conv_ptq_model(self, activation_fn, has_bias, has_bn):
 
     class ConvModel(module.Module):
 
@@ -128,6 +153,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         filters = np.random.uniform(
             low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
         bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+        scale, offset = [1.0, 1.0], [0.5, 0.5]
+        mean, variance = scale, offset
         out = nn_ops.conv2d(
             input_tensor,
             filters,
@@ -135,8 +162,14 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
-        out = nn_ops.relu6(out)
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if has_bn:
+          # Fusing is supported for non-training case.
+          out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
+              out, scale, offset, mean, variance, is_training=False)
+        if activation_fn is not None:
+          out = activation_fn(out)
         return {'output': out}
 
     model = ConvModel()
@@ -169,6 +202,81 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(_contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
+
+  @parameterized.named_parameters(
+      ('none', None, False, False),
+      ('relu', nn_ops.relu, False, False),
+      ('relu6', nn_ops.relu6, False, False),
+      ('bn', None, False, True),
+      ('bn_and_relu', nn_ops.relu, False, True),
+      ('with_bias', None, True, False),
+      ('with_bias_and_bn', None, True, True),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True),
+      ('with_bias_and_relu', nn_ops.relu, True, False),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False),
+  )
+  def test_depthwise_conv_ptq_model(self, activation_fn, has_bias, has_bn):
+
+    class DepthwiseConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 1)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(3)).astype('f4')
+        scale, offset = [1.0, 1.0, 1.0], [0.5, 0.5, 0.5]
+        mean, variance = scale, offset
+        out = nn_ops.depthwise_conv2d_native(
+            input_tensor,
+            filters,
+            strides=[1, 2, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if has_bn:
+          # Fusing is supported for non-training case.
+          out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
+              out, scale, offset, mean, variance, is_training=False)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    model = DepthwiseConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=150,
+                                      size=(1, 3, 4, 3)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
+        representative_dataset=data_gen)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(_contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
   @parameterized.named_parameters(
       ('none', None, False),
