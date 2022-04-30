@@ -410,10 +410,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
                      (in_depth == 1 ||
                       (use_cudnn_grouped_conv_ &&
-                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                  /*filter_cols=*/filter_cols,
-                                                  /*in_depth=*/in_depth,
-                                                  /*out_depth=*/out_depth)));
+                       ShouldCudnnGroupedConvolutionBeUsed(
+                           filter_rows, filter_cols, in_depth, out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNative: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
