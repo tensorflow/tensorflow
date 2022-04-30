@@ -1189,6 +1189,23 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
+absl::flat_hash_set<string> GetOrCreateClusterRemoveFromExcludelistOpList() {
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  absl::flat_hash_set<string> removelist;
+  for (auto s : absl::StrSplit(flags->tf_xla_cluster_remove_from_excludelist, ',')) {
+     if (!s.empty()) {
+       removelist.insert(string(s)) ;
+     }
+  }
+  if (VLOG_IS_ON(2) && !removelist.empty()) {
+    std::vector<string> vremovelist(removelist.begin(), removelist.end());
+    absl::c_sort(vremovelist);
+    VLOG(2) << "XLA clustering will remove following TF operations from excludelist: "
+            << absl::StrJoin(vremovelist, " ");
+  }
+  return removelist;
+}
+
 absl::flat_hash_set<string> GetOrCreateAllowlist() {
   absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
       tensorflow::GetAllowlistTable();
@@ -1289,12 +1306,28 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
+    auto cluster_remove_op_list = GetOrCreateClusterRemoveFromExcludelistOpList();
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
+    filter.allow_where_op = false;
     filter.allow_unique_op = false;
+
+    for (const auto& s : cluster_remove_op_list) {
+       if (s == "Where") {
+         filter.allow_where_op = true;
+       } else if (s == "Unique") {
+         filter.allow_unique_op = true;
+       } else if (s == "CollectiveReduceV2") {
+         filter.allow_collective_reduce_v2 = true;
+       } else {
+         return errors::InvalidArgument(
+            "The operation '", s,
+            "' passed to --tf_xla_cluster_allow_ops is not supported by XLA.");
+       }
+    }
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
