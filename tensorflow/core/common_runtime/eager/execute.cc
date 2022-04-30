@@ -295,6 +295,9 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
     const Tensor* tensor;
     // TODO(fishx): Avoid blocking here.
     TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
+    if (tensor->NumElements() == 0) {
+      return errors::InvalidArgument("Empty resource handle");
+    }
     const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
     device_name = handle.device();
 
