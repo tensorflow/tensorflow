@@ -41,12 +41,11 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu
-from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
-from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -71,7 +70,7 @@ def _add_key_attr(op, name):
 
 
 @tf_export("tpu.experimental.embedding.TPUEmbedding")
-class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
+class TPUEmbedding(tracking.AutoTrackable):
   """The TPUEmbedding mid level API.
 
   NOTE: When instantiated under a TPUStrategy, this class can only be created
@@ -112,7 +111,9 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
 
   Under `TPUStrategy`, we allow access to the method `enqueue`, `dequeue` and
   `apply_gradients`. We will show examples below of how to use these to train
-  and evaluate your model.
+  and evaluate your model. Under CPU, we only access to the `embedding_tables`
+  property which allow access to the embedding tables so that you can use them
+  to run model evaluation/prediction on CPU.
 
   First lets look at the `TPUStrategy` mode. Initial setup looks like:
 
@@ -213,25 +214,22 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
   checkpoint.save(...)
   ```
 
-  On CPU, you can create `tf.tpu.experimental.embedding.TPUEmbeddingForServing`
-  object and restore the checkpoint. This will allow you to have access to the
-  table variables:
+  On CPU, only the `embedding_table` property is usable. This will allow you to
+  restore a checkpoint to the object and have access to the table variables:
 
   ```python
   model = model_fn(...)
-  embedding = tf.tpu.experimental.embedding.TPUEmbeddingForServing(
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
       feature_config=feature_config,
       optimizer=tf.tpu.experimental.embedding.SGD(0.1))
   checkpoint = tf.train.Checkpoint(model=model, embedding=embedding)
   checkpoint.restore(...)
 
   tables = embedding.embedding_tables
-
-  cpu_result = embedding(...)
   ```
 
-  You can now use the embedding lookup API that `TPUEmbeddingForServing`
-  provides and get the same result on CPU.
+  You can now use table in functions like `tf.nn.embedding_lookup` to perform
+  your embedding lookup and pass to your model.
 
   """
 
@@ -266,18 +264,12 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
         will be one step old). Set to True for improved performance.
 
     Raises:
-      ValueError: If optimizer is not one of tf.tpu.experimental.embedding.
-        (SGD,Adam or Adagrad) or None when created under a TPUStrategy.
-      RuntimeError: If created under non TPUStrategy and the TPU doesn't support
-        embedding feature v1.
+      ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
+      Adam or Adagrad) or None when created under a TPUStrategy.
     """
-    super(TPUEmbedding, self).__init__(feature_config, optimizer)
     self._strategy = distribution_strategy_context.get_strategy()
     self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
                                                   tpu_strategy.TPUStrategyV2))
-    if not self._using_tpu:
-      raise RuntimeError(
-          "TPUEmbedding class should be initialized under TPU Strategy.")
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
 
@@ -299,26 +291,49 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
     #   table name rather than the table id.
     # Thus we must fix a common order to tables and ensure they have unique
     # names.
-    for table in self._table_config:
-      if (table.optimizer is None or
+
+    # Set table order here to the order of the first occurence of the table in a
+    # feature provided by the user. The order of this struct must be fixed
+    # to provide the user with deterministic behavior over multiple
+    # instantiations.
+    self._table_config = []
+    for feature in nest.flatten(feature_config):
+      if feature.table not in self._table_config:
+        self._table_config.append(feature.table)
+
+    # Ensure tables have unique names. Also error check the optimizer as we
+    # specifically don't do that in the TableConfig class to allow high level
+    # APIs that are built on this to use strings/other classes to represent
+    # optimizers (before they are passed to this class).
+    table_names = []
+    for i, table in enumerate(self._table_config):
+      if table.optimizer is None:
+        # TODO(bfontain) Should we allow some sort of optimizer merging here?
+        table.optimizer = optimizer
+      if ((table.optimizer is not None or self._using_tpu) and
           not isinstance(table.optimizer, tpu_embedding_v2_utils._Optimizer)):  # pylint: disable=protected-access
         raise ValueError("{} is an unsupported optimizer class. Please pass an "
                          "instance of one of the optimizer classes under "
                          "tf.tpu.experimental.embedding.".format(
                              type(table.optimizer)))
+      if table.name is None:
+        table.name = "table_{}".format(i)
+      if table.name in table_names:
+        raise ValueError("Tables must have a unique name. "
+                         f"Multiple tables with name {table.name} found.")
+      table_names.append(table.name)
 
-    # Extract a list of callable learning rates also in fixed order. Each
-    # table in the confix proto will get a index into this list and we will
-    # pass this list in the same order after evaluation to the
-    # send_tpu_embedding_gradients op.
-    self._dynamic_learning_rates = list({
-        table.optimizer.learning_rate
-        for table in self._table_config
-        if callable(table.optimizer.learning_rate)
-    })
+    if self._using_tpu:
+      # Extract a list of callable learning rates also in fixed order. Each
+      # table in the confix proto will get a index into this list and we will
+      # pass this list in the same order after evaluation to the
+      # send_tpu_embedding_gradients op.
+      self._dynamic_learning_rates = list({
+          table.optimizer.learning_rate for table in self._table_config if
+          callable(table.optimizer.learning_rate)})
 
-    # We need to list of host devices for the load/retrieve operations.
-    self._hosts = get_list_of_hosts(self._strategy)
+      # We need to list of host devices for the load/retrieve operations.
+      self._hosts = get_list_of_hosts(self._strategy)
 
     self._built = False
     self._verify_output_shapes_on_enqueue = True
@@ -358,38 +373,29 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
     if self._built:
       return
 
-    # We check the embedding feature during build time as the TPU has to be
-    # initialized upon building the mid level api. The tpu hardware feature
-    # info can be available at this time.
-    self.embedding_feature = (
-        self._strategy.extended.tpu_hardware_feature.embedding_feature)
-    if self.embedding_feature != (
-        tpu_hardware_feature.HardwareFeature.EmbeddingFeature.V1):
-      raise RuntimeError(
-          "Embedding feature v1 is not supported on this version of TPU.")
+    if self._using_tpu:
+      # If the tpu embedding is already initialized on TPU, raise runtime error.
+      # Below logic is not added in `initialize_system_for_tpu_embedding`
+      # because doing exception control flow in graph mode is difficult.
+      if tpu_ops.is_tpu_embedding_initialized():
+        raise RuntimeError(
+            "TPU is already initialized for embeddings. This may be caused by "
+            "using multiple TPUEmbedding instances in a TPU scope which is "
+            "unsupported")
+      self._get_and_update_output_shapes_from_input(per_replica_input_shapes,
+                                                    per_replica_batch_size)
 
-    # If the tpu embedding is already initialized on TPU, raise runtime error.
-    # Below logic is not added in `initialize_system_for_tpu_embedding`
-    # because doing exception control flow in graph mode is difficult.
-    if tpu_ops.is_tpu_embedding_initialized():
-      raise RuntimeError(
-          "TPU is already initialized for embeddings. This may be caused by "
-          "using multiple TPUEmbedding instances in a TPU scope which is "
-          "unsupported")
-    self._get_and_update_output_shapes_from_input(per_replica_input_shapes,
-                                                  per_replica_batch_size)
+      self._config_proto = self._create_config_proto()
 
-    self._config_proto = self._create_config_proto()
+      logging.info("Initializing TPU Embedding engine.")
+      tpu_embedding_v2_utils.log_tpu_embedding_configuration(self._config_proto)
 
-    logging.info("Initializing TPU Embedding engine.")
-    tpu_embedding_v2_utils.log_tpu_embedding_configuration(self._config_proto)
+      @def_function.function
+      def load_config():
+        tpu.initialize_system_for_tpu_embedding(self._config_proto)
 
-    @def_function.function
-    def load_config():
-      tpu.initialize_system_for_tpu_embedding(self._config_proto)
-
-    load_config()
-    logging.info("Done initializing TPU Embedding engine.")
+      load_config()
+      logging.info("Done initializing TPU Embedding engine.")
 
     # Create and load variables and slot variables into the TPU.
     # Note that this is a dict of dicts. Keys to the first dict are table names.
@@ -499,6 +505,10 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
   ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
     """Returns a dict of embedding tables, keyed by `TableConfig`.
 
+    This property only works when the `TPUEmbedding` object is created under a
+    non-TPU strategy. This is intended to be used to for CPU based lookup when
+    creating a serving checkpoint.
+
     Returns:
       A dict of embedding tables, keyed by `TableConfig`.
 
@@ -509,14 +519,20 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
     # the fact that when using a TPUStrategy:
     # 1. Variables are stale and are only updated when a checkpoint is made.
     # 2. Updating the variables won't affect the actual tables on the TPU.
-    if save_context.in_save_context():
-      return {
-          table: self._variables[table.name]["parameters"].variables[0]
-          for table in self._table_config
-      }
-    raise RuntimeError("Unable to retrieve embedding tables when using a TPU "
-                       "strategy. If you need access, save your model, "
-                       "create this object under a CPU strategy and restore.")
+    if self._using_tpu:
+      if save_context.in_save_context():
+        return {table: self._variables[table.name]["parameters"].variables[0]
+                for table in self._table_config}
+      raise RuntimeError("Unable to retrieve embedding tables when using a TPU "
+                         "strategy. If you need access, save your model, "
+                         "create this object under a CPU strategy and restore.")
+
+    self._maybe_build(None)
+
+    # Only return the tables and not the slot variables. On CPU this are honest
+    # tf.Variables.
+    return {table: self._variables[table.name]["parameters"]
+            for table in self._table_config}
 
   def _create_config_proto(
       self
@@ -650,6 +666,9 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
       TypeError: If the type of any sequence in `gradients` does not match
         corresponding sequence in `feature_config`.
     """
+    if not self._using_tpu:
+      raise RuntimeError("apply_gradients is not valid when TPUEmbedding "
+                         "object is not created under a TPUStrategy.")
 
     if not self._built:
       raise RuntimeError("apply_gradients called on unbuilt TPUEmbedding "
@@ -751,6 +770,9 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
       RuntimeError: If called when object wasn't created under a `TPUStrategy`
         or if not built (either by manually calling build or calling enqueue).
     """
+    if not self._using_tpu:
+      raise RuntimeError("dequeue is not valid when TPUEmbedding object is not "
+                         "created under a TPUStrategy.")
 
     if not self._built:
       raise RuntimeError("dequeue called on unbuilt TPUEmbedding object. "
@@ -781,21 +803,71 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
       A dict of dicts. The outer dict is keyed by the table names and the inner
       dicts are keyed by 'parameters' and the slot variable names.
     """
+
+    def create_variables(table):
+      """Create all variables."""
+      variable_shape = (table.vocabulary_size, table.dim)
+
+      def getter(name, shape, dtype, initializer, trainable):
+        del shape
+        # _add_variable_with_custom_getter clears the shape sometimes, so we
+        # take the global shape from outside the getter.
+        initial_value = functools.partial(initializer, variable_shape,
+                                          dtype=dtype)
+        return tf_variables.Variable(
+            name=name,
+            initial_value=initial_value,
+            shape=variable_shape,
+            dtype=dtype,
+            trainable=trainable)
+
+      def variable_creator(name, initializer, trainable=True):
+        # use add_variable_with_custom_getter here so that we take advantage of
+        # the checkpoint loading to allow restore before the variables get
+        # created which avoids double initialization.
+        return self._add_variable_with_custom_getter(
+            name=name,
+            initializer=initializer,
+            shape=variable_shape,
+            dtype=dtypes.float32,
+            getter=getter,
+            trainable=trainable)
+
+      parameters = variable_creator(table.name, table.initializer,
+                                    trainable=not self._using_tpu)
+
+      def slot_creator(name, initializer):
+        return variable_creator(table.name + "/" + name,
+                                initializer,
+                                False)
+
+      if table.optimizer is not None:
+        slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      else:
+        slot_vars = {}
+      slot_vars["parameters"] = parameters
+      return slot_vars
+
     # Store tables based on name rather than TableConfig as we can't track
     # through dicts with non-string keys, i.e. we won't be able to save.
     variables = {}
     for table in self._table_config:
-      with variable_scope.variable_creator_scope(
-          make_sharded_variable_creator(self._hosts)):
-        variables[table.name] = self._create_variables(table, trainable=False)
+      if not self._using_tpu:
+        variables[table.name] = create_variables(table)
+      else:
+        with variable_scope.variable_creator_scope(
+            make_sharded_variable_creator(self._hosts)):
+          variables[table.name] = create_variables(table)
+
     return variables
 
   def _load_variables(self):
     # Only load the variables if we are:
-    # 1) Variables are created
-    # 2) Not in save context (except if running eagerly)
-    if self._built and not (not context.executing_eagerly() and
-                            save_context.in_save_context()):
+    # 1) Using TPU
+    # 2) Variables are created
+    # 3) Not in save context (except if running eagerly)
+    if self._using_tpu and self._built and not (
+        not context.executing_eagerly() and save_context.in_save_context()):
       _load_variables_impl(self._config_proto.SerializeToString(),
                            self._hosts,
                            self._variables,
@@ -803,10 +875,11 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
 
   def _retrieve_variables(self):
     # Only retrieve the variables if we are:
-    # 1) Variables are created
-    # 2) Not in save context (except if running eagerly)
-    if self._built and not (not context.executing_eagerly() and
-                            save_context.in_save_context()):
+    # 1) Using TPU
+    # 2) Variables are created
+    # 3) Not in save context (except if running eagerly)
+    if self._using_tpu and self._built and not (
+        not context.executing_eagerly() and save_context.in_save_context()):
       _retrieve_variables_impl(self._config_proto.SerializeToString(),
                                self._hosts,
                                self._variables,
@@ -1165,6 +1238,9 @@ class TPUEmbedding(tpu_embedding_base.TPUEmbeddingBase):
         corresponding sequence in `feature_config`. Similarly for `weights`, if
         not `None`.
     """
+    if not self._using_tpu:
+      raise RuntimeError("enqueue is not valid when TPUEmbedding object is not "
+                         "created under a TPUStrategy.")
 
     in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
 
