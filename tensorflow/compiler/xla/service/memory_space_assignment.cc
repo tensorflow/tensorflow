@@ -68,22 +68,32 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
         }
         break;
       case HloOpcode::kBitcast:
-        return LooksLikeAnActivation(user);
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kTranspose:
+        if (LooksLikeAnActivation(user)) {
+          return true;
+        }
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kDynamicSlice:
         if (std::find(user->operands().begin() + 1, user->operands().end(),
                       inst) != user->operands().end()) {
           return true;
         }
-        // TODO(b/222538192): This workaround is needed when the embedding table
-        // is further spliced and reduced and used elsewhere in the program.
-        // Remove this workaround once we better understand what's causing it
-        // and fix it on the model side.
-        if (absl::c_all_of(user->users(), [](const HloInstruction* ds_user) {
-              return ds_user->opcode() == HloOpcode::kReduce;
-            })) {
-          continue;
+        if (LooksLikeAnActivation(user)) {
+          return true;
         }
-        return LooksLikeAnActivation(user);
+        break;
+      case HloOpcode::kReduce:
+        // Check init operands.
+        if (std::find(user->operands().begin() + user->operand_count() / 2,
+                      user->operands().end(), inst) != user->operands().end()) {
+          return true;
+        }
+        if (LooksLikeAnActivation(user)) {
+          return true;
+        }
+        break;
       default:
         return true;
     }
@@ -2089,11 +2099,13 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
       absl::c_max_element(uses, use_schedule_compare)->instruction);
   for (const HloValue* colocation : prefetch_candidate->colocations) {
     auto colocation_uses = colocation->GetUses();
-    last_use_time =
-        std::max(last_use_time,
-                 instruction_schedule.at(
-                     absl::c_max_element(colocation_uses, use_schedule_compare)
-                         ->instruction));
+    if (!colocation_uses.empty()) {
+      last_use_time = std::max(
+          last_use_time,
+          instruction_schedule.at(
+              absl::c_max_element(colocation_uses, use_schedule_compare)
+                  ->instruction));
+    }
   }
 
   int64_t end_of_program_prefetch_end_time = instruction_schedule.size();
@@ -2138,7 +2150,14 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
                latest_prefetch_time, &allocations, /*aliased_offset=*/nullptr,
                /*resource=*/0.0,
                /*is_cross_program_prefetch=*/true);
-  absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
+
+  HloInstruction* root_instruction =
+      module->entry_computation()->root_instruction();
+  absl::c_for_each(uses, [&](auto& use) {
+    if (use.instruction != root_instruction) {
+      allocations.back()->AddUse(use);
+    }
+  });
   AliasedOffset* cross_program_prefetch_offset =
       GetAliasedOffset(*allocations.back());
 
