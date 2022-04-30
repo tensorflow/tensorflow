@@ -14,11 +14,13 @@
 # ==============================================================================
 """Tests for TPU Embeddings mid level API on TPU."""
 import functools
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -127,7 +129,8 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
                for i in range(10)]
     self.assertAllClose(results, goldens)
 
-  def test_optimizer_with_slot_creation_fn(self):
+  @parameterized.parameters([True, False])
+  def test_optimizer_with_slot_creation_fn(self, use_tpu):
     def slot_creation_fn(table, slot_names, _):
       slots = {}
       for slot in slot_names:
@@ -140,7 +143,10 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
     optimizer = tpu_embedding_v2_utils.Adagrad(
         learning_rate=0.1,
         slot_variable_creation_fn=slot_creation_fn)
-    strategy = self._get_strategy()
+    if use_tpu:
+      strategy = self._get_strategy()
+    else:
+      strategy = distribution_strategy_context.get_strategy()
     with strategy.scope():
       mid_level = tpu_embedding_v2.TPUEmbedding(
           feature_config=self.feature_config,
@@ -150,12 +156,13 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
       mid_level.build(self.batch_size)
     video_accumulator = mid_level._variables['video']['accumulators']
     user_accumulator = mid_level._variables['user']['accumulators']
-    # To check the table contents (ensure that it is zero rather than the
-    # normal initial accumulator value specified to in the optimizer config),
-    # we need to select the underlying table variable on TPU.
-    # We only have one shard on Forge.
-    video_accumulator = video_accumulator.variables[0]
-    user_accumulator = user_accumulator.variables[0]
+    if use_tpu:
+      # To check the table contents (ensure that it is zero rather than the
+      # normal initial accumulator value specified to in the optimizer config),
+      # we need to select the underlying table variable on TPU.
+      # We only have one shard on Forge.
+      video_accumulator = video_accumulator.variables[0]
+      user_accumulator = user_accumulator.variables[0]
 
     self.assertAllClose(video_accumulator.numpy(),
                         np.zeros((self.table_video.vocabulary_size,
