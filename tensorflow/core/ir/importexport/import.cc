@@ -1005,23 +1005,5 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphDefToMlir(
                                        graph.flib_def());
 }
 
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
-    mlir::MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
-    const tensorflow::SavedModel& saved_model) {
-  if (saved_model.meta_graphs_size() == 0) {
-    return tensorflow::errors::InvalidArgument(
-        "Input saved model has no meta graphs");
-  }
-
-  if (saved_model.meta_graphs_size() > 1) {
-    return tensorflow::errors::InvalidArgument(
-        "Input saved model has more than one meta graph, currently not "
-        "supported");
-  }
-
-  const auto& graphdef = saved_model.meta_graphs(0).graph_def();
-  return ImportGraphDefToMlir(context, debug_info, graphdef);
-}
-
 }  // namespace tfg
 }  // namespace mlir

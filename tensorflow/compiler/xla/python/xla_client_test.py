@@ -30,14 +30,6 @@ from tensorflow.compiler.xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  # This import is only used for GPU; the dependency is incompatible with TPU
-  # so it results in an import error.
-  from tensorflow.python.framework import test_util
-except ImportError:
-  test_util = None
-
-# pylint: disable=g-import-not-at-top
-try:
   from tensorflow.compiler.xla.python import custom_call_for_test
 except ImportError:
   custom_call_for_test = None
@@ -384,6 +376,33 @@ def TestFactory(xla_backend,
           api_version=xla_client.ops.CustomCallApiVersion
           .API_VERSION_STATUS_RETURNING)
       self._ExecuteAndCompareClose(c, expected=[0.75])
+
+    def testCustomCallWithUnifiedApi(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+      for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
+        xla_client.register_custom_call_target(name, fn, platform="cpu")
+
+      opaque_str = b"foo"
+      ops.CustomCallWithLayout(
+          c,
+          b"test_add_input_and_opaque_len",
+          operands=[
+              ops.Constant(c, np.float32(1.25)),
+              ops.Constant(c, np.float32(0.5))
+          ],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()),
+          operand_shapes_with_layout=[
+              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+          ],
+          # With opaque length = 3.0
+          opaque=opaque_str,
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING_UNIFIED)
+      self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
 
   tests.append(ComputationsWithConstantsTest)
 
@@ -2435,13 +2454,9 @@ def TestFactory(xla_backend,
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
-        # Following is false if not built with --config=cuda
-        if test_util.is_gpu_available(cuda_only=True):
-          self.assertTrue(
-              re.match(r"^cuda \d{4,}$", version),
-              msg=f"Expected CUDA version string; got {repr(version)}")
-        else:
-          self.assertEqual(version, "<unknown>")
+        self.assertTrue(
+            re.match(r"^cuda \d{4,}$", version),
+            msg=f"Expected CUDA version string; got {repr(version)}")
       elif self.backend.platform == "tpu" and not cloud_tpu:
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)

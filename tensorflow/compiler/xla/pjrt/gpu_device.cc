@@ -183,7 +183,7 @@ class GpuClient : public xla::PjRtStreamExecutorClient {
 #elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
     return "cuda " STRINGIFY(CUDART_VERSION);
 #else
-    return "<unknown>";
+#error "Unknown GPU vendor";
 #endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
   }
 };

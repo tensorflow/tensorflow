@@ -58,14 +58,6 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphDefToMlir(
     MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
     const tensorflow::GraphDef& graphdef);
 
-// Converts a saved model to a MLIR module expressed in TFG dialect.
-// Only the root graph and function library of the saved model gets imported
-// into MLIR TFG dialect.
-// TODO(b/218882780): Consider importing SignatureDefs from the SavedModel.
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
-    mlir::MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
-    const tensorflow::SavedModel& saved_model);
-
 // Converts an array of "handle_data" (a DType and a Shape) to an MLIR array
 // attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
 // and a ShapeAttr

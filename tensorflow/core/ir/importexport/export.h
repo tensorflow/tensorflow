@@ -73,14 +73,6 @@ namespace tensorflow {
 // contain at most a single Graph operation and zero or more TFFunc operations.
 Status ExportMlirToGraphdef(mlir::ModuleOp module, GraphDef *output_graph);
 
-// Given an MLIR module, returns a `output_saved_model` SavedModel.
-// The module must contain at most a single Graph operation and zero or more
-// TFFunc operations. `original_saved_model` is used as only a GraphDef portion
-// of a saved model represented in the MLIR module.
-Status ExportMlirToSavedModel(mlir::ModuleOp module,
-                              const SavedModel &original_saved_model,
-                              SavedModel *output_saved_model);
-
 // Callback type for `ConvertOperationToNode`.
 using GetValueNameFn = llvm::function_ref<Status(
     mlir::Value /*operand*/, std::string & /*output_name*/)>;
