@@ -80,7 +80,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   // Record data ptrs of inputs.
   llvm::SmallVector<void*> input_ptrs;
   for (auto& operand : operands) {
-    input_ptrs.push_back(operand.data);
+    input_ptrs.push_back(operand.data());
   }
 
   // Free memory owned by the returned memrefs.

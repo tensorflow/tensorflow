@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "QuantizedBatchNormWithGlobalNormalization"
   input_arg {
     name: "t"

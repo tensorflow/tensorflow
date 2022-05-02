@@ -39,6 +39,8 @@ class RemapperTest : public GrapplerTest {
   void SetUp() override {
     // This is a requirement for fusing FusedBatchNorm + SideInput + Activation.
     setenv("TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT", "1", 1 /* replace */);
+    // This is a requirement for fusing FusedMatmul + BiasAdd (+ Activation).
+    setenv("TF_USE_CUBLASLT", "1", 1 /* replace */);
   }
 };
 
@@ -1379,9 +1381,14 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
     item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
     TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
+    const string device =
+        GetNumAvailableGPUs() > 0 && (DTYPE == DT_HALF || DTYPE == DT_FLOAT)
+            ? "/device:GPU:0"
+            : "/device:CPU:0";
+
     // Place all nodes on CPU.
     for (int i = 0; i < item.graph.node_size(); ++i) {
-      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      item.graph.mutable_node(i)->set_device(device);
     }
 
     Remapper optimizer(RewriterConfig::ON);
@@ -1411,12 +1418,24 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
     ASSERT_EQ(tensors_expected.size(), 1);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     ASSERT_EQ(tensors.size(), 1);
-    if (DTYPE == DT_BFLOAT16)
+    if (DTYPE == DT_BFLOAT16 || DTYPE == DT_HALF)
       test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
     else
       test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
   }
 };
+
+TEST_F(RemapperFuseMatMulWithBiasTest, F16) {
+  bool skip_test = false;
+#if !defined(GOOGLE_CUDA)
+  skip_test = true;
+#endif
+  if (skip_test || GetNumAvailableGPUs() == 0) {
+    GTEST_SKIP() << "Skipping FuseMatMulWithBias with half, which is only "
+                    "supported in CUDA.";
+  }
+  RunTest<DT_HALF>();
+}
 
 TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
@@ -1515,6 +1534,7 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
 #endif
 
     for (const string& activation : activations) {
+      if (DTYPE == DT_HALF && activation != "Relu") continue;
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
       auto lhs_shape = ops::Placeholder::Shape({8, 32});
@@ -1562,9 +1582,15 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
       item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
       TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
+      const string device = GetNumAvailableGPUs() > 0 &&
+                                    (DTYPE == DT_HALF || DTYPE == DT_FLOAT) &&
+                                    activation == "Relu"
+                                ? "/device:GPU:0"
+                                : "/device:CPU:0";
+
       // Place all nodes on CPU.
       for (int i = 0; i < item.graph.node_size(); ++i) {
-        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+        item.graph.mutable_node(i)->set_device(device);
       }
 
       Remapper optimizer(RewriterConfig::ON);
@@ -1599,13 +1625,25 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
       ASSERT_EQ(tensors_expected.size(), 1);
       auto tensors = EvaluateNodes(output, item.fetch, item.feed);
       ASSERT_EQ(tensors.size(), 1);
-      if (DTYPE == DT_BFLOAT16)
+      if (DTYPE == DT_BFLOAT16 || DTYPE == DT_HALF)
         test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
       else
         test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
     }
   }
 };
+
+TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F16) {
+  bool skip_test = false;
+#if !defined(GOOGLE_CUDA)
+  skip_test = true;
+#endif
+  if (skip_test || GetNumAvailableGPUs() == 0) {
+    GTEST_SKIP() << "Skipping FuseMatMulWithBiasAndActivationTest with half, "
+                    "which is only supported in CUDA.";
+  }
+  RunTest<DT_HALF>();
+}
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
   RunTest<DT_FLOAT>();

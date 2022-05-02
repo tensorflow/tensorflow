@@ -89,20 +89,12 @@ const HostEventTypeMap& GetHostEventTypeMap() {
        kTfDataCapturedFunctionRunInstantiated},
       {"InstantiatedCapturedFunction::RunAsync",
        kTfDataCapturedFunctionRunAsync},
-      // Functional ops.
-      {"CallOp", kCallOp},
+      // Loop ops.
       {"ParallelForOp", kParallelForOp},
       {"ForeverOp", kForeverOp},
-      {"NumericalGradientOp-EvalRight", kNumericalGradientOpEvalRight},
-      {"NumericalGradientOp-EvalLeft", kNumericalGradientOpEvalLeft},
-      {"SymbolicGradientOp", kSymbolicGradientOp},
-      {"RemoteCallOp", kRemoteCallOp},
-      {"IfOp", kIfOp},
-      {"CaseOp", kCaseOp},
       {"WhileOp-EvalCond", kWhileOpEvalCond},
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
-      {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -185,8 +177,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"UnknownStatType", kUnknownStatType},
       // TraceMe arguments.
       {"id", kStepId},
-      {"parent_step_id", kParentStepId},
-      {"function_step_id", kFunctionStepId},
       {"device_ordinal", kDeviceOrdinal},
       {"chip_ordinal", kChipOrdinal},
       {"node_ordinal", kNodeOrdinal},
@@ -252,7 +242,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
-      {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},

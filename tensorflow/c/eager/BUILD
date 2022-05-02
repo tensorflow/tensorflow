@@ -153,13 +153,10 @@ cc_library(
     deps = [
         ":c_api",
         ":tfe_cancellation_manager_internal",
-        ":tfe_context_internal",
         ":tfe_executor_internal",
         ":tfe_monitoring_internal",
         ":tfe_op_attrs_internal",
-        ":tfe_op_internal",
         ":tfe_tensor_debug_info_internal",
-        ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_api_internal",
     ],
 )

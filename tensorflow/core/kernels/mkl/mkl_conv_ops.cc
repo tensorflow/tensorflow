@@ -2331,10 +2331,6 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
 #undef LABEL
 
 // Register NoOp kernel for ops that will be rewritten to the _Mkl* version
-REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<bfloat16>("T"),
-                        NoOp);
 
 #define REGISTER_NO_OP_CPU_2D_DEPTHWISE(T)                    \
   REGISTER_KERNEL_BUILDER(Name("_FusedDepthwiseConv2dNative") \

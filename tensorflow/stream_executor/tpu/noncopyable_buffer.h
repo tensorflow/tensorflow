@@ -113,11 +113,19 @@ class NoncopyableBuffer {
     memcpy(clone.data_.get(), buf_, size_);
     return clone;
   }
+  // Returns a copy of the object that owns its buffer. It uses `allocator` to
+  // allocate the new buffer, which can have custom properties like special
+  // alignment.
+  NoncopyableBuffer Clone(BufferAllocator allocator) const {
+    NoncopyableBuffer clone(size_, allocator);
+    memcpy(clone.data_.get(), buf_, size_);
+    return clone;
+  }
 
   // Ensure that the buffer owns the data.
-  void EnsureDataOwned() {
+  void EnsureDataOwned(BufferAllocator allocator = DefaultAllocator) {
     if (data_ == nullptr) {
-      data_ = OwnedDataPtr(static_cast<uint8_t*>(malloc(size_)), free);
+      data_ = allocator(size_);
       memcpy(data_.get(), buf_, size_);
       buf_ = data_.get();
     }

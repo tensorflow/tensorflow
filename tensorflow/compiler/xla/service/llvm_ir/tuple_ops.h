@@ -48,6 +48,7 @@ void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
 // Returns an llvm value representing a pointer to the tuple element buffer.
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  int alignment, llvm::Value* operand,
+                                 llvm::Type* operand_pointee_type,
                                  llvm::IRBuilder<>* b);
 }  // namespace llvm_ir
 }  // namespace xla

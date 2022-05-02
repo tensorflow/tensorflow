@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace eager {
 namespace {
 
-/*
+/* Retrieve the global env variable.
  * Setting environment variable "TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE" to
  * true will turn on asynchronous execution of remote op. It means that when
  * executing an op on a remote worker, client will not block on waiting
@@ -55,6 +55,12 @@ namespace {
  * When turning on this feature, you should explicitly wait for some result
  * from remote workers at the end of you python program. Otherwise, client may
  * shutdown remote workers without waiting all pending ops.
+ *
+ * Note that the caller could still disable streaming enqueue, even though
+ * EnableStreaminh() returns true, if the caller's executor is set to disable
+ * streaming enqueue when the executor was created. EnableStreaming() is
+ * determined based on the global env variable, which by default is turned on
+ * for the main executor.
  *
  * TODO(fishx): When exiting client, make sure all pending ops on remote workers
  * are finished.
@@ -182,12 +188,17 @@ class GrpcEagerClient : public EagerClient {
     }
   }
 
-  void StreamingEnqueueAsync(CallOptions* call_opts,
+  void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                             CallOptions* call_opts,
                              const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
     StatusCallback done_wrapped = callback_wrapper(std::move(done));
-    if (EnableStreaming()) {
+    // Whether streaming enqueue is used is determined based on 2 factors:
+    // 1. The global env variable, as checked in EnableStreaming().
+    // 2. The flag set in the eager executor.
+    // Streaming enqueue is allowed only when the both are enabled.
+    if (EnableStreaming() && enable_streaming_enqueue) {
       mutex_lock l(mu_);
       auto it = enqueue_dispatchers_.find(request->context_id());
       if (it == enqueue_dispatchers_.end()) {

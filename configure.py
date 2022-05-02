@@ -45,8 +45,9 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
+# TODO(mihaimaruseac): Remove these checks as they are no longer useful
 _TF_MIN_BAZEL_VERSION = '4.2.2'
-_TF_MAX_BAZEL_VERSION = '5.99.0'
+_TF_MAX_BAZEL_VERSION = '999999.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''

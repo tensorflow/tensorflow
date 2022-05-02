@@ -728,14 +728,15 @@ func.func @invalid_device_type() {
 
 // -----
 
-// CHECK: "tf_device.cluster"() ({
+// Check non-replicated case, including expected attributes at device cluster.
+// CHECK: "tf_device.cluster"()
 // CHECK:    "tf.opA"()
 // CHECK:    "tf.opB"()
 // CHECK:    tf_device.return
-// CHECK:  })
+// CHECK:  })  {_replication_info = "__no_replication_cluster", _xla_compile_device_type = "TPU", allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i32, step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false}
 func.func @valid_compilation_cluster_no_replication() {
-  "tf.opA"() { _xla_compile_device_type = "CPU", is_stateless = true} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "CPU", is_stateless = true} : () -> ()
+  "tf.opA"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
   func.return
 }
 
@@ -768,8 +769,101 @@ func.func @mixed_replicated_non_replicated_ops() {
 
 // -----
 
+func.func @cyclic_control_dependency_no_replication() {
+  "tf.opA"() {_xla_compile_device_type = "CPU"} : () -> ()
+  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  "tf.opB"() : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "CPU"} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_data_dependency_no_replication() {
+  %0 = "tf.opA"() {_xla_compile_device_type = "GPU", is_stateless = true} : () -> (tensor<i32>)
+  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-error@+1 {{operand #0 does not dominate this use}}
+  %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  // expected-note@+1 {{operand defined here (op in the same block)}}
+  "tf.opC"(%1) {_xla_compile_device_type = "GPU", is_stateless = true} : (tensor<i32>) -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_control_dependency_replication() {
+  "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  "tf.opB"() : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+
+// -----
+
+func.func @cyclic_data_dependency_replication() {
+  %0 = "tf.opA"() {_xla_compile_device_type = "TPU", is_stateless = true} : () -> (tensor<i32>)
+  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-error@+1 {{operand #0 does not dominate this use}}
+  %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  // expected-note@+1 {{operand defined here (op in the same block)}}
+  "tf.opC"(%1) {_xla_compile_device_type = "TPU", is_stateless = true} : (tensor<i32>) -> ()
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+// -----
+
 // expected-warning@+1 {{TPUReplicateMetadata for associated '_replication_info' attribute 'cluster' is missing}}
 func.func @missing_metadata() {
   "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
   func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @const_with_attrs
+func.func @const_with_attrs(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Reshape"(%arg0
+  // CHECK-NEXT: %{{.*}} = "tf_device.cluster"() ({
+  %minus_one = "tf.Const"() {_replication_info = "cluster",
+                          _xla_compile_device_type = "TPU",
+                          value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster", num_replicas = 1 : i64} : () -> ()
+
+  %1 = "tf.Reshape"(%arg0, %minus_one) : (tensor<*xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %2 = "tf.Identity"(%1) {_replication_info = "cluster", _xla_compile_device_type = "TPU"} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %4 = "tf.Reshape"(%arg1, %minus_one) {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = ""} : (tensor<?xi64>, tensor<1xi32>) -> tensor<?xi64>
+  %5 = "tf.Identity"(%4) {_replication_info = "cluster", _xla_compile_device_type = "TPU"} : (tensor<?xi64>) -> tensor<?xi64>
+
+  return %2, %5 : tensor<?xi32>, tensor<?xi64>
+}
+
+// -----
+
+// CHECK-LABEL: func @two_clusters
+func.func @two_clusters(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"(){{.*}}value = dense<1>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Const"(){{.*}}value = dense<2>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf_device.cluster"
+  %one = "tf.Const"() {_replication_info = "cluster1",
+                       _xla_compile_device_type = "TPU",
+                       value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %two = "tf.Const"() {_replication_info = "cluster2",
+                       _xla_compile_device_type = "TPU",
+                       value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster1", num_replicas = 1 : i64} : () -> ()
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster2", num_replicas = 1 : i64} : () -> ()
+
+  %1 = "tf.Reshape"(%arg0, %one) {_replication_info = "cluster2", _xla_compile_device_type = "TPU", device = ""} : (tensor<*xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %2 = "tf.Identity"(%1) {_replication_info = "cluster2", _xla_compile_device_type = "TPU"} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %3 = "tf.Reshape"(%arg1, %two) {_replication_info = "cluster1", _xla_compile_device_type = "TPU", device = ""} : (tensor<?xi64>, tensor<1xi32>) -> tensor<?xi64>
+  %4 = "tf.Identity"(%3) {_replication_info = "cluster1", _xla_compile_device_type = "TPU"} : (tensor<?xi64>) -> tensor<?xi64>
+
+  return %2, %4 : tensor<?xi32>, tensor<?xi64>
 }

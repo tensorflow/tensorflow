@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/cf_sink/cf_sink.h"
 
+#include <functional>
 #include <memory>
 
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Dominance.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/ControlFlowSinkUtils.h"  // from @llvm-project
@@ -59,7 +61,17 @@ static bool IsStateless(Operation *op) {
   return false;
 }
 
+// Don't sink TPU-specific ops and ops with regions.
 static bool IsExcluded(Operation *op) {
+  // TODO(b/228618345) Ops with `i32` operands cannot be safely sunk due to a
+  // potential placement bug on GPU.
+
+  // Don't sink ops with regions as it can create nested regions so deep that
+  // the verifier is stack overflowed.
+  if (op->getNumRegions()) {
+    return true;
+  }
+
   // TPU ops cannot be moved, even though they are marked as stateless.
   // TODO(jeffniu): TPU ops should be marked in some other way.
   StringRef op_name = op->getName().stripDialect();
@@ -85,9 +97,11 @@ void ControlFlowSinkPass::runOnOperation() {
     getSinglyExecutedRegionsToSink(branch, regions);
     num_sunk += controlFlowSink(
         regions, domInfo,
+        /*shouldMoveIntoRegion=*/
         [&](Operation *op, Region *) {
           return IsStateless(op) && !IsExcluded(op);
         },
+        /*moveIntoRegion=*/
         [&](Operation *op, Region *region) { moveAndRename(op, region); });
   });
   VLOG(1) << "tfg-cf-sink num-sunk: " << num_sunk;

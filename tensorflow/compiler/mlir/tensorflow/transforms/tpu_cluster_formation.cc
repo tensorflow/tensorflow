@@ -16,6 +16,8 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -128,23 +130,32 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
 }
 
 // Collects and clusters ops either based on `_replication_info` attribute
-// (replicated case) or using one single cluster (non-replicated case).
+// (replicated case) or using one single cluster (non-replicated case). Also
+// sets `device_type` if there is any cluster (note that the device type must be
+// unique, otherwise we emit an error).
 // Returns an error in case of invalid compilation or replication attribute(s).
-LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
+LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
+                                        std::string& device_type) {
   bool has_replicated_compiled_op = false;
   bool has_non_replicated_compiled_op = false;
-  llvm::SmallSet<llvm::StringRef, 3> device_types;
+  // Use ordered set here to make error message below deterministic.
+  std::set<llvm::StringRef> device_types;
   for (Operation& op : *block) {
     LogicalResult result = TF::HasValidCompilationAndReplicationAttributes(op);
     if (failed(result)) return result;
 
     // Collect device types which currently must be consistent per block
     // (checked later).
-    auto device_type = op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
-    if (device_type) device_types.insert(device_type);
+    auto device_type_attr =
+        op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
+    if (device_type_attr) device_types.insert(device_type_attr);
 
     if (op.hasAttr(TF::kReplicationInfoAttr)) {
       // For replicated case, borrow cluster structure from replication info.
+      // Following condition is already checked in
+      // `HasValidCompilationAndReplicationAttributes` above, assert here for
+      // documentation and to avoid breakage when that function is changed.
+      assert(op.hasAttr(TF::kCompileDeviceTypeAttr));
       has_replicated_compiled_op = true;
       auto attr = op.getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
       auto it = clusters->try_emplace(attr.getValue());
@@ -169,7 +180,12 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
            << "' attribute values (" << llvm::join(device_types, ",")
            << ") in same block which is not supported";
   }
-
+  if (!clusters->empty()) {
+    // Note that for size < 1 we shouldn't have any cluster while for size > 1
+    // we should have returned with an error above.
+    assert(device_types.size() == 1);
+    device_type = device_types.begin()->str();
+  }
   return success();
 }
 
@@ -267,9 +283,8 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
         // might have runtime impact for existing models.
         // We should make this message an error once there is such a contract
         // and once existing cases have been fixed.
-        VLOG(1) << "Invalid TPU cluster structure. Following op is both a "
-                   "predecessor and a successor of a cluster: "
-                << mlir::debugString(op);
+        op.emitWarning()
+            << "op has cyclic dependency with a compilation cluster";
       } else {
         cluster_successor_ops.insert(&op);
       }
@@ -563,16 +578,20 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   return success();
 }
 
-void SetNoReplicationClusterAttrs(tf_device::ClusterOp cluster) {
+void SetNoReplicationClusterAttrs(tf_device::ClusterOp cluster,
+                                  llvm::StringRef device_type) {
   OpBuilder builder(cluster);
+  cluster->setAttr(TF::kReplicationInfoAttr,
+                   builder.getStringAttr(kNoReplicationCluster));
+  cluster->setAttr(TF::kCompileDeviceTypeAttr,
+                   builder.getStringAttr(device_type));
+
   // TODO(b/229992058) Propagate `allow_soft_placement` (and other attributes?)
   // instead of hard-coding.
   cluster->setAttr("allow_soft_placement", builder.getBoolAttr(true));
   cluster->setAttr("topology", builder.getStringAttr(""));
   cluster->setAttr("num_cores_per_replica",
                    builder.getIntegerAttr(builder.getI32Type(), 1));
-  cluster->setAttr("_replication_info",
-                   builder.getStringAttr(kNoReplicationCluster));
   cluster->setAttr("device_assignment", builder.getArrayAttr({}));
   cluster->setAttr("use_spmd_for_xla_partitioning", builder.getBoolAttr(false));
   cluster->setAttr("step_marker_location", builder.getStringAttr(""));
@@ -618,7 +637,8 @@ LogicalResult FormClustersInBlock(
   }
 
   ClusterMap clusters;
-  result = CollectAndGroupClusterOps(block, &clusters);
+  std::string device_type;
+  result = CollectAndGroupClusterOps(block, &clusters, device_type);
   if (failed(result)) return result;
 
   for (const auto& cluster_metadata_and_ops : clusters) {
@@ -648,7 +668,7 @@ LogicalResult FormClustersInBlock(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
     if (!has_replication) {
-      SetNoReplicationClusterAttrs(cluster);
+      SetNoReplicationClusterAttrs(cluster, device_type);
       continue;
     }
     // Determine `num_replicas`.
@@ -718,6 +738,24 @@ LogicalResult FormClustersInFunction(
 }
 
 void TPUClusterFormationPass::runOnOperation() {
+  // Attributes on tf.Constant aren't reliable: CSE will merge ConstantLike ops
+  // with the same value (but different attributes!) into the same tf.Const
+  // definition, potentially leading to bogus _replication_info attributes. So
+  // we just scrub all tf.Constants of all extra attributes.
+  // TODO(kramm): Remove this once tf.Const's folder is aware of extra
+  // attributes.
+  auto value_str_attr = StringAttr::get(&getContext(), "value");
+  getOperation().walk([&](TF::ConstOp cst) {
+    auto dict = cst->getAttrDictionary();
+    if (dict.size() == 1) {
+      return;  // Optimization. Assume the one attribute is "value".
+    }
+    // Recreate the attributes dictionary to only contain "value".
+    NamedAttrList attributes;
+    attributes.append(NamedAttribute(value_str_attr, cst->getAttr("value")));
+    cst->setAttrs(attributes.getDictionary(&getContext()));
+  });
+
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   for (auto func : getOperation().getOps<func::FuncOp>())
     if (!func.isExternal() &&

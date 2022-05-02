@@ -92,7 +92,7 @@ def DTensorUndoMergeConstAcrossMesh
 
 def DTensorSetDefaultSharding
     : Pass<"dtensor-set-default-sharding", "mlir::func::FuncOp"> {
-  let summary = "Sets default sharding of TPU computation inputs/ouputs to maximal.";
+  let summary = "Sets default sharding of TPU computation inputs/outputs to maximal.";
   let constructor = "CreateDTensorSetDefaultSharding()";
   let dependentDialects = [
   ];

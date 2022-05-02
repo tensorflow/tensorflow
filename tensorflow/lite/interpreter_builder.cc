@@ -153,7 +153,7 @@ inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
 
 }  // namespace
 
-const char* kEmptyTensorName = "";
+constexpr const char* kEmptyTensorName = "";
 
 // Using weak symbols to create a delegate allows automatic injection of the
 // delegate simply by adding it as a dependency.

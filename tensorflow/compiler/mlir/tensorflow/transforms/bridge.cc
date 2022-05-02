@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 
 namespace mlir {
 namespace {
@@ -228,6 +230,9 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled,
       status == Status::OK() ? "success" : "failure");
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
+      status);
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,

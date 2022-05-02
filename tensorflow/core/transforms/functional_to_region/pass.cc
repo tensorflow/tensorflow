@@ -36,10 +36,15 @@ struct FunctionalToRegionPass
     RewritePatternSet patterns(&getContext());
     PopulateFunctionalToRegionPatterns(patterns, table);
 
-    // Allow instantiation of a "large" depth of nested control-flow ops.
-    // TODO(jeffniu): This number was picked arbitrarily.
     GreedyRewriteConfig config;
-    config.maxIterations = 10000;
+    // Use top-down traversal for more efficient conversion. Disable region
+    // simplification as all regions are single block.
+    config.useTopDownTraversal = true;
+    config.enableRegionSimplification = false;
+    // If there are deeply nested conditionals, instantiating them too deep will
+    // cause the verifiers, which are implemented recursively, to stack
+    // overflow. Set a relatively low iteration limit.
+    config.maxIterations = 16;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config)))
       signalPassFailure();

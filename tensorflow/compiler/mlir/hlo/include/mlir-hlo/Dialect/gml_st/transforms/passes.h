@@ -33,6 +33,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingPass();
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
 
+// Pass to bufferize `linalg.tiled_loop` including the operations contained in
+// its body.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 

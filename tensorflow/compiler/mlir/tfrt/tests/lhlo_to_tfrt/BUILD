@@ -10,7 +10,6 @@ glob_lit_tests(
     exclude = [
         "ccl.mlir",  # b/216062298
         "fusion.mlir",  # b/215799570
-        "async_conversion.mlir",  # b/229183976
     ],
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
     test_file_exts = ["mlir"],

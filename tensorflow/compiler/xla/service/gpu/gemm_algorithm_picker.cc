@@ -53,18 +53,6 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
 static int64_t cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 static int64_t cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
-GpuGemmConfig GetGpuGemmConfig(const HloInstruction* gemm) {
-  GpuGemmConfig config;
-  config.output_shape = gemm->shape();
-  config.lhs_shape = gemm->operand(0)->shape();
-  config.rhs_shape = gemm->operand(1)->shape();
-  config.backend_config =
-      gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-  config.use_cublaslt =
-      gemm->GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
-  return config;
-}
-
 StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
     PrimitiveType type) {
   switch (type) {
@@ -106,8 +94,7 @@ StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
 Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
                            se::DeviceMemoryAllocator* allocator,
                            const GemmBackendConfig& gemm_config) {
-  GpuGemmConfig config = GetGpuGemmConfig(instr);
-  int64_t batch_size = gemm_config.batch_size();
+  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(instr));
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   const int32_t cublas_autotune_level =
@@ -146,26 +133,26 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
                       get_initialized_buffer(instr));
 
-  const Shape& output_shape = config.output_shape;
-  PrimitiveType element_type = output_shape.element_type();
+  se::blas::MatrixDescriptor lhs = GetMatrixDesc(config.lhs_layout, lhs_buffer);
+  se::blas::MatrixDescriptor rhs = GetMatrixDesc(config.rhs_layout, rhs_buffer);
+  se::blas::MatrixDescriptor output =
+      GetMatrixDesc(config.output_layout, output_buffer);
+  int64_t batch_size = config.output_layout.batch_size;
 
-  se::blas::MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
-  std::tie(lhs_matrix, rhs_matrix, output_matrix) = PopulateInputOutputMatrices(
-      config, lhs_buffer, rhs_buffer, output_buffer);
+  // TODO(cjfj): Support transposed output when using cuBLASLt.
+  MakeBlasGemmCompatible(lhs, rhs, output);
 
-  if (output_matrix.transpose != se::blas::Transpose::kNoTranspose) {
-    return InternalError("GEMM output matrix must not be transposed.");
-  }
-  TF_ASSIGN_OR_RETURN(tensorflow::DataType dtype,
-                      EncodePrimitiveTypeAsDataType(element_type));
+  TF_ASSIGN_OR_RETURN(
+      tensorflow::DataType dtype,
+      EncodePrimitiveTypeAsDataType(config.output_layout.dtype));
 
   int device_id = stream->parent()->device_ordinal();
-  bool trans_x = lhs_matrix.transpose == se::blas::Transpose::kTranspose;
-  bool trans_y = rhs_matrix.transpose == se::blas::Transpose::kTranspose;
+  bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
+  bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
 
-  int64_t m = output_matrix.num_rows;
-  int64_t n = output_matrix.num_cols;
-  int64_t k = lhs_matrix.reduced_dim();
+  int64_t m = output.num_rows;
+  int64_t n = output.num_cols;
+  int64_t k = lhs.reduced_dim();
 
   bool broadcast = batch_size == 1;
 
@@ -183,7 +170,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(
       const se::blas::PlanAndAlgorithms* plan_and_algorithms,
       se::GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, dtype,
-                               lhs_matrix, rhs_matrix, output_matrix));
+                               lhs, rhs, output));
 
   const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
       algorithms = plan_and_algorithms->algorithms;
@@ -326,7 +313,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   absl::optional<se::blas::AlgorithmType> first_algorithm;
   std::vector<AutotuneResult> profile_results;
 
-  GpuGemmConfig config = GetGpuGemmConfig(gemm);
+  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
 
   for (se::blas::AlgorithmType algorithm : algorithms) {
     // Make sure the output buffer always has the same value if we use
@@ -429,13 +416,11 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const HloInstruction* lhs = instr->operand(0);
   const HloInstruction* rhs = instr->operand(1);
 
-  GpuGemmConfig config = GetGpuGemmConfig(instr);
-  PrimitiveType element_type = config.output_shape.element_type();
+  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(instr));
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  if (config.use_cublaslt && stream->parent()->SupportsBlasPlans() &&
-      BlasPlansCompatibleType(element_type)) {
+  if (config.use_cublaslt && stream->parent()->SupportsBlasPlans()) {
     TF_RETURN_IF_ERROR(
         DoBlasPlansAutotune(stream, instr, allocator, gemm_config));
     return {se::blas::kNoAlgorithm};
