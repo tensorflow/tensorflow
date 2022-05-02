@@ -6,6 +6,9 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+    ],
     licenses = ["notice"],
 )
 
@@ -114,15 +117,10 @@ tf_cc_test(
     srcs = ["cpu_device_test.cc"],
     deps = [
         ":cpu_device",
-        ":pjrt_client",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:random",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -215,7 +213,6 @@ cc_library(
         ":metrics",
         ":mlir_to_hlo",
         ":pjrt_client",
-        ":pjrt_future",
         ":tracked_device_buffer",
         ":transpose",
         ":utils",
@@ -278,7 +275,6 @@ cc_library(
         ":local_device_state",
         ":pjrt_stream_executor_client",
         ":tracked_device_buffer",
-        ":utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -410,7 +406,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:random",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -432,7 +427,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -457,11 +451,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:hostcontext",
     ],
@@ -574,10 +566,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:test_benchmark",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",
     ],
 )
