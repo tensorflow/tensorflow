@@ -31,18 +31,96 @@ namespace tensorflow {
 
 namespace {
 
-int MAX_VISITS_PER_NODE = 2;
+int MAX_VISITS_PER_NODE = 3;
 
-bool all_inputs_closed(const Node& n, const absl::flat_hash_set<int>& closed) {
-  for (const auto& e : n.in_edges()) {
+typedef absl::flat_hash_map<
+    int, std::reference_wrapper<ForwardTypeInferenceFn const>>
+    ForwardInferMap;
+typedef absl::flat_hash_map<
+    int, std::pair<int, std::reference_wrapper<ForwardTypeInferenceFn const>>>
+    ReverseInferMap;
+
+bool all_sources_closed(const Node& n, const absl::flat_hash_set<int>& closed,
+                        const ForwardInferMap& forward,
+                        const ReverseInferMap& reverse) {
+  for (const auto& e : n.out_edges()) {
     if (e->IsControlEdge()) {
       continue;
     }
-    if (!closed.contains(e->src()->id())) {
+    int dst_id = e->dst()->id();
+    if (reverse.contains(dst_id) && !closed.contains(dst_id)) {
       return false;
     }
   }
+  if (forward.contains(n.id())) {
+    for (const auto& e : n.in_edges()) {
+      if (e->IsControlEdge()) {
+        continue;
+      }
+      if (!closed.contains(e->src()->id())) {
+        return false;
+      }
+    }
+  }
   return true;
+}
+
+std::vector<std::reference_wrapper<const FullTypeDef>> input_types(
+    const Node& n) {
+  static FullTypeDef* no_type = new FullTypeDef();
+
+  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
+  for (const auto& in_edge : n.in_edges()) {
+    if (in_edge->IsControlEdge()) {
+      continue;
+    }
+    input_types.push_back(*no_type);
+  }
+  for (const auto& in_edge : n.in_edges()) {
+    if (in_edge->IsControlEdge()) {
+      continue;
+    }
+    VLOG(5) << "  in edge: " << in_edge->DebugString();
+    NodeDef* ndef = in_edge->src()->mutable_def();
+    if (ndef->has_experimental_type()) {
+      const auto& t = ndef->experimental_type();
+      if (t.type_id() != TFT_UNSET) {
+        DCHECK(t.type_id() == TFT_PRODUCT) << ndef->DebugString();
+        DCHECK(t.args_size() > in_edge->src_output()) << ndef->DebugString();
+        input_types.at(in_edge->dst_input()) = t.args(in_edge->src_output());
+      }
+    }
+  }
+  return input_types;
+}
+
+Status updated_inferred_type(Node* target, const FullTypeDef& t,
+                             bool& updated) {
+  if (t.type_id() == TFT_UNSET) {
+    VLOG(3) << "  " << target->name() << " no inferred type";
+    return Status::OK();
+  }
+
+  if (target->def().has_experimental_type()) {
+    const auto existing = target->def().experimental_type();
+    if (full_type::IsSubtype(existing, t)) {
+      VLOG(3) << "  " << target->name() << " no new type info";
+      return Status::OK();
+    } else if (!full_type::IsSubtype(t, existing)) {
+      // The only allowable type mismatches are those which would further
+      // specialize the existing type.
+      return Status(
+          error::INVALID_ARGUMENT,
+          absl::StrCat("type mismatch for node '", target->name(),
+                       "': expected a subtype of:\n", existing.DebugString(),
+                       "\n  got:\n", t.DebugString(), "\n  "));
+    }
+  }
+
+  *(target->mutable_def()->mutable_experimental_type()) = t;
+  updated = true;
+  VLOG(3) << "  " << target->name() << " updated";
+  return Status::OK();
 }
 
 }  // namespace
@@ -66,65 +144,72 @@ Status ForwardTypeInferencePass::Run(
     n->UpdateProperties();
   }
 
-  static FullTypeDef* no_type = new FullTypeDef();
-
-  auto process_node = [&flib_def](Node* n, bool& updated, bool& no_type_info) {
-    VLOG(3) << "  processing " << n->name();
+  // Cache type inference functions, to avoid repeated flib_def lookups.
+  ForwardInferMap forward;
+  ReverseInferMap reverse;
+  for (Node* n : g->nodes()) {
     VLOG(4) << "\n  node: " << n->def().DebugString()
             << "\n  op def: " << n->op_def().DebugString();
     const OpRegistrationData* reg;
     TF_RETURN_IF_ERROR(flib_def->LookUp(n->op_def().name(), &reg));
+    if (reg->fwd_type_fn != nullptr) {
+      forward.emplace(n->id(), reg->fwd_type_fn);
+    }
+    if (reg->rev_type_fn != nullptr) {
+      reverse.emplace(n->id(), std::make_pair(reg->rev_type_input,
+                                              std::cref(reg->rev_type_fn)));
+    }
+  }
 
-    if (reg->fwd_type_fn == nullptr) {
-      VLOG(4) << "  " << n->name() << " no type inference function";
-      no_type_info = true;
+  auto infer_forward = [&forward](Node* n, bool& updated) {
+    if (!forward.contains(n->id())) {
       return Status::OK();
     }
-
-    std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
-    for (const auto& in_edge : n->in_edges()) {
-      if (in_edge->IsControlEdge()) {
-        continue;
-      }
-      input_types.push_back(*no_type);
-    }
-    for (const auto& in_edge : n->in_edges()) {
-      if (in_edge->IsControlEdge()) {
-        continue;
-      }
-      VLOG(5) << "  in edge: " << in_edge->DebugString();
-      NodeDef* ndef = in_edge->src()->mutable_def();
-      if (ndef->has_experimental_type()) {
-        const auto& t = ndef->experimental_type();
-        if (t.type_id() != TFT_UNSET) {
-          DCHECK(t.type_id() == TFT_PRODUCT) << ndef->DebugString();
-          DCHECK(t.args_size() > in_edge->src_output()) << ndef->DebugString();
-          input_types.at(in_edge->dst_input()) = t.args(in_edge->src_output());
-        }
-      }
-    }
+    VLOG(4) << "  " << n->name() << " has forward function";
 
     // TODO(b/224775462): Populate with types from function references.
     TypeRefMap type_vars;
+    auto in_types = input_types(*n);
+    const auto& infer_ret = forward.at(n->id())(in_types, type_vars);
 
-    const auto& infer_ret = reg->fwd_type_fn(input_types, type_vars);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        infer_ret.status(), "while inferring type of node '", n->name(), "'");
-    const auto& infer_type = *infer_ret;
+        infer_ret.status(),
+        absl::StrCat("while inferring type of node '", n->name(), "'"));
 
-    if (infer_type.type_id() == TFT_UNSET) {
-      VLOG(3) << "  " << n->name() << " no new type information";
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        updated_inferred_type(n, *infer_ret, updated),
+        "while updating its output type.");
+
+    return Status::OK();
+  };
+
+  auto infer_reverse = [&reverse](Node* n, bool& updated) {
+    if (!reverse.contains(n->id())) {
       return Status::OK();
     }
+    VLOG(4) << "  " << n->name() << " has reverse function";
 
-    if (!n->def().has_experimental_type() ||
-        !full_type::IsEqual(n->def().experimental_type(), infer_type)) {
-      *(n->mutable_def()->mutable_experimental_type()) = infer_type;
-      updated = true;
-      VLOG(3) << "  " << n->name() << " updated";
-    } else {
-      VLOG(3) << "  " << n->name() << " same type after inference";
-    }
+    // TODO(b/224775462): Populate with types from function references.
+    TypeRefMap type_vars;
+    auto in_types = input_types(*n);
+    auto rev_idx_and_fn = reverse.at(n->id());
+    const auto& infer_ret = rev_idx_and_fn.second(in_types, type_vars);
+
+    const Edge* e;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        n->input_edge(rev_idx_and_fn.first, &e),
+        absl::StrCat("while querying input ", rev_idx_and_fn.first, " of '",
+                     n->name(), "'"));
+
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        infer_ret.status(),
+        absl::StrCat("while inferring type of node '", e->src()->name(),
+                     "' via '", n->name(), "'"));
+
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        updated_inferred_type(e->src(), *infer_ret, updated),
+        absl::StrCat("while updating its output type inferred from '",
+                     n->name(), ","));
 
     return Status::OK();
   };
@@ -168,21 +253,28 @@ Status ForwardTypeInferencePass::Run(
     while (!queue.empty()) {
       int nid = queue.front();
       Node* n = g->FindNodeId(nid);
-      bool updated = false;
-      bool no_type_info = false;
       VLOG(3) << "  visiting " << n->name();
       visits++;
       visit_count[nid]++;
+      DCHECK(!closed.contains(nid));
 
-      TF_RETURN_IF_ERROR(process_node(n, updated, no_type_info));
+      bool updated = false;
+      TF_RETURN_IF_ERROR(infer_forward(n, updated));
+      TF_RETURN_IF_ERROR(infer_reverse(n, updated));
+
       VLOG(4) << "  done " << n->def().DebugString();
 
       queue.pop_front();
       in_queue.erase(nid);
       open.erase(nid);
 
-      if (all_inputs_closed(*n, closed) || no_type_info) {
-        VLOG(3) << "  closing " << n->name();
+      // Update the graph to fixed point, with iterations limited
+      // by MAX_VISITS_PER_NODE.
+      if (visit_count.at(nid) >= MAX_VISITS_PER_NODE) {
+        VLOG(3) << "  closing " << n->name() << " - visit limit reached";
+        closed.emplace(nid);
+      } else if (all_sources_closed(*n, closed, forward, reverse)) {
+        VLOG(3) << "  closing " << n->name() << " - all sources closed";
         closed.emplace(nid);
       }
 
@@ -192,13 +284,20 @@ Status ForwardTypeInferencePass::Run(
         }
         Node* c = out_edge->dst();
         int cid = c->id();
-        // Update the graph to fixed point, with iterations limited
-        // by MAX_VISITS_PER_NODE.
-        if (closed.contains(cid) || in_queue.contains(cid) ||
-            visit_count.at(cid) >= MAX_VISITS_PER_NODE) {
+        if (closed.contains(cid) || in_queue.contains(cid)) {
           continue;
         }
-        if (all_inputs_closed(*c, closed) || updated) {
+        if (updated || all_sources_closed(*c, closed, forward, reverse)) {
+          queue.emplace_back(cid);
+          in_queue.emplace(cid);
+        }
+      }
+      if (updated && reverse.contains(nid)) {
+        const Edge* e;
+        TF_RETURN_IF_ERROR(n->input_edge(reverse.at(nid).first, &e));
+        Node* c = e->src();
+        int cid = c->id();
+        if (!closed.contains(cid) && !in_queue.contains(cid)) {
           queue.emplace_back(cid);
           in_queue.emplace(cid);
         }
@@ -209,9 +308,9 @@ Status ForwardTypeInferencePass::Run(
             << " nodes closed";
 
     if (open.empty()) {
-      VLOG(1) << "Finished after " << i << " iterations; done " << closed.size()
-              << " of " << g->num_nodes() << " nodes in " << visits
-              << " visits";
+      VLOG(1) << "Finished after " << i + 1 << " iterations; done "
+              << closed.size() << " of " << g->num_nodes() << " nodes in "
+              << visits << " visits";
       break;
     } else {
       queue.emplace_back(*(open.begin()));

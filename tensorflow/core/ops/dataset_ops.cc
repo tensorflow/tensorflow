@@ -893,6 +893,8 @@ REGISTER_OP("DeleteMultiDeviceIterator")
 REGISTER_OP("MakeIterator")
     .Input("dataset: variant")
     .Input("iterator: resource")
+    .SetTypeConstructor(full_type::NoOutputs())
+    .SetReverseTypeFn(1, full_type::MapCovariant(TFT_DATASET, TFT_ITERATOR, 0))
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("OneShotIterator")
