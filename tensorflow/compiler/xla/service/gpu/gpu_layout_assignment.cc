@@ -94,6 +94,16 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  bool valid_tf32 = input_ty == F32 &&
+                    stream_executor->GetDeviceDescription()
+                        .cuda_compute_capability()
+                        .IsAtLeast(se::CudaComputeCapability::AMPERE) &&
+                    tensorflow::tensor_float_32_execution_enabled();
+  if (valid_tf32) {
+    VLOG(2) << "Using NHWC for tf32 conv " << instr->ToString();
+    return kAllNHWC;
+  }
+
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
   if (input_ty != F16 ||
