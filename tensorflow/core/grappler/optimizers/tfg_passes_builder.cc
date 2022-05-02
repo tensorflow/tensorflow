@@ -29,36 +29,36 @@ namespace mlir {
 namespace tfg {
 
 // The default pipeline only does shape inference now.
-void DefaultGrapplerPipeline(PassManager& mgr) {
+void DefaultGrapplerPipeline(PassManager& manager) {
   // Turn certain shape attrs into types to give better knowledge for shape
   // inference.
-  mgr.addPass(CreateConsolidateAttributesPass());
+  manager.addPass(CreateConsolidateAttributesPass());
   // Infer the shape of operation if possible. The TFG importer doesn't do shape
   // inference for almost all operations.
-  mgr.addPass(CreateShapeInferencePass());
+  manager.addPass(CreateShapeInferencePass());
   // Contruct the shape attrs back from types.
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.
-  mgr.addPass(CreatePrepareAttributesForExportPass());
+  manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
 // Run the consolidate attributes pass. Convert the whole module to region
 // control-flow and run control-flow sinking. Convert the whole module back to
 // functional control-flow and prepare the attributes for export.
-void DefaultModuleGrapplerPipeline(PassManager& mgr) {
+void DefaultModuleGrapplerPipeline(PassManager& manager) {
   // TODO(chiahungduan): This will be the default pass for TFG pipeline, remove
   // this when the default pipeline has added it.
-  mgr.addPass(CreateConsolidateAttributesPass());
-  mgr.addPass(CreateFunctionalToRegionPass());
-  mgr.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
-  mgr.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
+  manager.addPass(CreateConsolidateAttributesPass());
+  manager.addPass(CreateFunctionalToRegionPass());
+  manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
+  manager.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.
-  mgr.addPass(CreatePrepareAttributesForExportPass());
+  manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
-void RemapperPassBuilder(PassManager& mgr) {
-  mgr.addPass(
+void RemapperPassBuilder(PassManager& manager) {
+  manager.addPass(
       CreateRemapperPass(/*enable_mkl_patterns=*/tensorflow::IsMKLEnabled()));
 }
 
