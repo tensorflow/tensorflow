@@ -105,9 +105,10 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
   const blas::PlanAndAlgorithms* plan_and_algorithms =
       BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
   if (!plan_and_algorithms) {
-    TF_ASSIGN_OR_RETURN(blas::BlasLtMatmulPlanParams plan_params,
-                        CreatePlanParams(batch_size, dtype, lhs_matrix,
-                                         rhs_matrix, output_matrix));
+    TF_ASSIGN_OR_RETURN(
+        blas::BlasLtMatmulPlanParams plan_params,
+        CreatePlanParams(batch_size, dtype, matmul_parameters.GetEpilogOp(),
+                         lhs_matrix, rhs_matrix, output_matrix));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<blas::IBlasLtMatmulPlan> plan,
                         stream->parent()->CreateBlasLtMatmulPlan(plan_params));
     TF_ASSIGN_OR_RETURN(
@@ -123,7 +124,7 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
 }
 
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
-    int64_t batch_size, tensorflow::DataType dtype,
+    int64_t batch_size, tensorflow::DataType dtype, blas::Epilogue epilog_op,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix) {
   blas::BlasLtMatmulPlanParams plan_params;
@@ -142,6 +143,7 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
 
   plan_params.pointer_mode = blas::PointerMode::kHost;
   plan_params.epilogue = blas::Epilogue::kDefault;
+  plan_params.epilogue = epilog_op;
 
   plan_params.transa = lhs_matrix.transpose;
   plan_params.transb = rhs_matrix.transpose;
