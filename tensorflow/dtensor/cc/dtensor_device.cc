@@ -1197,7 +1197,6 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     std::string* stateful_partitioned_call_name) {
   auto new_graph = absl::make_unique<Graph>(graph.flib_def());
   CopyGraph(graph, new_graph.get());
-  const Mesh& mesh = function.function_mesh;
   std::vector<Node*> arg_nodes;
   std::vector<Node*> retval_nodes;
   for (Node* node : new_graph->nodes()) {
@@ -1209,12 +1208,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
   for (Node* node : new_graph->nodes()) {
     if (node->op_def().name() != "StatefulPartitionedCall") continue;
 
-    std::string serialized_mesh;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kMeshAttr, &serialized_mesh));
-
-    TF_ASSIGN_OR_RETURN(const Mesh function_mesh,
-                        Mesh::FromString(serialized_mesh));
-    if (function_mesh != mesh) {
+    if (node->name() != function.node_to_execute->name()) {
       // Remove function call that does not match mesh specification and all
       // output retval nodes connected to the function call node.
       std::queue<Node*> nodes_to_remove;
@@ -1235,11 +1229,10 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
         nodes_to_remove.pop();
         new_graph->RemoveNode(n);
       }
-    } else {
-      *stateful_partitioned_call_name = node->name();
     }
   }
 
+  *stateful_partitioned_call_name = function.node_to_execute->name();
   VLOG(1) << "Selected call " << *stateful_partitioned_call_name;
 
   // Remove unused arg nodes in graph.
@@ -1301,9 +1294,6 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Graph> new_graph,
         SelectGraphToExecute(function, graph, &selected_call_node_name));
-    // Add the stateful partitioned call node as a control return as we need
-    // to process any control deps inside the inner function.
-    control_ret_names.emplace(selected_call_node_name);
     VLOG(4) << tensorflow::DumpGraphToFile("selected_graph_", *new_graph);
 
     // Add unique identifier based on the function we are executing to the
@@ -1316,8 +1306,12 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     function.translated_function_name =
         absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
     auto control_ret_node_names =
-        [&control_ret_names](const Node* node) -> absl::optional<std::string> {
-      if (control_ret_names.contains(node->name())) {
+        [&control_ret_names, &selected_call_node_name](
+            const Node* node) -> absl::optional<std::string> {
+      // Add the stateful partitioned call node as a control return as we need
+      // to process any control deps inside the inner function.
+      if (control_ret_names.contains(node->name()) ||
+          node->name() == selected_call_node_name) {
         return node->name();
       }
       return absl::nullopt;
