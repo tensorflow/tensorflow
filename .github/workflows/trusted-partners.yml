@@ -13,16 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 
-name: For CLs coming from trusted partners, Auto run tests and mark ready for pull.
+name: assign-partner-tags
 on:
   pull_request:
 
 jobs:
-  auto-assign-intel:
+  assign-partner-tags:
     runs-on: ubuntu-latest
     if: |
-      github.event.sender.type == 'User' &&
-      endsWith(github.event.sender.email, '@intel.com')
+      github.event.pull_request.draft == false &&
+      github.event.sender.type == 'User'
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -31,5 +31,15 @@ jobs:
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            const script = require('./.github/workflows/trusted_partners.js')
-            console.log(await script.intel({github, context}))
+            const script = require('./.github/workflows/trusted_partners.js');
+            const domain = await script.get_email_domain({github, context});
+            switch(domain) {
+            case "intel.com":
+              console.log(await script.intel({github, context}));
+              break;
+            case "google.com":
+              console.log("Googler. No action necessary");
+              break;
+            default:
+              console.log("Skip Trusted Partner Action");
+            }
