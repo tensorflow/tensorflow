@@ -20,6 +20,9 @@ on:
 jobs:
   assign-partner-tags:
     runs-on: ubuntu-latest
+    permissions:
+      # Needed to attach tags into the PR
+      pull-requests: write
     if: |
       github.event.pull_request.draft == false &&
       github.event.sender.type == 'User'
