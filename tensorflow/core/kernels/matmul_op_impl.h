@@ -609,7 +609,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
               ", k=", k, ", batch_size=", batch_size));
         }
       }
-      return;
     } else {
 #endif
       bool use_strided_batched =
@@ -978,7 +977,6 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
               ", k=", k, ", batch_size=", batch_size));
         }
       }
-      return;
     } else {
 #endif
       bool use_strided_batched =
