@@ -1416,6 +1416,8 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
         };
         break;
       case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      case mlir::mhlo::CustomCallApiVersion::
+          API_VERSION_STATUS_RETURNING_UNIFIED:
         using status_returning_call_type =
             void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
                      const char* /*opaque*/, size_t /*opaque_len*/,

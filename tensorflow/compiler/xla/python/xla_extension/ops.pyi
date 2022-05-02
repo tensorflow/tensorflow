@@ -58,6 +58,7 @@ class CustomCallSchedule(enum.IntEnum):
 class CustomCallApiVersion(enum.IntEnum):
   API_VERSION_ORIGINAL: int
   API_VERSION_STATUS_RETURNING: int
+  API_VERSION_STATUS_RETURNING_UNIFIED: int
 
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
