@@ -314,10 +314,6 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
   }
 }
 
-EventNode::EventNode(const EventNode& event_node)
-    : EventNode(event_node.plane_, event_node.raw_line_,
-                event_node.raw_event_) {}
-
 absl::optional<XStatVisitor> EventNode::GetContextStat(
     int64_t stat_type) const {
   std::queue<const EventNode*> nodes;
