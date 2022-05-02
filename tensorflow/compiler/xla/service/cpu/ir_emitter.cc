@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -2481,6 +2482,16 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
                      b_.getVoidTy());
       EmitEarlyReturnIfErrorStatus();
       break;
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED: {
+      absl::string_view opaque = typed_custom_call->opaque();
+      EmitCallToFunc(custom_call->custom_call_target(),
+                     {output_address_arg, operands_alloca,
+                      b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(opaque)),
+                      b_.getInt64(opaque.size()), GetStatusArgument()},
+                     b_.getVoidTy());
+      EmitEarlyReturnIfErrorStatus();
+      break;
+    }
     default:
       return InternalError(
           "Unknown custom-call API version enum value: %d (%s)",
