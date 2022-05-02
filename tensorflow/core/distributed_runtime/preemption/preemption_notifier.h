@@ -19,12 +19,15 @@ limitations under the License.
 #include <memory>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
 // Listens and propagates any task preemption notice.
 class PreemptionNotifier {
  public:
+  typedef std::function<void(absl::Time)> PreemptTimeCallback;
+
   virtual ~PreemptionNotifier() = default;
 
   // Returns a death time when preemption/termination will occur once the
@@ -35,11 +38,14 @@ class PreemptionNotifier {
   // Registers a callback that takes the death time as input once the listener
   // receives the preemption notification.
   // If no death time is specified, absl::Now() is specified as input.
-  virtual void WillBePreemptedAtAsync(
-      std::function<void(absl::Time)> callback) = 0;
+  virtual void WillBePreemptedAtAsync(PreemptTimeCallback callback) = 0;
+
+  // Once a death time has been set, Reset() must be called to listen to a
+  // second preemption notice.
+  virtual void Reset() = 0;
 };
 
-std::unique_ptr<PreemptionNotifier> CreatePreemptionNotifier();
+std::unique_ptr<PreemptionNotifier> CreatePreemptionNotifier(Env* env);
 
 }  // namespace tensorflow
 
