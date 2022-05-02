@@ -146,16 +146,19 @@ class GraphDefImporter {
   class ConversionState
       : public absl::flat_hash_map<StringPiece, std::unique_ptr<ResultInfo>> {
    public:
-    // Create a conversion state with a placeholder value.
-    explicit ConversionState(const OperationState &placeholder_state)
-        : placeholder_op_(OpBuilder(placeholder_state.getContext())
-                              .create(placeholder_state)),
+    // Create a conversion state with a placeholder value. Put the plaecholder
+    // in the block so that it is owned.
+    explicit ConversionState(Block *block,
+                             const OperationState &placeholder_state)
+        : placeholder_op_(
+              OpBuilder::atBlockBegin(block).create(placeholder_state)),
           placeholder_(placeholder_op_->getResult(0)) {}
-    // Destroy the placeholder op on destruction.
-    ~ConversionState() { placeholder_op_->erase(); }
 
     // Get the placeholder value.
     Value GetPlaceholder() { return placeholder_; }
+
+    // Finalize the conversion. The placeholder is destroyed.
+    void Finalize() { placeholder_op_->erase(); }
 
    private:
     // The placeholder operation.
@@ -255,7 +258,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     gradient_map.emplace(gradient.function_name(), gradient.gradient_func());
 
   // Convert the graph.
-  ConversionState s(placeholder_state_);
+  ConversionState s(&graph_op.nodes().front(), placeholder_state_);
   TF_RETURN_IF_ERROR(
       ConvertNodes(builder, s, graph.node(), &graph_op.nodes().front()));
 
@@ -455,7 +458,7 @@ Location GraphDefImporter::ConvertLocation(StringRef node_name,
 StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
                                                     ResultInfo *info) {
   if (id.output.empty()) {
-    if (id.index > info->data.size()) {
+    if (id.index >= info->data.size()) {
       return InvalidArgument("Result #", id.index, " of node '", id.node.str(),
                              "' is out of bounds");
     }
@@ -467,7 +470,7 @@ StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
     return InvalidArgument("Node '", id.node.str(), "' has no output called '",
                            id.output.str(), "'");
   }
-  if (id.index > it->second.size()) {
+  if (id.index >= it->second.size()) {
     return InvalidArgument("Result #", id.index, " of segment '", id.node.str(),
                            ":", id.output.str(), "' is out of bounds");
   }
@@ -548,7 +551,7 @@ Status GraphDefImporter::ConvertFunctionDef(
 
   // Iterate over the arguments again and map them. We have to add them first
   // otherwise the ranges will be invalidated.
-  ConversionState s(placeholder_state_);
+  ConversionState s(body, placeholder_state_);
   for (const auto &it : llvm::enumerate(signature.input_arg())) {
     s.emplace(
         it.value().name(),
@@ -657,6 +660,9 @@ Status GraphDefImporter::ConvertNodes(
         "\n");
     return InvalidArgument(std::move(os.str()));
   }
+  // The placeholder has no uses and should not acquire any more uses. Safely
+  // delete it from the IR.
+  s.Finalize();
 
   return Status::OK();
 }

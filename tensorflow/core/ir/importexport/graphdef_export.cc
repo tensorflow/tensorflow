@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Threading.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -71,8 +72,12 @@ namespace {
 // This class implements an exporter for TFG directly to GraphDef.
 class GraphDefExporter {
  public:
-  GraphDefExporter(TFGraphDialect *dialect, const OpRegistry &registry)
-      : ctx_(dialect->getContext()), dialect_(dialect), registry_(registry) {}
+  GraphDefExporter(TFGraphDialect *dialect, const OpRegistry &registry,
+                   SymbolTable &table)
+      : ctx_(dialect->getContext()),
+        dialect_(dialect),
+        registry_(registry),
+        table_(table) {}
 
   // Export a TFG module to GraphDef. The module may contain at most one GraphOp
   // and only GraphFuncOp otherwise.
@@ -98,8 +103,7 @@ class GraphDefExporter {
 
   // Get the name and index of an output segment to fully qualify result names.
   // This requires querying the op registry.
-  StatusOr<std::pair<const std::string &, unsigned>> GetOutputSegment(
-      OpResult result);
+  StatusOr<std::pair<StringRef, unsigned>> GetOutputSegment(OpResult result);
 
   // The current MLIR context.
   MLIRContext *ctx_;
@@ -107,6 +111,8 @@ class GraphDefExporter {
   TFGraphDialect *dialect_;
   // The TF op registry to use.
   const OpRegistry &registry_;
+  // The symbol table.
+  SymbolTable &table_;
 };
 }  // namespace
 
@@ -432,7 +438,7 @@ StatusOr<std::string> GraphDefExporter::GetValueName(Value value,
   name.reserve(name_attr.size() + segment.first.size() + 4);
   name.append(name_attr.data(), name_attr.size());
   name.push_back(':');
-  name.append(segment.first);
+  name.append(segment.first.data(), segment.first.size());
   name.push_back(':');
   absl::StrAppend(&name, segment.second);
   return name;
@@ -452,36 +458,50 @@ static StatusOr<unsigned> GetOutputSegmentSize(Operation *op,
   return InvalidArgument("Type attr not found: ", arg.number_attr());
 }
 
-StatusOr<std::pair<const std::string &, unsigned>>
-GraphDefExporter::GetOutputSegment(OpResult result) {
+StatusOr<std::pair<StringRef, unsigned>> GraphDefExporter::GetOutputSegment(
+    OpResult result) {
   // TODO(jeffniu): OpRegistry::LookUp should accept `string_view`.
   Operation *op = result.getOwner();
   std::string op_name = op->getName().stripDialect().str();
-  // Only functions need fully-qualified names, and functions cannot legacy call
-  // other functions.
-  const OpRegistrationData *op_reg_data = registry_.LookUp(op_name);
-  if (!op_reg_data)
-    return InvalidArgument("Op '", op_name, "' is not registered");
-  const OpDef &op_def = op_reg_data->op_def;
-
   unsigned result_idx = result.getResultNumber();
-  for (const OpDef::ArgDef &arg : op_def.output_arg()) {
-    TF_ASSIGN_OR_RETURN(unsigned size, GetOutputSegmentSize(op, arg));
-    if (size > result_idx)
-      return std::pair<const std::string &, unsigned>(arg.name(), result_idx);
-    result_idx -= size;
+  // Only edges in functions need to have fully-qualified names. Get the segment
+  // name using the op definition.
+  if (const OpRegistrationData *op_reg_data = registry_.LookUp(op_name)) {
+    const OpDef &op_def = op_reg_data->op_def;
+
+    for (const OpDef::ArgDef &arg : op_def.output_arg()) {
+      TF_ASSIGN_OR_RETURN(unsigned size, GetOutputSegmentSize(op, arg));
+      if (size > result_idx)
+        return std::pair<StringRef, unsigned>(arg.name(), result_idx);
+      result_idx -= size;
+    }
+    return InvalidArgument("Result #", result_idx, " of op '", op_name,
+                           "' is out of range");
   }
-  return InvalidArgument("Result #", result.getResultNumber(), " of op '",
-                         op->getName().stripDialect().str(),
-                         "' is out of range");
+  // Try to find a function for a legacy call. Function output segments have
+  // exactly one element each.
+  if (auto func = table_.lookup<GraphFuncOp>(op_name)) {
+    if (result_idx >= func.getNumResults()) {
+      return InvalidArgument("Result #", result_idx, " of op '", op_name,
+                             "' is out of range");
+    }
+    if (auto name = func.getResultAttrOfType<StringAttr>(
+            result_idx, dialect_->getTfgNameAttrIdentifier())) {
+      return std::pair<StringRef, unsigned>(name.getValue(), 0);
+    }
+    return InvalidArgument("Function '", op_name, "' result #", result_idx,
+                           "' is missing 'tfg.name'");
+  }
+  return InvalidArgument("Op '", op_name, "' is not registered");
 }
 
 // Convert a TFG graph directly to GraphDef.
 tensorflow::Status ConvertToGraphDef(ModuleOp module,
                                      tensorflow::GraphDef *graph) {
+  SymbolTable table(module);
   GraphDefExporter exporter(
       module.getContext()->getOrLoadDialect<TFGraphDialect>(),
-      *OpRegistry::Global());
+      *OpRegistry::Global(), table);
   return exporter.ExportToGraphDef(module, graph);
 }
 

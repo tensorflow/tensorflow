@@ -20,8 +20,10 @@ on:
 jobs:
   assign-partner-tags:
     runs-on: ubuntu-latest
+    # Add permissions needed to attach tags into the PR
     permissions:
-      # Needed to attach tags into the PR
+      issues: write
+      contents: write
       pull-requests: write
     if: |
       github.event.pull_request.draft == false &&
