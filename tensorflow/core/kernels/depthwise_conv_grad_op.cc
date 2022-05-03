@@ -74,32 +74,28 @@ typedef Eigen::GpuDevice GPUDevice;
       errors::InvalidArgument(                                                 \
           label, ": input and out_backprop must have the same batch size"));   \
   const int64_t input_rows_raw = GetTensorDim(input_shape, data_format_, 'H'); \
-  OP_REQUIRES(                                                                 \
-      context,                                                                 \
-      FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),      \
-      errors::InvalidArgument("Input rows too large"));                        \
+  OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,                         \
+                                       std::numeric_limits<int32>::max()),     \
+              errors::InvalidArgument("Input rows too large"));                \
   const int32 input_rows = static_cast<int32>(input_rows_raw);                 \
   const int64_t input_cols_raw = GetTensorDim(input_shape, data_format_, 'W'); \
-  OP_REQUIRES(                                                                 \
-      context,                                                                 \
-      FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),      \
-      errors::InvalidArgument("Input cols too large"));                        \
+  OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,                         \
+                                       std::numeric_limits<int32>::max()),     \
+              errors::InvalidArgument("Input cols too large"));                \
   const int32 input_cols = static_cast<int32>(input_cols_raw);                 \
   const int64_t filter_rows = filter_shape.dim_size(0);                        \
   const int64_t filter_cols = filter_shape.dim_size(1);                        \
   const int64_t output_rows_raw =                                              \
       GetTensorDim(out_backprop.shape(), data_format_, 'H');                   \
-  OP_REQUIRES(                                                                 \
-      context,                                                                 \
-      FastBoundsCheck(output_rows_raw, std::numeric_limits<int32>::max()),     \
-      errors::InvalidArgument("Output rows too large"));                       \
+  OP_REQUIRES(context, FastBoundsCheck(output_rows_raw,                        \
+                                       std::numeric_limits<int32>::max()),     \
+              errors::InvalidArgument("Output rows too large"));               \
   const int32 output_rows = static_cast<int32>(output_rows_raw);               \
   const int64_t output_cols_raw =                                              \
       GetTensorDim(out_backprop.shape(), data_format_, 'W');                   \
-  OP_REQUIRES(                                                                 \
-      context,                                                                 \
-      FastBoundsCheck(output_cols_raw, std::numeric_limits<int32>::max()),     \
-      errors::InvalidArgument("Output cols too large"));                       \
+  OP_REQUIRES(context, FastBoundsCheck(output_cols_raw,                        \
+                                       std::numeric_limits<int32>::max()),     \
+              errors::InvalidArgument("Output cols too large"));               \
   const int32 output_cols = static_cast<int32>(output_cols_raw);               \
   const int64_t in_depth = GetTensorDim(input_shape, data_format_, 'C');       \
   OP_REQUIRES(context, in_depth == filter_shape.dim_size(2),                   \
@@ -108,10 +104,9 @@ typedef Eigen::GpuDevice GPUDevice;
   const int64_t depth_multiplier = filter_shape.dim_size(3);                   \
   const int64_t out_depth_raw =                                                \
       GetTensorDim(out_backprop.shape(), data_format_, 'C');                   \
-  OP_REQUIRES(                                                                 \
-      context,                                                                 \
-      FastBoundsCheck(out_depth_raw, std::numeric_limits<int32>::max()),       \
-      errors::InvalidArgument("Output depth too large"));                      \
+  OP_REQUIRES(context, FastBoundsCheck(out_depth_raw,                          \
+                                       std::numeric_limits<int32>::max()),     \
+              errors::InvalidArgument("Output depth too large"));              \
   const int32 out_depth = static_cast<int32>(out_depth_raw);                   \
   OP_REQUIRES(                                                                 \
       context, (depth_multiplier * in_depth) == out_depth,                     \
@@ -419,7 +414,7 @@ struct LaunchDepthwiseConvBackpropInputOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop input.
     auto shard = [&ctx, &args, &out_backprop, &filter_data, &in_backprop](
-                     int64_t start, int64_t limit) {
+        int64_t start, int64_t limit) {
       static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
       const int64_t input_image_size =
@@ -641,11 +636,11 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
-                     (in_depth == 1 ||
-                      (use_cudnn_grouped_conv_ &&
-                       ShouldCudnnGroupedConvolutionBeUsed(
-                           filter_rows, filter_cols, in_depth, out_depth)));
+    bool use_cudnn =
+        std::is_same<Device, GPUDevice>::value &&
+        (in_depth == 1 || (use_cudnn_grouped_conv_ &&
+                           ShouldCudnnGroupedConvolutionBeUsed(
+                               filter_rows, filter_cols, in_depth, out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -896,7 +891,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop filter.
     auto shard = [&ctx, &args, &out_backprop, &input, &output_buffer_data](
-                     int64_t start, int64_t limit) {
+        int64_t start, int64_t limit) {
       static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
       const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
       const int64_t padded_out_depth_size =

@@ -191,7 +191,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d output.
     auto shard = [&ctx, &args, &input, &filter_data, &output, data_format](
-                     int64_t start, int64_t limit) {
+        int64_t start, int64_t limit) {
       static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
       const int64_t input_image_size =
           args.in_rows * args.in_cols * args.in_depth;
@@ -343,10 +343,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
     // in_depth for input and filter must match.
     const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, in_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", in_depth,
-                    " vs ", filter.dim_size(2)));
+    OP_REQUIRES(
+        context, in_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                in_depth, " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
     const int32_t depth_multiplier = filter.dim_size(3);
@@ -355,18 +355,16 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     const int32_t out_depth = in_depth * depth_multiplier;
 
     const int64_t input_rows_raw = GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int32>::max()),
+                errors::InvalidArgument("Input rows too large"));
     const int32_t input_rows = static_cast<int32>(input_rows_raw);
     const int32_t filter_rows = filter.dim_size(0);
 
     const int64_t input_cols_raw = GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int32>::max()),
+                errors::InvalidArgument("Input cols too large"));
     const int32_t input_cols = static_cast<int32>(input_cols_raw);
     const int32_t filter_cols = filter.dim_size(1);
 
@@ -390,10 +388,9 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
     OP_REQUIRES(
-        context,
-        (!std::is_same<Device, GPUDevice>::value ||
-         FastBoundsCheck(out_shape.num_elements(),
-                         std::numeric_limits<int32>::max())),
+        context, (!std::is_same<Device, GPUDevice>::value ||
+                  FastBoundsCheck(out_shape.num_elements(),
+                                  std::numeric_limits<int32>::max())),
         errors::InvalidArgument("Output elements too large for GPU kernel"));
 
     Tensor* output = nullptr;
@@ -407,11 +404,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // TODO(csigg): Have autotune decide if native is faster than cuDNN.
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
-                     (in_depth == 1 ||
-                      (use_cudnn_grouped_conv_ &&
-                       ShouldCudnnGroupedConvolutionBeUsed(
-                           filter_rows, filter_cols, in_depth, out_depth)));
+    bool use_cudnn =
+        std::is_same<Device, GPUDevice>::value &&
+        (in_depth == 1 || (use_cudnn_grouped_conv_ &&
+                           ShouldCudnnGroupedConvolutionBeUsed(
+                               filter_rows, filter_cols, in_depth, out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNative: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
