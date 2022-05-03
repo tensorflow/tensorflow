@@ -469,7 +469,11 @@ void TF_AddNVariant(TF_OpKernelContext* ctx,
                                 ::tensorflow::OpKernelContext* cc_ctx,
                                 const Variant& a, const Variant& b,
                                 Variant* out) {
-    DCHECK_NE(out, nullptr);
+    if (out == nullptr) {
+      return ::tensorflow::errors::Internal(
+          "The output variant hasn't been initialized");
+    }
+
     if (a.TypeId() != b.TypeId()) {
       return ::tensorflow::errors::Internal(
           "BinaryOpVariants: Variants a and b have different "
@@ -556,7 +560,10 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
     return cc_ctx->status();
   };
 
-  DCHECK_NE(out, nullptr);
+  if (out == nullptr) {
+    return ::tensorflow::errors::Internal(
+        "The output variant hasn't been initialized");
+  }
 
   if (input.TypeId() ==
       tensorflow::TypeIndex::Make<::tensorflow::TensorList>()) {
