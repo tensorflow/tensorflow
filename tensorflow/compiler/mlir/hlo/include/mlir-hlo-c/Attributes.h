@@ -14,8 +14,6 @@ limitations under the License.
 
 #include <sys/types.h>
 
-#include <string>
-
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
 
@@ -175,16 +173,16 @@ mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(MlirAttribute attr,
 //
 // Creates a new ComparisonDirection attribute with the given
 // 'direction' string parameter.
-MLIR_CAPI_EXPORTED MlirAttribute mlirMhloComparisonDirectionAttrGet(
-    MlirContext ctx, const std::string &direction);
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloComparisonDirectionAttrGet(MlirContext ctx, const char *direction);
 
 // Returns true if the given attribute is a ComparisonDirection attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAComparisonDirectionAttr(
     MlirAttribute attr);
 
 // Returns the direction string associated with ComparisonDirection attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloComparisonDirectionAttrGetDirection(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloComparisonDirectionAttrGetDirection(MlirAttribute attr);
 
 //
 // ComparisonTypeAttr.
@@ -192,44 +190,44 @@ MLIR_CAPI_EXPORTED std::string mlirMhloComparisonDirectionAttrGetDirection(
 // Creates a new ComparisonType attribute with the given 'type' string
 // parameter.
 MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloComparisonTypeAttrGet(MlirContext ctx, const std::string &type);
+mlirMhloComparisonTypeAttrGet(MlirContext ctx, const char *type);
 
 // Returns true if the given attribute is a ComparisonType attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAComparisonTypeAttr(
     MlirAttribute attr);
 
 // Returns the type string associated with ComparisonType attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloComparisonTypeAttrGetType(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloComparisonTypeAttrGetType(MlirAttribute attr);
 
 //
 // PrecisionAttr.
 //
 // Creates a new Precision attribute with the given 'type' string
 // parameter.
-MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloPrecisionAttrGet(MlirContext ctx, const std::string &type);
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx,
+                                                          const char *type);
 
 // Returns true if the given attribute is a Precision attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAPrecisionAttr(MlirAttribute attr);
 
 // Returns the type string associated with Precision attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloPrecisionAttrGetPrecision(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloPrecisionAttrGetPrecision(MlirAttribute attr);
 
 //
 // FftTypeAttr.
 //
 // Creates a new FftType attribute with the given 'type' string parameter.
-MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloFftTypeAttrGet(MlirContext ctx, const std::string &type);
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx,
+                                                        const char *type);
 
 // Returns true if the given attribute is a FftType attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFftTypeAttr(MlirAttribute attr);
 
 // Returns the type string associated with FftType attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloFftTypeAttrGetFftType(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloFftTypeAttrGetFftType(MlirAttribute attr);
 
 //
 // DequantizeModeAttr.
@@ -237,43 +235,43 @@ MLIR_CAPI_EXPORTED std::string mlirMhloFftTypeAttrGetFftType(
 // Creates a new DequantizeMode attribute with the given 'mode' string
 // parameter.
 MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloDequantizeModeAttrGet(MlirContext ctx, const std::string &mode);
+mlirMhloDequantizeModeAttrGet(MlirContext ctx, const char *mode);
 
 // Returns true if the given attribute is a DequantizeMode attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsADequantizeModeAttr(
     MlirAttribute attr);
 
 // Returns the mode string associated with DequantizeMode attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloDequantizeModeAttrGetDequantizeMode(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloDequantizeModeAttrGetDequantizeMode(MlirAttribute attr);
 
 //
 // TransposeAttr.
 //
 // Creates a new Transpose attribute with the given 'type' string parameter.
-MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloTransposeAttrGet(MlirContext ctx, const std::string &type);
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx,
+                                                          const char *type);
 
 // Returns true if the given attribute is a Transpose attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsATransposeAttr(MlirAttribute attr);
 
 // Returns the type string associated with Transpose attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloTransposeAttrGetTranspose(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloTransposeAttrGetTranspose(MlirAttribute attr);
 
 //
 // FusionKindAttr.
 //
 // Creates a new FusionKind attribute with the given 'kind' string parameter.
-MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloFusionKindAttrGet(MlirContext ctx, const std::string &kind);
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx,
+                                                           const char *kind);
 
 // Returns true if the given attribute is a FusionKind attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr);
 
 // Returns the fusion-kind string associated with FusionKind attribute.
-MLIR_CAPI_EXPORTED std::string mlirMhloFusionKindAttrGetFusionKind(
-    MlirAttribute attr);
+MLIR_CAPI_EXPORTED const char *
+mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr);
 
 #ifdef __cplusplus
 }

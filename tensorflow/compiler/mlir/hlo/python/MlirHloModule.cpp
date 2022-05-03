@@ -322,7 +322,8 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &direction, MlirContext ctx) {
-            return cls(mlirMhloComparisonDirectionAttrGet(ctx, direction));
+            return cls(
+                mlirMhloComparisonDirectionAttrGet(ctx, direction.c_str()));
           },
           py::arg("cls"), py::arg("comparison_direction"),
           py::arg("context") = py::none(),
@@ -336,7 +337,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloComparisonTypeAttrGet(ctx, type));
+            return cls(mlirMhloComparisonTypeAttrGet(ctx, type.c_str()));
           },
           py::arg("cls"), py::arg("comparison_type"),
           py::arg("context") = py::none(),
@@ -350,7 +351,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloPrecisionAttrGet(ctx, type));
+            return cls(mlirMhloPrecisionAttrGet(ctx, type.c_str()));
           },
           py::arg("cls"), py::arg("precision_type"),
           py::arg("context") = py::none(),
@@ -364,7 +365,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloFftTypeAttrGet(ctx, type));
+            return cls(mlirMhloFftTypeAttrGet(ctx, type.c_str()));
           },
           py::arg("cls"), py::arg("fft_type"), py::arg("context") = py::none(),
           "Creates a FftType attribute with the given type.")
@@ -377,7 +378,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloDequantizeModeAttrGet(ctx, type));
+            return cls(mlirMhloDequantizeModeAttrGet(ctx, type.c_str()));
           },
           py::arg("cls"), py::arg("dequantize_mode"),
           py::arg("context") = py::none(),
@@ -391,7 +392,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloTransposeAttrGet(ctx, type));
+            return cls(mlirMhloTransposeAttrGet(ctx, type.c_str()));
           },
           py::arg("cls"), py::arg("transpose_type"),
           py::arg("context") = py::none(),
@@ -405,7 +406,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &kind, MlirContext ctx) {
-            return cls(mlirMhloFusionKindAttrGet(ctx, kind));
+            return cls(mlirMhloFusionKindAttrGet(ctx, kind.c_str()));
           },
           py::arg("cls"), py::arg("fusion_kind"),
           py::arg("context") = py::none(),
