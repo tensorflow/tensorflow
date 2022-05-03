@@ -2623,6 +2623,33 @@ Status HloInstruction::ReplaceUseWithDifferentShape(
   return Status::OK();
 }
 
+Status HloInstruction::ReplaceUseWith(HloInstruction* user, int operand_number,
+                                      HloInstruction* new_producer) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << "this shape: " << ShapeUtil::HumanString(shape())
+      << ", replacement shape: "
+      << ShapeUtil::HumanString(new_producer->shape());
+  return ReplaceUseWithDifferentShape(user, operand_number, new_producer);
+}
+
+Status HloInstruction::ReplaceUseWithDifferentShape(
+    HloInstruction* user, int operand_number, HloInstruction* new_producer) {
+  VLOG(3) << "Replacing operand " << operand_number << " of " << name()
+          << " in " << user->name() << " with " << new_producer->name();
+
+  if (absl::c_count(user->operands_, this) == 1) {
+    RemoveUser(user);
+  }
+
+  TF_RET_CHECK(user->operand(operand_number) == this)
+      << "Expected operand " << operand_number << " of " << user->ToString()
+      << " to be equal to " << ToString();
+  user->operands_[operand_number] = new_producer;
+  new_producer->AddUser(user);
+  return Status::OK();
+}
+
 Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
                                           HloInstruction* new_operand) {
   auto old_operand = operand(operand_num);

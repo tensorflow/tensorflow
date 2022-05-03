@@ -249,7 +249,7 @@ mlir::LogicalResult HandleCompilationOps(
     }
   }
 
-  // Identify TPUCompileOp to to host side mesh.
+  // Identify TPUCompileOp to host side mesh.
   llvm::SmallVector<mlir::TF::_TPUCompileMlirOp, 4> compile_ops;
   tpu_function.walk(
       [&](mlir::TF::_TPUCompileMlirOp op) { compile_ops.emplace_back(op); });

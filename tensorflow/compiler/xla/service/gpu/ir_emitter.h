@@ -148,7 +148,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // atomicAdd(output_address, *source_address).
   Status EmitAtomicOperationForNestedComputation(
       const HloComputation& nested_computation, llvm::Value* output_address,
-      llvm::Value* source_address);
+      llvm::Value* source_address, llvm::Type* element_type);
 
   GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
     return std::bind(&IrEmitter::ComputeNestedElement, this,
@@ -195,7 +195,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // small data types.
   Status EmitAtomicOperationUsingCAS(const HloComputation& computation,
                                      llvm::Value* output_address,
-                                     llvm::Value* source_address);
+                                     llvm::Value* source_address,
+                                     llvm::Type* element_type);
 
   // A helper method for HandleSort(). It adds the inner comparison loop where
   // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.

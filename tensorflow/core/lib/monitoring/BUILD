@@ -50,6 +50,7 @@ cc_library(
     deps = [
         ":cell_reader-inl",
         ":collected_metrics",
+        ":metric_def",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -63,6 +64,7 @@ cc_library(
     deps = [
         ":collected_metrics",
         ":collection_registry",
+        ":metric_def",
         ":test_utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

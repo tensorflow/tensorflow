@@ -543,6 +543,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:string_ops",
@@ -1448,6 +1449,8 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:extension_type",
         "@absl_py//absl/testing:parameterized",
     ],
 )

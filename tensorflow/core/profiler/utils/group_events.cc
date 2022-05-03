@@ -48,7 +48,6 @@ void CreateStatMetadata(XPlane* plane) {
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kIsEager));
-  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kSelectedGroupIds));
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
@@ -102,14 +101,6 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
   }
 }
 
-std::unique_ptr<XEvent> CreateVirtualEvent(const XStat& step_id_stat,
-                                           const XStat& iter_num_stat) {
-  auto virtual_event = absl::make_unique<XEvent>();
-  *virtual_event->add_stats() = step_id_stat;
-  *virtual_event->add_stats() = iter_num_stat;
-  return virtual_event;
-}
-
 bool HasFunctionRun(EventNode* event_node) {
   for (EventNode* child : event_node->GetChildren()) {
     if (child->GetEventVisitor().Type() == HostEventType::kFunctionRun) {
@@ -158,28 +149,6 @@ absl::optional<ContextTypeAndId> GetLegacyProducerContext(
       case HostEventType::kSessionRun:
       case HostEventType::kRunGraph: {
         absl::optional<XStatVisitor> stat = event.GetStat(StatType::kStepId);
-        if (stat.has_value()) {
-          type_and_id = {static_cast<int>(ContextType::kTfExecutor),
-                         static_cast<uint64>(stat->IntValue())};
-        }
-        break;
-      }
-      case HostEventType::kCallOp:
-      case HostEventType::kNumericalGradientOpEvalRight:
-      case HostEventType::kNumericalGradientOpEvalLeft:
-      case HostEventType::kSymbolicGradientOp:
-      case HostEventType::kRemoteCallOp:
-      case HostEventType::kIfOp:
-      case HostEventType::kCaseOp:
-      case HostEventType::kPartitionedCallOp: {
-        // TODO(b/154510598): Fix handling of the loop ops.
-        // case HostEventType::kWhileOpEvalCond:
-        // case HostEventType::kWhileOpStartBody:
-        // case HostEventType::kForOp:
-        // case HostEventType::kParallelForOp:
-        // case HostEventType::kForeverOp:
-        absl::optional<XStatVisitor> stat =
-            event.GetStat(StatType::kFunctionStepId);
         if (stat.has_value()) {
           type_and_id = {static_cast<int>(ContextType::kTfExecutor),
                          static_cast<uint64>(stat->IntValue())};
@@ -345,10 +314,6 @@ EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
   }
 }
 
-EventNode::EventNode(const EventNode& event_node)
-    : EventNode(event_node.plane_, event_node.raw_line_,
-                event_node.raw_event_) {}
-
 absl::optional<XStatVisitor> EventNode::GetContextStat(
     int64_t stat_type) const {
   std::queue<const EventNode*> nodes;
@@ -427,22 +392,6 @@ void EventNode::PropagateGroupId(int64_t group_id,
 void EventNode::AddStepName(absl::string_view step_name) {
   FindOrAddStatByType(StatType::kStepName)
       ->set_str_value(step_name.data(), step_name.size());
-}
-
-void EventNode::AddSelectedGroupIds(
-    const GroupMetadataMap& group_metadata_map) {
-  const auto& group_metadata = group_metadata_map.at(*group_id_);
-  std::vector<int64_t> group_ids;
-  group_ids.reserve(1 + group_metadata.parents.size() +
-                    group_metadata.children.size());
-  group_ids.push_back(*group_id_);
-  group_ids.insert(group_ids.end(), group_metadata.parents.begin(),
-                   group_metadata.parents.end());
-  group_ids.insert(group_ids.end(), group_metadata.children.begin(),
-                   group_metadata.children.end());
-  FindOrAddStatByType(StatType::kSelectedGroupIds)
-      ->set_str_value(
-          absl::StrCat("?selected_group_ids=", absl::StrJoin(group_ids, ",")));
 }
 
 void EventNode::SetIsEager(bool is_eager) {

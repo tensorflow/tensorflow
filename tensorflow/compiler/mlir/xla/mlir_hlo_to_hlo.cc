@@ -705,19 +705,19 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
 }
 
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
+  auto& value_map = *ctx.values;
   xla::XlaOp operand;
-  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
-  TensorType operandType = op.operand().getType().cast<TensorType>();
-  TensorType resultType = op.getType();
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  TensorType operand_type = op.operand().getType().cast<TensorType>();
+  TensorType result_type = op.getType();
+  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
     return failure();
-  auto allGatherDim = op.all_gather_dim();
-  int64_t shardCount = resultType.getDimSize(allGatherDim) /
-                       operandType.getDimSize(allGatherDim);
-  valueMap[op] = xla::AllGather(operand, allGatherDim, shardCount,
-                                Convert_replica_groups(op.replica_groups()),
-                                Convert_channel_handle(op.channel_handle()));
+  auto all_gather_dim = op.all_gather_dim();
+  int64_t shard_count = result_type.getDimSize(all_gather_dim) /
+                        operand_type.getDimSize(all_gather_dim);
+  value_map[op] = xla::AllGather(operand, all_gather_dim, shard_count,
+                                 Convert_replica_groups(op.replica_groups()),
+                                 Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -739,16 +739,16 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
+  auto& value_map = *ctx.values;
   xla::XlaOp operand;
-  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
-  TensorType operandType = op.operand().getType().cast<TensorType>();
-  TensorType resultType = op.getType();
-  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  TensorType operand_type = op.operand().getType().cast<TensorType>();
+  TensorType result_type = op.getType();
+  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
     return failure();
-  auto scatterDim = op.scatter_dimension();
-  int64_t shardCount =
-      operandType.getDimSize(scatterDim) / resultType.getDimSize(scatterDim);
+  auto scatter_dim = op.scatter_dimension();
+  int64_t shard_count = operand_type.getDimSize(scatter_dim) /
+                        result_type.getDimSize(scatter_dim);
 
   xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
@@ -756,8 +756,8 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  valueMap[op] =
-      xla::ReduceScatter(operand, computation, scatterDim, shardCount,
+  value_map[op] =
+      xla::ReduceScatter(operand, computation, scatter_dim, shard_count,
                          Convert_replica_groups(op.replica_groups()),
                          Convert_channel_handle(op.channel_handle()));
   return success();
@@ -1085,28 +1085,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       /*literal=*/nullptr,
       /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
-  return success();
-}
-
-LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
-  xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
-                            ConvertAPFloat(op.max_range()));
-  auto& value_map = *ctx.values;
-  xla::XlaOp input;
-  if (failed(GetXlaOp(op.input(), value_map, &input, op))) return failure();
-
-  auto casted = xla::ConvertElementType(input, xla::U32);
-  if (op.is_16bits()) {
-    value_map[op] = xla::Dequantize<uint16>(
-        casted, range,
-        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
-        op.transpose_output());
-  } else {
-    value_map[op] = xla::Dequantize<uint8>(
-        casted, range,
-        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
-        op.transpose_output());
-  }
   return success();
 }
 
@@ -1677,6 +1655,18 @@ LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
   return failure();
 }
 

@@ -1091,10 +1091,10 @@ bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
 //
 // Where $dimensions is of size 1 and $dimensions[0] = 2.
 //
-// In general matches an Iota with multiple leading dimensions of size 1 added
-// through a reshape so that $dimensions[0] is the trailing dimension of the
-// reshaped tensor ($dimensions is of size 1).
+// In general matches a 1-D Iota with multiple dimensions of size 1 added
+// through a reshape.
 bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
+  if (dimensions.getNumElements() != 1) return false;
   auto reshape_op = dyn_cast_or_null<mhlo::ReshapeOp>(iota.getDefiningOp());
   if (!reshape_op) return false;
   auto operand_type =
@@ -1102,24 +1102,21 @@ bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
   if (!operand_type || !operand_type.hasStaticShape()) return false;
   auto reshape_type = reshape_op.getType().cast<RankedTensorType>();
 
-  // Allow multiple leading dims of size 1 to be added.
-  int64_t extra_reshape_dims = reshape_type.getRank() - operand_type.getRank();
-  if (extra_reshape_dims < 0) return false;
-  for (int64_t i = 0; i < extra_reshape_dims; ++i) {
-    if (reshape_type.getDimSize(i) != 1) return false;
-  }
-  // Remaining dims must match
-  for (int64_t i = 0; i < operand_type.getRank(); ++i) {
-    if (operand_type.getDimSize(i) !=
-        reshape_type.getDimSize(i + extra_reshape_dims))
-      return false;
-  }
+  // Reshape can take a 1-D iota input and add extra dims of size one.
+  if (operand_type.getRank() != 1) return false;
+  if (!dyn_cast_or_null<mhlo::IotaOp>(reshape_op.operand().getDefiningOp()))
+    return false;
 
-  auto iota_op =
-      dyn_cast_or_null<mhlo::IotaOp>(reshape_op.operand().getDefiningOp());
-  if (!iota_op || dimensions.getNumElements() != 1) return false;
-  auto dim = *dimensions.value_begin<APInt>();
-  return dim == iota_op.iota_dimension() + extra_reshape_dims;
+  int64_t iota_dim = (*dimensions.value_begin<APInt>()).getSExtValue();
+  for (int64_t i = 0, e = reshape_type.getRank(); i < e; ++i) {
+    if (i == iota_dim) {
+      if (reshape_type.getDimSize(i) != operand_type.getDimSize(0))
+        return false;
+    } else if (reshape_type.getDimSize(i) != 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // It matches %iota generated from the following mlir codes:

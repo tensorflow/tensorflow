@@ -88,20 +88,12 @@ enum HostEventType {
   kTfDataCapturedFunctionRunWithBorrowedArgs,
   kTfDataCapturedFunctionRunInstantiated,
   kTfDataCapturedFunctionRunAsync,
-  // Functional ops.
-  kCallOp,
+  // Loop ops.
   kParallelForOp,
   kForeverOp,
-  kNumericalGradientOpEvalRight,
-  kNumericalGradientOpEvalLeft,
-  kSymbolicGradientOp,
-  kRemoteCallOp,
-  kIfOp,
-  kCaseOp,
   kWhileOpEvalCond,
   kWhileOpStartBody,
   kForOp,
-  kPartitionedCallOp,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
@@ -175,8 +167,6 @@ enum StatType {
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
-  kParentStepId,
-  kFunctionStepId,
   kDeviceOrdinal,
   kChipOrdinal,
   kNodeOrdinal,
@@ -244,7 +234,6 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
-  kSelectedGroupIds,
   kSourceInfo,
   kModelName,
   kModelVersion,

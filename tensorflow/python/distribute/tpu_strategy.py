@@ -1342,7 +1342,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            f"`reduce_op`={reduce_op} is not supported. Currently we only "
             "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 

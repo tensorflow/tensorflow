@@ -116,13 +116,11 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 
   tfrt::TensorShape shape(dims);
-  MemrefDesc desc;
-  desc.dtype = dtype;
-  desc.data = tensor.data();
-  desc.offset = 0;
-  shape.GetDimensions(&desc.sizes);
-  shape.GetStrides(&desc.strides);
-  return desc;
+  return MemrefDesc(shape.GetRank(), dtype, tensor.data(), 0,
+                    [&](auto sizes, auto strides) {
+                      shape.GetDimensions(sizes);
+                      shape.GetStrides(strides);
+                    });
 }
 
 std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,

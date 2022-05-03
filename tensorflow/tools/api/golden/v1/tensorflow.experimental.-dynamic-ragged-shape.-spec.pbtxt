@@ -27,7 +27,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'_row_partitions\', \'_inner_shape\', \'_static_inner_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'row_partitions\', \'static_inner_shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_value"
@@ -48,5 +48,9 @@ tf_class {
   member_method {
     name: "most_specific_compatible_type"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_dtype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
 }

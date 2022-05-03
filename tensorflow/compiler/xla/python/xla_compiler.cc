@@ -461,7 +461,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
-  hlo_module_class
+  hlo_module_class.def_property_readonly("name", &HloModule::name)
       .def(
           "to_string",
           static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(

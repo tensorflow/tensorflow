@@ -238,6 +238,7 @@ class IrArray {
   IrArray& operator=(const IrArray& other) = default;
 
   llvm::Value* GetBasePointer() const { return base_ptr_; }
+  llvm::Type* GetBasePointeeType() const { return pointee_type_; }
   llvm::Type* GetElementLlvmType() const { return element_type_; }
 
   const Shape& GetShape() const { return shape_; }

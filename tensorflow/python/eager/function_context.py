@@ -121,12 +121,10 @@ def _enclosing_xla_context():
 
 
 def make_cache_key(
-    args,
-    include_tensor_ranks_only: bool = False
+    args
 ) -> Tuple[function_cache.FunctionCacheKey, trace_type.WeakrefDeletionObserver]:
   """Computes the cache key given the function arguments."""
-  signature_context = trace_type.InternalTracingContext(
-      include_tensor_ranks_only)
+  signature_context = trace_type.InternalTracingContext()
   function_signature = trace_type.from_object(
       args, signature_context)
   return function_cache.FunctionCacheKey(

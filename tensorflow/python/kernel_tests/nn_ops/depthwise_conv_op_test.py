@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,25 +14,9 @@
 # ==============================================================================
 """Functional tests for depthwise convolutional operations."""
 
-import contextlib
-
-import numpy as np
-
-from tensorflow.python.eager import backprop
-from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import nn_impl
-from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import random_ops
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.kernel_tests.nn_ops import depthwise_conv_op_base
 from tensorflow.python.platform import test
+<<<<<<< HEAD
 from tensorflow.python.platform import tf_logging
 
 
@@ -1164,7 +1148,10 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
     data_format = "NHWC"  # CPU does not implement NCHW version of op
     for dtype in [dtypes.float32, dtypes.float64]:
       self._testBackwardCase(data_format=data_format, dtype=dtype)
+=======
+>>>>>>> upstream_master
 
+DepthwiseConv2DTest = depthwise_conv_op_base.DepthwiseConv2DBase
 
 if __name__ == "__main__":
   test.main()

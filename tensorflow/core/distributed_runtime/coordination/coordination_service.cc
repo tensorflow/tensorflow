@@ -474,8 +474,6 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
 }
 
 void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
-  // Remove access to singleton before clearing internal state.
-  *GetCoordinationServiceInstancePtr() = nullptr;
   {
     mutex_lock l(kv_mu_);
     get_cb_.clear();

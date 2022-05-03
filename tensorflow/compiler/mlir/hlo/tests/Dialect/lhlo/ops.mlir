@@ -392,7 +392,7 @@ func.func @and_memref(%lhs: memref<10xi1>, %rhs: memref<10xi1>, %out: memref<10x
 // -----
 
 func.func @and_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
   "lmhlo.and"(%lhs, %rhs, %out) : (memref<10xf32>, memref<10xf32>, memref<10xf32>) -> ()
   func.return
 }
@@ -416,7 +416,7 @@ func.func @or_memref(%lhs: memref<10xi1>, %rhs: memref<10xi1>, %out: memref<10xi
 // -----
 
 func.func @or_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
   "lmhlo.or"(%lhs, %rhs, %out) : (memref<10xf32>, memref<10xf32>, memref<10xf32>) -> ()
   func.return
 }
@@ -440,7 +440,7 @@ func.func @xor_memref(%lhs: memref<10xi1>, %rhs: memref<10xi1>, %out: memref<10x
 // -----
 
 func.func @xor_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
   "lmhlo.xor"(%lhs, %rhs, %out) : (memref<10xf32>, memref<10xf32>, memref<10xf32>) -> ()
   func.return
 }
@@ -674,7 +674,7 @@ func.func @not_memrefs(%arg0: memref<1xi1>, %arg_out: memref<1xi1>) -> () {
 // -----
 
 func.func @not_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or pred (AKA boolean or 1-bit integer) values}}
   "lmhlo.not"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -690,7 +690,7 @@ func.func @popcnt_memrefs(%arg0: memref<1xi32>, %arg_out: memref<1xi32>) -> () {
 // -----
 
 func.func @popcnt_memrefs(%arg0: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values}}
   "lmhlo.popcnt"(%arg0, %arg_out) : (memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -730,7 +730,7 @@ func.func @shift_left_memrefs(%arg0: memref<1xi32>, %arg1: memref<1xi32>, %arg_o
 // -----
 
 func.func @shift_left_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values}}
   "lmhlo.shift_left"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -746,7 +746,7 @@ func.func @shift_right_arithmetic_memrefs(%arg0: memref<1xi32>, %arg1: memref<1x
 // -----
 
 func.func @shift_right_arithmetic_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values}}
   "lmhlo.shift_right_arithmetic"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -762,7 +762,7 @@ func.func @shift_right_logical_memrefs(%arg0: memref<1xi32>, %arg1: memref<1xi32
 // -----
 
 func.func @shift_right_logical_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %arg_out: memref<1xf32>) -> () {
-  // expected-error @+1 {{must be memref of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values}}
+  // expected-error @+1 {{must be memref of 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer values}}
   "lmhlo.shift_right_logical"(%arg0, %arg1, %arg_out) : (memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }

@@ -151,8 +151,7 @@ class GpuExecutable : public Executable {
       Shape* output_shape, int buffer_param_offset = 0);
 
   // Returns an Executable that is loaded from a BEF. This BEF must have entry
-  // point information recorded by use of the tfrt::gpu::setEntryPoint()
-  // function.
+  // point information set using the 'tfrt-set-entry-point' pass.
   static StatusOr<std::unique_ptr<Executable>> LoadFromBef(
       std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
       xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version,

@@ -59,7 +59,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
@@ -4919,6 +4921,14 @@ Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
 }
 
 Status DistributedTPURewritePass::Run(
+    const GraphOptimizationPassOptions& options) {
+  Status status = InternalRun(options);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TF_XLA_BRIDGE, status);
+  return status;
+}
+
+Status DistributedTPURewritePass::InternalRun(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "DistributedTPURewritePass::Run";
 

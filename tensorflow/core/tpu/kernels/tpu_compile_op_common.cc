@@ -166,6 +166,21 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
     const std::vector<TensorShape>& dynamic_shapes,
     const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
     TpuProgramGroupInterface* tpu_program_group) {
+  Status status = CompileLocallyAndFillHostCacheInternal(
+      flib_runtime, session_metadata, mesh_state, dynamic_shapes,
+      guaranteed_constants, key, tpu_program_group);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
+  return status;
+}
+
+Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
+    FunctionLibraryRuntime* flib_runtime,
+    const SessionMetadata* session_metadata,
+    const TpuMeshStateInterface* mesh_state,
+    const std::vector<TensorShape>& dynamic_shapes,
+    const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
+    TpuProgramGroupInterface* tpu_program_group) {
   absl::Time start_time = absl::Now();
   std::vector<TensorShape> arg_shapes;
   TF_RETURN_IF_ERROR(
@@ -200,15 +215,6 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
                                  error_name(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
-  // Set payload when status is not ok and ErrorSource payload hasn't been set.
-  if (!compile_status.ok() &&
-      !compile_status.GetPayload(kErrorSource).has_value()) {
-    tensorflow::core::platform::ErrorSourceProto error_source_proto;
-    error_source_proto.set_error_source(
-        tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP);
-    compile_status.SetPayload(kErrorSource,
-                              error_source_proto.SerializeAsString());
-  }
 
   return compile_status;
 }

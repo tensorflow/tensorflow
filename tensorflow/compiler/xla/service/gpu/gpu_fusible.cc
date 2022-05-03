@@ -244,7 +244,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "not fusing constant";
   }
 
-  return {};
+  // Make sure the new fusion obeys the in-place semantics.
+  return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,

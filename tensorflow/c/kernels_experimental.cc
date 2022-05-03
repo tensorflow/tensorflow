@@ -159,7 +159,7 @@ tensorflow::mutex* GetTrainingVariableMutex(
 }
 
 void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
-                       int value_index,
+                       int value_index, bool validate_shape,
                        void (*copyFunc)(TF_OpKernelContext* ctx,
                                         TF_Tensor* source, TF_Tensor* dest),
                        TF_Status* status) {
@@ -175,6 +175,17 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                return tensorflow::Status::OK();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
+
+  if (validate_shape) {
+    OP_REQUIRES(cc_ctx,
+                (!variable->is_initialized ||
+                 variable->tensor()->shape().IsSameSize(value.shape())),
+                InvalidArgument(
+                    "Trying to assign to variable with tensor with wrong shape."
+                    " Expected ",
+                    variable->tensor()->shape().DebugString(), " got ",
+                    value.shape().DebugString()));
+  }
 
   if (variable->copy_on_read_mode.load()) {
     tensorflow::Tensor tmp;

@@ -2380,15 +2380,14 @@ double ModelTiming::ComputeNodePipelineWeight(const NodeTiming& output_timing,
   if (interleave == nullptr && async_interleave == nullptr) {
     return output_timing.pipeline_weight;
   }
-  int64_t total_sibling_elements = 0;
+  int64_t active_siblings = 0;
   for (const auto& sibling : output->inputs()) {
     if (!sibling->autotune() || sibling->num_elements() <= 0) {
       continue;
     }
-    total_sibling_elements += sibling->num_elements();
+    active_siblings++;
   }
-  return output_timing.pipeline_weight * node->num_elements() /
-         static_cast<double>(total_sibling_elements);
+  return output_timing.pipeline_weight / static_cast<double>(active_siblings);
 #else   // !IS_MOBILE_PLATFORM
   return output_timing.pipeline_weight;
 #endif  // !IS_MOBILE_PLATFORM

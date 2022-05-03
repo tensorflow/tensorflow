@@ -63,7 +63,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -412,14 +414,20 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
 
   if (failed(tf2xla.run(module_op))) {
-    return error_handler.Combine(
-        errors::InvalidArgument("TF to XLA legalization failed: "));
+    Status status = errors::InvalidArgument("TF to XLA legalization failed: ");
+    tensorflow::OkOrSetErrorCounterPayload(
+        tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+        status);
+    return error_handler.Combine(status);
   }
 
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op);
-
-  return error_handler.ConsumeStatus();
+  Status status = error_handler.ConsumeStatus();
+  tensorflow::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+      status);
+  return status;
 }
 
 Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,

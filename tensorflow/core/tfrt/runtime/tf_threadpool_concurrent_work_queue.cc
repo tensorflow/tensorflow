@@ -47,7 +47,7 @@ TfThreadPoolWorkQueue::InitializeRequest(
 
 void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
   auto* copy = new tfrt::TaskFunction(
-      tensorflow::tfrt_stub::WrapWork(id_, "inter", std::move(work)));
+      tensorflow::tfrt_stub::WrapWork(id(), "inter", std::move(work)));
   inter_op_threadpool_->Schedule([copy] {
     (*copy)();
     delete copy;

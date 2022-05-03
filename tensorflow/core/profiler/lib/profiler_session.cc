@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 #include "tensorflow/core/profiler/lib/profiler_collection.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
@@ -77,6 +78,7 @@ Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
 
 Status ProfilerSession::CollectData(profiler::XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
+  space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
   PostProcessSingleHostXSpace(space, start_time_ns_);
 #endif

@@ -90,4 +90,22 @@ def ShapeSimplification
   let summary = "Simplify shape ops";
   let constructor = "CreateShapeSimplification()";
 }
+
+def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform compute operations (hlo and linalg) on "
+                "values to buffer based ones.";
+  let constructor = "CreateComputeOpAndFuncBufferizePass()";
+}
+
+
+def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform late operations on values to buffer based "
+                "ones.";
+  let constructor = "CreateFinalBufferizePass()";
+  let options = [
+      Option<"alignment_", "alignment", "uint64_t",
+             /*default=*/"64", "Memory alignment">,
+  ];
+}
+
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
