@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -69,34 +70,6 @@ const HloInstruction* ExtractInstruction(
     }
   }
   return nullptr;
-}
-
-// Returns true if instruction is a collective op.
-bool IsCollective(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllReduceDone:
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllGatherDone:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kCollectivePermuteStart:
-    case HloOpcode::kCollectivePermuteDone:
-      return true;
-    case HloOpcode::kFusion:
-      if (instruction->IsCustomFusion() &&
-          ExtractInstruction(instruction, [](const HloInstruction* inst) {
-            return inst->opcode() == HloOpcode::kAllReduce;
-          }) != nullptr) {
-        return true;
-      } else {
-        return false;
-      }
-    default:
-      return false;
-  }
 }
 
 // Prints sub-expression rooted at inst for a given depth.
@@ -296,8 +269,6 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
   return Status::OK();
 }
 
-constexpr char kAllocateBuffer[] = "AllocateBuffer";
-
 Status HloControlFlowFlattening::RemoveInfeed(
     HloInstruction* infeed_hlo) const {
   CHECK_EQ(infeed_hlo->opcode(), HloOpcode::kInfeed);
@@ -306,7 +277,7 @@ Status HloControlFlowFlattening::RemoveInfeed(
   const Shape& infeed_shape = ShapeUtil::GetSubshape(infeed_hlo->shape(), {0});
 
   HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(infeed_shape, {}, kAllocateBuffer));
+      HloInstruction::CreateCustomCall(infeed_shape, {}, kNopCustomCallTarget));
 
   // Create a new tuple consisting op the constant and the token that was
   // originally the operand of infeed, and replace the infeed operation.
@@ -331,7 +302,7 @@ Status HloControlFlowFlattening::RemoveRecvDone(
   const Shape& recv_shape = ShapeUtil::GetSubshape(recv_done->shape(), {0});
 
   HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(recv_shape, {}, kAllocateBuffer));
+      HloInstruction::CreateCustomCall(recv_shape, {}, kNopCustomCallTarget));
 
   // Create a new tuple consisting op the constant and the token that was
   // originally the operand of recv, and replace the recv operation.
@@ -388,7 +359,10 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          hlo->shape(), hlo->operands(), kAllocateBuffer));
+          hlo->shape(), hlo->operands(), kNopCustomCallTarget));
+  // Copy backend config. This is necessary for a collective op in megacore
+  // fusion.
+  custom_call->CopyBackendConfigFrom(hlo);
   auto replaced_collective_op_str =
       hlo->ToString(HloPrintOptions().Canonical());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
