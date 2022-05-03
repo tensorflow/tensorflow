@@ -669,8 +669,8 @@ func.func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %upd
 }
 
 
-// CHECK-LABEL: @do_not_decompose_scalar_update
-func.func @do_not_decompose_scalar_update(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
+// CHECK-LABEL: @do_not_decompose_scalar_updates
+func.func @do_not_decompose_scalar_updates(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
   "tf_device.cluster"() ({
     // CHECK: ResourceScatterUpdate
     // CHECK-NOT: TensorScatterUpdate
@@ -680,6 +680,17 @@ func.func @do_not_decompose_scalar_update(%resource : tensor<*x!tf_type.resource
   func.return
 }
 
+// TODO(b/230657393): Support unranked updates
+// CHECK-LABEL: @do_not_decompose_unranked_updates
+func.func @do_not_decompose_unranked_updates(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<*xi32>) {
+  "tf_device.cluster"() ({
+    // CHECK: ResourceScatterUpdate
+    // CHECK-NOT: TensorScatterUpdate
+    "tf.ResourceScatterUpdate"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf_type.resource>, tensor<?xi32>, tensor<*xi32>) -> ()
+    tf_device.return
+  }) : () -> ()
+  func.return
+}
 
 // Tests that tf.VariableShape operation is decomposed.
 

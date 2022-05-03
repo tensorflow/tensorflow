@@ -70,13 +70,11 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       }
 
       if (bcast_operand_index == 1) {
-        config.set_rhs_stride(0);
         CHECK_EQ(dim_nums->rhs_contracting_dimensions_size(), 1);
         dim_nums->set_rhs_contracting_dimensions(
             0, dim_nums->rhs_contracting_dimensions(0) - num_batch_dims);
         dim_nums->clear_rhs_batch_dimensions();
       } else {
-        config.set_lhs_stride(0);
         CHECK_EQ(dim_nums->lhs_contracting_dimensions_size(), 1);
         dim_nums->set_lhs_contracting_dimensions(
             0, dim_nums->lhs_contracting_dimensions(0) - num_batch_dims);

@@ -2906,16 +2906,18 @@ def pybind_extension(
     )
 
     if static_deps:
-        data_extra, deps_extra = [], []
+        data_extra, deps_extra, srcs_extra = [], [], []
         if link_in_framework:
-            data_extra = tf_binary_additional_data_deps()
-            deps_extra = [clean_dep("//tensorflow:libtensorflow_framework_import_lib")]
+            # TODO(rostam): Why doesn't work here, but works in tf_cc_shared_library?
+            # data_extra = tf_binary_additional_data_deps()
+            # deps_extra = [clean_dep("//tensorflow:libtensorflow_framework_import_lib")]
+            srcs_extra = tf_binary_additional_srcs()
 
         cc_library_name = so_file + "_cclib"
         cc_library(
             name = cc_library_name,
             hdrs = hdrs,
-            srcs = srcs + hdrs,
+            srcs = srcs + hdrs + srcs_extra,
             data = data + data_extra,
             deps = deps + deps_extra,
             compatible_with = compatible_with,

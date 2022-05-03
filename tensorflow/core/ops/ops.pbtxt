@@ -57485,6 +57485,14 @@ op {
   is_stateful: true
 }
 op {
+  name: "TPURoundRobin"
+  output_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  is_stateful: true
+}
+op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
@@ -60264,6 +60272,17 @@ op {
   attr {
     name: "k"
     type: "int"
+  }
+}
+op {
+  name: "TpuHandleToProtoKey"
+  input_arg {
+    name: "uid"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "proto_keys"
+    type: DT_STRING
   }
 }
 op {

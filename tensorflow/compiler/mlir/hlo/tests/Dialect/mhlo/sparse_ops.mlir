@@ -5,6 +5,10 @@
 // subtle printing and parsing difference (due to having different input and
 // output types), dense or sparse ops are semantically equivalent.
 
+#SV = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed"]
+}>
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>
@@ -142,4 +146,12 @@ func.func @sparse_add_eltwise5(%arg0: tensor<10x20xf32, #CSR>,
                                    -> tensor<10x20xf32, #CSR> {
   %0 = mhlo.add %arg0, %arg1 : tensor<10x20xf32, #CSR>
   func.return %0 : tensor<10x20xf32, #CSR>
+}
+
+// CHECK-LABEL: func @quantization_and_sparse(
+//  CHECK-SAME: %[[A:.*]]: tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>)
+//       CHECK: return %[[A]] : tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>
+func.func @quantization_and_sparse(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>)
+                                       -> tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV> {
+  return %arg0 : tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>
 }
