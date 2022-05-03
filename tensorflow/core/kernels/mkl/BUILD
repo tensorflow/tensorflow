@@ -78,7 +78,10 @@ tf_mkl_kernel_library(
         "mkl_batch_matmul_helper.h",
         "mkl_matmul_ops_common.h",
     ],
-    deps = ["//tensorflow/core/kernels/linalg:einsum_op"] + MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels/linalg:einsum_op",
+        "//tensorflow/stream_executor:matmul_util",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -88,7 +91,9 @@ tf_mkl_kernel_library(
         "mkl_matmul_op_fused.cc",
     ],
     hdrs = ["mkl_matmul_ops_common.h"],
-    deps = MKL_DEPS,
+    deps = [
+        "//tensorflow/stream_executor:matmul_util",
+    ] + MKL_DEPS,
 )
 
 tf_cc_test_mkl(
