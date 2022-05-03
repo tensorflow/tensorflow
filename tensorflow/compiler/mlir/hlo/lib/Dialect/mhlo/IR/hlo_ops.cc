@@ -4854,6 +4854,17 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// AddDependency Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult AddDependencyOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(operands.getTypes()[0]);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // If Op
 //===----------------------------------------------------------------------===//
 

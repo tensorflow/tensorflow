@@ -831,6 +831,22 @@ def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect,
 // MHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
 
+def HLO_AddDependencyOp : HLO_Op<"add_dependency", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AddDependency operator";
+  let description = [{
+    AddDependency takes two operands: a data operand and a token. The output of
+    the operation is the data operand. When used with AfterAll this operation
+    enables ordering non-side-effecting operations (those that do not produce
+    token values).
+  }];
+
+  let arguments = (ins HLO_TensorOrToken:$operand, HLO_Token:$token);
+  let results = (outs HLO_TensorOrToken:$output);
+  let hasCustomHLOConverter = 1;
+}
+
+
 def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
 
   let summary = "AfterAll operator";

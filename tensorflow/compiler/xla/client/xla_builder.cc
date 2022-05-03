@@ -97,6 +97,16 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
 
 namespace internal {
 
+XlaOp XlaBuilderFriend::BuildAddDependency(XlaBuilder* builder, XlaOp operand,
+                                           XlaOp token, const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAddDependency,
+                                   {operand, token});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
                                     absl::Span<const XlaOp> operands,
                                     absl::string_view fusion_kind,

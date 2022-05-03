@@ -1515,3 +1515,15 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
            window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: %[[TOK:.*]] = token[] after-all()
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] add-dependency(f32[3,4] %[[ARG0]], token[] %[[TOK]])
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
+}
