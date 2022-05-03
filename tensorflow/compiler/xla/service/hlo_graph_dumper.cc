@@ -1227,7 +1227,7 @@ ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
 
 static std::vector<std::pair<std::string, std::string>>
 ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
-                              const HloInstruction* instr, bool show_strides) {
+                              const HloInstruction* instr) {
   std::vector<std::pair<std::string, std::string>> props;
   if (primitive_util::IsComplexType(instr->shape().element_type())) {
     if (config.alpha_real() != 1 || config.alpha_imag() != 1) {
@@ -1241,13 +1241,6 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
   }
   if (config.beta() != 0 && config.beta() != 1) {
     props.emplace_back("beta", StrCat(config.beta()));
-  }
-  if (config.batch_size() > 1) {
-    props.emplace_back("batch_size", StrCat(config.batch_size()));
-  }
-  if (show_strides) {
-    props.emplace_back("lhs_stride", StrCat(config.lhs_stride()));
-    props.emplace_back("rhs_stride", StrCat(config.rhs_stride()));
   }
   props.emplace_back(
       "", absl::StrReplaceAll(
@@ -1279,9 +1272,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
       // shape), so we hide them by default.
-      props = ExtractGemmBackendConfigProps(
-          *config, instr,
-          /*show_strides=*/hlo_render_options_.show_backend_config);
+      props = ExtractGemmBackendConfigProps(*config, instr);
     }
   }
 
