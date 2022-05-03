@@ -39,6 +39,7 @@ namespace builtin {
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU_N1_TO_1();
+TfLiteRegistration* Register_RELU_0_TO_1();
 TfLiteRegistration* Register_RELU6();
 TfLiteRegistration* Register_TANH_REF();
 TfLiteRegistration* Register_LOGISTIC_REF();
@@ -209,6 +210,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
+  AddBuiltin(BuiltinOperator_RELU_0_TO_1, Register_RELU_0_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_TANH, Register_TANH_REF(), /* min_version = */ 1,
