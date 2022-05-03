@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
+
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
@@ -1071,6 +1073,23 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_strict_test(
+    name = "io_test",
+    srcs = ["io_test.py"],
+    deps = [
+        ":checkpoint_test_base",
+        ":test_base",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
