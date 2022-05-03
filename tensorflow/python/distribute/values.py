@@ -34,6 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
@@ -557,8 +558,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   def _use_packed_variable(self):
     # Don't use packed variable when under a SaveContext to avoid explicit
     # device placement on variable consuming ops.
-    return self._packed_var is not None and (
-        not values_util.is_saving_non_distributed())
+    return self._packed_var is not None and not save_context.in_save_context()
 
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
