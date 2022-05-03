@@ -46,6 +46,9 @@ class TestCoordinationClient : public CoordinationClient {
   // instead.
   MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
                                       GetKeyValueResponse*, StatusCallback));
+  MOCK_METHOD3(GetKeyValueDirAsync,
+               void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
+                    StatusCallback));
   MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
                                        RegisterTaskResponse*, StatusCallback));
   MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
