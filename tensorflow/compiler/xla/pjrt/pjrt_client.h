@@ -92,6 +92,14 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 
 class PjRtClient;
 
+#if __cplusplus >= 201703L
+using PjRtDeviceAttribute =
+    std::variant<std::string, int64_t, std::vector<int64_t>>;
+#else
+using PjRtDeviceAttribute =
+    absl::variant<std::string, int64_t, std::vector<int64_t>>;
+#endif
+
 class PjRtDevice {
  public:
   virtual ~PjRtDevice() {}
@@ -146,6 +154,12 @@ class PjRtDevice {
 
   // Transfer and return a value of the given shape from the outfeed queue.
   virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) = 0;
+
+  // Returns vendor specific attributes about the device. For example the model
+  // number of a GPU, or the mesh coordinates of a TPU device. The returned
+  // reference will remain valid for the lifetime of the PjRtDevice.
+  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+  Attributes() const = 0;
 };
 
 // Forward declaration.
