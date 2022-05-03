@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
+#include "pybind11/detail/common.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -163,24 +164,31 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return LiteralToPython(std::move(literal));
            })
-      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
-        return device.client->LiveBuffersOnDevice(device.get());
-      });
+      .def("live_buffers",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             return device.client->LiveBuffersOnDevice(device.get());
+           })
+      .def(
+          "__getattr__",
+          [](PjRtDevice& device, std::string name) -> py::object {
+            const auto& attrs = device.Attributes();
+            if (auto it = attrs.find(name); it != attrs.end()) {
+#if __cplusplus >= 201703L
+              return std::visit([](auto&& v) { return py::cast(std::move(v)); },
+                                it->second);
+#else
+              return absl::visit(
+                  [](auto&& v) { return py::cast(std::move(v)); }, it->second);
+#endif
+            }
+            throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
+          });
 
-  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
-      .def_property_readonly("device_vendor", &GpuDevice::device_vendor);
-
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
-      m, "TpuDevice")
-      .def_property_readonly(
-          "coords",
-          [](const PjRtTpuDevice& device) -> pybind11::tuple {
-            return SpanToTuple(absl::MakeConstSpan(device.coords()));
-          },
-          "The coordinates of this TpuDevice's chip in the TPU mesh network.")
-      .def_property_readonly(
-          "core_on_chip", &PjRtTpuDevice::core_on_chip,
-          "The index of this TpuDevice's core on the TPU chip.");
+  // TODO(tomhennigan): Remove these types.
+  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
+      m, "GpuDevice");
+  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
+      m, "TpuDevice");
 
   // Local XLA client methods.
 

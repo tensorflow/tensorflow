@@ -262,7 +262,12 @@ This release contains contributions from many people at Google, as well as:
         Now the correct feature key will be used. This aligns the behavior of
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
-
+    *   Promoting `tf.data.experimental.load` API to `tf.data.Dataset.load`
+        (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/load)
+        and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.save` API to `tf.data.Dataset.save`
+        (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/save) and
+        deprecating the experimental endpoint.
     *   Added a new field, `filter_parallelization`, to
         `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
         tf.data will run `Filter` transformation with multiple threads. Its

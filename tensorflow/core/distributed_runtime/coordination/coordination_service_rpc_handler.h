@@ -61,6 +61,10 @@ class CoordinationServiceRpcHandler {
   void GetKeyValueAsync(const GetKeyValueRequest* request,
                         GetKeyValueResponse* response, StatusCallback done);
 
+  void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                           GetKeyValueDirResponse* response,
+                           StatusCallback done);
+
   void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                            DeleteKeyValueResponse* response,
                            StatusCallback done);

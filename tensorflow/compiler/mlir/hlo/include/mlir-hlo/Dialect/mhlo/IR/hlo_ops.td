@@ -456,7 +456,7 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
   );
 
   let extraClassDeclaration = [{
-    static  LogicalResult inferReturnTypeComponents(
+    static LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location, ValueRange operands,
         DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
@@ -473,6 +473,15 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
       return true;
     }
     bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    // Replace the strict default implementation with one that allows
+    // for different sparsity encodings during the is-same test.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
+         return false;
       return true;
     }
   }];
@@ -821,6 +830,22 @@ def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect,
 //===----------------------------------------------------------------------===//
 // MHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
+
+def HLO_AddDependencyOp : HLO_Op<"add_dependency", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AddDependency operator";
+  let description = [{
+    AddDependency takes two operands: a data operand and a token. The output of
+    the operation is the data operand. When used with AfterAll this operation
+    enables ordering non-side-effecting operations (those that do not produce
+    token values).
+  }];
+
+  let arguments = (ins HLO_TensorOrToken:$operand, HLO_Token:$token);
+  let results = (outs HLO_TensorOrToken:$output);
+  let hasCustomHLOConverter = 1;
+}
+
 
 def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
 

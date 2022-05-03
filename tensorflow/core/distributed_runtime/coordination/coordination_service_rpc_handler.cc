@@ -195,6 +195,20 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
       });
 }
 
+void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
+    const GetKeyValueDirRequest* request, GetKeyValueDirResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  // TODO(b/230630494): Implement service method.
+  done(errors::Unimplemented("GetKeyValueDirAsync() is not implemented yet."));
+}
+
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(
     const DeleteKeyValueRequest* request, DeleteKeyValueResponse* response,
     StatusCallback done) {

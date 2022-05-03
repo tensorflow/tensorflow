@@ -704,6 +704,18 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp token;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  auto operand_shape = ctx.builder->GetShape(operand).ConsumeValueOrDie();
+  value_map[op] = xla::internal::XlaBuilderFriend::BuildAddDependency(
+      ctx.builder, operand, token, operand_shape);
+  return success();
+}
+
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;

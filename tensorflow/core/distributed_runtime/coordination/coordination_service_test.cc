@@ -84,6 +84,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(GetKeyValue);
+  UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
