@@ -669,7 +669,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 class SparseAddTest(test_util.TensorFlowTestCase):
 
   def testValuesInVariable(self):
-    indices = constant_op.constant([[1]], dtype=dtypes.int64)
+    indices = constant_op.constant([[0]], dtype=dtypes.int64)
     values = variables.Variable([1], trainable=False, dtype=dtypes.float32)
     shape = constant_op.constant([1], dtype=dtypes.int64)
 
