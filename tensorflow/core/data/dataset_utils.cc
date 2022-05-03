@@ -89,6 +89,7 @@ constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kEnableGPUCompatibleMemoryOpt[] = "enable_gpu_compatible_memory";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
