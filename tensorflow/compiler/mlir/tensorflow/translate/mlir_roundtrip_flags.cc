@@ -93,9 +93,10 @@ Status ParseInputArrayInfo(absl::string_view array_names,
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
-static StatusOr<std::vector<int>> ParseShapeStr(absl::string_view node_shapes_str) {
+static StatusOr<std::vector<int>> ParseShapeStr(
+    absl::string_view node_shapes_str) {
   std::vector<int> dims;
-  for (const absl::string_view dim_str : absl::StrSplit(node_shapes_str, ',')) {
+  for (absl::string_view dim_str : absl::StrSplit(node_shapes_str, ',')) {
     // Treats empty input shape as scalar
     if (dim_str.empty()) continue;
     if (dim_str == "?") {
@@ -115,9 +116,9 @@ static Status HandleSubtype(absl::string_view subtype,
 
   std::vector<int> dims;
   if (shape_and_type.size() > 2) {
-    return errors::FailedPrecondition(
-        "Invalid argument: '", subtype, "', expected a single shape and type pair"
-        " seperated with a ':'");
+    return errors::FailedPrecondition("Invalid argument: '", subtype,
+                                      "', expected a single shape and type pair"
+                                      " seperated with a ':'");
   } else if (shape_and_type.size() == 2) {
     const auto& shape_str = shape_and_type[0];
     TF_ASSIGN_OR_RETURN(dims, ParseShapeStr(shape_str));
@@ -186,7 +187,7 @@ Status ParseInputArrayInfo(
     // Splitting the type and subtype into parts
     std::vector<std::string> parts =
         absl::StrSplit(type, absl::ByAnyChar("()"));
-    // If type has subtypes then parts[0] = type, parts[1] = subtypes, 
+    // If type has subtypes then parts[0] = type, parts[1] = subtypes,
     // parts[2] = ""
     if (parts.size() != 3 && parts.size() != 1) {
       return errors::InvalidArgument("Invalid type '", type, "'");
@@ -250,13 +251,15 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
     if (c == '(') {
       if (inside_subtype) {
         return errors::FailedPrecondition(
-            absl::StrCat("Syntax error: unexpected '(' in input data types: '", data_types_str, "'"));
+            absl::StrCat("Syntax error: unexpected '(' in input data types: '",
+                         data_types_str, "'"));
       }
       inside_subtype = true;
     } else if (c == ')') {
       if (!inside_subtype) {
         return errors::FailedPrecondition(
-            absl::StrCat("Syntax error: unexpected ')' in input data types: '", data_types_str, "'"));
+            absl::StrCat("Syntax error: unexpected ')' in input data types: '",
+                         data_types_str, "'"));
       }
       inside_subtype = false;
     }
@@ -268,7 +271,8 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
   }
   if (inside_subtype) {
     return errors::FailedPrecondition(
-        absl::StrCat("Syntax error: expected a ')' in input data types '", data_types_str, "'"));
+        absl::StrCat("Syntax error: expected a ')' in input data types '",
+                     data_types_str, "'"));
   }
   if (!data_types_str.empty()) {
     dtypes.push_back(
