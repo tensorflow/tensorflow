@@ -456,7 +456,7 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
   );
 
   let extraClassDeclaration = [{
-    static  LogicalResult inferReturnTypeComponents(
+    static LogicalResult inferReturnTypeComponents(
         MLIRContext* context, Optional<Location> location, ValueRange operands,
         DictionaryAttr attributes, RegionRange regions,
         SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
@@ -473,6 +473,15 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
       return true;
     }
     bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    // Replace the strict default implementation with one that allows
+    // for different sparsity encodings during the is-same test.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
+         return false;
       return true;
     }
   }];
