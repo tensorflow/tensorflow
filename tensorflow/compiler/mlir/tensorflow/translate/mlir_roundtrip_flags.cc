@@ -161,15 +161,15 @@ Status ParseInputArrayInfo(
       }
     }
   } else {
-    return errors::FailedPrecondition(absl::StrCat(
-        "Unmatched node array and data type numbers (#arrays ",
+    return errors::InvalidArgument(absl::StrCat(
+        "Length of input node array and data type doesn't match (#arrays ",
         node_names.size(), ", #data_types ", node_dtypes.size(), ")"));
   }
 
   if (!node_shapes.empty() && node_names.size() != node_shapes.size()) {
-    return errors::FailedPrecondition(absl::StrCat(
-        "Unmatched node array and shape numbers (#arrays ", node_names.size(),
-        ", #input_shapes ", node_shapes.size(), ")"));
+    return errors::InvalidArgument(absl::StrCat(
+        "Length of input node array and data shape doesn't match (#arrays ",
+        node_names.size(), ", #input_shapes ", node_shapes.size(), ")"));
   }
 
   // StringMap doesn't support reserve else reserve input map size here.
