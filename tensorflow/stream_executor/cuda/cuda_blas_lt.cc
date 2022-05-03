@@ -63,6 +63,8 @@ cublasLtEpilogue_t AsCublasLtEpilogue(BlasLt::Epilogue epilogue) {
       return CUBLASLT_EPILOGUE_BIAS;
     case BlasLt::Epilogue::kBiasThenReLU:
       return CUBLASLT_EPILOGUE_RELU_BIAS;
+    case BlasLt::Epilogue::kBiasThenGeLUApproximate:
+      return CUBLASLT_EPILOGUE_GELU_BIAS;
   }
 }
 
@@ -438,8 +440,9 @@ bool BlasLt::DoMatmulInternal(
     return false;
   }
   if ((plan.params().epilogue == Epilogue::kBias ||
-       plan.params().epilogue == Epilogue::kBiasThenReLU) !=
-      (bias != nullptr)) {
+       plan.params().epilogue == Epilogue::kBiasThenReLU ||
+       plan.params().epilogue ==
+           Epilogue::kBiasThenGeLUApproximate) != (bias != nullptr)) {
     VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
                "epilogue for the given bias pointer.";
     return false;

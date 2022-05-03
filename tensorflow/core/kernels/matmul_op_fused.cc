@@ -173,6 +173,8 @@ StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
     return se::cuda::BlasLt::Epilogue::kBias;
   } else if (fusion == FusedComputationType::kBiasAddWithRelu) {
     return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+  } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
+    return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
   } else {
     return errors::Internal("Unsupported fusion for BlasLt Matmul");
   }
@@ -372,8 +374,10 @@ class FusedMatMulOp : public OpKernel {
           {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
       };
     } else if (std::is_same<Device, GPUDevice>::value) {
-      patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
-                  {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
+      patterns = {
+          {FCT::kBiasAdd, {"BiasAdd"}},
+          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+          {FCT::kBiasAddWithGeluApproximate, {"BiasAdd", "GeluApproximate"}}};
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(
