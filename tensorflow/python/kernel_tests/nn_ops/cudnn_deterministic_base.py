@@ -215,7 +215,7 @@ class ConvolutionTest(test.TestCase):
   # A configuration for this test could not be found that exercises
   # nondeterminism when using XLA with determinism not enabled.
   @test_util.run_cuda_only
-  def testConvTransposeBackwardFilterGradientWithDilations(self, rate=1):
+  def testConvTransposeBackwardFilterGradientWithDilations(self):
     self.testConvTransposeBackwardFilterGradient(rate=2)
 
   # A configuration for this test could not be found that exercises
@@ -248,5 +248,5 @@ class ConvolutionTest(test.TestCase):
   # A configuration for this test could not be found that exercises
   # nondeterminism when determinism is not enabled (for either XLA or non-XLA).
   @test_util.run_cuda_only
-  def testConvTransposeBackwardInputGradientWithDilations(self, rate=1):
+  def testConvTransposeBackwardInputGradientWithDilations(self):
     self.testConvTransposeBackwardInputGradient(rate=2)
