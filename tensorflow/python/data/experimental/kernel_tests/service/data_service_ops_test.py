@@ -790,6 +790,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertNotEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testDoubleDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = self.make_distributed_range_dataset(num_elements=10, cluster=cluster)
+    ds = self.make_distributed_dataset(dataset=ds, cluster=cluster)
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3
     cluster_1 = data_service_test_base.TestCluster(num_workers=cluster_1_size)
