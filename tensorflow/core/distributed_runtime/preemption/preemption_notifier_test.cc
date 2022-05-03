@@ -28,7 +28,7 @@ namespace {
 TEST(PreemptNotifierTest, WillBePreemptedAt) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreatePreemptionNotifier(env);
+      CreateSigtermNotifier(env);
   absl::Time start_time = absl::Now();
   env->SchedClosureAfter(/*micros=*/absl::ToInt64Microseconds(absl::Seconds(1)),
                          []() { std::raise(SIGTERM); });
@@ -48,7 +48,7 @@ TEST(PreemptNotifierTest,
      WillBePreemptedAt_AlreadyPreempted_ReturnsImmediately) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreatePreemptionNotifier(env);
+      CreateSigtermNotifier(env);
   absl::Time start_time = absl::Now();
   std::raise(SIGTERM);
   // Note: sleep for a while to ensure that (a) SIGTERM is fully handled and (b)
@@ -71,7 +71,7 @@ TEST(PreemptNotifierTest,
 TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreatePreemptionNotifier(env);
+      CreateSigtermNotifier(env);
   env->SchedClosureAfter(/*micros=*/absl::ToInt64Microseconds(absl::Seconds(1)),
                          []() { std::raise(SIGTERM); });
 
@@ -100,7 +100,7 @@ TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
 TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
-      CreatePreemptionNotifier(env);
+      CreateSigtermNotifier(env);
 
   // Raise first signal.
   std::raise(SIGTERM);

@@ -31,31 +31,24 @@ namespace {
 constexpr absl::Duration kListenInterval = absl::Seconds(1);
 static std::atomic_bool sigterm_received(false);
 
-class PreemptionNotifierImpl : public PreemptionNotifier {
+class SigtermNotifier : public PreemptionNotifier {
  public:
-  explicit PreemptionNotifierImpl(Env* env);
-  ~PreemptionNotifierImpl() override = default;
-  absl::Time WillBePreemptedAt() override;
-  void WillBePreemptedAtAsync(PreemptTimeCallback callback) override;
+  explicit SigtermNotifier(Env* env);
+  ~SigtermNotifier() override = default;
   void Reset() override;
 
  private:
   void StartListenerThread();
-
-  absl::Time death_time_ TF_GUARDED_BY(mu_) = absl::InfinitePast();
-  std::vector<PreemptTimeCallback> callbacks_ TF_GUARDED_BY(mu_);
-
-  mutex mu_;
-  Env* env_;
   std::unique_ptr<Thread> preempt_listener_thread_;
 };
 
-PreemptionNotifierImpl::PreemptionNotifierImpl(Env* env) : env_(env) {
+SigtermNotifier::SigtermNotifier(Env* env) {
+  env_ = env;
   StartListenerThread();
   std::signal(SIGTERM, [](int signal) { sigterm_received.store(true); });
 }
 
-void PreemptionNotifierImpl::StartListenerThread() {
+void SigtermNotifier::StartListenerThread() {
   preempt_listener_thread_.reset(
       env_->StartThread({}, "PreemptionNotifier_Listen", [this]() {
         int64_t listen_interval_micros =
@@ -68,16 +61,24 @@ void PreemptionNotifierImpl::StartListenerThread() {
 
         mutex_lock l(mu_);
         death_time_ = absl::Now();
+        LOG(WARNING) << "SIGTERM caught at " << death_time_;
         // Notify registered listeners.
-        for (const auto& callback : callbacks_) {
-          env_->SchedClosure(
-              [callback, death_time = death_time_]() { callback(death_time); });
-        }
-        callbacks_.clear();
+        NotifyRegisteredListeners();
       }));
 }
 
-absl::Time PreemptionNotifierImpl::WillBePreemptedAt() {
+void SigtermNotifier::Reset() {
+  {
+    mutex_lock l(mu_);
+    death_time_ = absl::InfinitePast();
+    callbacks_.clear();
+  }
+  sigterm_received.store(false);
+  StartListenerThread();
+}
+}  // namespace
+
+absl::Time PreemptionNotifier::WillBePreemptedAt() {
   absl::Notification n;
   absl::Time death_time;
   WillBePreemptedAtAsync([&n, &death_time](absl::Time time) {
@@ -88,8 +89,7 @@ absl::Time PreemptionNotifierImpl::WillBePreemptedAt() {
   return death_time;
 }
 
-void PreemptionNotifierImpl::WillBePreemptedAtAsync(
-    PreemptTimeCallback callback) {
+void PreemptionNotifier::WillBePreemptedAtAsync(PreemptTimeCallback callback) {
   mutex_lock l(mu_);
   if (death_time_ == absl::InfinitePast()) {
     // Did not receive preemption notice yet.
@@ -100,18 +100,16 @@ void PreemptionNotifierImpl::WillBePreemptedAtAsync(
   }
 }
 
-void PreemptionNotifierImpl::Reset() {
-  {
-    mutex_lock l(mu_);
-    death_time_ = absl::InfinitePast();
+void PreemptionNotifier::NotifyRegisteredListeners() {
+  for (const auto& callback : callbacks_) {
+    env_->SchedClosure(
+        [callback, death_time = death_time_]() { callback(death_time); });
   }
-  sigterm_received.store(false);
-  StartListenerThread();
+  callbacks_.clear();
 }
-}  // namespace
 
-std::unique_ptr<PreemptionNotifier> CreatePreemptionNotifier(Env* env) {
-  return std::make_unique<PreemptionNotifierImpl>(env);
+std::unique_ptr<PreemptionNotifier> CreateSigtermNotifier(Env* env) {
+  return std::make_unique<SigtermNotifier>(env);
 }
 
 }  // namespace tensorflow
