@@ -4705,6 +4705,10 @@ tf_module {
     argspec: "args=[\'image_size\', \'bounding_boxes\', \'min_object_covered\', \'seed\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'[0.75, 1.33]\', \'[0.05, 1]\', \'100\', \'False\', \'None\'], "
   }
   member_method {
+    name: "StatelessShuffle"
+    argspec: "args=[\'value\', \'key\', \'counter\', \'alg\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StatelessTruncatedNormal"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }

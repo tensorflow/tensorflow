@@ -682,6 +682,7 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:stateless_random_gamma_op",
+        "//tensorflow/core/kernels:stateless_shuffle",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",

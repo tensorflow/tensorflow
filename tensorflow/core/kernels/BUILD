@@ -4708,16 +4708,63 @@ RANDOM_OPS_DEPS = [
     "//tensorflow/core:lib_internal",
 ]
 
+cc_library(
+    name = "random_ops_util",
+    hdrs = ["random_ops_util.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "random_op",
     prefix = "random_op",
     deps = RANDOM_OPS_DEPS,
 )
 
+cc_library(
+    name = "shuffle_common",
+    hdrs = ["shuffle_common.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "random_shuffle_op",
     prefix = "random_shuffle_op",
-    deps = RANDOM_OPS_DEPS,
+    deps = RANDOM_OPS_DEPS + [
+        ":shuffle_common",
+    ],
+)
+
+cc_library(
+    name = "stateless_random_ops_v2_header",
+    hdrs = ["stateless_random_ops_v2.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "stateless_random_ops_v2_util",
+    hdrs = ["stateless_random_ops_v2_util.h"],
+    deps = [
+        ":stateless_random_ops_v2_header",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_kernel_library(
+    name = "stateless_shuffle",
+    prefix = "stateless_shuffle",
+    deps = [
+        ":random_ops_util",
+        ":shuffle_common",
+        ":stateless_random_ops_v2_util",
+        "//tensorflow/core:framework",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -4739,15 +4786,6 @@ tf_cuda_cc_test(
 cc_library(
     name = "stateful_random_ops_header",
     hdrs = ["stateful_random_ops.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "stateless_random_ops_v2_header",
-    hdrs = ["stateless_random_ops_v2.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -6619,6 +6657,7 @@ filegroup(
         "random_op_cpu.h",
         "random_ops_util.h",
         "random_poisson_op.cc",
+        "shuffle_common.h",
         "random_shuffle_op.cc",
         "reduce_join_op.cc",
         "reduction_ops_all.cc",
@@ -6683,7 +6722,9 @@ filegroup(
         "stack_ops.cc",
         "stateless_random_gamma_op.cc",
         "stateless_random_ops.cc",
+        "stateless_random_ops_v2_util.h",
         "stateless_random_ops_v2.cc",
+        "stateless_shuffle.cc",
         "string_format_op.cc",
         "string_join_op.cc",
         "string_length_op.cc",

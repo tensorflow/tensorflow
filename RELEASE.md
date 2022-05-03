@@ -62,6 +62,10 @@
     been enabled via `tf.config.experimental.enable_op_determinism`. This closes
     issue [47174](https://github.com/tensorflow/tensorflow/issues/47174).
 
+* `tf.random`
+    * Added `tf.random.experimental.stateless_shuffle`, a stateless version of
+      `tf.random.shuffle`.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
