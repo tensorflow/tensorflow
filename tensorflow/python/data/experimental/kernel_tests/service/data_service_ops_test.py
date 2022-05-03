@@ -833,6 +833,27 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(ds, [tensor])
 
   @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBatchDropsAllElements(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=2, fault_tolerant_mode=False)
+    dataset = dataset_ops.Dataset.range(10).batch(1000, drop_remainder=True)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster, processing_mode=data_service_ops.ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBatchDoesNotDropRemainder(self):
+    num_workers = 2
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers, fault_tolerant_mode=False)
+    dataset = dataset_ops.Dataset.range(10).batch(1000, drop_remainder=False)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster, processing_mode=data_service_ops.ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, [list(range(10))] * num_workers)
+
+  @combinations.generate(
       combinations.times(test_base.graph_only_combinations(),
                          combinations.combine(use_resource=False)) +
       combinations.times(test_base.default_test_combinations(),
