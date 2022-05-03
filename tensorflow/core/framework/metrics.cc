@@ -557,9 +557,9 @@ void UpdateTpuErrorCounter(const string& op, const string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }
 
-void UpdateEagerClientErrorCounter(const string& source,
+void UpdateEagerClientErrorCounter(const string& error_source,
                                    const string& error_type) {
-  eager_client_error_counter->GetCell(source, error_type)->IncrementBy(1);
+  eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics
