@@ -115,6 +115,9 @@ class CoordinationServiceAgent {
     ERROR,
   };
 
+  // Get task associated with this agent.
+  virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
+
   // Get status of a remote task.
   virtual StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) = 0;
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -301,6 +302,27 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
   TF_EXPECT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
   TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
+  InitializeAgent();
+
+  auto result = agent_->GetOwnTask();
+
+  TF_EXPECT_OK(result.status());
+  CoordinatedTask actual_task = result.ValueOrDie();
+  // These fields are from the arguments used in InitializeAgent().
+  CoordinatedTask expected_task;
+  expected_task.set_job_name("test_job");
+  expected_task.set_task_id(0);
+  EXPECT_EQ(actual_task.job_name(), expected_task.job_name());
+  EXPECT_EQ(actual_task.task_id(), expected_task.task_id());
+}
+
+TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
+  auto result = agent_->GetOwnTask();
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(result.status()));
 }
 }  // namespace
 }  // namespace tensorflow
