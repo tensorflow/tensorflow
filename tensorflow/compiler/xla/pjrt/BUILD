@@ -336,16 +336,7 @@ cc_library(
     name = "gpu_device",
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
-    compatible_with = [],
-    # If nothing is defined, default to CUDA.
-    defines = if_rocm(
-        [
-            "TENSORFLOW_USE_ROCM=1",
-        ],
-        [
-            "GOOGLE_CUDA=1",
-        ],
-    ),
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
@@ -364,16 +355,11 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_rocm(
-        [
-            "@local_config_rocm//rocm:rocm_headers",
-        ],
-        [
-            "@local_config_cuda//cuda:cuda_headers",
-            "//tensorflow/stream_executor/cuda:cuda_activation",
-            "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-        ],
-    ) + if_nccl([":nccl_plugin"]),
+    ] + if_cuda([
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]) + if_nccl([":nccl_plugin"]),
 )
 
 # We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
