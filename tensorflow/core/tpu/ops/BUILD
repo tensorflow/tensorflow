@@ -14,8 +14,10 @@ cc_library(
         ":tpu_compile_op",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
+        ":tpu_handle_to_key_op",
         ":tpu_partitioned_ops",
         ":tpu_reshard_variables_op",
+        ":tpu_round_robin_op",
     ],
     alwayslink = 1,
 )
@@ -50,6 +52,20 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_round_robin_op",
+    srcs = [
+        "tpu_round_robin_op.cc",
+    ],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tpu_execute_op",
     srcs = [
         "tpu_execute_op.cc",
@@ -67,6 +83,20 @@ cc_library(
     name = "host_compute_ops",
     srcs = [
         "host_compute_ops.cc",
+    ],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_handle_to_key_op",
+    srcs = [
+        "tpu_handle_to_key_op.cc",
     ],
     linkstatic = 1,
     deps = [
