@@ -32,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::concat;
 using dnnl::stream;
@@ -279,6 +282,9 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                const dnnl::memory& dst_data,
                const MklConcatFwdParams& concat_fwd_dims,
                std::shared_ptr<stream> fwd_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(mu_);
+#endif
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
 #ifndef ENABLE_ONEDNN_OPENMP
@@ -375,6 +381,10 @@ class MklConcatFwdPrimitive : public MklPrimitive {
   }
 
   struct ConcatFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex mu_;
+#endif
 };
 
 // Class to create/cache the mkl concat primitives based on the

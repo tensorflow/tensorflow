@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::algorithm;
 using dnnl::eltwise_forward;
@@ -74,6 +77,9 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
@@ -153,6 +159,10 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   }
 
   struct EltwiseFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex mu_;
+#endif
 };
 
 template <typename T>
@@ -249,6 +259,9 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   //   diff_src_data:  output data buffer of diff_src
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
@@ -354,6 +367,10 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   }
 
   struct EltwiseBwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex mu_;
+#endif
 };
 
 template <typename T>
