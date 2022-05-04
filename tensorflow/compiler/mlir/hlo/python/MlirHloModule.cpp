@@ -419,7 +419,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &algorithm, MlirContext ctx) {
-            return cls(mlirMhloRngAlgorithmAttrGet(ctx, algorithm));
+            return cls(mlirMhloRngAlgorithmAttrGet(ctx, algorithm.c_str()));
           },
           py::arg("cls"), py::arg("rng_algorithm"),
           py::arg("context") = py::none(),
