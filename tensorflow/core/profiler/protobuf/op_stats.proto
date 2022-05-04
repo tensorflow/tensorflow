@@ -72,8 +72,6 @@ message RunEnvironment {
   //   In GPU case, this corresponds to the number of GPUs (not the number of
   //   SMs).
   int32 device_core_count = 5;
-  // The per-device-core batch size.
-  int32 per_core_batch_size = 6;
   // Host-independent information about this job.
   HostIndependentJobInfoResult host_independent_job_info = 7;
   // Host-dependent information about this job.
@@ -88,6 +86,7 @@ message RunEnvironment {
   SystemTopology topology = 11;
   // Host trace level.
   uint32 host_trace_level = 12;
+  reserved 6;
 }
 
 // Next ID: 7
