@@ -268,12 +268,7 @@ cc_library(
     name = "tpu_client",
     srcs = ["tpu_client.cc"],
     hdrs = ["tpu_client.h"],
-    visibility = [
-        "//learning/brain/research/jax:__subpackages__",
-        "//learning/deepmind/tensorflow/tensorfn:__subpackages__",
-        "//learning/pathways:__subpackages__",
-        "//tensorflow/compiler/xla:friends",
-    ],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":local_device_state",
         ":pjrt_stream_executor_client",
