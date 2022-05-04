@@ -174,14 +174,14 @@ mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(MlirAttribute attr,
 // Creates a new ComparisonDirection attribute with the given
 // 'direction' string parameter.
 MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloComparisonDirectionAttrGet(MlirContext ctx, const char *direction);
+mlirMhloComparisonDirectionAttrGet(MlirContext ctx, MlirStringRef direction);
 
 // Returns true if the given attribute is a ComparisonDirection attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAComparisonDirectionAttr(
     MlirAttribute attr);
 
 // Returns the direction string associated with ComparisonDirection attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloComparisonDirectionAttrGetDirection(MlirAttribute attr);
 
 //
@@ -190,14 +190,14 @@ mlirMhloComparisonDirectionAttrGetDirection(MlirAttribute attr);
 // Creates a new ComparisonType attribute with the given 'type' string
 // parameter.
 MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloComparisonTypeAttrGet(MlirContext ctx, const char *type);
+mlirMhloComparisonTypeAttrGet(MlirContext ctx, MlirStringRef type);
 
 // Returns true if the given attribute is a ComparisonType attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAComparisonTypeAttr(
     MlirAttribute attr);
 
 // Returns the type string associated with ComparisonType attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloComparisonTypeAttrGetType(MlirAttribute attr);
 
 //
@@ -206,13 +206,13 @@ mlirMhloComparisonTypeAttrGetType(MlirAttribute attr);
 // Creates a new Precision attribute with the given 'type' string
 // parameter.
 MLIR_CAPI_EXPORTED MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx,
-                                                          const char *type);
+                                                          MlirStringRef type);
 
 // Returns true if the given attribute is a Precision attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAPrecisionAttr(MlirAttribute attr);
 
 // Returns the type string associated with Precision attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloPrecisionAttrGetPrecision(MlirAttribute attr);
 
 //
@@ -220,13 +220,13 @@ mlirMhloPrecisionAttrGetPrecision(MlirAttribute attr);
 //
 // Creates a new FftType attribute with the given 'type' string parameter.
 MLIR_CAPI_EXPORTED MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx,
-                                                        const char *type);
+                                                        MlirStringRef type);
 
 // Returns true if the given attribute is a FftType attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFftTypeAttr(MlirAttribute attr);
 
 // Returns the type string associated with FftType attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloFftTypeAttrGetFftType(MlirAttribute attr);
 
 //
@@ -235,14 +235,14 @@ mlirMhloFftTypeAttrGetFftType(MlirAttribute attr);
 // Creates a new DequantizeMode attribute with the given 'mode' string
 // parameter.
 MLIR_CAPI_EXPORTED MlirAttribute
-mlirMhloDequantizeModeAttrGet(MlirContext ctx, const char *mode);
+mlirMhloDequantizeModeAttrGet(MlirContext ctx, MlirStringRef mode);
 
 // Returns true if the given attribute is a DequantizeMode attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsADequantizeModeAttr(
     MlirAttribute attr);
 
 // Returns the mode string associated with DequantizeMode attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloDequantizeModeAttrGetDequantizeMode(MlirAttribute attr);
 
 //
@@ -250,13 +250,13 @@ mlirMhloDequantizeModeAttrGetDequantizeMode(MlirAttribute attr);
 //
 // Creates a new Transpose attribute with the given 'type' string parameter.
 MLIR_CAPI_EXPORTED MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx,
-                                                          const char *type);
+                                                          MlirStringRef type);
 
 // Returns true if the given attribute is a Transpose attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsATransposeAttr(MlirAttribute attr);
 
 // Returns the type string associated with Transpose attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloTransposeAttrGetTranspose(MlirAttribute attr);
 
 //
@@ -264,13 +264,13 @@ mlirMhloTransposeAttrGetTranspose(MlirAttribute attr);
 //
 // Creates a new FusionKind attribute with the given 'kind' string parameter.
 MLIR_CAPI_EXPORTED MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx,
-                                                           const char *kind);
+                                                           MlirStringRef kind);
 
 // Returns true if the given attribute is a FusionKind attribute.
 MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr);
 
 // Returns the fusion-kind string associated with FusionKind attribute.
-MLIR_CAPI_EXPORTED const char *
+MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr);
 
 #ifdef __cplusplus
