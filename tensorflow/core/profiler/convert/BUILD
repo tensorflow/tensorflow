@@ -77,7 +77,6 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
-        "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
