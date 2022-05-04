@@ -6,6 +6,7 @@ package(
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -169,6 +170,34 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "savedmodel_import",
+    srcs = ["savedmodel_import.cc"],
+    hdrs = ["savedmodel_import.h"],
+    deps = [
+        ":graphdef_import",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "savedmodel_export",
+    srcs = ["savedmodel_export.cc"],
+    hdrs = ["savedmodel_export.h"],
+    deps = [
+        ":graphdef_export",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@llvm-project//mlir:IR",
     ],
 )

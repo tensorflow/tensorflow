@@ -51,7 +51,8 @@ class BatchMatmulParameters {
                         uint64 m, uint64 n, uint64 k, uint64 batch_count,
                         bool broadcast_a, bool broadcast_b,
                         tensorflow::DataType dtype_ab,
-                        tensorflow::DataType dtype_cd, int device_id)
+                        tensorflow::DataType dtype_cd, int device_id,
+                        blas::Epilogue epilog = blas::Epilogue::kDefault)
       : trans_a_(trans_a),
         trans_b_(trans_b),
         adj_a_(adj_a),
@@ -64,7 +65,8 @@ class BatchMatmulParameters {
         broadcast_b_(broadcast_b),
         dtype_ab_(dtype_ab),
         dtype_cd_(dtype_cd),
-        device_id_(device_id) {
+        device_id_(device_id),
+        epilog_(epilog) {
     allow_tf32_ = tensorflow::tensor_float_32_execution_enabled();
   }
 
@@ -82,7 +84,8 @@ class BatchMatmulParameters {
         trans_a_, ", ", trans_b_, ", ", adj_a_, ", ", adj_b_, ", ",
         m_, ", ", n_, ", ", k_, ", ", batch_count_, ", ",
         broadcast_a_, ", ", broadcast_b_, ", ",
-        dtype_ab_, ", ", dtype_cd_, ", ", allow_tf32_, ", ", device_id_);
+        dtype_ab_, ", ", dtype_cd_, ", ", allow_tf32_, ", ", device_id_, ", ",
+        epilog_);
     // clang-format on
   }
 
@@ -91,19 +94,22 @@ class BatchMatmulParameters {
     return H::combine(std::move(h), bmp.trans_a_, bmp.trans_b_, bmp.adj_a_,
                       bmp.adj_b_, bmp.m_, bmp.n_, bmp.k_, bmp.batch_count_,
                       bmp.broadcast_a_, bmp.broadcast_b_, bmp.dtype_ab_,
-                      bmp.dtype_cd_, bmp.allow_tf32_, bmp.device_id_);
+                      bmp.dtype_cd_, bmp.allow_tf32_, bmp.device_id_,
+                      bmp.epilog_);
   }
+
+  blas::Epilogue GetEpilogOp() const { return epilog_; }
 
  private:
   typedef std::tuple<bool, bool, bool, bool, int64_t, int64_t, int64_t, int64_t,
                      bool, bool, tensorflow::DataType, tensorflow::DataType,
-                     bool, int>
+                     bool, int, blas::Epilogue>
       ParameterDataType;
 
   ParameterDataType get_data_as_tuple() const {
     return std::make_tuple(trans_a_, trans_b_, adj_a_, adj_b_, m_, n_, k_,
                            batch_count_, broadcast_a_, broadcast_b_, dtype_ab_,
-                           dtype_cd_, allow_tf32_, device_id_);
+                           dtype_cd_, allow_tf32_, device_id_, epilog_);
   }
 
   bool trans_a_;
@@ -120,6 +126,7 @@ class BatchMatmulParameters {
   tensorflow::DataType dtype_cd_;
   bool allow_tf32_;
   int device_id_;
+  blas::Epilogue epilog_;
 };
 
 // Thread-safe map from matmul parameters to their corresponding plan and
@@ -160,7 +167,7 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix);
 
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
-    int64_t batch_size, tensorflow::DataType dtype,
+    int64_t batch_size, tensorflow::DataType dtype, blas::Epilogue epilog,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix);
 

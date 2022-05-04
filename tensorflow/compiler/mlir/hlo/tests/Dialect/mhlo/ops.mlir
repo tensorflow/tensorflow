@@ -1197,10 +1197,10 @@ func.func @dynamic_slice_mismatch_indices(%arg0: tensor<3x4xi32>, %arg1: tensor<
 
 // -----
 
-// CHECK-LABEL: @dynamic_slice_different_indice_element_type
-func.func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<i32>) -> tensor<1x4xi32> {
-  %0 = "mhlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i32>) -> tensor<1x4xi32>
-  func.return %0 : tensor<1x4xi32>
+// TODO(b/230381865) Fix this wrong positive test: slice_sizes.size() != operand_shape.rank()
+func.func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
 }
 
 // -----
@@ -1209,6 +1209,14 @@ func.func @dynamic_slice_mismatch_element_types(%arg0: tensor<3x4xi32>, %arg1: t
   // expected-error@+1 {{failed to verify that all of {operand, result} have same element type}}
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
+}
+
+// -----
+
+func.func @dynamic_slice_mismatch_return_shape(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<2x4xi32> {
+  // expected-error@+1 {{'mhlo.dynamic-slice' op inferred type(s) 'tensor<1x4xi32>' are incompatible with return type(s) of operation 'tensor<2x4xi32>'}}
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<2x4xi32>
+  func.return %0 : tensor<2x4xi32>
 }
 
 // -----
@@ -3247,6 +3255,43 @@ func.func @quantized_dot_general(%arg0: tensor<2x16x32x!quant.uniform<i8:f32, 2.
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]}
     : (tensor<2x16x32x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x32x32x!quant.uniform<i8:f32, 5.0:20>>) -> tensor<2x16x32x!quant.uniform<i8:f32, 10.0:50>>
   func.return %0 : tensor<2x16x32x!quant.uniform<i8:f32, 10.0:50>>
+}
+
+// -----
+
+// CHECK-LABEL: func @add_dependency
+func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%data, %token) : (tensor<4x16xf32>, !mhlo.token) -> tensor<4x16xf32>
+  func.return %0 : tensor<4x16xf32>
+}
+// -----
+
+// CHECK-LABEL: func @add_dependency_token
+func.func @add_dependency_token(%data: tensor<4x16xf32>) -> !mhlo.token {
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token2 = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%token2, %token) : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// -----
+
+func.func @add_dependency(%data: tensor<4x16xf32>) -> !mhlo.token {
+  // expected-error@+2 {{'mhlo.add_dependency' op inferred type(s) 'tensor<4x16xf32>' are incompatible with return type(s) of operation '!mhlo.token'}}
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%data, %token) : (tensor<4x16xf32>, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// -----
+
+func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  // expected-error@+3 {{inferred type(s) '!mhlo.token' are incompatible with return type(s) of operation 'tensor<4x16xf32>'}}
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token2 = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%token2, %token) : (!mhlo.token, !mhlo.token) -> tensor<4x16xf32>
+  func.return %0 : tensor<4x16xf32>
 }
 
 // -----

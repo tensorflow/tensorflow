@@ -96,7 +96,7 @@ cc_library(
         "//tensorflow/core/transforms/consolidate_attrs:Pass",
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/constant_folding:Pass",
-        "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
+        "//tensorflow/core/transforms/drop_unregistered_attribute:Pass",
         "//tensorflow/core/transforms/eliminate_passthrough_iter_args:Pass",
         "//tensorflow/core/transforms/functional_to_region:Pass",
         "//tensorflow/core/transforms/graph_to_func:Pass",

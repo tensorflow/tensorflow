@@ -1388,3 +1388,13 @@ add {
   // CHECK: "mhlo.optimization_barrier"(%[[ARG0]], %[[ARG1]]) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
   ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
 }
+
+// CHECK-LABEL: func private @add_dependency
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
+%add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %after-all = token[] after-all()
+  // CHECK: %[[TOK:.*]] = "mhlo.create_token"
+  // CHECK: "mhlo.add_dependency"(%[[ARG0]], %[[TOK]]) : (tensor<4x4xf32>, !mhlo.token) -> tensor<4x4xf32>
+  ROOT %add-dep = f32[4,4] add-dependency(f32[4,4] %Arg_0.1, token[] %after-all)
+}

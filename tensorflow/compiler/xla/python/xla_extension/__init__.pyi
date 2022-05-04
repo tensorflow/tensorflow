@@ -162,6 +162,8 @@ class HloPrintOptions:
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
   spmd_parameters_shardings: Optional[List[OpSharding]]
+  @property
+  def name(self) -> str: ...
   def to_string(self, options: HloPrintOptions = ...) -> str: ...
   def as_serialized_hlo_module_proto(self)-> bytes: ...
   @staticmethod
@@ -302,13 +304,13 @@ class Device:
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
+  def __getattr__(self, name: str) -> Any: ...
 
 class GpuDevice(Device):
-  device_vendor: str
+  pass
 
 class TpuDevice(Device):
-  coords: Tuple[int, ...]
-  core_on_chip: int
+  pass
 
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int

@@ -123,6 +123,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
     ],
@@ -176,7 +177,6 @@ filegroup(
         "coordination_service.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
         "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],

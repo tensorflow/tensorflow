@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
+#include "tensorflow/core/transforms/cf_sink/pass.h"
 
 #include <functional>
 #include <memory>

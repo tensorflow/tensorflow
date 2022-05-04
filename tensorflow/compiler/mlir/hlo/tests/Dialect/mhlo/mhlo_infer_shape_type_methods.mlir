@@ -72,3 +72,13 @@ func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xi32> {
       : (tensor<3xi32>) -> tensor<1x2x3xi32>
   func.return %0 : tensor<1x2x3xi32>
 }
+
+// -----
+
+// CHECK-LABEL: @dynamic_slice
+func.func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xindex> {
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x4xi32>) -> tensor<1x4xindex>
+  func.return %1 : tensor<1x4xindex>
+}

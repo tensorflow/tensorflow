@@ -2540,11 +2540,12 @@ def _convert_gather(pfor_input):
   if param_stacked:
     pfor_input.stack_inputs(stack_indices=[1])
     indices = pfor_input.stacked_input(1)
-
-    output = array_ops.gather(
-        param, indices,
-        axis=array_ops.where(axis >= 0, axis + 1, axis),
-        batch_dims=(batch_dims + 1 if batch_dims >= 0 else batch_dims))
+    if isinstance(axis, ops.Tensor):
+      axis = array_ops.where(axis >= 0, axis + 1, axis)
+    else:
+      axis = axis + 1 if axis >= 0 else axis
+    batch_dims = batch_dims + 1 if batch_dims >= 0 else batch_dims
+    output = array_ops.gather(param, indices, axis=axis, batch_dims=batch_dims)
     return wrap(output, True)
 
 

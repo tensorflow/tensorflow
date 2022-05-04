@@ -12,6 +12,9 @@ tf_py_test(
     size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
+    tags = [
+        "noasan",  # b/231336996
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",

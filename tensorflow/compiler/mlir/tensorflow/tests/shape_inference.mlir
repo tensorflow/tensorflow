@@ -23,16 +23,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @simple_chain_with_broadcast
-  func.func @simple_chain_with_broadcast(%arg0: tensor<1xf32>, %arg1: tensor<10xf32>) -> tensor<*xf32> {
+  func.func @simple_chain_with_broadcast(%arg0: tensor<1xf32>, %arg1: tensor<10xf32>) -> tensor<?xf32> {
     // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
     // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
-    // CHECK: %[[UNKNOWN:.*]] = arith.addf %[[CAST]], %[[CAST]] : tensor<*xf32>
-    // CHECK: return %[[UNKNOWN]] : tensor<*xf32>
+    // CHECK: %[[TENSOR_CAST:.*]] = tensor.cast %[[CAST]] : tensor<*xf32> to tensor<?xf32>
+    // CHECK: return %[[TENSOR_CAST]] : tensor<?xf32>
     %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<10xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = arith.addf %1, %1 : tensor<*xf32>
-    func.return %2 : tensor<*xf32>
+    %2 = tensor.cast %1 : tensor<*xf32> to tensor<?xf32>
+    func.return %2 : tensor<?xf32>
   }
 
   // CHECK-LABEL: func @unknown_op
@@ -748,8 +748,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: cast_at_end(%arg0:
-  // CHECK-SAME: tensor<16x194x199x4xui8>, tensor<16x194x199x4xi8>, tensor<*xi8>, tensor<*xi8>
-  func.func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>, %arg2: tensor<*xf32>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>, tensor<*xi8>) {
+  // CHECK-SAME: tensor<16x194x199x4xui8>, tensor<16x194x199x4xi8>, tensor<*xi8>, tensor<?x?x?x?xi8>
+  func.func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>, %arg2: tensor<*xf32>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>, tensor<?x?x?x?xi8>) {
     %27 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xui8>
     %28 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xi8>
     %29 = "tf.Cast"(%arg2) {Truncate = false, device = ""} : (tensor<*xf32>) -> tensor<*xi8>
@@ -757,14 +757,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<*xi8>
     // CHECK: %[[CAST_RESULT_3:.*]] = "tf.Cast"(%arg2)
     // CHECK-SAME: (tensor<*xf32>) -> tensor<*xi8>
-    // CHECK: %[[ADDI:.*]] = arith.addi %[[CAST_RESULT_2]], %[[CAST_RESULT_2]]
-    %2 = arith.addi %28, %28 : tensor<*xi8>
+    // CHECK: %[[TENSOR_CAST:.*]] = tensor.cast %[[CAST_RESULT_2]] : tensor<*xi8> to tensor<?x?x?x?xi8>
+    %2 = tensor.cast %28 : tensor<*xi8> to tensor<?x?x?x?xi8>
     // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
     // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
     // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
     // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xi8>
-    // CHECK: return %[[CAST_RESULT_0]], %[[CAST_RESULT_1]], %[[CAST_RESULT_3]], %[[ADDI]]
-    func.return %27, %28, %29, %2 : tensor<*xui8>, tensor<*xi8>, tensor<*xi8>, tensor<*xi8>
+    // CHECK: return %[[CAST_RESULT_0]], %[[CAST_RESULT_1]], %[[CAST_RESULT_3]], %[[TENSOR_CAST]]
+    func.return %27, %28, %29, %2 : tensor<*xui8>, tensor<*xi8>, tensor<*xi8>, tensor<?x?x?x?xi8>
   }
 
   // CHECK-LABEL: infer_device_launch
@@ -778,7 +778,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: "tf.Cast"(%{{.*}}) {Truncate = false} : (tensor<1x8x2xf32>) -> tensor<*xf32>
     // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
     %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
-    %4 = arith.addf %1, %1 : tensor<*xf32>
+    %4 = tensor.cast %1 : tensor<*xf32> to tensor<?x?x?xf32>
     func.return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 
@@ -793,7 +793,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: "tf.Cast"(%{{.*}}) {Truncate = false} : (tensor<1x8x2xf32>) -> tensor<*xf32>
     // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
     %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
-    %4 = arith.addf %1, %1 : tensor<*xf32>
+    %4 = tensor.cast %1 : tensor<*xf32> to tensor<?x?x?xf32>
     func.return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 

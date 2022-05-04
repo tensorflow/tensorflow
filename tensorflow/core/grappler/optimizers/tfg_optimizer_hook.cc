@@ -135,6 +135,17 @@ Status TFGGrapplerOptimizer::Optimize(
   if (failed(impl_->RunPipeline(module)))
     return error_handler.Combine(
         InvalidArgument("MLIR Graph Optimizer failed: "));
+  // While pass execution, it may use emitError to return a failure status, this
+  // will be caught by the error_handler. As a result, even if the pass left
+  // without failure, there may still have some message cached in the handler.
+  tensorflow::Status status = error_handler.ConsumeStatus();
+  if (!status.ok()) {
+    VLOG(4) << "Pass execution leftover diagnostics: " << status.error_message()
+            << "\n These message doesn't imply any failure of the pipeline "
+               "execution. They are cached because certain error diagnostics "
+               "were used to pass the internal execution result. Use warning "
+               "diagnostic when possible if you want to avoid this.";
+  }
 
   // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;

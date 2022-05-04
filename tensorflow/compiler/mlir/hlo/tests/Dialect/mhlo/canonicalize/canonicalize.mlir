@@ -346,13 +346,13 @@ func.func @dynamic_slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL: dynamic_slice_constant_start_dynamic_shape
-func.func @dynamic_slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<?x4xi32> {
+func.func @dynamic_slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
   // CHECK: mhlo.dynamic-slice
   // CHECK-NOT: mhlo.slice
   %0 = mhlo.constant dense<1> : tensor<i64>
   %1 = mhlo.constant dense<0> : tensor<i64>
-  %2 = "mhlo.dynamic-slice"(%arg0, %0, %1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<?x4xi32>, tensor<i64>, tensor<i64>) -> tensor<?x4xi32>
-  func.return %2 : tensor<?x4xi32>
+  %2 = "mhlo.dynamic-slice"(%arg0, %0, %1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<?x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  func.return %2 : tensor<1x4xi32>
 }
 
 // CHECK-LABEL: dynamic_slice_constant_start_upper_bound

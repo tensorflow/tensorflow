@@ -240,15 +240,16 @@ ParseResult ParseReplicateOpOperands(
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
-          parser->parseRegionArgument(packed_region_args.emplace_back()) ||
+          parser->parseOperand(packed_region_args.emplace_back(),
+                               /*allowResultNumber=*/false) ||
           parser->parseColonType(packed_region_arg_types.emplace_back()))
         return failure();
     } else if (parser->parseOperandList(replicated_inputs->emplace_back(),
                                         OpAsmParser::Delimiter::Square) ||
                parser->parseKeyword(
                    "as", " between replicated inputs and block argument") ||
-               parser->parseRegionArgument(
-                   replicated_region_args.emplace_back()) ||
+               parser->parseOperand(replicated_region_args.emplace_back(),
+                                    /*allowResultNumber=*/false) ||
                parser->parseColonType(
                    replicated_region_arg_types.emplace_back())) {
       return failure();
@@ -338,9 +339,16 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
                                &region_arg_types) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       SetReplicateOpOperands(loc, &parser, &result, replicated_inputs,
-                             packed_inputs, region_arg_types, &n) ||
-      parser.parseRegion(body, region_args, region_arg_types))
+                             packed_inputs, region_arg_types, &n))
     return failure();
+
+  SmallVector<OpAsmParser::Argument> packed_args;
+  for (auto argAndType : llvm::zip(region_args, region_arg_types)) {
+    auto& arg = packed_args.emplace_back();
+    arg.ssaName = std::get<0>(argAndType);
+    arg.type = std::get<1>(argAndType);
+  }
+  if (parser.parseRegion(body, packed_args)) return failure();
 
   // Add derived `operand_segment_sizes` attribute based on parsed operands.
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {

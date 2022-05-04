@@ -68,7 +68,8 @@ class EventNode {
   // REQUIRED: all inputs should not be nullptr.
   EventNode(const XPlaneVisitor* plane, XLine* raw_line, XEvent* raw_event);
 
-  EventNode(const EventNode& event_node);
+  EventNode(const EventNode& event_node) = delete;
+  EventNode& operator=(const EventNode&) = delete;
 
   const std::vector<EventNode*>& GetParents() const { return parents_; }
 

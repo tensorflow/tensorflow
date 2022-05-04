@@ -5,6 +5,10 @@
 // subtle printing and parsing difference (due to having different input and
 // output types), dense or sparse ops are semantically equivalent.
 
+#SV = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed"]
+}>
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>
@@ -142,4 +146,68 @@ func.func @sparse_add_eltwise5(%arg0: tensor<10x20xf32, #CSR>,
                                    -> tensor<10x20xf32, #CSR> {
   %0 = mhlo.add %arg0, %arg1 : tensor<10x20xf32, #CSR>
   func.return %0 : tensor<10x20xf32, #CSR>
+}
+
+//
+// Sparse dot operation.
+//
+
+// CHECK-LABEL: func @dot1(
+//  CHECK-SAME: %[[A:.*]]: tensor<4xf64, #{{.*}}>,
+//  CHECK-SAME: %[[B:.*]]: tensor<4xf64>) -> tensor<f64> {
+//       CHECK: %[[T:.*]] = "mhlo.dot_general"(%[[A]], %[[B]]) {{{.*}}} : (tensor<4xf64, #{{.*}}>, tensor<4xf64>) -> tensor<f64>
+//       CHECK: return %[[T]] : tensor<f64>
+func.func @dot1(%arg0: tensor<4xf64, #SV>,
+                %arg1: tensor<4xf64>) -> tensor<f64> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1)
+     {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
+                                        rhs_contracting_dimensions = [0]>,
+                                        precision_config = [#mhlo<"precision DEFAULT">,
+                                        #mhlo<"precision DEFAULT">]}
+           : (tensor<4xf64, #SV>, tensor<4xf64>) -> tensor<f64>
+  return %0 : tensor<f64>
+}
+
+// CHECK-LABEL: func @dot2(
+//  CHECK-SAME: %[[A:.*]]: tensor<4xf64>,
+//  CHECK-SAME: %[[B:.*]]: tensor<4xf64, #{{.*}}>) -> tensor<f64> {
+//       CHECK: %[[T:.*]] = "mhlo.dot_general"(%[[A]], %[[B]]) {{{.*}}} : (tensor<4xf64>, tensor<4xf64, #{{.*}}>) -> tensor<f64>
+//       CHECK: return %[[T]] : tensor<f64>
+func.func @dot2(%arg0: tensor<4xf64>,
+                %arg1: tensor<4xf64, #SV>) -> tensor<f64> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1)
+     {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
+                                        rhs_contracting_dimensions = [0]>,
+                                        precision_config = [#mhlo<"precision DEFAULT">,
+                                        #mhlo<"precision DEFAULT">]}
+           : (tensor<4xf64>, tensor<4xf64, #SV>) -> tensor<f64>
+  return %0 : tensor<f64>
+}
+
+// CHECK-LABEL: func @dot3(
+//  CHECK-SAME: %[[A:.*]]: tensor<4xf64, #{{.*}}>,
+//  CHECK-SAME: %[[B:.*]]: tensor<4xf64, #{{.*}}>) -> tensor<f64> {
+//       CHECK: %[[T:.*]] = "mhlo.dot_general"(%[[A]], %[[B]]) {{{.*}}} : (tensor<4xf64, #{{.*}}>, tensor<4xf64, #{{.*}}>) -> tensor<f64>
+//       CHECK: return %[[T]] : tensor<f64>
+func.func @dot3(%arg0: tensor<4xf64, #SV>,
+                %arg1: tensor<4xf64, #SV>) -> tensor<f64> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1)
+     {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
+                                        rhs_contracting_dimensions = [0]>,
+                                        precision_config = [#mhlo<"precision DEFAULT">,
+                                        #mhlo<"precision DEFAULT">]}
+           : (tensor<4xf64, #SV>, tensor<4xf64, #SV>) -> tensor<f64>
+  return %0 : tensor<f64>
+}
+
+//
+// Combination of quantization and sparse.
+//
+
+// CHECK-LABEL: func @quantization_and_sparse(
+//  CHECK-SAME: %[[A:.*]]: tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>)
+//       CHECK: return %[[A]] : tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>
+func.func @quantization_and_sparse(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>)
+                                       -> tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV> {
+  return %arg0 : tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>
 }

@@ -103,6 +103,8 @@ class MultiTrainerCache {
       size_t max_cache_size_bytes,
       std::unique_ptr<CachableSequence<ElementType>> cachable_sequence);
   virtual ~MultiTrainerCache() = default;
+  MultiTrainerCache(const MultiTrainerCache&) = delete;
+  MultiTrainerCache& operator=(const MultiTrainerCache&) = delete;
 
   // Gets the next element for a trainer. A `trainer_id` identifies the trainer
   // reading from the cache. A trainer reads the next element it hasn't read

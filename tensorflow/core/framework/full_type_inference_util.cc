@@ -309,8 +309,10 @@ ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
                         absl::StrCat("expected type ", t, " for input ",
                                      input_idx, ", got ", in_t.DebugString()));
         }
-        ret_type.set_type_id(u);
-        *ret_type.mutable_args() = in_t.args();
+        ret_type.set_type_id(TFT_PRODUCT);
+        FullTypeDef* t = ret_type.add_args();
+        t->set_type_id(u);
+        *t->mutable_args() = in_t.args();
         return ret_type;
       };
 }

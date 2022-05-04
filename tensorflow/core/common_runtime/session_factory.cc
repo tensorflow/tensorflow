@@ -46,7 +46,7 @@ void SessionFactory::Register(const string& runtime_type,
   mutex_lock l(*get_session_factory_lock());
   if (!session_factories()->insert({runtime_type, factory}).second) {
     LOG(ERROR) << "Two session factories are being registered "
-               << "under" << runtime_type;
+               << "under " << runtime_type;
   }
 }
 

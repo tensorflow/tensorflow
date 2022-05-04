@@ -249,7 +249,11 @@ tf_py_test(
 
 tf_py_test(
     name = "deprecation_test",
-    srcs = ["deprecation_test.py"],
+    srcs = [
+        "deprecated_module.py",
+        "deprecated_module_new.py",
+        "deprecation_test.py",
+    ],
     python_version = "PY3",
     deps = [
         ":util",

@@ -71,6 +71,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status WaitForAllTasks(
       const CoordinationServiceDeviceInfo& local_devices) override;
   const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
+  StatusOr<CoordinatedTask> GetOwnTask() override;
   StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) override;
   Status ReportError(const Status& error) override;
   Status Shutdown() override;
@@ -330,6 +331,15 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
 const CoordinationServiceDeviceInfo&
 CoordinationServiceAgentImpl::GetClusterDeviceInfo() {
   return cluster_devices_;
+}
+
+StatusOr<CoordinatedTask> CoordinationServiceAgentImpl::GetOwnTask() {
+  if (!IsInitialized()) {
+    return MakeCoordinationError(
+        errors::FailedPrecondition("Agent has not been initialized; we do not "
+                                   "know the associated task yet."));
+  }
+  return task_;
 }
 
 StatusOr<CoordinationServiceAgentImpl::TaskState>

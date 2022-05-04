@@ -65,7 +65,9 @@ void BuildOpsSubmodule(py::module* m) {
   py::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
       .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
       .value("API_VERSION_STATUS_RETURNING",
-             CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING)
+      .value("API_VERSION_STATUS_RETURNING_UNIFIED",
+             CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED);
 
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),

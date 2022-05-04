@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+#include "tensorflow/core/transforms/toposort/pass.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/RegionKindInterface.h"  // from @llvm-project

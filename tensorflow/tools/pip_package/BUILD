@@ -288,6 +288,7 @@ sh_binary(
                "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+    visibility = ["//visibility:public"],
 )
 
 # A genrule for generating a marker file for the pip package on Windows
