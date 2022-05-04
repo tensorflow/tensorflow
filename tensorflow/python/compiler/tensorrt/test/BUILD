@@ -399,7 +399,9 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "manual",  # TODO(b/231239602): re-enable once naming issue is resolved.
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/231239602): re-enable once naming issue is resolved.
         "no_rocm",
         "no_windows",
         "nomac",
