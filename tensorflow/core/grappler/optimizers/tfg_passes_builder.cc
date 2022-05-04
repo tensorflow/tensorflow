@@ -16,13 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
 #include "tensorflow/core/ir/ops.h"
-#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
-#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
-#include "tensorflow/core/transforms/functional_to_region/pass.h"
 #include "tensorflow/core/transforms/pass_registration.h"
-#include "tensorflow/core/transforms/region_to_functional/pass.h"
-#include "tensorflow/core/transforms/remapper/pass.h"
-#include "tensorflow/core/transforms/shape_inference/pass.h"
 #include "tensorflow/core/util/util.h"
 
 namespace mlir {

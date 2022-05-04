@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/transforms/drop_unregistered_attribute/output_shapes.h"
+#include "tensorflow/core/transforms/drop_unregistered_attribute/pass.h"
 
 #include <memory>
 
