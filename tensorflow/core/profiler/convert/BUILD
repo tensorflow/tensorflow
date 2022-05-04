@@ -798,3 +798,20 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "xla_op_utils",
+    hdrs = ["xla_op_utils.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+tf_cc_test(
+    name = "xla_op_utils_test",
+    size = "small",
+    srcs = ["xla_op_utils_test.cc"],
+    deps = [
+        ":xla_op_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
