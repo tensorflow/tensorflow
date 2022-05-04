@@ -92,13 +92,8 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 
 class PjRtClient;
 
-#if __cplusplus >= 201703L
-using PjRtDeviceAttribute =
-    std::variant<std::string, int64_t, std::vector<int64_t>>;
-#else
 using PjRtDeviceAttribute =
     absl::variant<std::string, int64_t, std::vector<int64_t>>;
-#endif
 
 class PjRtDevice {
  public:

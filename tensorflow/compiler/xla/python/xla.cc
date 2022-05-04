@@ -173,13 +173,8 @@ PYBIND11_MODULE(xla_extension, m) {
           [](PjRtDevice& device, std::string name) -> py::object {
             const auto& attrs = device.Attributes();
             if (auto it = attrs.find(name); it != attrs.end()) {
-#if __cplusplus >= 201703L
-              return std::visit([](auto&& v) { return py::cast(std::move(v)); },
-                                it->second);
-#else
-              return absl::visit(
-                  [](auto&& v) { return py::cast(std::move(v)); }, it->second);
-#endif
+              return absl::visit([](auto&& v) { return py::cast(v); },
+                                 it->second);
             }
             throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
           });
