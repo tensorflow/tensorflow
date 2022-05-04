@@ -1131,7 +1131,6 @@ class TrtGraphConverterV2(object):
     self._calibration_input_fn = None
 
     self._converted = False
-    self._device = None
     self._build_called_once = False
     self._calibrated = False
 
@@ -1241,17 +1240,6 @@ class TrtGraphConverterV2(object):
     """
     assert not self._converted
 
-    if self._device is None:
-      # Creating an empty tensor to fetch queried device
-      self._device = array_ops.zeros([]).device
-      if not self._device:  # if device unspecified, defaulting to GPU 0
-        self._device = "gpu:0"
-      if "gpu" not in self._device.lower():
-        raise ValueError(f"Specified device is not a GPU: {self._device}")
-
-    logging.info(f"Placing imported graph from "
-                 f"`{self._input_saved_model_dir}` on device: {self._device}")
-
     if (self._need_calibration and not calibration_input_fn):
       raise ValueError("Should specify calibration_input_fn because INT8 "
                        "calibration is needed")
@@ -1263,50 +1251,39 @@ class TrtGraphConverterV2(object):
                                   self._input_saved_model_tags)
     func = self._saved_model.signatures[self._input_saved_model_signature_key]
     frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
+    grappler_meta_graph_def = saver.export_meta_graph(
+        graph_def=frozen_func.graph.as_graph_def(), graph=frozen_func.graph)
 
-    frozen_graph_def = frozen_func.graph.as_graph_def()
+    # Add a collection 'train_op' so that Grappler knows the outputs.
+    fetch_collection = meta_graph_pb2.CollectionDef()
+    for array in frozen_func.inputs + frozen_func.outputs:
+      fetch_collection.node_list.value.append(array.name)
+    grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
+        fetch_collection)
 
-    # Clear any prior device assignments
-    for node in frozen_graph_def.node:
-      node.device = ""
-
-    with ops.Graph().as_default() as graph, ops.device(self._device):
-      importer.import_graph_def(frozen_graph_def, name="")
-      grappler_meta_graph_def = saver.export_meta_graph(
-          graph_def=graph.as_graph_def(), graph=graph)
-
-      # Add a collection 'train_op' so that Grappler knows the outputs.
-      fetch_collection = meta_graph_pb2.CollectionDef()
-      for array in frozen_func.inputs + frozen_func.outputs:
-        fetch_collection.node_list.value.append(array.name)
-      grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
-          fetch_collection)
-
-      # Run TRT optimizer in Grappler to convert the graph.
-      self._converted_graph_def = self._run_conversion(grappler_meta_graph_def)
-      # If a function is converted, then the TF context contains the original
-      # function while the converted_graph_def contains the converted function.
-      # Remove the original function from the TF context in this case.
-      for f in self._converted_graph_def.library.function:
-        while context.context().has_function(f.signature.name):
-          logging.info("Removing original function %s from the context",
-                       f.signature.name)
-          context.context().remove_function(f.signature.name)
-      # This also adds the converted functions to the context.
-      self._converted_func = wrap_function.function_from_graph_def(
-          self._converted_graph_def,
-          [tensor.name for tensor in frozen_func.inputs],
-          [tensor.name for tensor in frozen_func.outputs])
-      # Reconstruct the output signatures using the ones from original model.
-      self._converted_func.graph.structured_outputs = nest.pack_sequence_as(
-          func.graph.structured_outputs,
-          self._converted_func.graph.structured_outputs)
-      # Copy structured input signature from original function (used during
-      # serialization)
-      self._converted_func.graph.structured_input_signature = (
-          func.structured_input_signature)
-
-    self._converted_func = self._rebuild_func(self._converted_func)
+    # Run TRT optimizer in Grappler to convert the graph.
+    self._converted_graph_def = self._run_conversion(grappler_meta_graph_def)
+    # If a function is converted, then the TF context contains the original
+    # function while the converted_graph_def contains the converted function.
+    # Remove the original function from the TF context in this case.
+    for f in self._converted_graph_def.library.function:
+      while context.context().has_function(f.signature.name):
+        logging.info("Removing original function %s from the context",
+                     f.signature.name)
+        context.context().remove_function(f.signature.name)
+    # This also adds the converted functions to the context.
+    self._converted_func = wrap_function.function_from_graph_def(
+        self._converted_graph_def,
+        [tensor.name for tensor in frozen_func.inputs],
+        [tensor.name for tensor in frozen_func.outputs])
+    # Reconstruct the output signatures using the ones from original model.
+    self._converted_func.graph.structured_outputs = nest.pack_sequence_as(
+        func.graph.structured_outputs,
+        self._converted_func.graph.structured_outputs)
+    # Copy structured input signature from original function (used during
+    # serialization)
+    self._converted_func.graph.structured_input_signature = (
+        func.structured_input_signature)
 
     if self._need_calibration:
       # Execute calibration here only if not in dynamic shape mode.
