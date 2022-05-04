@@ -73,6 +73,15 @@ Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
         "Only dilation rate 1 is supported for convolution with spatial "
         "partitions.");
 
+  // TODO(b/208700444): support convolution with strides greater than 1.
+  const int num_non_default_strides =
+      llvm::count_if(conv_op.strides(), [](mlir::Attribute stride) {
+        return stride.cast<mlir::IntegerAttr>().getInt() != 1;
+      });
+  if (num_non_default_strides > 0)
+    return errors::InvalidArgument(
+        "Only stride 1 is supported for convolution with spatial partitions.");
+
   mlir::Value input = conv_op.input();
   auto input_type = input.getType().dyn_cast<mlir::RankedTensorType>();
   if (!input_type || !input_type.hasStaticShape())
@@ -144,6 +153,9 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
 
   mlir::tf_device::ClusterOp cluster =
       conv_op->template getParentOfType<mlir::tf_device::ClusterOp>();
+  TF_ASSIGN_OR_RETURN(mlir::Value mesh_coordinates,
+                      GetMeshCoordinatesFromCluster(cluster));
+  const Mesh& mesh = input_layout.mesh();
   mlir::Location location = conv_op->getLoc();
 
   const std::vector<std::string> input_sharding_spec =
@@ -180,6 +192,10 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
        ++curr_input_dim) {
     int curr_filter_dim = curr_input_dim - begin_input_dim;
 
+    auto input_type =
+        conv_op.input().getType().template dyn_cast<mlir::RankedTensorType>();
+    auto input_shape = input_type.getShape();
+
     if (input_sharding_spec[curr_input_dim] == Layout::kUnshardedDim) {
       if (padding == "SAME") {
         // Since we always emit a Conv op with "VALID" padding, we need to
@@ -193,9 +209,22 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
       continue;
     }
 
+    TF_ASSIGN_OR_RETURN(const int mesh_dim_index,
+                        mesh.idx_for_dim(input_sharding_spec[curr_input_dim]));
+    TF_ASSIGN_OR_RETURN(mlir::Value scalar_mesh_coordinate,
+                        SelectScalarValueFromArray(builder, mesh_dim_index,
+                                                   location, mesh_coordinates));
+
     int halo_size;
     if (padding == "SAME") {
       halo_size = std::floor(filter_shape[curr_filter_dim] / 2);
+    } else if (padding == "VALID") {
+      int input_local_size = input_shape[curr_input_dim];
+      int input_size = input_local_size * input_num_shards[curr_input_dim];
+      int output_size = input_size - (filter_shape[curr_filter_dim] - 1);
+      int output_local_size = output_size / output_num_shards[curr_input_dim];
+      halo_size = output_local_size + (filter_shape[curr_filter_dim] - 1) -
+                  input_local_size;
     } else {
       return errors::Unimplemented(
           "Spatially partitioned convolution with padding \"", padding.str(),
@@ -209,11 +238,44 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
     builder.setInsertionPoint(conv_op);
     TF_ASSIGN_OR_RETURN(
         mlir::Value halo_exchanged_input,
-        EmitHaloExchange(halo_size, input_sharding_spec[curr_input_dim],
-                         input_layout, builder, cluster, location,
-                         conv_op.input()));
+        EmitHaloExchange(builder, halo_size,
+                         input_sharding_spec[curr_input_dim], input_layout,
+                         mesh_coordinates, cluster, location, conv_op.input()));
 
-    conv_op->setOperand(0, halo_exchanged_input);
+    if (padding == "SAME") {
+      conv_op->setOperand(0, halo_exchanged_input);
+    } else if (padding == "VALID") {
+      // Slice the halo exchanged tensor to the desired size based on the index
+      // of the shard on the current dimension.
+
+      llvm::SmallVector<int32_t, 4> halo_sizes(input_layout.rank(), 0);
+      halo_sizes[curr_input_dim] = halo_size;
+      mlir::Value halo_sizes_const = IntConst(builder, location, halo_sizes);
+
+      llvm::SmallVector<int32_t, 4> halo_increments(input_layout.rank(), 0);
+      halo_increments[curr_input_dim] =
+          halo_size / (input_num_shards[curr_input_dim] - 1);
+      mlir::Value halo_increments_const =
+          IntConst(builder, location, halo_increments);
+
+      mlir::Value offset = builder.create<mlir::TF::MulOp>(
+          location, halo_increments_const.getType(), scalar_mesh_coordinate,
+          halo_increments_const);
+      mlir::Value slice_begin =
+          builder.create<mlir::TF::SubOp>(location, halo_sizes_const, offset);
+
+      llvm::SmallVector<int64_t, 4> slice_size(input_shape.begin(),
+                                               input_shape.end());
+      slice_size[curr_input_dim] += halo_size;
+      mlir::Value slice_size_const = Int64Const(builder, location, slice_size);
+
+      mlir::RankedTensorType sliced_input_type =
+          mlir::RankedTensorType::get(slice_size, input_type.getElementType());
+      mlir::Value sliced_input = builder.create<mlir::TF::SliceOp>(
+          location, sliced_input_type, /*input=*/halo_exchanged_input,
+          /*begin=*/slice_begin, /*size=*/slice_size_const);
+      conv_op->setOperand(0, sliced_input);
+    }
 
     // Spatially partitioned convolution always uses VALID padding after halo
     // exchange.

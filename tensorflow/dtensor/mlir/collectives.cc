@@ -425,10 +425,13 @@ StatusOr<mlir::Value> CreateConstSrcTargetPair(const Mesh& mesh,
 
 }  // namespace
 
-StatusOr<mlir::Value> EmitHaloExchange(
-    int halo_size, const std::string& mesh_dim, const Layout& layout,
-    mlir::OpBuilder& builder, mlir::tf_device::ClusterOp cluster,
-    mlir::Location location, mlir::Value tensor) {
+StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
+                                       const std::string& mesh_dim,
+                                       const Layout& layout,
+                                       mlir::Value mesh_coordinates,
+                                       mlir::tf_device::ClusterOp cluster,
+                                       mlir::Location location,
+                                       mlir::Value tensor) {
   const Mesh& mesh = layout.mesh();
 
   // Check mesh dimension requirements for halo exchange.
@@ -456,10 +459,6 @@ StatusOr<mlir::Value> EmitHaloExchange(
         "greater than halo size");
 
   TF_ASSIGN_OR_RETURN(const int mesh_dim_index, mesh.idx_for_dim(mesh_dim));
-
-  // Calculate the index in mesh dimension based on device id.
-  TF_ASSIGN_OR_RETURN(mlir::Value mesh_coordinates,
-                      GetMeshCoordinatesFromCluster(cluster));
 
   TF_ASSIGN_OR_RETURN(mlir::Value scalar_mesh_coordinate,
                       SelectScalarValueFromArray(builder, mesh_dim_index,

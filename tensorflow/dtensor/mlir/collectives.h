@@ -68,10 +68,13 @@ StatusOr<mlir::Operation*> EmitAllReduce(
 // (batch, height, width, channel) that has layout (*, h, w, *). Then,
 // `mesh_dim` ==  "w" would mean that halo exchange will occur along the width
 // dimension. That is halo tensors with right/left neighbors will be exchanged.
-StatusOr<mlir::Value> EmitHaloExchange(
-    int halo_size, const std::string& mesh_dim, const Layout& layout,
-    mlir::OpBuilder& builder, mlir::tf_device::ClusterOp cluster,
-    mlir::Location location, mlir::Value tensor);
+StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
+                                       const std::string& mesh_dim,
+                                       const Layout& layout,
+                                       mlir::Value mesh_coordinates,
+                                       mlir::tf_device::ClusterOp cluster,
+                                       mlir::Location location,
+                                       mlir::Value tensor);
 
 // Emits a DenseToSparse op followed by a SparseToDenseOp.
 // This is useful for emitting a Relayout on a SparseTensor.
