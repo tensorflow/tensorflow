@@ -189,5 +189,5 @@ def test_rng_algorithm():
 
   attr = RngAlgorithmAttr.get("DEFAULT")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"rng_algorithm DEFAULT\">")
+  assert str(attr) == ("#mhlo.rng_algorithm<DEFAULT>")
   assert attr.rng_algorithm == "DEFAULT"

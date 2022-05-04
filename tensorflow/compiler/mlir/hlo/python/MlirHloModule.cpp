@@ -426,6 +426,7 @@ PYBIND11_MODULE(_mlirHlo, m) {
           py::arg("context") = py::none(),
           "Creates a RngAlgorithm attribute with the given rng algorithm.")
       .def_property_readonly("rng_algorithm", [](MlirAttribute self) {
-        return mlirMhloRngAlgorithmAttrGetRngAlgorithm(self);
+        auto algorithm = mlirMhloRngAlgorithmAttrGetRngAlgorithm(self);
+        return py::str(algorithm.data, algorithm.length);
       });
 }
