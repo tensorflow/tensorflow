@@ -1657,12 +1657,12 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (failed(MatchReduceOpInput(reduce_op))) return failure();
+    if (failed(MatchReduceOpOperand(reduce_op))) return failure();
 
     if (failed(MatchBinaryReduceFunction<BinaryOp>(reduce_op.body())))
       return failure();
 
-    auto input = reduce_op.inputs()[0];
+    auto operand = reduce_op.operands()[0];
 
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.dimensions();
@@ -1675,20 +1675,20 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     auto reduction_indices = rewriter.create<ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
 
-    // In `MatchReduceOpInput` function, we already match that the
-    // "mhlo::ReduceOp" only has one input, one init_value and one result.
+    // In `MatchReduceOpOperand` function, we already match that the
+    // "mhlo::ReduceOp" only has one operand, one init_value and one result.
 
     // If the init value matches with the init value expected for the target
     // TfReduceOp, then replace the BinaryOp with a TfReduceOp. Otherwise,
     // replace the BinaryOp with a TfBinaryOp and a TfReduceOp.
     if (succeeded(MatchInitValue(reduce_op.init_values()[0]))) {
       rewriter.replaceOpWithNewOp<TfReduceOp>(
-          reduce_op, reduce_op.getType(0), input, reduction_indices,
+          reduce_op, reduce_op.getType(0), operand, reduction_indices,
           /*keep_dim=*/rewriter.getBoolAttr(false));
       return success();
     }
     return rewriteNonMatchInitValue<TfReduceOp, TfBinaryOp>(
-        reduce_op, input, reduction_indices, rewriter);
+        reduce_op, operand, reduction_indices, rewriter);
   }
 
  private:
@@ -1697,13 +1697,14 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   virtual LogicalResult MatchInitValue(Value init_value) const = 0;
 
   // This function tries to match that the "mhlo::ReduceOp" only has one
-  // input, one init_value and one result.
-  LogicalResult MatchReduceOpInput(mhlo::ReduceOp reduce_op) const {
-    if (reduce_op.inputs().size() != 1 || reduce_op.init_values().size() != 1 ||
+  // operand, one init_value and one result.
+  LogicalResult MatchReduceOpOperand(mhlo::ReduceOp reduce_op) const {
+    if (reduce_op.operands().size() != 1 ||
+        reduce_op.init_values().size() != 1 ||
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.inputs()[0].getType().isa<RankedTensorType>())
+    if (!reduce_op.operands()[0].getType().isa<RankedTensorType>())
       return failure();
     if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
     return success();
@@ -1824,14 +1825,15 @@ class ConvertReduceOpToTfArgMinMax
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (reduce_op.inputs().size() != 2) return failure();
+    if (reduce_op.operands().size() != 2) return failure();
     if (reduce_op.dimensions().getNumElements() != 1) return failure();
 
-    // Check that the input init is the expected value.
-    DenseElementsAttr input_init;
-    if (!matchPattern(reduce_op.init_values().front(), m_Constant(&input_init)))
+    // Check that the operand init is the expected value.
+    DenseElementsAttr operand_init;
+    if (!matchPattern(reduce_op.init_values().front(),
+                      m_Constant(&operand_init)))
       return failure();
-    if (!IsValueInitValue(input_init)) return failure();
+    if (!IsValueInitValue(operand_init)) return failure();
 
     // Check that the iota init is zero.
     DenseElementsAttr iota_init;
@@ -1841,15 +1843,15 @@ class ConvertReduceOpToTfArgMinMax
 
     // Verify that the second argument is an Iota op along the same dimension
     // as the reduction.
-    Value iota = reduce_op.inputs().back();
+    Value iota = reduce_op.operands().back();
     if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
     // Match the reduction computation.
-    const bool is_float = input_init.getElementType().isa<FloatType>();
+    const bool is_float = operand_init.getElementType().isa<FloatType>();
     if (failed(matchReduceComputation(reduce_op.body(), is_float)))
       return failure();
 
-    Value input = reduce_op.inputs().front();
+    Value operand = reduce_op.operands().front();
     int64_t axis = reduce_op.dimensions().getValues<int64_t>()[0];
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
@@ -1860,11 +1862,11 @@ class ConvertReduceOpToTfArgMinMax
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
     auto tf_reduce_op = rewriter.create<TfReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(0).getType(), input,
+        reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
         reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
     auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(1).getType(), input,
+        reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
         reduction_indices);
 
     rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
@@ -2124,17 +2126,16 @@ bool IsSpatialPoolingWithoutDilation(
 
   // Check that the individual padding values are corresponding to SAME
   // padding from TensorFlow.
-  RankedTensorType input_type =
-      rw.inputs()[0].getType().dyn_cast<RankedTensorType>();
+  auto operand_type = rw.operands()[0].getType().dyn_cast<RankedTensorType>();
   RankedTensorType output_type =
       rw.getResult(0).getType().dyn_cast<RankedTensorType>();
-  if (!input_type || !output_type) return false;
+  if (!operand_type || !output_type) return false;
 
   for (uint64_t i = 1; i < rank - 1; ++i) {
     int64_t padding_size =
         (output_type.getShape()[i] - 1) * (*window_strides)[i] +
         rw.window_dimensions().getValues<int64_t>()[i] -
-        input_type.getShape()[i];
+        operand_type.getShape()[i];
     if (padding[2 * i] != tensorflow::MathUtil::FloorOfRatio(
                               padding_size, static_cast<int64_t>(2)) ||
         padding[2 * i + 1] != tensorflow::MathUtil::CeilOfRatio(
@@ -2158,7 +2159,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   LogicalResult matchAndRewrite(
       mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (rw.getNumResults() != 1 || rw.inputs().size() != 1 ||
+    if (rw.getNumResults() != 1 || rw.operands().size() != 1 ||
         rw.init_values().size() != 1)
       return failure();
 
@@ -2174,15 +2175,15 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return failure();
     }
 
-    ShapedType input_type = rw.inputs()[0].getType().cast<ShapedType>();
+    auto operand_type = rw.operands()[0].getType().cast<ShapedType>();
 
     // For a cumulative op, require a tensor of 1s for each dimension in
-    // input.
+    // operand.
     auto is_splat_int64_ones =
         [&rewriter,
-         &input_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
+         &operand_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
           if (!attr.hasValue()) return false;
-          if (attr->getType().getShape()[0] != input_type.getRank())
+          if (attr->getType().getShape()[0] != operand_type.getRank())
             return false;
           if (!attr->isSplat()) return false;
           if (attr->getElementType() != rewriter.getIntegerType(64))
@@ -2203,7 +2204,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     // and there is a 1-entry for each input dimension not being operated
     // over.
     const auto &window_dimensions = rw.window_dimensions();
-    if (window_dimensions.size() != input_type.getRank()) return failure();
+    if (window_dimensions.size() != operand_type.getRank()) return failure();
     int64_t cumulative_axis = -1;
     for (int64_t i = 0, e = window_dimensions.size(); i < e; ++i) {
       int64_t window_dimension = window_dimensions.getValues<int64_t>()[i];
@@ -2211,7 +2212,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       // Cumulative axis already set.
       if (cumulative_axis != -1) return failure();
       // Potential cumulative axis is not the right size.
-      if (window_dimension != input_type.getShape()[i]) return failure();
+      if (window_dimension != operand_type.getShape()[i]) return failure();
       cumulative_axis = i;
     }
 
@@ -2221,9 +2222,9 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     // where N is the size of the input dimension being operated over.
     if (!rw.padding()) return failure();
     const auto &padding = rw.padding()->getValues<int64_t>();
-    if (padding.size() != input_type.getRank() * 2) return failure();
-    int64_t padding_value = input_type.getShape()[cumulative_axis] - 1;
-    for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
+    if (padding.size() != operand_type.getRank() * 2) return failure();
+    int64_t padding_value = operand_type.getShape()[cumulative_axis] - 1;
+    for (int64_t dim = 0; dim < operand_type.getRank(); ++dim) {
       int64_t left_padding = padding[2 * dim];
       int64_t right_padding = padding[2 * dim + 1];
       if (dim == cumulative_axis) {
@@ -2238,7 +2239,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
         rw->getLoc(),
         rewriter.getIntegerAttr(rewriter.getIntegerType(64), cumulative_axis));
 
-    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.inputs()[0],
+    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.operands()[0],
                                          axis, /* exclusive */ false,
                                          /* reverse */ false);
     return success();
@@ -2336,7 +2337,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       }
 
       return replaceWithAvgPool(
-          div_op, rw.inputs()[0],
+          div_op, rw.operands()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, "VALID", rewriter);
     }
@@ -2348,13 +2349,13 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.body())))
         return failure();
 
-      // Check that the RHS is a reduce_window over a constant 1 input with 0 as
-      // the init value.
-      DenseFPElementsAttr rhs_input;
+      // Check that the RHS is a reduce_window over a constant 1 operand with 0
+      // as the init value.
+      DenseFPElementsAttr rhs_operand;
       if (!isFloatZero(rw_rhs.init_values()[0]) ||
-          !matchPattern(rw_rhs.inputs()[0], m_Constant(&rhs_input)) ||
-          !rhs_input.isSplat() ||
-          !rhs_input.getSplatValue<APFloat>().isExactlyValue(1.0))
+          !matchPattern(rw_rhs.operands()[0], m_Constant(&rhs_operand)) ||
+          !rhs_operand.isSplat() ||
+          !rhs_operand.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
 
       // Check that the two reduce window have the same window configuration.
@@ -2366,7 +2367,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
         return failure();
 
       return replaceWithAvgPool(
-          div_op, rw.inputs()[0],
+          div_op, rw.operands()[0],
           llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
           window_strides, padding_mode, rewriter);
     }
@@ -2434,7 +2435,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     return replaceWithMaxPool(
-        rw, rw.inputs()[0],
+        rw, rw.operands()[0],
         llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
         window_strides, padding_mode, rewriter);
   }

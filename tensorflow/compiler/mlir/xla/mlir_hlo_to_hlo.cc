@@ -1052,7 +1052,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
-  if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
+  if (failed(GetTuple(op, op.operands(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
@@ -1264,7 +1264,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.inputs(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
       failed(GetTuple(op, op.init_values(), ctx, init_values))) {
     return failure();
   }
@@ -1288,7 +1288,7 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.inputs(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
       failed(GetTuple(op, op.init_values(), ctx, init_values))) {
     return failure();
   }

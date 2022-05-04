@@ -206,7 +206,7 @@ struct HloCanonicalizeReductionPass
           b.create<tensor::FromElementsOp>(loc, new_operand_dims);
 
       SmallVector<Value, 4> new_operands;
-      for (Value operand : op.inputs()) {
+      for (Value operand : op.operands()) {
         new_operands.push_back(b.create<DynamicReshapeOp>(
             loc,
             RankedTensorType::get(

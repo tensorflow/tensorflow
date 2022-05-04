@@ -264,9 +264,9 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
   LogicalResult matchAndRewrite(ReduceOp op,
                                 PatternRewriter& rewriter) const override {
     // Only apply to reduction of a unique argument.
-    if (op.inputs().size() != 1 || op.init_values().size() != 1)
+    if (op.operands().size() != 1 || op.init_values().size() != 1)
       return failure();
-    Value arg = op.inputs().front();
+    Value arg = op.operands().front();
     auto arg_ty = arg.getType().cast<RankedTensorType>();
 
     // Sort reduction dimensions, which is not an invariant of the op.
