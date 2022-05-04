@@ -224,6 +224,17 @@ def Quantize(graph,
       quant_delay,
       vars_collection,
       scope=scope)
+  
+  _QuantizeStandAloneActivations(
+      quantized_ops,
+      graph,
+      is_training,
+      activation_bits=activation_bits,
+      symmetric=symmetric,
+      ema_decay=ema_decay,
+      quant_delay=quant_delay,
+      vars_collection=vars_collection,
+      scope=scope)
 
 
 def _QuantizeActivationLayers(quantized_ops,
@@ -273,6 +284,64 @@ def _QuantizeActivationLayers(quantized_ops,
           vars_collection=vars_collection,
           bits=activation_bits,
           producer_scope=scope)
+      quantized_ops.add(op)
+
+
+def _QuantizeStandAloneActivations(
+    quantized_ops,
+    graph,
+    is_training,
+    activation_bits=8,
+    symmetric=False,
+    ema_decay=0.999,
+    quant_delay=None,
+    vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
+    scope=None):
+  """Quantize intermediate activation tensors after addition and multiplication.
+
+  Args:
+    quantized_ops: Set of previously quantized activation ops.
+    graph: Graph to modify.
+    is_training: Whether quantizing training graph or eval graph.
+    activation_bits: Number of bits to use for quantizing activations.
+    symmetric: (Optional) If true, use symmetric quantization limits instead of
+      training the minimum and maximum of each quantization range separately.
+    ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
+      quantization intervals for quantizing activations (see here about EMA:
+      https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
+    quant_delay: (Optional, default None) Int, count of global steps for which
+      to delay quantization.  This helps weights stabilize at the start of
+      training.
+    vars_collection: (Optional) Collection where to store the variables for
+      quantization interval ends.
+    scope: The scope to be transformed. If it's not None, only the ops which are
+      in this scope will be transformed.
+
+  Raises:
+    ValueError: When quantization fails.
+  """
+  input_to_ops_map = input_to_ops.InputToOps(graph)
+  for op in (op for op in graph.get_operations()):
+    op_type = set([op.type])
+    if op_type.intersection(_VALID_ACTIVATION_OP) and op not in quantized_ops:
+      logging.info('Inserting act_quant op for standalone %s op: %s.', op.type,
+                   op.name)
+      consumers = input_to_ops_map.ConsumerOperations(op)
+      _InsertQuantOp(
+          op.name,
+          'standalone_act_quant',
+          op,
+          consumers,
+          is_training,
+          moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
+          bits=activation_bits,
+          symmetric=symmetric,
+          init_min=0.0,
+          producer_scope=scope)
+      quantized_ops.add(op)
 
 
 def _CheckIfQuantizableOp(src_op, quantized_ops):
