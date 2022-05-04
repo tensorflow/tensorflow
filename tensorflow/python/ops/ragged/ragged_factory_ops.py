@@ -192,6 +192,9 @@ def _constant_value(ragged_factory, inner_factory, pylist, dtype, ragged_rank,
     if max_depth > scalar_depth:
       raise ValueError("Invalid pylist=%r: empty list nesting is greater "
                        "than scalar value nesting" % pylist)
+    if ragged_rank is not None and max_depth < ragged_rank:
+      raise ValueError(f"Invalid pylist={pylist}, max depth smaller than "
+                       f"ragged_rank={ragged_rank}")
 
   # If both inner_shape and ragged_rank were specified, then check that
   # they are compatible with pylist.
