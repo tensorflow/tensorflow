@@ -130,7 +130,7 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
 }
 
 auto register_tpu_tracer_factory = [] {
-  if (tensorflow::tpu::TryAcquireTpuLock()) {
+  if (tensorflow::tpu::TryAcquireTpuLock().ok()) {
     RegisterProfilerFactory(&CreateTpuTracer);
   }
   return 0;
