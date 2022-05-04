@@ -13,26 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
-
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_BUFFERIZABLEOPINTERFACEIMPL_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_BUFFERIZABLEOPINTERFACEIMPL_H
 
 namespace mlir {
+class DialectRegistry;
+
 namespace gml_st {
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass();
-
-std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass();
-
-std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass();
-
-#define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc"
+void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry);
 
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_BUFFERIZABLEOPINTERFACEIMPL_H
