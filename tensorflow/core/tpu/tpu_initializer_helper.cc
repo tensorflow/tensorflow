@@ -94,12 +94,12 @@ bool IsTpuUsed(int64_t pid) {
   return false;
 }
 
-// This function iterates through all the processes in /proc and logs if any
-// process it was able to check is using the TPU. It does not have permission to
-// processes owned by another user.
+// This function iterates through all the processes in /proc and finds out if
+// any process it was able to check is using the TPU. It does not have
+// permission to processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-StatusOr<int64_t> FindAndLogLibtpuProcess() {
+StatusOr<int64_t> FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
@@ -154,18 +154,19 @@ Status TryAcquireTpuLock() {
     // This lock is held until the process exits intentionally. The underlying
     // TPU device will be held on until it quits.
     if (lockf(fd, F_TLOCK, 0) != 0) {
-      auto pid = FindAndLogLibtpuProcess();
-      if (!pid.ok()) {
+      auto pid = FindLibtpuProcess();
+      if (pid.ok()) {
+        return errors::Aborted(absl::StrCat(
+            "libtpu.so is already in use by process"
+            " with pid ",
+            pid.ValueOrDie(),
+            ". Not attempting to load libtpu.so in this process."));
+      } else {
         return errors::Aborted(
-            "libtpu.so already in use by another process probably  owned by "
+            "libtpu.so already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
             "which process is using the TPU. Not attempting to load "
             "libtpu.so in this process.");
-      }
-      else {
-	return errors::Aborted(absl::StrCat("libtpu.so is already in use by process"
-				" with pid ", pid.ValueOrDie(), 
-				". Not attempting to load libtpu.so in this process."));
       }
     } else {
       return Status::OK();
