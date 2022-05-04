@@ -17,22 +17,18 @@ name: assign-partner-tags
 on:
   pull_request_target:
 
-# TODO: Test permissions issue. Remove after test and give targetted permission
-permissions: write-all
-
 jobs:
   assign-partner-tags:
     runs-on: ubuntu-latest
+    permissions:
+      # Needed to attach tags into the PR
+      issues: write
+      contents: write
+      pull-requests: write
     if: |
       github.event.pull_request.draft == false &&
       github.event.sender.type == 'User'
     steps:
-      - name: Print Dummy Variables
-        env:
-          DUMMY_SECRET: ${{ secrets.DUMMY_SECRET }}
-        run: |
-          echo "Dummy Secret: ${DUMMY_SECRET}"
-          echo ${{ secrets.DUMMY_SECRET }}
       - name: Checkout repo
         uses: actions/checkout@v2
       - name: Trusted-Partners-PR
