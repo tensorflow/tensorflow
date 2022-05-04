@@ -952,9 +952,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
-  static int64_t ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
-  );
+  static int64_t ConvolveBackwardFilterScratchSize =
+      GetDnnWorkspaceLimitOrDefault();
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
   ConvParameters conv_parameters = {
