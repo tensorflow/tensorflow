@@ -71,6 +71,8 @@ def main(unused_args):
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())
+  # Add os.environ data to test_results.
+  test_results.run_configuration.env_vars.update(os.environ)
 
   if not FLAGS.test_log_output_dir:
     print(text_format.MessageToString(test_results))
