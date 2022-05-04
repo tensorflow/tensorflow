@@ -141,6 +141,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv2d_biasadd_relu_fusion(self):
     """Test Conv2D+BiasAdd+Relu fusion."""
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
     run_options = config_pb2.RunOptions(output_partition_graphs=True)
     metadata = config_pb2.RunMetadata()
 
