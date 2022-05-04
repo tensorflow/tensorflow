@@ -2842,7 +2842,7 @@ def pybind_library(
 def pybind_extension(
         name,
         srcs,
-        module_name,
+        module_name = None,
         hdrs = [],
         static_deps = [],
         deps = [],
@@ -3126,7 +3126,7 @@ def tf_python_pybind_static_deps(testonly = False):
 def tf_python_pybind_extension(
         name,
         srcs,
-        module_name,
+        module_name = None,
         hdrs = [],
         deps = [],
         static_deps = [],
@@ -3147,7 +3147,7 @@ def tf_python_pybind_extension(
     pybind_extension(
         name,
         srcs,
-        module_name,
+        module_name = module_name,
         hdrs = hdrs,
         static_deps = static_deps,
         deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
