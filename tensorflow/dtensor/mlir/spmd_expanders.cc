@@ -215,9 +215,11 @@ REGISTER_SPMD(Conv2D, TF::Conv2DOp, ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropFilter, TF::Conv2DBackpropFilterOp,
               ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropInput, TF::Conv2DBackpropInputOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv3D, TF::Conv3DOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv3DBackpropFilterV2, TF::Conv3DBackpropFilterV2Op,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv3DBackpropInputV2, TF::Conv3DBackpropInputV2Op,
               ConvSPMDExpander);
-REGISTER_SPMD(Conv3D, TF::Conv3DOp, ConvSPMDExpander);
 REGISTER_SPMD(MaxPool, TF::MaxPoolOp, ConvSPMDExpander);
 REGISTER_SPMD(MaxPoolGrad, TF::MaxPoolGradOp, ConvSPMDExpander);
 
