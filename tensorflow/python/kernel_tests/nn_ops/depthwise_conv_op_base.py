@@ -1014,23 +1014,34 @@ class DepthwiseConv2DBase(test.TestCase):
                              stride, padding, dtype):
     x0 = np.random.rand(*input_sizes).astype(dtype)
     x2 = np.random.rand(*output_sizes).astype(dtype)
+    padding_nhwc = padding
+    padding_nchw = padding
     if isinstance(padding, list):
-      padding = [(0, 0)] + padding + [(0, 0)]
+      padding_nhwc = [(0, 0)] + padding + [(0, 0)]
+      padding_nchw = [(0, 0)] + [(0, 0)] + padding
 
-    def _GetVal(use_gpu):
+    def _GetVal(use_gpu, data_format="NHWC"):
       with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
+        strides = [1, stride, stride, 1]
+        padding = padding_nhwc
+        if data_format == "NCHW":
+          t0 = array_ops.transpose(t0, [0, 3, 1, 2])
+          t2 = array_ops.transpose(t2, [0, 3, 1, 2])
+          strides = [1, 1, stride, stride]
+          padding = padding_nchw
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
-            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
+            t0, t1, t2, strides=strides, padding=padding)
         ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
-    gpu_value = _GetVal(use_gpu=True)
     cpu_value = _GetVal(use_gpu=False)
-    self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
+    for data_format in ["NHWC", "NCHW"]:
+      gpu_value = _GetVal(use_gpu=True, data_format=data_format)
+      self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
   def testDepthwiseConv2DFilterGradCompare(self):
     for index, (input_size, filter_size, output_size, stride, padding,
