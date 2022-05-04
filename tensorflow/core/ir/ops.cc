@@ -541,7 +541,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // Parse argument name if present.
     entry_args.emplace_back();
     arg_types.emplace_back();
-    if (parser.parseRegionArgument(entry_args.back()) ||
+    if (parser.parseOperand(entry_args.back(), /*allowResultNumber=*/false) ||
         parser.parseColonType(arg_types.back()))
       return failure();
 
@@ -610,9 +610,16 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the function body.
   auto *body = result.addRegion();
   llvm::SMLoc loc = parser.getCurrentLocation();
-  if (failed(parser.parseRegion(
-          *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
-          /*enableNameShadowing=*/false)))
+  SmallVector<OpAsmParser::Argument> args;
+  if (entry_args.size()) {
+    for (auto argAndType : llvm::zip(entry_args, arg_types)) {
+      auto &arg = args.emplace_back();
+      arg.ssaName = std::get<0>(argAndType);
+      arg.type = std::get<1>(argAndType);
+    }
+  }
+
+  if (failed(parser.parseRegion(*body, args, /*enableNameShadowing=*/false)))
     return failure();
 
   // Function body was parsed, make sure it's not empty.
