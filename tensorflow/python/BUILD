@@ -4423,11 +4423,6 @@ alias(
 )
 
 alias(
-    name = "is_tfrt_test_true",
-    actual = "//tensorflow/python/framework:is_tfrt_test_true",
-)
-
-alias(
     name = "tfrt_utils",
     actual = "//tensorflow/python/framework:tfrt_utils",
 )

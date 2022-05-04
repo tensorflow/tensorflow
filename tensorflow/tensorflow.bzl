@@ -2494,6 +2494,8 @@ def tf_py_test(
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
 
+    env = kwargs.pop("env", {})
+
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY3")
     py_test(
@@ -2510,9 +2512,14 @@ def tf_py_test(
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
         deps = depset(deps + xla_test_true_list),
+        env = env,
         **kwargs
     )
     if tfrt_enabled_internal:
+        tfrt_env = {}
+        tfrt_env.update(env)
+        tfrt_env["EXPERIMENTAL_ENABLE_TFRT"] = "1"
+
         # None `main` defaults to `name` + ".py" in `py_test` target. However, since we
         # are appending _tfrt. it becomes `name` + "_tfrt.py" effectively. So force
         # set `main` argument without `_tfrt`.
@@ -2520,6 +2527,7 @@ def tf_py_test(
             main = name + ".py"
 
         py_test(
+            env = tfrt_env,
             name = name + "_tfrt",
             size = size,
             srcs = srcs,
@@ -2532,7 +2540,7 @@ def tf_py_test(
             tags = tags + ["tfrt"],
             visibility = [clean_dep("//tensorflow:internal")] +
                          additional_visibility,
-            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            deps = depset(deps + xla_test_true_list),
             **kwargs
         )
 

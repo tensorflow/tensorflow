@@ -1415,15 +1415,6 @@ py_library(
     visibility = visibility,
 )
 
-# Including this as a dependency will result in tests to use TFRT.
-# TODO(b/170139514): Add a curated list of TFRT native ops.
-# TODO(kkb): Deprecated by `tfrt_utils`, remove.
-py_library(
-    name = "is_tfrt_test_true",
-    srcs = ["is_tfrt_test_true.py"],
-    srcs_version = "PY3",
-)
-
 py_library(
     name = "tfrt_utils",
     srcs = ["tfrt_utils.py"],
