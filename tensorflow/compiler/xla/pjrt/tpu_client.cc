@@ -247,11 +247,7 @@ GetTpuDevices(
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {
-  Status tpu_library_finder = tensorflow::tpu::FindAndLoadTpuLibrary();
-  if (!tpu_library_finder.ok()) {
-    LOG(INFO) << tpu_library_finder;
-    return tpu_library_finder;
-  }
+  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
