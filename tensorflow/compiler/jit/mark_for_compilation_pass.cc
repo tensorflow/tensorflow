@@ -1189,21 +1189,22 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_set<string> GetOrCreateClusterRemoveFromExcludelistOpList() {
+absl::flat_hash_set<string> GetOrCreateClusterExcludeList() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  absl::flat_hash_set<string> removelist;
-  for (auto s : absl::StrSplit(flags->tf_xla_cluster_remove_from_excludelist, ',')) {
+  absl::flat_hash_set<string> excludelist;
+  for (auto s : absl::StrSplit(flags->tf_xla_cluster_exclude_ops, ',')) {
      if (!s.empty()) {
-       removelist.insert(string(s)) ;
+       excludelist.insert(string(s)) ;
      }
   }
-  if (VLOG_IS_ON(2) && !removelist.empty()) {
-    std::vector<string> vremovelist(removelist.begin(), removelist.end());
-    absl::c_sort(vremovelist);
-    VLOG(2) << "XLA clustering will remove following TF operations from excludelist: "
-            << absl::StrJoin(vremovelist, " ");
+  if (VLOG_IS_ON(2) && !excludelist.empty()) {
+    std::vector<string> vexcludelist(excludelist.begin(), excludelist.end());
+    absl::c_sort(vexcludelist);
+    VLOG(2) << "XLA clustering will exclude following TF operations from auto "
+               "clustering: "
+            << absl::StrJoin(vexcludelist, " ");
   }
-  return removelist;
+  return excludelist;
 }
 
 absl::flat_hash_set<string> GetOrCreateAllowlist() {
@@ -1306,26 +1307,22 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    auto cluster_remove_op_list = GetOrCreateClusterRemoveFromExcludelistOpList();
+    auto cluster_exclude_op_list = GetOrCreateClusterExcludeList();
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
-    filter.allow_where_op = false;
     filter.allow_unique_op = false;
+    filter.allow_where_op = true;
 
-    for (const auto& s : cluster_remove_op_list) {
+    for (const auto& s : cluster_exclude_op_list) {
        if (s == "Where") {
-         filter.allow_where_op = true;
-       } else if (s == "Unique") {
-         filter.allow_unique_op = true;
-       } else if (s == "CollectiveReduceV2") {
-         filter.allow_collective_reduce_v2 = true;
+         filter.allow_where_op = false;
        } else {
          return errors::InvalidArgument(
             "The operation '", s,
-            "' passed to --tf_xla_cluster_allow_ops is not supported by XLA.");
+            "' passed to --tf_xla_cluster_exclude_ops is not supported by XLA.");
        }
     }
 

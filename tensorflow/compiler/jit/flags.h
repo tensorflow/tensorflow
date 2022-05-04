@@ -62,7 +62,7 @@ struct MarkForCompilationPassFlags {
   string tf_xla_ops_to_cluster;
 
   // If non-empty, remove following operations from XLA clustering excludelist.
-  string tf_xla_cluster_remove_from_excludelist;
+  string tf_xla_cluster_exclude_ops;
 
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;

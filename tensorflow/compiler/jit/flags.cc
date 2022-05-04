@@ -114,12 +114,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
           " BN: TF FusedBatchNorm* operations."
           " FUSIBLE: All TF operations that XLA can fuse (All the above). "
           "You can also put any TF operation name, e.g. 'FUSIBLE,MatMul'."),
-      Flag("tf_xla_cluster_remove_from_excludelist",
-           &mark_for_compilation_flags->tf_xla_cluster_remove_from_excludelist,
+      Flag("tf_xla_cluster_exclude_ops",
+           &mark_for_compilation_flags->tf_xla_cluster_exclude_ops,
            "(experimental) "
-           "Remove the operations in auto-clustering excludelist. "
+           "Exclude the operations from auto-clustering. "
            "If multiple, separate them with commas."
-           " Where, Unique, CollectiveReduceV2."),
+           " Where, Some_other_ops"),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),
