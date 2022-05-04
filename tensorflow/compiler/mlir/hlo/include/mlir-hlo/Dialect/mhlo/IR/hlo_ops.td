@@ -2330,8 +2330,7 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
   }];
   let arguments = (ins
-    // TODO(jpienaar): This could be an enum instead.
-    I32Attr:$rng_algorithm,
+    HLO_RngAlgorithmAttr:$rng_algorithm,
     HLO_IntOrFpTensor:$initial_state
   );
 

@@ -275,6 +275,22 @@ MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr);
 MLIR_CAPI_EXPORTED std::string mlirMhloFusionKindAttrGetFusionKind(
     MlirAttribute attr);
 
+//
+// RngAlgorithmAttr.
+//
+// Creates a new RngAlgorithm attribute with the given 'algorithm' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloRngAlgorithmAttrGet(MlirContext ctx, MlirStringRef algorithm);
+
+// Returns true if the given attribute is a RngAlgorithm attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsARngAlgorithmAttr(
+    MlirAttribute attr);
+
+// Returns the rng-algorithm string associated with RngAlgorithm attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr);
+
 #ifdef __cplusplus
 }
 #endif
