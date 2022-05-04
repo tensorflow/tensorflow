@@ -247,7 +247,9 @@ GetTpuDevices(
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {
+  #if !defined(PLATFORM_GOOGLE)
   TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  #endif
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
