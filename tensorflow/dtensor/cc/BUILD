@@ -142,7 +142,6 @@ cc_library(
     srcs = ["tpu_system_interface.cc"],
     hdrs = ["tpu_system_interface.h"],
     deps = [
-        "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/time",
