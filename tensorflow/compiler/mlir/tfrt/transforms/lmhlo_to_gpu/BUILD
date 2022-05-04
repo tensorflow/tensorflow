@@ -173,7 +173,6 @@ cc_library(
         ":pattern_utils",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",

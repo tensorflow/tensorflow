@@ -107,7 +107,6 @@ cc_library(
         "transforms/xla_passes.h",
     ],
     deps = [
-        ":legalize_tf",
         ":xla_framework",
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
