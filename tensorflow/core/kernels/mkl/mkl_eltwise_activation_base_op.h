@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::algorithm;
 using dnnl::eltwise_forward;
@@ -76,6 +79,9 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   src_data:  input data buffer of src
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data, OpKernelContext* op_context) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(mu_);
+#endif
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
@@ -159,6 +165,10 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   }
 
   struct EltwiseFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex mu_;
+#endif
 };
 
 template <typename T>
