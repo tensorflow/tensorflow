@@ -3106,6 +3106,22 @@ LogicalResult DynamicSliceOp::verify() {
   return success();
 }
 
+LogicalResult DynamicSliceOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  DynamicSliceOp::Adaptor adaptor(operands, attributes, regions);
+  Value operand = adaptor.operand();
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  if (!operand_type) return failure();
+
+  auto slice_sizes = adaptor.slice_sizes();
+  Type element_ty = operand_type.getElementType();
+  inferredReturnShapes.emplace_back(slice_sizes.getValues<int64_t>(),
+                                    element_ty);
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // RealDynamicSliceOp
 //===----------------------------------------------------------------------===//

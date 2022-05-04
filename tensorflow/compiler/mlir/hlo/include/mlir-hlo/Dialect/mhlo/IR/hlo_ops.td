@@ -1182,7 +1182,8 @@ def HLO_SliceOp: HLO_Op<
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       InferTensorType]> {
   let summary = "Dynamic Slice operator";
   let description = [{
     Extracts a sub-array from the input array at dynamic start_indices.
