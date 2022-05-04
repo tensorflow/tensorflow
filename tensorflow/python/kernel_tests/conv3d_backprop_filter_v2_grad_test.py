@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -62,6 +63,23 @@ class Conv3DBackpropFilterV2GradTest(test.TestCase):
           err_tolerance = 1e-3
           self.assertLess(err, err_tolerance)
 
+  def testBadFilterShape(self):
+    strides = [1, 1, 1, 1, 1]
+    padding = "VALID"
+    tin = constant_op.constant(
+        .5053710941, shape=[2, 2, 2, 2, 1], dtype=dtypes.float32)
+    filter_sizes = constant_op.constant(0, shape=[], dtype=dtypes.int32)
+    out_backprop = constant_op.constant(
+        .5053710941, shape=[2, 2, 2, 2, 1], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 1"):
+      nn_ops.conv3d_backprop_filter_v2(
+          input=tin,
+          filter_sizes=filter_sizes,
+          out_backprop=out_backprop,
+          strides=strides,
+          padding=padding)
 
 if __name__ == "__main__":
   test.main()
