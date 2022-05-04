@@ -1577,7 +1577,6 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCopyDone:
       case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
-      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
@@ -1591,6 +1590,15 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kWhile:
         return ShapesSame(instruction->shape(), inferred_shape,
                           only_compare_minor_to_major_in_layout);
+      case HloOpcode::kDynamicUpdateSlice:
+        // For DynamicUpdateSlice it has an "in-place" update semantics, but
+        // inside of fusions memory space propagation doesn't propagate the
+        // memory spaces all the way, causing possible mismatches. Relax the
+        // constraint in that condition.
+        return ShapesSame(instruction->shape(), inferred_shape,
+                          only_compare_minor_to_major_in_layout,
+                          /*ignore_memory_space=*/
+                          instruction->parent()->IsFusionComputation());
 
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion

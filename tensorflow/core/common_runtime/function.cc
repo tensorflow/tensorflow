@@ -550,12 +550,6 @@ class CallOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    profiler::TraceMe trace_me(
-        [&] {
-          return absl::StrCat("CallOp #parent_step_id=", ctx->step_id(),
-                              ",function_step_id=", opts.step_id, "#");
-        },
-        /*level=*/2);
     lib->Run(opts, handle_, args, rets,
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {

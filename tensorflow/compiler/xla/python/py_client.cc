@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
@@ -596,51 +597,24 @@ XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
 
 }  // namespace
 
-StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
-    pybind11::function callable, XlaBuilder& builder,
-    absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+StatusOr<std::pair<uint64_t, pybind11::object>>
+PyClient::GetEmitPythonCallbackDescriptor(
+    pybind11::function callable, absl::Span<Shape const> operand_shapes,
+    absl::Span<Shape const> result_shapes) {
   if (pjrt_client_->platform_id() != CpuId()) {
     return Unimplemented("EmitPythonCallback is only implemented on CPU");
   }
 
-  std::vector<CpuCallback::Arg> callback_args(operands.size());
-  std::vector<XlaOp> custom_call_args(operands.size() + 1);
-  absl::c_copy(operands, custom_call_args.begin() + 1);
-
-  if (operand_layouts && operand_layouts->size() != operands.size()) {
-    return InvalidArgument(
-        "Mismatched number of operands (%d) and operand_layouts (%d)",
-        operands.size(), operand_layouts->size());
-  }
-
-  std::vector<Shape> custom_call_arg_layouts(operands.size() + 1);
+  std::vector<CpuCallback::Arg> callback_args(operand_shapes.size());
   static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
                 "Expected 64-bit pointers");
-  custom_call_arg_layouts[0] =
-      ShapeUtil::MakeShapeWithDescendingLayout(U64, {});
-  for (int i = 0; i < operands.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));
-    xla::Shape& layout = custom_call_arg_layouts[i + 1];
-    if (operand_layouts) {
-      if (!(*operand_layouts)[i].has_layout()) {
-        return InvalidArgument(
-            "operand_layout shapes for callback must have "
-            "layouts, got %s",
-            (*operand_layouts)[i].ToString(/*print_layout=*/true));
-      }
-      if (!ShapeUtil::Compatible(shape, (*operand_layouts)[i])) {
-        return InvalidArgument(
-            "Incompatible shapes for Python callback argument %d: %s vs %s", i,
-            shape.ToString(),
-            (*operand_layouts)[i].ToString(/*print_layout=*/true));
-      }
-      layout = (*operand_layouts)[i];
-    } else {
-      layout = LayoutUtil::GetWithDefaultLayout(shape);
-    }
+  for (int i = 0; i < operand_shapes.size(); ++i) {
+    Shape shape = operand_shapes[i];
 
     if (shape.IsArray()) {
+      Shape layout =
+          (shape.has_layout() ? shape
+                              : LayoutUtil::GetWithDefaultLayout(shape));
       callback_args[i].dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(), callback_args[i].dims.begin());
       callback_args[i].strides = ByteStridesForShape(layout);
@@ -657,15 +631,13 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
     }
   }
 
-  std::vector<Shape> result_shapes_with_layout(result_shapes.size());
   std::vector<CpuCallback::Result> callback_results(result_shapes.size());
   for (int i = 0; i < result_shapes.size(); ++i) {
     if (result_shapes[i].IsArray()) {
-      result_shapes_with_layout[i] =
+      const Shape& shape =
           result_shapes[i].has_layout()
               ? result_shapes[i]
               : LayoutUtil::GetWithDefaultLayout(result_shapes[i]);
-      const Shape& shape = result_shapes_with_layout[i];
       callback_results[i].expected_dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(),
                    callback_results[i].expected_dims.begin());
@@ -677,7 +649,6 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
                            callback_results[i].reversed_layout.begin());
     } else if (result_shapes[i].IsToken()) {
       callback_results[i].type = TOKEN;
-      result_shapes_with_layout[i] = result_shapes[i];
     } else {
       return InvalidArgument(
           "Only array and token return values from Python callbacks are "
@@ -688,9 +659,69 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
 
   auto callback = std::make_unique<CpuCallback>(
       std::move(callable), callback_args, callback_results);
-  custom_call_args[0] = ConstantR0<std::uint64_t>(
-      &builder, absl::bit_cast<std::uint64_t>(callback.get()));
+  uint64_t descriptor = absl::bit_cast<std::uint64_t>(callback.get());
 
+  py::capsule callback_capsule(callback.release(), [](void* ptr) {
+    delete reinterpret_cast<CpuCallback*>(ptr);
+  });
+  return std::make_pair(descriptor, py::object(std::move(callback_capsule)));
+}
+
+StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
+    XlaBuilder& builder, uint64_t descriptor, absl::Span<XlaOp const> operands,
+    absl::Span<Shape const> result_shapes,
+    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+  std::vector<Shape> custom_call_arg_layouts(operands.size() + 1);
+  custom_call_arg_layouts[0] =
+      ShapeUtil::MakeShapeWithDescendingLayout(U64, {});
+  std::vector<XlaOp> custom_call_args(operands.size() + 1);
+  custom_call_args[0] = ConstantR0<std::uint64_t>(&builder, descriptor);
+  absl::c_copy(operands, custom_call_args.begin() + 1);
+
+  if (operand_layouts && operand_layouts->size() != operands.size()) {
+    return InvalidArgument(
+        "Mismatched number of operands (%d) and operand_layouts (%d)",
+        operands.size(), operand_layouts->size());
+  }
+
+  for (int i = 0; i < operands.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));
+    Shape layout = LayoutUtil::GetWithDefaultLayout(shape);
+    if (shape.IsArray() && operand_layouts) {
+      if (!(*operand_layouts)[i].has_layout()) {
+        return InvalidArgument(
+            "operand_layout shapes for callback must have "
+            "layouts, got %s",
+            (*operand_layouts)[i].ToString(/*print_layout=*/true));
+      }
+      if (!ShapeUtil::Compatible(shape, (*operand_layouts)[i])) {
+        return InvalidArgument(
+            "Incompatible shapes for Python callback argument %d: %s vs %s", i,
+            shape.ToString(),
+            (*operand_layouts)[i].ToString(/*print_layout=*/true));
+      }
+      layout = (*operand_layouts)[i];
+    }
+    custom_call_arg_layouts[i + 1] = layout;
+  }
+
+  std::vector<Shape> result_shapes_with_layout(result_shapes.size());
+  for (int i = 0; i < result_shapes.size(); ++i) {
+    if (result_shapes[i].IsArray()) {
+      result_shapes_with_layout[i] =
+          result_shapes[i].has_layout()
+              ? result_shapes[i]
+              : LayoutUtil::GetWithDefaultLayout(result_shapes[i]);
+    } else if (result_shapes[i].IsToken()) {
+      result_shapes_with_layout[i] = result_shapes[i];
+    } else {
+      return InvalidArgument(
+          "Only array and token return values from Python callbacks are "
+          "supported, got %s",
+          result_shapes[i].ToString());
+    }
+  }
+  custom_call_args[0] = ConstantR0<std::uint64_t>(&builder, descriptor);
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
   XlaOp result = CustomCallWithLayout(
       &builder, "xla_python_cpu_callback", custom_call_args, result_shape,
@@ -700,11 +731,30 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
       /*literal=*/nullptr,
       /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/API_VERSION_STATUS_RETURNING);
+  return result;
+}
 
-  py::capsule callback_capsule(callback.release(), [](void* ptr) {
-    delete reinterpret_cast<CpuCallback*>(ptr);
-  });
-  return std::make_pair(result, py::object(std::move(callback_capsule)));
+StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
+    pybind11::function callable, XlaBuilder& builder,
+    absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
+    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+  std::vector<Shape> operand_shapes(operands.size());
+  for (int i = 0; i < operands.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));
+    operand_shapes[i] =
+        (operand_layouts ? (*operand_layouts)[i]
+                         : LayoutUtil::GetWithDefaultLayout(shape));
+  }
+  StatusOr<std::pair<uint64_t, pybind11::object>> result_sor =
+      GetEmitPythonCallbackDescriptor(callable, operand_shapes, result_shapes);
+  TF_ASSIGN_OR_RETURN(auto result, result_sor);
+  uint64_t descriptor = result.first;
+  pybind11::object keepalive = result.second;
+  TF_ASSIGN_OR_RETURN(XlaOp callback_op,
+                      EmitPythonCallbackFromDescriptor(
+                          builder, descriptor, operands, result_shapes,
+                          operand_shapes, has_side_effect));
+  return std::make_pair(callback_op, keepalive);
 }
 
 }  // namespace xla

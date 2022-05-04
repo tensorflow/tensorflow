@@ -84,9 +84,9 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
@@ -901,17 +901,16 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
   // Now bufferize all the compute operations (hlo + linalg) and func
   // signature.
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
+      mlir::gml_st::CreateTiledLoopBufferizePass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
   // pm.addPass(mlir::createTensorConstantBufferizePass());
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass(
+  pm.addPass(mlir::CreateFinalBufferizePass(
       /*alignment=*/xla::cpu_function_runtime::Align()));
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

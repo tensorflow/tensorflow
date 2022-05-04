@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import executor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1240,12 +1241,15 @@ class TrackableSaver(object):
 
     def _async_save_fn():
       """The thread function for executing async checkpoint save."""
-      _run_save()
-      # Update the internal checkpoint state if the checkpoint event is
-      # triggered from Checkpoint.save().
-      if update_ckpt_state:
-        _update_checkpoint_state_internal(
-            _convert_file_name_tensor_to_string(file_prefix))
+      with context.executor_scope(
+          executor.new_executor(
+              enable_async=False, enable_streaming_enqueue=False)):
+        _run_save()
+        # Update the internal checkpoint state if the checkpoint event is
+        # triggered from Checkpoint.save().
+        if update_ckpt_state:
+          _update_checkpoint_state_internal(
+              _convert_file_name_tensor_to_string(file_prefix))
 
     if options.experimental_enable_async_checkpoint:
       # Execute async-checkpoint.

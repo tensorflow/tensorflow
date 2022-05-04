@@ -419,6 +419,15 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
   return select;
 }
 
+HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands) {
+  CHECK(!operands.empty());
+  if (operands.size() == 1) {
+    return operands[0];
+  }
+  return operands[0]->parent()->AddInstruction(
+      HloInstruction::CreateTuple(operands));
+}
+
 StatusOr<HloInstruction*> MakeSortHlo(
     const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
     int64_t dimension_to_sort, bool is_stable, HloComputation::Builder* builder,

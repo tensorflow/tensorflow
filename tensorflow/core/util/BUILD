@@ -533,6 +533,9 @@ tf_cuda_library(
 cc_library(
     name = "overflow",
     hdrs = ["overflow.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",

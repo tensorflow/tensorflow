@@ -1361,10 +1361,10 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<RankedTensorType>();
-  if (!index || index.getRank() != 0 ||
-      !index.getElementType().isSignlessInteger(32)) {
-    return emitOpError("expected first body block argument to be tensor<i32>");
+  auto index = args.front().getType().dyn_cast<TensorType>();
+  if (!index || !index.getElementType().isSignlessInteger(32)) {
+    return emitOpError(
+        "expected first body block argument to be an i32 tensor");
   }
 
   if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();

@@ -44,6 +44,7 @@ Pod::Spec.new do |s|
       ts.resources = [
         tfl_dir + 'testdata/add.bin',
         tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_signatures.bin',
       ]
     end
   end

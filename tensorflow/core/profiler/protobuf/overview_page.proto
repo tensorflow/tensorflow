@@ -63,6 +63,8 @@ message OverviewPageAnalysis {
   // Percentage of TF-op execution time on the device (excluding the idle time)
   // that are for outside compilation.
   double device_op_time_outside_compilation_percent = 16;
+  // Percentage of the device time that is in use.
+  double device_duty_cycle_percent = 17;
 }
 
 // Overview result for a performance tip to users.

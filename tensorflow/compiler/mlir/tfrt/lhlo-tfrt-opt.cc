@@ -28,20 +28,19 @@ limitations under the License.
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 int main(int argc, char **argv) {
-  tensorflow::InitMlir y(&argc, &argv);
-
-  mlir::registerAllPasses();
-
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::mhlo::MhloDialect, tfrt::gpu::GpuDialect>();
   tfrt::RegisterTFRTDialects(registry);
+
+  mlir::registerAllPasses();
   tensorflow::registerConvertLmhloToGpuBranchPass();
   tensorflow::registerConvertLmhloToGpuBinaryPass();
   tensorflow::registerConvertLmhloToGpuPass();
   tensorflow::registerLmhloToTfrtGpuPass();
-  tfrt::gpu::registerPasses();
+  tfrt::gpu::RegisterPasses();
+
   return failed(
       mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n", registry));
 }

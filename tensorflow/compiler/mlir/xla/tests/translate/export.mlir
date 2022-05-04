@@ -557,44 +557,6 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 
 // -----
 
-// CHECK:  HloModule
-func.func @main(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
-
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
-  func.return %0 : tensor<16x64xbf16>
-}
-
-// CHECK: ENTRY
-// CHECK:   %[[Arg:.*]] = s32[16,16] parameter(0)
-// CHECK:   u32[16,16] convert(s32[16,16] %[[Arg]])
-// CHECK:   u32[4] subtract(u32[4] %{{.*}}, u32[4] %{{.*}})
-// CHECK:   u32[4] multiply(u32[4] %{{.*}}, u32[4] %{{.*}})
-// CHECK:   u32[4,16,16] shift-right-logical(u32[4,16,16] %{{.*}}, u32[4,16,16] %{{.*}})
-// CHECK:   bf16[4,16,16] convert(u32[4,16,16] %{{.*}})
-// CHECK:   bf16[4,16,16] multiply(bf16[4,16,16] %{{.*}}, bf16[4,16,16] %{{.*}})
-// CHECK:   ROOT
-
-// -----
-
-// CHECK:  HloModule
-func.func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
-
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false, is_16bits = true} : (tensor<16x16xi32>) -> tensor<16x32xbf16>
-  func.return %0 : tensor<16x32xbf16>
-}
-
-// CHECK: ENTRY
-// CHECK:   %[[Arg:.*]] = s32[16,16] parameter(0)
-// CHECK:   u32[16,16] convert(s32[16,16] %[[Arg]])
-// CHECK:   u32[2] subtract(u32[2] %{{.*}}, u32[2] %{{.*}})
-// CHECK:   u32[2] multiply(u32[2] %{{.*}}, u32[2] %{{.*}})
-// CHECK:   u32[2,16,16] shift-right-logical(u32[2,16,16] %{{.*}}, u32[2,16,16] %{{.*}})
-// CHECK:   bf16[2,16,16] convert(u32[2,16,16] %{{.*}})
-// CHECK:   bf16[2,16,16] multiply(bf16[2,16,16] %{{.*}}, bf16[2,16,16] %{{.*}})
-// CHECK:   ROOT
-
-// -----
-
 // Test dot i8xi8 -> i64
 
 func.func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {

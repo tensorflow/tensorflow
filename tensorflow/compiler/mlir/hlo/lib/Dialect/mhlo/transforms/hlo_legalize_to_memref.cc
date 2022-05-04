@@ -258,30 +258,6 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   return transformed_operand;
 }
 
-Value CreateCopy(mhlo::DynamicBroadcastInDimOp op, Value broadcasted,
-                 OpBuilder *b) {
-  MemRefType result_type = broadcasted.getType().cast<MemRefType>();
-  auto loc = op.getLoc();
-  SmallVector<Value, 4> dynamic_operands;
-  for (int i = 0; i < result_type.getRank(); ++i) {
-    if (!result_type.isDynamicDim(i)) continue;
-    auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
-    Value size =
-        b->createOrFold<tensor::ExtractOp>(loc, op.output_dimensions(), index);
-    if (!size.getType().isIndex()) {
-      size = b->create<arith::IndexCastOp>(loc, b->getIndexType(), size);
-    }
-    dynamic_operands.push_back(size);
-  }
-  auto identity_map_memref =
-      MemRefType::get(result_type.getShape(), result_type.getElementType());
-  auto copy = b->create<memref::AllocOp>(op.getLoc(), identity_map_memref,
-                                         dynamic_operands);
-  b->create<memref::CopyOp>(loc, broadcasted, copy);
-
-  return copy;
-}
-
 struct DynamicBroadcastInDimOpInterface
     : public BufferizableOpInterface::ExternalModel<
           DynamicBroadcastInDimOpInterface, mhlo::DynamicBroadcastInDimOp> {
@@ -322,15 +298,6 @@ struct DynamicBroadcastInDimOpInterface
     Value result = InsertDynamicMemrefCastOp(broadcast_in_dim_op,
                                              *operand_buffer, &rewriter);
 
-    // Evaluate `enforce_identity_map_fn` and maybe create a copy.
-    Optional<const MhloBufferizationState *> dialect_state =
-        state.getAnalysisState().getDialectState<MhloBufferizationState>(
-            mhlo::MhloDialect::getDialectNamespace());
-    assert(dialect_state.hasValue() && "mhlo dialect state not initialized");
-    if ((*dialect_state)->enforce_identity_map_fn(op)) {
-      result = CreateCopy(broadcast_in_dim_op, result, &rewriter);
-    }
-
     bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
     return success();
   }
@@ -349,10 +316,6 @@ struct HloLegalizeToMemrefPass
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     options.allowDialectInFilter<mhlo::MhloDialect>();
-    // mhlo dialect state must be explicitly initialized to ease debugging.
-    options.addDialectStateInitializer(
-        mhlo::MhloDialect::getDialectNamespace(),
-        []() { return std::make_unique<MhloBufferizationState>(); });
     if (failed(bufferizeOp(getOperation(), options))) signalPassFailure();
   }
 };

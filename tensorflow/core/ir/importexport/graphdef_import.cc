@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ThreadPool.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -83,14 +87,10 @@ class GraphDefImporter {
         b_(ctx_),
         registry_(registry),
         debug_info_(debug_info),
-        unknown_loc_(UnknownLoc::get(ctx_)) {
-    // Create the placeholder op;
-    OperationState placeholder_state(unknown_loc_, "tfg._mlir_placeholder");
-    placeholder_state.types.push_back(dialect_->getControlType());
-    placeholder_op_ = OpBuilder(ctx_).create(placeholder_state);
-    placeholder_ = placeholder_op_->getResult(0);
+        unknown_loc_(UnknownLoc::get(ctx_)),
+        placeholder_state_(unknown_loc_, "tfg._mlir_placeholder") {
+    placeholder_state_.addTypes(dialect_->getControlType());
   }
-  ~GraphDefImporter() { placeholder_op_->erase(); }
 
   // Convert a GraphDef to MLIR module.
   StatusOr<OwningOpRef<ModuleOp>> ConvertGraphDef(const GraphDef &graph);
@@ -143,8 +143,26 @@ class GraphDefImporter {
   };
 
   // State when converting a list of nodes.
-  using ConversionState =
-      absl::flat_hash_map<StringPiece, std::unique_ptr<ResultInfo>>;
+  class ConversionState
+      : public absl::flat_hash_map<StringPiece, std::unique_ptr<ResultInfo>> {
+   public:
+    // Create a conversion state with a placeholder value.
+    explicit ConversionState(const OperationState &placeholder_state)
+        : placeholder_op_(OpBuilder(placeholder_state.getContext())
+                              .create(placeholder_state)),
+          placeholder_(placeholder_op_->getResult(0)) {}
+    // Destroy the placeholder op on destruction.
+    ~ConversionState() { placeholder_op_->erase(); }
+
+    // Get the placeholder value.
+    Value GetPlaceholder() { return placeholder_; }
+
+   private:
+    // The placeholder operation.
+    Operation *placeholder_op_;
+    // The placeholder value.
+    Value placeholder_;
+  };
   // Convert a list a nodes to operations.
   Status ConvertNodes(
       OpBuilder &builder, ConversionState &s,
@@ -204,10 +222,8 @@ class GraphDefImporter {
   const GraphDebugInfo &debug_info_;
   // Cached unknown location.
   Location unknown_loc_;
-  // Placeholder operations for backedges.
-  Operation *placeholder_op_;
-  // The placeholder op result.
-  Value placeholder_;
+  // Operation state for creating placeholder ops.
+  OperationState placeholder_state_;
 
   // Map of function OpDefs.
   absl::flat_hash_map<StringPiece, const OpDef *> function_op_defs_;
@@ -239,7 +255,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     gradient_map.emplace(gradient.function_name(), gradient.gradient_func());
 
   // Convert the graph.
-  ConversionState s;
+  ConversionState s(placeholder_state_);
   TF_RETURN_IF_ERROR(
       ConvertNodes(builder, s, graph.node(), &graph_op.nodes().front()));
 
@@ -472,9 +488,9 @@ StatusOr<GraphDefImporter::Result> GraphDefImporter::GetResult(
   // If the result is unresolved, return the placeholder;
   if (!info->resolved) {
     if (id.IsControl()) {
-      return Result{placeholder_, Value(), id, info.get()};
+      return Result{s.GetPlaceholder(), Value(), id, info.get()};
     }
-    return Result{Value(), placeholder_, id, info.get()};
+    return Result{Value(), s.GetPlaceholder(), id, info.get()};
   }
 
   // If the result is the control token, return it.
@@ -532,7 +548,7 @@ Status GraphDefImporter::ConvertFunctionDef(
 
   // Iterate over the arguments again and map them. We have to add them first
   // otherwise the ranges will be invalidated.
-  ConversionState s;
+  ConversionState s(placeholder_state_);
   for (const auto &it : llvm::enumerate(signature.input_arg())) {
     s.emplace(
         it.value().name(),
@@ -604,6 +620,44 @@ Status GraphDefImporter::ConvertNodes(
   for (const NodeDef &node : nodes) {
     TF_RETURN_IF_ERROR(ConvertNodeDef(builder, s, node));
   }
+
+  // If the placeholder has remaining uses, then an input is missing.
+  if (TF_PREDICT_FALSE(!s.GetPlaceholder().use_empty())) {
+    // Stringify a result ID.
+    const auto id_to_str = [](const ResultId &id) {
+      std::string name = id.node.str();
+      if (id.IsControl()) return absl::StrCat("^", name);
+      if (id.output.empty())
+        return id.index ? absl::StrCat(id.node.str(), ":", id.index) : name;
+      return absl::StrCat(name, ":", id.output.str(), ":", id.index);
+    };
+    // Gather all missing input edges.
+    std::vector<std::pair<std::string, std::string>> missing_edges;
+    for (const ResultInfo &info :
+         llvm::make_pointee_range(llvm::make_second_range(s))) {
+      if (info.backedges.empty()) continue;
+      const Backedge &edge = info.backedges.front();
+      missing_edges.emplace_back(id_to_str(edge.id),
+                                 TFOp(edge.operand->getOwner()).name().str());
+    }
+    assert(!missing_edges.empty() &&
+           "placeholder had remaining uses but found no unresolved backedges");
+    // Destroy the invalid IR.
+    block->erase();
+    // Report the missing edges in alphabetical order.
+    llvm::sort(missing_edges);
+    std::string error_message;
+    llvm::raw_string_ostream os(error_message);
+    llvm::interleave(
+        missing_edges, os,
+        [&](const auto &edge) {
+          os << "Non-existent input " << edge.first << " in node "
+             << edge.second;
+        },
+        "\n");
+    return InvalidArgument(std::move(os.str()));
+  }
+
   return Status::OK();
 }
 

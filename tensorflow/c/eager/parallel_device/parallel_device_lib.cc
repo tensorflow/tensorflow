@@ -75,7 +75,7 @@ class DeviceThread {
         // TODO(allenl): We should have an async API that works with the
         // parallel device.
         device_(device),
-        executor_(TFE_NewExecutor(is_async)),
+        executor_(TFE_NewExecutor(is_async, /*enable_streaming_enqueue=*/true)),
         op_(nullptr),
         thread_(tensorflow::Env::Default()->StartThread(
             tensorflow::ThreadOptions(), "parallel_device_execute",

@@ -361,7 +361,7 @@ function copy_to_new_project_name {
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
 
   # We need to change the name in the METADATA file, but we need to ensure that
-  # all other occurences of the name stay the same, otherwise things such as
+  # all other occurrences of the name stay the same, otherwise things such as
   # URLs and depedencies might be broken (for example, replacing without care
   # might transform a `tensorflow_estimator` dependency into
   # `tensorflow_gpu_estimator`, which of course does not exist -- except by

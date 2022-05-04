@@ -103,16 +103,13 @@ void AddLinalgTransformations(OpPassManager& pm,
 
 void AddBufferizationPasses(OpPassManager& pm) {
   // Now bufferize all the compute operations (hlo + linalg) and func signature.
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
+  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::CreateTiledLoopBufferizePass());
   // Always run CSE and canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateFinalBufferizePass(/*alignment=*/64));
+  pm.addPass(mlir::CreateFinalBufferizePass(/*alignment=*/64));
 }
 
 }  // namespace

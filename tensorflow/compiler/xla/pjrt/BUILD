@@ -112,6 +112,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "cpu_device_test",
+    srcs = ["cpu_device_test.cc"],
+    deps = [
+        ":cpu_device",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "local_device_state",
     srcs = ["local_device_state.cc"],

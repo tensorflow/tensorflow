@@ -350,7 +350,8 @@ Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                       in_place_op->parent()->DeepCopyInstruction(operand));
-  TF_RETURN_IF_ERROR(operand->ReplaceUseWith(in_place_op, deep_copy));
+  TF_RETURN_IF_ERROR(
+      operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
   return Status::OK();
 }
 

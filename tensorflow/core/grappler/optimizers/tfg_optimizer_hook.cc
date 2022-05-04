@@ -38,35 +38,16 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
-#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
-#include "tensorflow/core/transforms/functional_to_region/pass.h"
-#include "tensorflow/core/transforms/pass_registration.h"
-#include "tensorflow/core/transforms/region_to_functional/pass.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
 namespace mlir {
 namespace tfg {
-
-// The default pipeline is empty.
-void DefaultGrapplerPipeline(PassManager& mgr) {}
-
-// Run the consolidate attributes pass. Convert the whole module to region
-// control-flow and run control-flow sinking. Convert the whole module back to
-// functional control-flow and prepare the attributes for export.
-void DefaultModuleGrapplerPipeline(PassManager& mgr) {
-  mgr.addPass(CreateConsolidateAttributesPass());
-  mgr.addPass(CreateFunctionalToRegionPass());
-  // TODO(b/228618345): Enable control-flow sinking.
-  // mgr.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
-  mgr.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
-  mgr.addPass(CreatePrepareAttributesForExportPass());
-}
 
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.
@@ -77,6 +58,12 @@ class TFGGrapplerOptimizer::Impl {
   // threads, a threadpool is initialized and passed to the MLIR context.
   explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
       : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
+    DialectRegistry registry;
+    // Register the TF op registry interface so that passes can query it.
+    registry.addExtension(+[](MLIRContext* ctx, TFGraphDialect* dialect) {
+      dialect->addInterfaces<TensorFlowOpRegistryInterface>();
+    });
+    ctx_.appendDialectRegistry(registry);
     builder(mgr_);
     if (num_tfg_threads) {
       llvm::ThreadPoolStrategy strategy;
@@ -148,6 +135,17 @@ Status TFGGrapplerOptimizer::Optimize(
   if (failed(impl_->RunPipeline(module)))
     return error_handler.Combine(
         InvalidArgument("MLIR Graph Optimizer failed: "));
+  // While pass execution, it may use emitError to return a failure status, this
+  // will be caught by the error_handler. As a result, even if the pass left
+  // without failure, there may still have some message cached in the handler.
+  tensorflow::Status status = error_handler.ConsumeStatus();
+  if (!status.ok()) {
+    VLOG(4) << "Pass execution leftover diagnostics: " << status.error_message()
+            << "\n These message doesn't imply any failure of the pipeline "
+               "execution. They are cached because certain error diagnostics "
+               "were used to pass the internal execution result. Use warning "
+               "diagnostic when possible if you want to avoid this.";
+  }
 
   // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;

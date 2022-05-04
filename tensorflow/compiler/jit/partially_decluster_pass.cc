@@ -331,7 +331,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
     // remove Input, OP, Shape and F from the cluster, if F is a many-to-one
     // function.
     //
-    // Note that we do do the right thing for graphs like:
+    // Note that we do the right thing for graphs like:
     //
     //   Input -> F0 -> F1 -> Reshape
     //

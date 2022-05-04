@@ -8997,31 +8997,42 @@ func DataFormatVecPermuteDstFormat(value string) DataFormatVecPermuteAttr {
 
 // Permute input tensor from `src_format` to `dst_format`.
 //
-// Input tensor must be a vector of size 4, or a 4x2 tensor.
+// Given source and destination format strings of length n=4 or 5, the input
+// tensor must be a vector of size n or n-2, or a 2D tensor of shape
+// (n, 2) or (n-2, 2).
 //
-// For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and inputs:
+// If the first dimension of the input tensor is n-2, it is assumed that
+// non-spatial dimensions are omitted (i.e `N`, `C`).
+//
+// For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
 // ```
 // [1, 2, 3, 4]
 // ```
-// and
-// ```
-// [[1, 2, 3, 4],
-//  [5, 6, 7, 8]]
-// ```
-// , the outputs will be (respectively):
+// , the output will be:
 // ```
 // [1, 4, 2, 3]
 // ```
-// and
+// With `src_format` of `NDHWC`, `dst_format` of `NCDHW`, and input:
 // ```
-// [[1, 4, 2, 3],
-//  [5, 8, 6, 7]]
+// [[1, 6], [2, 7], [3, 8], [4, 9], [5, 10]]
+// ```
+// , the output will be:
+// ```
+// [[1, 6], [5, 10], [2, 7], [3, 8], [4, 9]]
+// ```
+// With `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
+// ```
+// [1, 2]
+// ```
+// , the output will be:
+// ```
+// [1, 2]
 // ```
 //
 // Arguments:
-//	x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
+//	x: Tensor of rank 1 or 2 in source data format.
 //
-// Returns Vector of size 4 or Tensor of shape (4, 2) in destination data format.
+// Returns Tensor of rank 1 or 2 in destination data format.
 func DataFormatVecPermute(scope *Scope, x tf.Output, optional ...DataFormatVecPermuteAttr) (y tf.Output) {
 	if scope.Err() != nil {
 		return

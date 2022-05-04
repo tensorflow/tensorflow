@@ -58,9 +58,8 @@ class WeakrefDeletionObserver:
 class InternalTracingContext(trace.TracingContext):
   """Container for variables and flags shared across TraceType generation."""
 
-  def __init__(self, include_tensor_ranks_only: bool = False):
+  def __init__(self):
     self._deletion_observer = WeakrefDeletionObserver()
-    self._include_tensor_ranks_only = include_tensor_ranks_only
     self._global_to_local_id = {}
 
   # TODO(b/202772221): Consider dropping after alias pattern matching is
@@ -72,11 +71,6 @@ class InternalTracingContext(trace.TracingContext):
 
     return default_types.Reference(base_type,
                                    self._global_to_local_id[local_id])
-
-  # TODO(b/202430155): Remove this flag after TraceType shape relaxation.
-  @property
-  def include_tensor_ranks_only(self):
-    return self._include_tensor_ranks_only
 
   @property
   def deletion_observer(self):
