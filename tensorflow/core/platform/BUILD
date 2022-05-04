@@ -61,9 +61,6 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_shared_library")
-
 package(
     default_visibility = [
         "//visibility:public",
@@ -210,27 +207,6 @@ cc_library(
         ":logging",
         ":platform_port",
         "@com_google_absl//absl/base",
-    ],
-)
-
-# Used by //tensorflow/python/platform:platform.
-tf_native_cc_shared_library(
-    name = "_cpu_feature_guard.so",
-    static_deps = [
-        # TODO(rostam): Remove Copybara transform.
-        # copybara:comment_begin(oss only)
-        "@bazel_tools//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "//:__subpackages__",
-        # copybara:comment_end
-    ],
-    deps = [
-        "//tensorflow/core/platform:cpu_feature_guard",
     ],
 )
 
