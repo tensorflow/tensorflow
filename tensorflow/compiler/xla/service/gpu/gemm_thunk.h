@@ -27,10 +27,32 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/matmul_util.h"
-#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
+
+// A one-time scratch allocator for Blas. The scratch buffers allocated are
+// released on destruction.
+//
+// Not thread-safe in that AllocateBytes, destructor are not locked.
+class BlasScratchAllocator : public se::ScratchAllocator {
+ public:
+  BlasScratchAllocator(int device_ordinal,
+                       se::DeviceMemoryAllocator* memory_allocator);
+
+  int64_t GetMemoryLimitInBytes() override;
+
+  int64_t TotalByteSize() { return total_allocated_bytes_; }
+
+  se::port::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(
+      int64_t byte_size) override;
+
+ private:
+  const int device_ordinal_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
+  int64_t total_allocated_bytes_ = 0;
+};
 
 // This is thread-compatible.
 class GemmThunk : public Thunk {
@@ -61,7 +83,7 @@ class GemmThunk : public Thunk {
 Status RunGemm(
     const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream, se::ScratchAllocator* scratch_allocator,
+    se::Stream* stream, BlasScratchAllocator* scratch_allocator,
     se::blas::IBlasLtMatmulAlgorithm* const algorithm_being_profiled,
     se::blas::ProfileResult* profile_result = nullptr,
     absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);

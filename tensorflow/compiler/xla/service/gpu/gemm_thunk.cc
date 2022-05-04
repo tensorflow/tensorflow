@@ -30,10 +30,40 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
+
+BlasScratchAllocator::BlasScratchAllocator(
+    int device_ordinal, se::DeviceMemoryAllocator *memory_allocator)
+    : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
+
+int64_t BlasScratchAllocator::GetMemoryLimitInBytes() {
+  static const int64_t max_scratch_size =
+      se::GetWorkspaceLimit(1LL << 32);  // 4GB by default
+  return max_scratch_size;
+}
+
+StatusOr<se::DeviceMemory<uint8_t>> BlasScratchAllocator::AllocateBytes(
+    int64_t byte_size) {
+  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
+  if (byte_size > GetMemoryLimitInBytes()) {
+    return se::port::Status(
+        se::port::error::RESOURCE_EXHAUSTED,
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
+            byte_size, GetMemoryLimitInBytes()));
+  }
+
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
+  total_allocated_bytes_ += byte_size;
+
+  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8_t>(buffer_addr);
+}
 
 GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
                      const BufferAllocation::Slice &lhs_buffer,
@@ -55,9 +85,8 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
 
   auto &buffer_allocations = *params.buffer_allocations;
-  se::OwningScratchAllocator scratch_allocator(
-      buffer_allocations.device_ordinal(),
-      buffer_allocations.memory_allocator());
+  BlasScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
+                                         buffer_allocations.memory_allocator());
 
   VLOG(3) << "Running GEMM thunk";
   return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
@@ -264,7 +293,7 @@ static Status DoGemmLt(
 Status RunGemm(const GemmConfig &config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
-               se::ScratchAllocator *scratch_allocator,
+               BlasScratchAllocator *scratch_allocator,
                se::blas::IBlasLtMatmulAlgorithm *const algorithm_being_profiled,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {

@@ -189,7 +189,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
     for (size_t i = 0; i != algorithms.size(); ++i) {
       // Create a new scratch allocator with every autotuning run so that
       // scratch space is deallocated between runs.
-      se::OwningScratchAllocator scratch_allocator(device_id, allocator);
+      BlasScratchAllocator scratch_allocator(device_id, allocator);
 
       // Make sure the output buffer always has the same value if we use
       // the bias parameter.
