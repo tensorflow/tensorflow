@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir/CAPI/IR.h"
+#include "mlir/CAPI/Support.h"
 
 //
 // ScatterDimensionNumbersAttr.
@@ -516,9 +517,9 @@ std::string mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr) {
 //
 
 MlirAttribute mlirMhloRngAlgorithmAttrGet(MlirContext ctx,
-                                          const char *algorithm) {
+                                          MlirStringRef algorithm) {
   llvm::Optional<mlir::mhlo::RngAlgorithm> rng_algorithm =
-      mlir::mhlo::symbolizeRngAlgorithm(algorithm);
+      mlir::mhlo::symbolizeRngAlgorithm(unwrap(algorithm));
   if (!rng_algorithm) llvm_unreachable("Invalid rng-algorithm specified.");
   return wrap(
       mlir::mhlo::RngAlgorithmAttr::get(unwrap(ctx), rng_algorithm.getValue()));
@@ -528,9 +529,7 @@ bool mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr) {
   return unwrap(attr).isa<mlir::mhlo::RngAlgorithmAttr>();
 }
 
-const char *mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
-  return mlir::mhlo::stringifyRngAlgorithm(
-             unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue())
-      .str()
-      .c_str();
+MlirStringRef mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
+  return wrap(mlir::mhlo::stringifyRngAlgorithm(
+      unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue()));
 }
