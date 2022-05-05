@@ -805,6 +805,26 @@ cc_library(
     deps = ["@com_google_absl//absl/strings"],
 )
 
+cc_library(
+    name = "op_profile_builder",
+    srcs = ["op_profile_builder.cc"],
+    hdrs = ["op_profile_builder.h"],
+    deps = [
+        ":op_metrics_db_combiner",
+        ":op_metrics_to_record",
+        ":xla_op_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "xla_op_utils_test",
     size = "small",
