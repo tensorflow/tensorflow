@@ -123,7 +123,7 @@ landing_page:
       path: /lite/convert/index
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/ready/index"><h3 class="no-link">Pick pre-trained models</h3></a>
+        <a href="/lite/models/ready/index"><h3 class="no-link">Pick pre-trained models</h3></a>
         Pick a model from the many pre-trained models available.
       path: /lite/ready/index
     - classname: tfo-landing-page-card
