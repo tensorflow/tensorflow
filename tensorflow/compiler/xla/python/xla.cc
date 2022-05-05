@@ -287,17 +287,21 @@ PYBIND11_MODULE(xla_extension, m) {
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
+         int node_id, absl::optional<std::set<int>> allowed_devices,
+         absl::optional<std::string> platform_name)
+          -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtClient> client,
-            GetGpuClient(asynchronous, allocator_config,
-                         std::move(distributed_client), node_id));
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                            GetGpuClient(asynchronous, allocator_config,
+                                         std::move(distributed_client), node_id,
+                                         allowed_devices, platform_name));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
-      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
+      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
+      py::arg("allowed_devices") = absl::nullopt,
+      py::arg("platform_name") = absl::nullopt);
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
