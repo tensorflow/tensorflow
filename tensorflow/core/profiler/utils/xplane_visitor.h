@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -264,6 +263,16 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
     for (const XLine& line : plane_->lines()) {
       for_each_line(XLineVisitor(this, &line));
     }
+  }
+  template <typename ThreadBundle, typename ForEachLineFunc>
+  void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
+    ThreadBundle bundle;
+    for (const XLine& line : plane_->lines()) {
+      bundle.Add([this, line = &line, &for_each_line] {
+        for_each_line(XLineVisitor(this, line));
+      });
+    }
+    bundle.JoinAll();
   }
 
   // Returns event metadata given its id. Returns a default value if not found.
