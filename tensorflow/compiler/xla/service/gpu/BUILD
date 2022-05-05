@@ -759,6 +759,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "//tensorflow/stream_executor:scratch_allocator",
     ] + if_gpu_is_configured([
         ":precompiled_kernels",
     ]) + if_cuda_is_configured([
@@ -913,6 +914,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:matmul_util",
+        "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
