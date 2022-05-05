@@ -18,6 +18,7 @@ import functools
 import time
 from typing import List, Optional, Dict
 
+from absl import flags
 import numpy as np
 
 from tensorflow.dtensor.python import api
@@ -33,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -159,6 +161,10 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   """
 
   assert context.executing_eagerly()
+
+  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
+  _configure_tpu_runtime()
+
   in_multi_client_mode = api.job_name() != "localhost"
 
   # Collective GRPC servers are only necessary in mutli-client setup.
@@ -797,3 +803,12 @@ def get_device_locations(
   # their device locations.
   raise NotImplementedError(
       "Looking up other clients' device locations is not supported")
+
+
+def _configure_tpu_runtime():
+  was_enabled = context.is_tfrt_enabled()
+  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
+    tfrt_utils.set_tfrt_enabled(True)
+  if not was_enabled:
+    context._reset_context()  # pylint:disable=protected-access
+

@@ -212,9 +212,11 @@ pytype_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
     ],
 )
 
