@@ -6168,9 +6168,22 @@ Status ConvertSegmentToGraphDef(
 
 bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
   if (out_edge->IsControlEdge()) return true;
-  if (out_edge->src()->type_string() == "Const") {
+
+  // Go up the chain of Identity nodes.
+  Node* src_node = out_edge->src();
+  while (src_node->def().op() == "Identity") {
+    std::vector<const Edge*> input_edges_temp;
+    Status status = src_node->input_edges(&input_edges_temp);
+    if(!status.ok()) {
+      break;
+    }
+    src_node = input_edges_temp[0]->src();
+  }
+
+  if (src_node->type_string() == "Const" ||
+      src_node->type_string() == "VariableV2") {
     VLOG(1) << "--> Need to remove output node " << out_edge->src()->name()
-            << " which is a Const.";
+            << " which is a constant or variable.";
     return false;
   }
   return true;

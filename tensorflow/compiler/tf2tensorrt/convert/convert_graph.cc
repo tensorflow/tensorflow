@@ -183,7 +183,8 @@ Status GetEngineInfo(const Graph* g,
                                          node_name, node_id,
                                          /*input_edge=*/true);
         }
-      } else if (input_node->type_string() == "Const") {
+      } else if (input_node->type_string() == "Const" ||
+                 input_node->type_string() == "VariableV2") {
         // Add constant data input nodes into the segment graphdef (thus also in
         // the engine). We don't care if it has other output edges going into
         // other engines or TF nodes. Since we add it only to the segment
@@ -196,7 +197,34 @@ Status GetEngineInfo(const Graph* g,
           // Already added before.
           continue;
         }
-        VLOG(1) << "Adding const node " << input_node->name();
+        VLOG(1) << "Adding const or variable node " << input_node->name();
+      } else if (input_node->type_string() == "Identity") {
+        // If one or a chain of Identity nodes originate from a constant or
+        // variable node, copy all to the graphdef.
+        std::set<const Node*> identity_nodes;
+        Node* src_node = input_node;
+        while (src_node->type_string() == "Identity") {
+          identity_nodes.insert(src_node);
+          std::vector<const Edge*> input_edges_temp;
+          Status status = src_node->input_edges(&input_edges_temp);
+          if (!status.ok()) {
+            continue;
+          }
+          src_node = input_edges_temp[0]->src();
+        }
+
+        if (src_node->type_string() == "Const" ||
+            src_node->type_string() == "VariableV2") {
+          if (added_const_nodes.insert(src_node).second) {
+            VLOG(1) << "Adding const or variable node " << src_node->name();
+
+            for(auto identity_node:  identity_nodes) {
+              if (added_const_nodes.insert(identity_node).second) {
+                VLOG(1) << "Adding identity node " << identity_node->name();
+              }
+            }
+          }
+        }
       } else {
         // Non-const data input.
         int port = Graph::kControlSlot - 1;
