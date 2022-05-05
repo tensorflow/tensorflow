@@ -457,10 +457,11 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     // Replace the strict default implementation with one that allows
     // for different sparsity encodings during the is-same test.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      if (l.size() != r.size()) return false;
-      for (auto it : llvm::zip(l, r))
-        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
-         return false;
+      // TODO(burmako): Re-enable this check by accounting for dynamism rules.
+      // if (l.size() != r.size()) return false;
+      // for (auto it : llvm::zip(l, r))
+      //   if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
+      //    return false;
       return true;
     }
   }];
@@ -482,7 +483,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect, SameOperandsAndResultType]> {
+      [Commutative, NoSideEffect, InferTensorType]> {
   let summary = "Addition operator";
   let description = [{
     Returns `lhs + rhs` element-wise.

@@ -634,6 +634,21 @@ LogicalResult ReduceScatterOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// AddOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AddOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  auto lhs_type = (*operands.begin()).getType().cast<ShapedType>();
+  // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+  // support quantization or sparsity.
+  inferredReturnShapes.push_back(lhs_type);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConstOp
 //===----------------------------------------------------------------------===//
 
@@ -3843,6 +3858,17 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
   return failure();
 }
 
+bool HasSameOperandAndResultTypes(Operation& op) {
+  Type expected;
+  if (op.getNumResults() != 0) expected = op.getResult(0).getType();
+  if (op.getNumOperands() != 0) expected = op.getOperand(0).getType();
+  if (!expected) return false;
+
+  auto type_match = [&](Type actual) { return actual == expected; };
+  return llvm::all_of(op.getOperandTypes(), type_match) &&
+         llvm::all_of(op.getResultTypes(), type_match);
+}
+
 // Checks the following eligibility criteria for compact printing of
 // mhlo.reduce:
 // E1. The reduce-op wraps a single inner-op in the associated region.
@@ -3870,7 +3896,7 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
 
   if (innerOp.getNumOperands() != 2 ||
       !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
-      !innerOp.hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
+      !HasSameOperandAndResultTypes(innerOp) ||
       !innerOp.hasTrait<mlir::OpTrait::IsCommutative>() ||
       !innerOp.hasTrait<mlir::OpTrait::ZeroRegion>())
     return false;
@@ -4069,13 +4095,11 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   if (!innerOpDialect || !innerOpDialect->getNamespace().equals("mhlo") ||
       !innerOpNameInfo->hasTrait<mlir::OpTrait::NOperands<2>::Impl>() ||
       !innerOpNameInfo->hasTrait<mlir::OpTrait::OneResult>() ||
-      !innerOpNameInfo->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
       !innerOpNameInfo->hasTrait<mlir::OpTrait::IsCommutative>() ||
       !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegion>()) {
     parser.emitError(loc,
                      "expected the inner-op to be a commutative binary-op from "
-                     "mhlo dialect, zero region, producing single result such "
-                     "that the operands and result all have the same type");
+                     "mhlo dialect, zero region, producing single result");
     return failure();
   }
 
