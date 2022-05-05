@@ -174,6 +174,7 @@ cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),
+    visibility = [":friends"],
     deps = [
         ":math_utils",
         "//tensorflow/core:lib",
