@@ -370,6 +370,14 @@ class MklConvCustomBackpropFilterOp
       // a correct way to get filter shape. These operator-specific calls
       // allow this class to handle this case.
       TensorShape src_tf_shape = MakeInputTfShape(context, src_tensor);
+      const string& op_type = this->type_string();
+      if ((op_type.find("3D") != std::string::npos) &&
+          (op_type.find("V2") != std::string::npos)) {
+        OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_tensor.shape()),
+                    errors::InvalidArgument(
+                        "filter_sizes shape must be rank 1 but is rank ",
+                        filter_tensor.shape().dims()));
+      }
       TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
       TensorShape diff_dst_tf_shape =
           GetTfShape(context, kDiffDstIdx, native_format);
