@@ -69,6 +69,7 @@ struct MhloToScalarOp<mhlo::CeilOp> {
 template <>
 struct MhloToScalarOp<mhlo::CosOp> {
   using FOp = ::mlir::math::CosOp;
+  using COp = ::mlir::complex::CosOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::DivOp> {
@@ -153,6 +154,7 @@ struct MhloToScalarOp<mhlo::SqrtOp> {
 template <>
 struct MhloToScalarOp<mhlo::SinOp> {
   using FOp = ::mlir::math::SinOp;
+  using COp = ::mlir::complex::SinOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::ShiftLeftOp> {
