@@ -3834,7 +3834,6 @@ tf_cuda_cc_test(
     name = "matmul_op_test",
     size = "small",
     srcs = ["matmul_op_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":matmul_op",
         ":ops_testutil",
