@@ -1928,14 +1928,12 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
       std::map<std::string,
                std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
           op_test_info,
-      DataType tf_type) {
+      const std::vector<std::vector<T>>& data) {
     // Test combinations of tensor vs weight inputs (except when both inputs are
     // weights).
-    bool expectedToFailTested = false;
+    const DataType tf_type = get_tf_type();
     for (const bool operand_1_is_tensor : {true, false}) {
       for (const bool operand_2_is_tensor : {true, false}) {
-        const auto bothOperandsAreWeights =
-            !operand_1_is_tensor && !operand_2_is_tensor;
         for (auto& iter : map) {
           const string& op_name = iter.first;
           SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
@@ -1945,26 +1943,36 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             FAIL() << "Binary op test map does not contain op " << op_name;
           }
 
-          if (!expectedToFailTested && bothOperandsAreWeights) {
+          if (!operand_1_is_tensor && !operand_2_is_tensor) {
             runExpectedToFailTest(op_name);
-            expectedToFailTested = true;
-            break;
+            continue;
+          }
+          auto conv_status = Status::OK();
+          if (tf_type == DT_BOOL) {
+            if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+              conv_status = errors::Unimplemented(
+                  "Binary op: '", op_name,
+                  "' is not supported in implicit batch mode");
+            } else if (!operand_1_is_tensor || !operand_2_is_tensor) {
+              conv_status = errors::InvalidArgument(
+                  "Both inputs  of '", op_name, "' are expected to be tensors");
+            }
           }
 
           Reset();
           if (operand_1_is_tensor) {
-            AddTestTensor("input1", {2, 1, 2}, {3, 6, 3, 6});
+            AddTestTensor("input1", {2, 1, 2}, data[0]);
           } else {
-            AddTestWeights("input1", {1, 2}, std::vector<T>{3, 6}, tf_type);
+            AddTestWeights("input1", {1, 2}, data[1], tf_type);
           }
           if (operand_2_is_tensor) {
-            AddTestTensor("input2", {2, 2, 1}, {2, 3, 2, 3});
+            AddTestTensor("input2", {2, 2, 1}, data[2]);
           } else {
-            AddTestWeights("input2", {2, 1}, std::vector<T>{2, 3}, tf_type);
+            AddTestWeights("input2", {2, 1}, data[3], tf_type);
           }
 
           const NodeDef& node_def = op_test_info[op_name].first(tf_type);
-          TestOpConverter("my_binary", node_def, {2, 2, 2}, Status::OK(),
+          TestOpConverter("my_binary", node_def, {2, 2, 2}, conv_status,
                           Status::OK(),
                           ElementsAreArray(op_test_info[op_name].second));
         }
@@ -2006,6 +2014,7 @@ typedef ParameterizedOpConverterTestBase OpConverter_FP32_Test;
 typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_Test;
 // Base class for Binary tests that need to be tested
 typedef OpConverter_BinaryTest<float> OpConverter_FP32_FP16_BinaryTest;
+typedef OpConverter_BinaryTest<int> OpConverter_BOOL_BinaryTest;
 // Base class for tests that need to be tested for FP32, FP16, and INT32
 typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_INT32_Test;
 // Base class for tests that need to be tested for INT32
@@ -2055,6 +2064,12 @@ INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, OpConverter_FP32_FP16_BinaryTest,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_BOOL_BinaryTest,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_BOOL),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
 template <typename T>
@@ -3371,7 +3386,26 @@ TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  RunTests(*BinaryOperationMap(), op_test_info, get_tf_type());
+  std::vector<std::vector<float>> data = {
+      {3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};
+  RunTests(*BinaryOperationMap(), op_test_info, data);
+}
+
+TEST_P(OpConverter_BOOL_BinaryTest, ConvertBooleanBinary) {
+  using OpFunc = std::function<NodeDef(DataType)>;
+  std::map<std::string, std::pair<OpFunc, std::vector<int>>> op_test_info;
+#define ADD_OP(name, op, v1, v2, v3, v4, v5, v6, v7, v8) \
+  op_test_info[name] =                                   \
+      std::make_pair(GetBinaryOpNodeDef<op>,             \
+                     std::vector<int>(v1, v2, v3, v4, v5, v6, v7, v8))
+  ADD_OP("LogicalOr", ops::LogicalOr, {1, 1, 0, 1, 1, 1, 0, 1});
+  ADD_OP("LogicalAnd", ops::LogicalAnd, {0, 1, 0, 0, 0, 1, 0, 0});
+#undef ADD_OP
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  std::vector<std::vector<int>> data = {
+      {0, 1, 0, 1}, {0, 1}, {1, 0, 1, 0}, {1, 0}};
+  RunTests(*BinaryBooleanOperationMap(), op_test_info, data);
+#endif
 }
 
 NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
