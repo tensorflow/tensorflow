@@ -217,7 +217,7 @@ cc_library(
         "utils/trt_testutils.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":trt_conversion",
         "@com_google_absl//absl/strings",
