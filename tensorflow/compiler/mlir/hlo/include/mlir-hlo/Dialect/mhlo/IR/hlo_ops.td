@@ -456,12 +456,6 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
   );
 
   let extraClassDeclaration = [{
-    static LogicalResult inferReturnTypeComponents(
-        MLIRContext* context, Optional<Location> location, ValueRange operands,
-        DictionaryAttr attributes, RegionRange regions,
-        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-      return failure();
-    }
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
