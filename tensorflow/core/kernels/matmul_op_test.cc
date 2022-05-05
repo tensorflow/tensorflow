@@ -17,6 +17,10 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
+  #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#endif
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -42,7 +46,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   // not supported by the C++ Api.
   void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
                    Tensor* output, bool allow_gpu_device,
-                   const NodeDef* fetch_node = nullptr) {
+                   const NodeDef* fetch_node = nullptr, bool gpu_platform_check=false) {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
@@ -80,6 +84,28 @@ class FusedMatMulOpTest : public OpsTestBase {
           return device.device_type() == DEVICE_GPU;
         });
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM //This needed for CPU only builds
+    //Check whether to allow gpu device based on the platform.
+    //Currently, AMD ROCm platform doesn NOT support Fused MatMul op
+    if(gpu_platform_check) {
+      const DeviceMgr* device_mgr;
+      TF_ASSERT_OK(session->LocalDeviceManager(&device_mgr));
+      
+      std::vector<Device*> devices = device_mgr->ListDevices();
+      se::Platform* gpu_manager = GPUMachineManager();
+      for (Device* device: devices) {
+        if(device->device_type() == DEVICE_GPU) {
+          BaseGPUDevice* gpu_device = dynamic_cast<BaseGPUDevice*>(device);
+          auto desc_status = gpu_manager->DescriptionForDevice(gpu_device->gpu_id());
+          //auto desc = std::move(desc_status).value();
+          if(desc_status.value()->platform_version().find("AMDGPU") != std::string::npos) {
+            allow_gpu_device = false;
+          }
+        }
+      }
+    }
+#endif
+    
     // If fused computation implemented only for CPU, in this test we don't want
     // to compare GPU vs CPU numbers, so place all nodes on CPU in this case.
     const bool place_all_on_gpu = allow_gpu_device && has_gpu_device;
@@ -181,8 +207,10 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
+
+
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
-                &fused_matmul);
+                &fused_matmul,/*gpu_platform_check*/true);
   }
 
   void VerifyBiasAddTensorsNear(int m, int k, int n,
