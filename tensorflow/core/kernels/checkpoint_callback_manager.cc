@@ -63,6 +63,11 @@ void TriggerSaveCallbackIfFileNotExist(absl::string_view checkpoint_id,
     return;
   }
 
+  // An empty string means nothing to be saved.
+  if (save_content->empty()) {
+    return;
+  }
+
   Status write_status =
       WriteStringToFile(Env::Default(), file_path, *save_content);
   if (!write_status.ok()) {
