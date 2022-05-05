@@ -4615,61 +4615,73 @@ OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
 // PadOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult PadOp::verify() {
-  auto input_type = operand().getType().cast<RankedTensorType>();
-  auto pad_type = padding_value().getType().cast<RankedTensorType>();
+LogicalResult PadOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  PadOp::Adaptor adaptor(operands, attributes, regions);
+  auto input_type = adaptor.operand().getType().cast<RankedTensorType>();
+  auto pad_type = adaptor.padding_value().getType().cast<RankedTensorType>();
 
   if (pad_type.getRank() != 0) {
-    return emitOpError(
-        llvm::formatv("padding value type should be a rank-0 "
-                      "tensor, is rank {0}",
-                      pad_type.getRank()));
+    return emitOptionalError(
+        location, llvm::formatv("padding value type should be a rank-0 "
+                                "tensor, is rank {0}",
+                                pad_type.getRank()));
   }
 
-  const auto& padding_low = edge_padding_low();
+  const auto& padding_low = adaptor.edge_padding_low();
   if (padding_low.getType().getNumElements() != input_type.getRank()) {
-    return emitOpError(llvm::formatv(
-        "edge_padding_low length ({0}) must match operand rank ({1})",
-        padding_low.getType().getNumElements(), input_type.getRank()));
+    return emitOptionalError(
+        location,
+        llvm::formatv(
+            "edge_padding_low length ({0}) must match operand rank ({1})",
+            padding_low.getType().getNumElements(), input_type.getRank()));
   }
 
-  const auto& padding_high = edge_padding_high();
+  const auto& padding_high = adaptor.edge_padding_high();
   if (padding_high.getType().getNumElements() != input_type.getRank()) {
-    return emitOpError(llvm::formatv(
-        "edge_padding_high length ({0}) must match operand rank ({1})",
-        padding_high.getType().getNumElements(), input_type.getRank()));
+    return emitOptionalError(
+        location,
+        llvm::formatv(
+            "edge_padding_high length ({0}) must match operand rank ({1})",
+            padding_high.getType().getNumElements(), input_type.getRank()));
   }
 
-  const auto& padding_interior = interior_padding();
+  const auto& padding_interior = adaptor.interior_padding();
   if (padding_interior.getType().getNumElements() != input_type.getRank()) {
-    return emitOpError(llvm::formatv(
-        "interior_padding length ({0}) must match operand rank ({1})",
-        padding_interior.getType().getNumElements(), input_type.getRank()));
+    return emitOptionalError(
+        location,
+        llvm::formatv(
+            "interior_padding length ({0}) must match operand rank ({1})",
+            padding_interior.getType().getNumElements(), input_type.getRank()));
   }
 
   auto input_shape = input_type.getShape();
-  auto output_shape = getResult().getType().cast<RankedTensorType>().getShape();
-  if (input_shape.size() != output_shape.size()) {
-    return emitOpError(
-        llvm::formatv("operand rank ({0}) and result rank({0}) should match",
-                      input_shape.size(), output_shape.size()));
-  }
-
+  SmallVector<int64_t> result_shape;
   for (int i = 0, e = input_shape.size(); i < e; i++) {
     int64_t padding_low_val = padding_low.getValues<APInt>()[i].getSExtValue();
     int64_t padding_high_val =
         padding_high.getValues<APInt>()[i].getSExtValue();
     int64_t padding_interior_val =
         padding_interior.getValues<APInt>()[i].getSExtValue();
+    if (padding_interior_val < 0) {
+      return emitOptionalError(
+          location, llvm::formatv("Interior padding cannot be negative: {0}",
+                                  padding_interior_val));
+    }
     int64_t expected_output =
         input_shape[i] + padding_low_val + padding_high_val +
         std::max<int64_t>(input_shape[i] - 1, 0LL) * padding_interior_val;
-    if (expected_output != output_shape[i]) {
-      return emitOpError(llvm::formatv(
-          "expected output shape's dimension #{0} to be {1} but found {2}", i,
-          expected_output, output_shape[i]));
+    if (expected_output < 0) {
+      return emitOptionalError(
+          location,
+          llvm::formatv("Padding result in negative size for dimension {0}",
+                        i));
     }
+    result_shape.push_back(expected_output);
   }
+  inferredReturnShapes.emplace_back(result_shape, input_type.getElementType());
 
   return success();
 }

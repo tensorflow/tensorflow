@@ -2024,7 +2024,7 @@ def HLO_ReverseOp: HLO_Op<"reverse",
 }
 
 def HLO_PadOp: HLO_Op<"pad",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Pad operator";
   let description = [{
     Pads the edges of `operand` with the `padding_value` and according to
@@ -2050,7 +2050,6 @@ def HLO_PadOp: HLO_Op<"pad",
   let hasCustomHLOConverter = 1;
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def HLO_TraceOp: HLO_Op<"trace", []> {

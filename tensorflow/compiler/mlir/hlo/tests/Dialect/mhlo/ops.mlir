@@ -3379,3 +3379,111 @@ func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> te
        (tensor<64x8x8x8xi4>, tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8>
   func.return %0 : tensor<64x3x3x32xi8>
 }
+
+// -----
+
+// CHECK-LABEL: func @pad
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<i64>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{'mhlo.pad' op requires the same element type for all operands and results}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<i64>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<2xf16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{padding value type should be a rank-0 tensor, is rank 1}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<2xf16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{edge_padding_low length (2) must match operand rank (3)}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1]> : tensor<2xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{edge_padding_high length (2) must match operand rank (3)}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1]> : tensor<2xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{interior_padding length (2) must match operand rank (3)}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0]> : tensor<2xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<8x8x8xf16> {
+  // expected-error@+1 {{'mhlo.pad' op inferred type(s) 'tensor<2x4x7xf16>' are incompatible with return type(s) of operation 'tensor<8x8x8xf16>'}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<8x8x8xf16>
+  func.return %0 : tensor<8x8x8xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x3xf16> {
+  // expected-error@+1 {{Interior padding cannot be negative: -1}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, -1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x3xf16>
+  func.return %0 : tensor<2x4x3xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{Padding result in negative size for dimension 2}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, -4]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 0]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
