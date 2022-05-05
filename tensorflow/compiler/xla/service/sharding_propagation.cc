@@ -823,55 +823,6 @@ bool RemoveShardingMetadata(HloModule* module) {
   return changed;
 }
 
-// Remove Sharding custom-call instruction by folding the sharding attribute
-// to its operand. If the operand already has a different sharding, insert a
-// copy node for reshard.
-// partially_specified will be populated with the converted copies if the custom
-// call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
-    HloModule* module, bool replace_sharding_with_copy,
-    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
-        unspecified_dims) {
-  bool changed = false;
-
-  for (HloComputation* computation : module->computations()) {
-    auto instructions = computation->MakeInstructionPostOrder();
-    std::reverse(instructions.begin(), instructions.end());
-    for (HloInstruction* instruction : instructions) {
-      const auto* ccall = DynCast<HloCustomCallInstruction>(instruction);
-      if (ccall == nullptr) {
-        continue;
-      }
-      if (ccall->custom_call_target() != "Sharding") {
-        continue;
-      }
-      TF_RET_CHECK(instruction->has_sharding())
-          << "Sharding instruction must have a sharding attribute";
-      const HloSharding& sharding = instruction->sharding();
-
-      std::vector<int64_t> unspec_dims;
-      TF_RETURN_IF_ERROR(
-          sharding_op_util::ParseAttributes(ccall->opaque(), &unspec_dims));
-      // Replace it with a copy node so that it does not need special handling.
-      if (replace_sharding_with_copy) {
-        auto copy = computation->AddInstruction(
-            HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
-                                        instruction->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
-        copy->set_sharding(sharding);
-        instruction = copy;
-        changed = true;
-      }
-      if (!unspec_dims.empty()) {
-        absl::c_sort(unspec_dims);
-        unspecified_dims->emplace(instruction, std::move(unspec_dims));
-      } else if (!instruction->operand(0)->has_sharding()) {
-        instruction->mutable_operand(0)->set_sharding(sharding);
-      }
-    }
-  }
-  return changed;
-}
 
 // If a while contains a channel instruction on device D, check that any other
 // instructions with a device assignment are on D. Further, annotate the root
@@ -1235,6 +1186,56 @@ bool IsCSEPreventionSharding(const HloSharding& sharding) {
 }
 
 }  // namespace
+
+// Remove Sharding custom-call instruction by folding the sharding attribute
+// to its operand. If the operand already has a different sharding, insert a
+// copy node for reshard.
+// partially_specified will be populated with the converted copies if the custom
+// call is partially specified.
+StatusOr<bool> ProcessShardingInstruction(
+    HloModule* module, bool replace_sharding_with_copy,
+    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
+        unspecified_dims) {
+  bool changed = false;
+
+  for (HloComputation* computation : module->computations()) {
+    auto instructions = computation->MakeInstructionPostOrder();
+    std::reverse(instructions.begin(), instructions.end());
+    for (HloInstruction* instruction : instructions) {
+      const auto* ccall = DynCast<HloCustomCallInstruction>(instruction);
+      if (ccall == nullptr) {
+        continue;
+      }
+      if (ccall->custom_call_target() != "Sharding") {
+        continue;
+      }
+      TF_RET_CHECK(instruction->has_sharding())
+          << "Sharding instruction must have a sharding attribute";
+      const HloSharding& sharding = instruction->sharding();
+
+      std::vector<int64_t> unspec_dims;
+      TF_RETURN_IF_ERROR(
+          sharding_op_util::ParseAttributes(ccall->opaque(), &unspec_dims));
+      // Replace it with a copy node so that it does not need special handling.
+      if (replace_sharding_with_copy) {
+        auto copy = computation->AddInstruction(
+            HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
+                                        instruction->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instruction, copy));
+        copy->set_sharding(sharding);
+        instruction = copy;
+        changed = true;
+      }
+      if (!unspec_dims.empty()) {
+        absl::c_sort(unspec_dims);
+        unspecified_dims->emplace(instruction, std::move(unspec_dims));
+      } else if (!instruction->operand(0)->has_sharding()) {
+        instruction->mutable_operand(0)->set_sharding(sharding);
+      }
+    }
+  }
+  return changed;
+}
 
 /*static*/ Status ShardingPropagation::NormalizeDomain(
     const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
