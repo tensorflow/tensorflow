@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
-#include <map>
 #include <memory>
 #include <queue>
 #include <string>
@@ -221,7 +220,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
         iteration_counter_->GetAndIncrement());
@@ -399,7 +398,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
-      dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
+      dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64_t deadline_micros = kint64max;
       absl::optional<JobKeyDef> key;
