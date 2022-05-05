@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-name: assign-partner-tags
+name: Trusted Partner PR
 on:
   pull_request_target:
 
@@ -38,10 +38,6 @@ jobs:
           script: |
             const script = require('./.github/workflows/trusted_partners.js');
             const username = context.payload.pull_request.user.login;
-            // TODO - Remove after test
-            console.log(username);
-            if (username == "sampathweb")
-              console.log(await script.intel({github, context}));
             const domain = await script.get_email_domain({github, username});
             switch(domain) {
             case "intel.com":
