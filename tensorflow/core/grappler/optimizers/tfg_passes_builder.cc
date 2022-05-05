@@ -29,7 +29,9 @@ void DefaultGrapplerPipeline(PassManager& manager) {
   manager.addPass(CreateConsolidateAttributesPass());
   // Infer the shape of operation if possible. The TFG importer doesn't do shape
   // inference for almost all operations.
-  manager.addPass(CreateShapeInferencePass());
+  // TODO(chiahungduan): Temporarily disable it because it hangs on certain
+  // operations. We need to set a proper limit of iteration.
+  // manager.addPass(CreateShapeInferencePass());
   // Contruct the shape attrs back from types.
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.
