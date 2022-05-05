@@ -333,6 +333,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TODO(b/231615784): Re-enable this test once fixed.
     ],
     deps = [
         ":depthwise_conv_op_base",
@@ -349,6 +350,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TODO(b/231615784): Re-enable this test once fixed.
     ],
     deps = [
         ":depthwise_conv_op_base",
