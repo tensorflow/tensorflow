@@ -673,6 +673,12 @@ py_library(
     srcs = ["function_saved_model_utils.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/training/tracking:asset",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:resource",
+    ],
 )
 
 pybind_extension(
