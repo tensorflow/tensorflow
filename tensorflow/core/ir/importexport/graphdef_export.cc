@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Sequence.h"
@@ -78,8 +77,7 @@ class GraphDefExporter {
       : ctx_(dialect->getContext()),
         dialect_(dialect),
         registry_(registry),
-        table_(table),
-        builder_(ctx_) {}
+        table_(table) {}
 
   // Export a TFG module to GraphDef. The module may contain at most one GraphOp
   // and only GraphFuncOp otherwise.
@@ -115,8 +113,6 @@ class GraphDefExporter {
   const OpRegistry &registry_;
   // The symbol table.
   SymbolTable &table_;
-  // The context dependent MLIR builder.
-  Builder builder_;
 };
 }  // namespace
 
@@ -345,29 +341,15 @@ Status GraphDefExporter::ExportOp(Operation *op, NodeDef *node, bool is_func) {
     TF_ASSIGN_OR_RETURN(*node->mutable_experimental_type(),
                         ConvertAttribute(full_type));
   }
-
-  if (auto assigned_device = op->getAttrOfType<StringAttr>(
-          dialect_->getAssignedDeviceAttrIdentifier())) {
-    if (!assigned_device.getValue().empty()) {
-      (*node->mutable_attr())[dialect_->getAssignedDeviceAttrKey().str()].set_s(
-          assigned_device.str());
+  {
+    if (auto assigned_device = op->getAttrOfType<StringAttr>(
+            dialect_->getAssignedDeviceAttrIdentifier())) {
+      if (!assigned_device.getValue().empty()) {
+        (*node->mutable_attr())[dialect_->getAssignedDeviceAttrKey().str()]
+            .set_s(assigned_device.str());
+      }
     }
   }
-
-  const std::string op_name = op->getName().stripDialect().str();
-  const OpRegistrationData *op_reg_data = registry_.LookUp(op_name);
-  auto *attr_def = op_reg_data ? &op_reg_data->op_def.attr() : nullptr;
-
-  // A map to track default values for the attribute.
-  absl::flat_hash_map<StringPiece, tensorflow::AttrValue>
-      attr_name_to_default_value;
-  if (attr_def) {
-    for (const tensorflow::OpDef_AttrDef &attr : *attr_def) {
-      if (attr.has_default_value())
-        attr_name_to_default_value[attr.name()] = attr.default_value();
-    }
-  }
-
   // Convert other attributes.
   for (const NamedAttribute &attr : op->getAttrs()) {
     if (attr.getName() == dialect_->getAssignedDeviceAttrIdentifier() ||
@@ -375,28 +357,14 @@ Status GraphDefExporter::ExportOp(Operation *op, NodeDef *node, bool is_func) {
         attr.getName() == dialect_->getFullTypeAttrIdentifier() ||
         attr.getName() == dialect_->getNameAttrIdentifier())
       continue;
-
-    const std::string attribute_name = attr.getName().str();
-    auto attr_default_value = attr_name_to_default_value.find(attribute_name);
-    if (attr_default_value != attr_name_to_default_value.end()) {
-      TF_ASSIGN_OR_RETURN(Attribute mlir_default_value,
-                          ConvertAttributeValue(attr_default_value->second,
-                                                builder_, dialect_));
-      // Do not export attribute with the value equal to the default value.
-      if (mlir_default_value != attr.getValue()) {
-        TF_ASSIGN_OR_RETURN(tensorflow::AttrValue converted_attr,
-                            ConvertAttribute(attr.getValue()));
-        (*node->mutable_attr())[attribute_name] = std::move(converted_attr);
-      }
-    } else {
-      TF_ASSIGN_OR_RETURN(tensorflow::AttrValue converted_attr,
-                          ConvertAttribute(attr.getValue()));
-      (*node->mutable_attr())[attribute_name] = std::move(converted_attr);
-    }
+    TF_ASSIGN_OR_RETURN((*node->mutable_attr())[attr.getName().str()],
+                        ConvertAttribute(attr.getValue()));
   }
 
+  // TODO(jeffniu): Should default attributes be added?
+
   // Set the op name.
-  node->set_op(op_name);
+  node->set_op(op->getName().stripDialect().str());
 
   // Set the input names.
   for (Value operand : op->getOperands()) {
