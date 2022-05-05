@@ -124,21 +124,12 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
   let arguments = (ins OperandType:$operand);
   let results = (outs ResultType:$result);
   let extraClassDeclaration = [{
-    static LogicalResult inferReturnTypeComponents(
-        MLIRContext* context, Optional<Location> location,
-        ValueRange operands, DictionaryAttr attributes, RegionRange regions,
-        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-      return failure();
-    }
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
       return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
                                                   operands.front(),
                                                   &reifiedReturnShapes);
-    }
-    bool inferInputOutputShapeEquality(int input, int output) {
-      return true;
     }
     // Replace the strict default implementation with one that allows
     // for different sparsity encodings during the is-same test.
@@ -462,12 +453,6 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
       return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
                                                   operands.front(),
                                                   &reifiedReturnShapes);
-    }
-    bool inferInputsShapeEquality(int lhs, int rhs) {
-      return true;
-    }
-    bool inferInputOutputShapeEquality(int input, int output) {
-      return true;
     }
     // Replace the strict default implementation with one that allows
     // for different sparsity encodings during the is-same test.
