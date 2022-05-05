@@ -2437,7 +2437,8 @@ class AUC(Metric):
         # config has the same thresholds.
         'thresholds': self.thresholds[1:-1],
         'multi_label': self.multi_label,
-        'label_weights': label_weights
+        'label_weights': label_weights,
+        'from_logits': self._from_logits
     }
     base_config = super(AUC, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
