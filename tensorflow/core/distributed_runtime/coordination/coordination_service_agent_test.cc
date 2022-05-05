@@ -37,7 +37,21 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::InvokeArgument;
 using ::testing::SetArgPointee;
+using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+
+MATCHER(KvEq, "simple KeyValueEntry matcher") {
+  const KeyValueEntry& kv0 = std::get<0>(arg);
+  const KeyValueEntry& kv1 = std::get<1>(arg);
+  return kv0.key() == kv1.key() && kv0.value() == kv1.value();
+}
+
+KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
+  KeyValueEntry kv;
+  kv.set_key(key);
+  kv.set_value(value);
+  return kv;
+}
 
 class TestCoordinationClient : public CoordinationClient {
  public:
@@ -191,7 +205,7 @@ TEST_F(CoordinationServiceAgentTest,
   // Initialize coordination service agent.
   InitializeAgent();
 
-  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(3));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
 
   // Delayed server response: set key-value response, and invoke done callback.
@@ -239,6 +253,27 @@ TEST_F(CoordinationServiceAgentTest,
 
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
+  const std::string test_key = "test_key_dir";
+  std::vector<KeyValueEntry> test_values;
+  test_values.push_back(CreateKv("test_key_dir/task_0", "0"));
+  test_values.push_back(CreateKv("test_key_dir/task_1", "1"));
+  // Mock server response: set key-value pair and invoke done callback.
+  GetKeyValueDirResponse mocked_response;
+  mocked_response.set_directory_key(test_key);
+  *mocked_response.mutable_kv() = {test_values.begin(), test_values.end()};
+  ON_CALL(*GetClient(), GetKeyValueDirAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(Status::OK())));
+  // Initialize coordination agent.
+  InitializeAgent();
+
+  auto result = agent_->GetKeyValueDir(test_key);
+
+  TF_EXPECT_OK(result.status());
+  EXPECT_THAT(result.ValueOrDie(), UnorderedPointwise(KvEq(), test_values));
 }
 
 TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {

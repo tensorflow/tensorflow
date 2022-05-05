@@ -82,6 +82,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                                     absl::Duration timeout) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
+  StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
+      const std::string& key) override;
+  void GetKeyValueDirAsync(const std::string& key,
+                           StatusOrValueDirCallback done) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
   Status DeleteKeyValue(const std::string& key) override;
@@ -494,6 +498,39 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
         absl::FormatDuration(timeout))));
   }
   return *result;
+}
+
+StatusOr<std::vector<KeyValueEntry>>
+CoordinationServiceAgentImpl::GetKeyValueDir(const std::string& key) {
+  absl::Notification n;
+  StatusOr<std::vector<KeyValueEntry>> result;
+  GetKeyValueDirAsync(
+      key, [&n, &result](StatusOr<std::vector<KeyValueEntry>> status_or_value) {
+        result = std::move(status_or_value);
+        n.Notify();
+      });
+
+  n.WaitForNotification();
+  return result;
+}
+
+void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
+    const std::string& key, StatusOrValueDirCallback done) {
+  auto request = std::make_shared<GetKeyValueDirRequest>();
+  request->set_directory_key(key);
+  auto response = std::make_shared<GetKeyValueDirResponse>();
+  leader_client_->GetKeyValueDirAsync(
+      request.get(), response.get(),
+      [request, response, done = std::move(done)](const Status& s) {
+        if (!s.ok()) {
+          done(s);
+        } else {
+          std::vector<KeyValueEntry> kv_in_directory = {
+              std::make_move_iterator(response->kv().begin()),
+              std::make_move_iterator(response->kv().end())};
+          done(kv_in_directory);
+        }
+      });
 }
 
 Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
