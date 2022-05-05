@@ -962,45 +962,6 @@ def tf_native_cc_binary(
         **kwargs
     )
 
-# buildozer: disable=function-docstring-args
-def tf_native_cc_shared_library(
-        name,
-        srcs = [],
-        data = [],
-        static_deps = [],
-        deps = [],
-        copts = tf_copts(),
-        linkopts = [],
-        defines = [],
-        visibility = None):
-    """ A simple wrap around cc_shared_library rule."""
-    cc_library_name = name + "_cclib"
-    cc_library(
-        name = cc_library_name,
-        srcs = srcs,
-        data = data,
-        deps = deps,
-        copts = copts,
-        defines = defines,
-    )
-    cc_shared_library(
-        name = name,
-        roots = [cc_library_name],
-        static_deps = static_deps,
-        shared_lib_name = name,
-        user_link_flags = select({
-            clean_dep("//tensorflow:windows"): [],
-            clean_dep("//tensorflow:macos"): [
-                "-lm",
-            ],
-            "//conditions:default": [
-                "-lpthread",
-                "-lm",
-            ],
-        }) + linkopts + _rpath_user_link_flags(name) + lrt_if_needed(),
-        visibility = visibility,
-    )
-
 def tf_gen_op_wrapper_cc(
         name,
         out_ops_file,
