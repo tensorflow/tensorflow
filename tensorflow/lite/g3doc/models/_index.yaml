@@ -7,7 +7,7 @@ landing_page:
   meta_tags:
   - name: description
     content: >
-        Modeling Overview
+        Overview of models for TensorFlow Lite
   rows:
   - classname: devsite-landing-row-100
     items:
@@ -30,20 +30,22 @@ landing_page:
     - classname: tfo-landing-page-card
       description: >
         <a href="/lite/convert/index"><h3 class="no-link">Have a TensorFlow model?</h3></a>
-        Jump to the <a href="/lite/convert/index">Convert</a> section for information about
+        Skip to the <a href="/lite/convert/index">Convert</a> section for information about
         getting your model to run with TensorFlow Lite.
       path: /lite/convert/index
 
     - classname: tfo-landing-page-card
       description: >
         <a href="/lite/convert/index"><h3 class="no-link">Need a model for TensorFlow Lite?</h3></a>
-        For guidance on getting a pre-built model for your use case, keep reading.
+        For guidance on getting models for your use case,
+        <a href="#get_models">keep reading</a>.
 
   - classname: devsite-landing-row-100
     items:
     - description: >
             <br>
-            <h2 class="tfo-landing-page-heading no-link">Getting models for TF Lite</h2>
+            <h2 class="tfo-landing-page-heading no-link" id="get_models">
+              Get models for TensorFlow Lite</h2>
             <p>
             You don't have to build a TensorFlow Lite model to start using machine learning on
             mobile or edge devices. Many already-built and optimized models are available for you to
@@ -51,16 +53,14 @@ landing_page:
             TensorFlow Lite and move up to building custom models over time, as follows:
             </p>
             <ol>
-            <li>Start with pre-built models from
-            <a href="https://tfhub.dev/s?deployment-format=lite">TensorFlow Hub.</a></li>
-            <li>Modify existing TensorFlow Lite models using tools such as <a href="https://www.tensorflow.org/lite/guide/model_maker">Model Maker
-            </a>.</li>
-            <li>Retrain or extend an existing TensorFlow model and then
-            <a href="https://www.tensorflow.org/lite/convert">convert</a> it to TensorFlow Lite.</li>
+            <li>Start developing machine learning features with
+            <a href="./ready">pre-built models.</a></li>
+            <li>Modify existing TensorFlow Lite models using tools such as
+            <a href="../guide/model_maker">Model Maker</a>.</li>
             <li>Build a
             <a href="https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough">
             custom model</a> with TensorFlow tools and then
-            <a href="https://www.tensorflow.org/lite/convert">convert</a> it to TensorFlow Lite.</li>
+            <a href="../convert">convert</a> it to TensorFlow Lite.</li>
             </ol>
             <br>
             <h2 class="tfo-landing-page-heading no-link">Using models for quick tasks: ML Kit</h2>
@@ -105,7 +105,7 @@ landing_page:
             </p>
             <p>
             For more information building effective, compatible, high performance models for
-            TensorFlow Lite, see <a href="https://tensorflow.org/lite/performance/best_practices">
+            TensorFlow Lite, see <a href="../performance/best_practices">
             Performance best practices</a>.
             </p>
 
@@ -117,18 +117,16 @@ landing_page:
     items:
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/convert/index"><h3 class="no-link">Convert to TFLite</h3></a>
-        Use the Python API or the command line tool to convert TensorFlow models of various
-        formats to the TFLite model format.
-      path: /lite/convert/index
-    - classname: tfo-landing-page-card
-      description: >
-        <a href="/lite/models/ready/index"><h3 class="no-link">Pick pre-trained models</h3></a>
-        Pick a model from the many pre-trained models available.
+        <a href="/lite/models/ready/index"><h3 class="no-link">Pick a built model</h3></a>
+        Learn how to pick a pre-built ML model to use with TensorFlow Lite.
       path: /lite/ready/index
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/guide/model_maker"><h3 class="no-link">Customize pre-trained models</h3></a>
-        Use transfer learning with the TensorFlow Lite Model Maker library
-        to quickly train models with small amounts of training data.
+        <a href="/lite/guide/model_maker"><h3 class="no-link">Modify models</h3></a>
+        Use TensorFlow Lite Model Maker to modify models using your training data.
       path: /lite/guide/model_maker
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/convert/index"><h3 class="no-link">Build models</h3></a>
+        Learn how to build custom TensorFlow models to use with TensorFlow Lite.
+      path: /lite/performance/best_practices
