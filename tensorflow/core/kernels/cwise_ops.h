@@ -348,7 +348,7 @@ struct functor_traits<
 
 // similar to std::equal_to, but with the DEVICE_FUNC qualifier
 template <class T>
-struct equal_to : std::binary_function<T, T, bool> {
+struct equal_to : std::function<bool(T, T)> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x == y;
@@ -357,7 +357,7 @@ struct equal_to : std::binary_function<T, T, bool> {
 
 // similar to std::not_equal_to, but with the DEVICE_FUNC qualifier
 template <class T>
-struct not_equal_to : std::binary_function<T, T, bool> {
+struct not_equal_to : std::function<bool(T, T)> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x != y;
@@ -366,7 +366,7 @@ struct not_equal_to : std::binary_function<T, T, bool> {
 
 // similar to std::greater, but with the DEVICE_FUNC qualifier
 template <class T>
-struct greater : std::binary_function<T, T, bool> {
+struct greater : std::function<bool(T, T)> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x > y;
@@ -375,7 +375,7 @@ struct greater : std::binary_function<T, T, bool> {
 
 // similar to std::less, but with the DEVICE_FUNC qualifier
 template <class T>
-struct less : std::binary_function<T, T, bool> {
+struct less : std::function<bool(T, T)> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x < y;
@@ -384,7 +384,7 @@ struct less : std::binary_function<T, T, bool> {
 
 // similar to std::greater_equal, but with the DEVICE_FUNC qualifier
 template <class T>
-struct greater_equal : std::binary_function<T, T, bool> {
+struct greater_equal : std::function<bool(T, T)> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x >= y;
@@ -393,7 +393,7 @@ struct greater_equal : std::binary_function<T, T, bool> {
 
 // similar to std::less_equal, but with the DEVICE_FUNC qualifier
 template <class T>
-struct less_equal : std::binary_function<T, T, bool> {
+struct less_equal : std::function<bool(T, T)> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x <= y;
