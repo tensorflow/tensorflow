@@ -1041,7 +1041,7 @@ REGISTER_OP("OptionalFromValue")
       const FullTypeDef& ret_types = c->ret_types();
       for (int i = 0; i < c->num_inputs(); ++i) {
         // TODO(mdan): output_type(i) == optional is incorrect.
-        // "Optional" is the type of the the whole container, not of individual
+        // "Optional" is the type of the whole container, not of individual
         // elements.
         //
         // Why ret_types.args(0) and not args(i) --

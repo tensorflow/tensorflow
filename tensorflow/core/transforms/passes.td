@@ -268,7 +268,7 @@ def Remapper : Pass<"remapper"> {
   let options = [
     Option<"enable_mkl_patterns_", "enable-mkl-patterns", "bool",
     /*default=*/"false",
-    "Enable the the MKL related patterns.">,
+    "Enable the MKL related patterns.">,
   ];
   let constructor = "CreateRemapperPass()";
 }
