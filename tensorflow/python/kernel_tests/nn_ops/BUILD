@@ -661,6 +661,7 @@ cuda_py_test(
     srcs = ["xent_op_d9m_test.py"],
     tags = [
         "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
+        "noasan",  # TODO(b/231484532): Remove after flakiness resolved.
         "notsan",  # TODO(b/200548634): Remove.
     ],
     xla_enable_strict_auto_jit = False,
