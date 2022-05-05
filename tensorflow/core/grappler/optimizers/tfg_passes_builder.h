@@ -22,13 +22,13 @@ namespace mlir {
 namespace tfg {
 
 // Constructs the default graph/function-level TFG pass pipeline.
-void DefaultGrapplerPipeline(PassManager& mgr);
+void DefaultGrapplerPipeline(PassManager& manager);
 
 // Constructs the default module-level TFG pass pipeline.
-void DefaultModuleGrapplerPipeline(PassManager& mgr);
+void DefaultModuleGrapplerPipeline(PassManager& manager);
 
 // Add a remapper pass to the given pass manager.
-void RemapperPassBuilder(PassManager& mgr);
+void RemapperPassBuilder(PassManager& manager);
 
 }  // namespace tfg
 }  // namespace mlir
