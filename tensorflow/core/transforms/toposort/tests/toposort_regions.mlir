@@ -20,3 +20,24 @@ tfg.graph #tf_type.version<producer = 1, min_consumer = 1> {
   %Foo, %ctlFoo = Foo(%Index) : (tensor<*xi32>) -> (tensor<*xi32>)
   %Index, %ctlIndex = Index : () -> (tensor<*xi32>)
 }
+
+// CHECK-LABEL: tfg.graph
+tfg.graph #tf_type.version<producer = 1, min_consumer = 1> {
+  // CHECK-NEXT: %[[A:.*]], %{{.*}} = Placeholder name("a")
+  // CHECK-NEXT: %[[COND:.*]], %{{.*}} = Placeholder name("cond")
+  // CHECK-NEXT: IfRegion %[[COND]] then {
+  // CHECK-NEXT:   %[[C:.*]], %{{.*}} = Placeholder name("c")
+  // CHECK-NEXT:   %[[D:.*]], %{{.*}} = Foo(%[[C]]) name("d")
+  // CHECK-NEXT:   yield(%[[D]])
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT:   yield(%[[A]])
+  %a, %ctlA = Placeholder name("a") : () -> (tensor<*xi32>)
+  %cond, %ctlCond = Placeholder name("cond") : () -> (tensor<*xi1>)
+  %b, %ctlB = IfRegion %cond then {
+    %c, %ctlC = Placeholder name("c") : () -> (tensor<*xi32>)
+    %d, %ctlD = Foo(%c) name("d") : (tensor<*xi32>) -> (tensor<*xi32>)
+    yield(%d) : tensor<*xi32>
+  } else {
+    yield(%a) : tensor<*xi32>
+  } : (tensor<*xi1>) -> (tensor<*xi32>)
+}
