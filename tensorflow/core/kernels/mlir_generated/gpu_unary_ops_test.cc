@@ -313,6 +313,17 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::OpsTestConfig())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Cosh, DT_COMPLEX64, DT_COMPLEX64, std::cosh,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cosh, DT_COMPLEX128, DT_COMPLEX128, std::cosh,
+                      test::OpsTestConfig())
+
+#endif
+
 /// Test `tf.Digamma`.
 
 /// Reference implementation.
@@ -1083,6 +1094,17 @@ GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
 
 GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
                       test::OpsTestConfig())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Sinh, DT_COMPLEX64, DT_COMPLEX64, std::sinh,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sinh, DT_COMPLEX128, DT_COMPLEX128, std::sinh,
+                      test::OpsTestConfig())
+
+#endif
 
 /// Test `tf.Softplus`.
 

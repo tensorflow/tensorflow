@@ -808,6 +808,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_cosh_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
     op = "cosh",
     tile_size = "256",
     types = [
@@ -947,6 +951,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sinh_kernels",
+    jit_types = [
+        "c64",
+        "c128",
+    ],
     op = "sinh",
     tile_size = "256",
     types = [
