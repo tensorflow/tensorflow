@@ -1033,7 +1033,8 @@ class DepthwiseConv2DBase(test.TestCase):
           strides = [1, 1, stride, stride]
           padding = padding_nchw
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
-            t0, t1, t2, strides=strides, padding=padding)
+            t0, t1, t2, strides=strides, padding=padding,
+            data_format=data_format)
         ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
