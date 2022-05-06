@@ -94,7 +94,6 @@ tf_cc_test(
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],
-    module_name = "runtime_client_pybind",
     deps = [
         ":runtime_client_headers",
         "@pybind11",

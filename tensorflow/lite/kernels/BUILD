@@ -763,7 +763,6 @@ pybind_extension(
     ],
     additional_exported_symbols = ["VariableOpsRegisterer"],
     link_in_framework = True,
-    module_name = "pywrap_variable_ops",
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",

@@ -179,7 +179,6 @@ tf_python_pybind_extension(
     name = "_pywrap_stacktrace_handler",
     srcs = ["stacktrace_handler_wrapper.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler_hdrs"],
-    module_name = "_pywrap_stacktrace_handler",
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -189,7 +188,6 @@ tf_python_pybind_extension(
 pybind_extension(
     name = "_pywrap_cpu_feature_guard",
     srcs = ["cpu_feature_guard_wrapper.cc"],
-    module_name = "_pywrap_cpu_feature_guard",
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard",
         "//third_party/python_runtime:headers",
@@ -254,7 +252,6 @@ pybind_extension(
     name = "_pywrap_tf2",
     srcs = ["enable_tf2.cc"],
     hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
-    module_name = "_pywrap_tf2",
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

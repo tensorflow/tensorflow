@@ -657,7 +657,6 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
-    module_name = "xla_extension",
     pytype_deps = [
         "//third_party/py/numpy",
     ],

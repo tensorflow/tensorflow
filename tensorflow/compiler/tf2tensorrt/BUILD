@@ -987,7 +987,6 @@ pybind_extension(
     name = "_pywrap_py_utils",
     srcs = ["utils/py_utils_wrapper.cc"],
     link_in_framework = True,
-    module_name = "_pywrap_py_utils",
     static_deps = [
         # TODO(b/229550590): Uncomment to use cc_shared_library instead of cc_binary.
         # "@bazel_tools//:__subpackages__",

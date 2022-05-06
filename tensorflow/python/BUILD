@@ -332,7 +332,6 @@ tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
     features = ["-layering_check"],
-    module_name = "_pywrap_tfcompile",
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
@@ -360,7 +359,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/training:quantize_training_wrapper.cc",
     ],
     hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
-    module_name = "_pywrap_quantize_training",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -384,7 +382,6 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:headers",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
     ],
-    module_name = "_pywrap_py_exception_registry",
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -400,7 +397,6 @@ tf_python_pybind_extension(
         "lite/toco_python_api_wrapper.cc",
     ],
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
-    module_name = "_pywrap_toco_api",
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -3905,7 +3901,6 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_mlir",
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -3932,7 +3927,6 @@ py_library(
 tf_python_pybind_extension(
     name = "flags_pybind",
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
-    module_name = "flags_pybind",
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -3947,7 +3941,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_sanitizers",
     srcs = ["sanitizers_wrapper.cc"],
-    module_name = "_pywrap_sanitizers",
     deps = [
         "@pybind11",
     ],
@@ -4007,7 +4000,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/python/util:util_hdr",
     ],
-    module_name = "_pywrap_tfe",
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or
     # deps, then you can use cc_header_only_library to keep only headers.
@@ -4061,7 +4053,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_parallel_device",
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -4083,7 +4074,6 @@ tf_python_pybind_extension(
     name = "_pywrap_dtensor_device",
     srcs = ["pywrap_dtensor_device.cc"],
     features = ["-layering_check"],
-    module_name = "_pywrap_dtensor_device",
     deps = [
         ":pywrap_densor_device_headers",
         "//tensorflow/python/lib/core:pybind11_lib",

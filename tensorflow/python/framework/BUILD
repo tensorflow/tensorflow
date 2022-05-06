@@ -108,7 +108,6 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_python_op_gen",
     srcs = ["python_op_gen_wrapper.cc"],
-    module_name = "_pywrap_python_op_gen",
     deps = [
         "//tensorflow/python:python_op_gen_headers_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
@@ -311,7 +310,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_dtypes",
     srcs = ["dtypes.cc"],
-    module_name = "_dtypes",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -496,7 +494,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_op_def_library_pybind",
     srcs = ["op_def_library_pybind.cc"],
-    module_name = "_op_def_library_pybind",
     deps = [
         ":op_def_util_headers",
         "//tensorflow/core:framework_headers_lib",
@@ -528,7 +525,6 @@ pytype_strict_library(
 tf_python_pybind_extension(
     name = "_op_def_registry",
     srcs = ["op_def_registry.cc"],
-    module_name = "_op_def_registry",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -563,7 +559,6 @@ cc_library(
 tf_python_pybind_extension(
     name = "_py_context_manager",
     srcs = ["py_context_manager_pybind.cc"],
-    module_name = "_py_context_manager",
     deps = [
         ":py_context_manager",
         "//third_party/python_runtime:headers",
@@ -603,7 +598,6 @@ cc_library(
 tf_python_pybind_extension(
     name = "_op_def_util",
     srcs = ["op_def_util_pybind.cc"],
-    module_name = "_op_def_util",
     deps = [
         ":op_def_util_headers",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -665,7 +659,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
     ],
-    module_name = "_pywrap_python_api_parameter_converter",
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@com_google_absl//absl/types:optional",
@@ -749,7 +742,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
     ],
-    module_name = "_pywrap_python_api_info",
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@com_google_absl//absl/types:optional",
@@ -818,7 +810,6 @@ tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
     srcs = ["python_api_dispatcher_wrapper.cc"],
     hdrs = ["python_api_dispatcher.h"],
-    module_name = "_pywrap_python_api_dispatcher",
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
@@ -873,7 +864,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:numpy_hdr",
     ],
-    module_name = "_pywrap_python_tensor_converter",
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@com_google_absl//absl/types:optional",
@@ -1471,7 +1461,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_python_memory_checker_helper",
     srcs = ["python_memory_checker_helper.cc"],
-    module_name = "_python_memory_checker_helper",
     deps = [
         "@pybind11",
     ],
@@ -2013,7 +2002,6 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "_memory_checker_test_helper",
     srcs = ["memory_checker_test_helper.cc"],
-    module_name = "_memory_checker_test_helper",
     deps = [
         "@pybind11",
     ],
@@ -2074,7 +2062,6 @@ tf_proto_library(
 tf_python_pybind_extension(
     name = "_errors_test_helper",
     srcs = ["errors_test_helper.cc"],
-    module_name = "_errors_test_helper",
     deps = [
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
@@ -2147,7 +2134,6 @@ cuda_py_test(
 tf_python_pybind_extension(
     name = "_proto_comparators",
     srcs = ["proto_comparators.cc"],
-    module_name = "_proto_comparators",
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -2183,7 +2169,6 @@ py_test(
 tf_python_pybind_extension(
     name = "_test_metrics_util",
     srcs = ["test_metrics_util.cc"],
-    module_name = "_test_metrics_util",
     deps = [
         "//tensorflow/core:framework",
         "//third_party/python_runtime:headers",
