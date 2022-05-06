@@ -114,13 +114,14 @@ bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
   } while (false)
 
 bool ConsumeCompoundAttrType(StringPiece* sp, StringPiece* out) {
+  auto capture_data = sp->data();
   auto capture_begin = sp->begin();
   if (absl::ConsumePrefix(sp, "numbertype") ||
       absl::ConsumePrefix(sp, "numerictype") ||
       absl::ConsumePrefix(sp, "quantizedtype") ||
       absl::ConsumePrefix(sp, "realnumbertype") ||
       absl::ConsumePrefix(sp, "realnumberictype")) {
-    *out = StringPiece(capture_begin, sp->begin() - capture_begin);
+    *out = StringPiece(capture_data, sp->begin() - capture_begin);
     return true;
   }
   return false;
