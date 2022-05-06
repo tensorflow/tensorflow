@@ -33,13 +33,12 @@ func.func @binary_eltwise_wrong_format_sparse(%arg0: tensor<?x?xf64, #CSR>,
 // -----
 
 // TODO(ajcbik): error message is a bit too strict, should be "compatible" type?
-// TODO(burmako): this verification logic has been removed; reintroduce it
-// func.func @binary_eltwise_type_mismatch(%arg0: tensor<?x?xf64>,
-//                                         %arg1: tensor<?x?xf32>) -> tensor<?x?xf64> {
-//   // disabled-error @+1 {{'mhlo.add' op requires the same type for all operands and results}}
-//   %0 = mhlo.add(%arg0, %arg1) : (tensor<?x?xf64>, tensor<?x?xf32>) -> tensor<?x?xf64>
-//   func.return %0 : tensor<?x?xf64>
-// }
+func.func @binary_eltwise_type_mismatch(%arg0: tensor<?x?xf64>,
+                                        %arg1: tensor<?x?xf32>) -> tensor<?x?xf64> {
+  // expected-error @+1 {{'mhlo.add' op requires compatible types for all operands and results}}
+  %0 = mhlo.add(%arg0, %arg1) : (tensor<?x?xf64>, tensor<?x?xf32>) -> tensor<?x?xf64>
+  func.return %0 : tensor<?x?xf64>
+}
 
 // -----
 

@@ -236,4 +236,10 @@ def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
 def HLO_PairwiseSameOperandAndResultType :
   HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
 
+// Op has operand and result types compatible with each other according to
+// the rules implemented in isCompatibleForMhloTypeInference, which account for
+// special properties dynamism, quantization and sparsity.
+def HLO_CompatibleOperandsAndResultType :
+  HLO_NativeOpTrait<"CompatibleOperandsAndResultType">;
+
 #endif // HLO_OPS_BASE
