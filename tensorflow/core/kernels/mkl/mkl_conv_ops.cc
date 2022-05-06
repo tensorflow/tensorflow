@@ -2322,6 +2322,8 @@ REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("QuantizedConv2DWithBias", NoOp, float,
                                     qint32, qint32, false, false, false);
 REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("QuantizedConv2DWithBiasAndRelu", NoOp,
                                     float, qint32, qint32, false, false, false);
+REGISTER_MKL_KERNEL("QuantizedConv2DWithBiasSumAndRelu", NoOp, quint8, float,
+                    qint32, qint32, false, false, false);
 REGISTER_MKL_KERNEL("QuantizedConv2DAndRequantize", NoOp, quint8, float, qint8,
                     qint8, false, false, false);
 REGISTER_MKL_KERNEL("QuantizedConv2DPerChannel", NoOp, quint8, float, qint32,
@@ -2336,11 +2338,6 @@ REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2DWithBias", NoOp, quint8, float,
                     qint32, qint32, false, false, false);
 REGISTER_MKL_KERNEL("QuantizedDepthwiseConv2DWithBiasAndRelu", NoOp, quint8,
                     float, qint32, qint32, false, false, false);
-#undef SUMMAND_TYPE_CONSTRAINT
-#define SUMMAND_TYPE_CONSTRAINT(summand_type) \
-  .TypeConstraint<summand_type>("Tsummand")
-REGISTER_MKL_KERNEL("QuantizedConv2DWithBiasSumAndRelu", NoOp, quint8, float,
-                    qint32, qint32, false, false, false);
 #undef SUMMAND_TYPE_CONSTRAINT
 #undef BIAS_TYPE_CONSTRAINT
 
@@ -2388,6 +2385,9 @@ REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2DWithBias",
 REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2DWithBiasAndRelu",
                                     MklQuantizedConvOp, float, qint32, qint32,
                                     false, quantized_fusions::bias_relu, 2);
+REGISTER_MKL_KERNEL("_MklQuantizedConv2DWithBiasSumAndRelu", MklQuantizedConvOp,
+                    quint8, float, qint32, qint32, false,
+                    quantized_fusions::bias_sum_relu, 3);
 REGISTER_MKL_KERNEL("_MklQuantizedConv2DAndRequantize", MklQuantizedConvOp,
                     quint8, float, qint8, qint8, false,
                     quantized_fusions::requantize, 1);
@@ -2404,12 +2404,6 @@ REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2DWithBias", MklQuantizedConvOp,
 REGISTER_MKL_KERNEL("_MklQuantizedDepthwiseConv2DWithBiasAndRelu",
                     MklQuantizedConvOp, quint8, float, qint32, qint32, true,
                     quantized_fusions::bias_relu, 2);
-#undef SUMMAND_TYPE_CONSTRAINT
-#define SUMMAND_TYPE_CONSTRAINT(summand_type) \
-  .TypeConstraint<summand_type>("Tsummand")
-REGISTER_MKL_KERNEL("_MklQuantizedConv2DWithBiasSumAndRelu", MklQuantizedConvOp,
-                    quint8, float, qint32, qint32, false,
-                    quantized_fusions::bias_sum_relu, 3);
 #undef SUMMAND_TYPE_CONSTRAINT
 #undef BIAS_TYPE_CONSTRAINT
 #define BIAS_TYPE_CONSTRAINT(bias_type) .TypeConstraint<bias_type>("Tbias")
