@@ -1056,7 +1056,7 @@ class OptimizerV2(trackable.Trackable):
       config["learning_rate"] = config.pop("lr")
     if "learning_rate" in config:
       if isinstance(config["learning_rate"], dict):
-        config["learning_rate"] = learning_rate_schedule.deserialize(
+        config["learning_rate"] = tensorflow.keras.optimizers.schedules.deserialize(
             config["learning_rate"], custom_objects=custom_objects)
     return cls(**config)
 
@@ -1064,7 +1064,7 @@ class OptimizerV2(trackable.Trackable):
     """Serialize a hyperparameter that can be a float, callable, or Tensor."""
     value = self._hyper[hyperparameter_name]
     if isinstance(value, tensorflow.keras.optimizers.schedules.LearningRateSchedule):
-      return learning_rate_schedule.serialize(value)
+      return tensorflow.keras.optimizers.schedules.serialize(value)
     if callable(value):
       return value()
     if tensor_util.is_tf_type(value):
