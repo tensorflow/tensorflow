@@ -207,8 +207,8 @@ func.func @dot3(%arg0: tensor<4xf64, #SV>,
 // CHECK-LABEL: func @sparse_zero_preserving_math(
 //  CHECK-SAME: %[[A:.*]]: tensor<64xf64, #{{.*}}>)
 //       CHECK: %[[T0:.*]] = mhlo.abs %[[A]] : tensor<64xf64, #{{.*}}>
-//       CHECK: %[[T1:.*]] = mhlo.exponential %[[T0]] : tensor<64xf64, #{{.*}}>
-//       CHECK: %[[T2:.*]] = mhlo.log %[[T1]] : tensor<64xf64, #{{.*}}>
+//       CHECK: %[[T1:.*]] = mhlo.exponential_minus_one %[[T0]] : tensor<64xf64, #{{.*}}>
+//       CHECK: %[[T2:.*]] = mhlo.log_plus_one %[[T1]] : tensor<64xf64, #{{.*}}>
 //       CHECK: %[[T3:.*]] = mhlo.negate %[[T2]] : tensor<64xf64, #{{.*}}>
 //       CHECK: %[[T4:.*]] = mhlo.sign %[[T3]] : tensor<64xf64, #{{.*}}>
 //       CHECK: %[[T5:.*]] = mhlo.sine %[[T4]] : tensor<64xf64, #{{.*}}>
@@ -217,8 +217,8 @@ func.func @dot3(%arg0: tensor<4xf64, #SV>,
 //       CHECK: return %[[T7]] : tensor<64xf64, #{{.*}}>
 func.func @sparse_zero_preserving_math(%arg0: tensor<64xf64, #SV>) -> tensor<64xf64, #SV> {
   %0 = mhlo.abs(%arg0) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
-  %1 = mhlo.exponential(%0) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
-  %2 = mhlo.log(%1) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
+  %1 = mhlo.exponential_minus_one(%0) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
+  %2 = mhlo.log_plus_one(%1) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
   %3 = mhlo.negate(%2) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
   %4 = mhlo.sign(%3) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
   %5 = mhlo.sine(%4) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
