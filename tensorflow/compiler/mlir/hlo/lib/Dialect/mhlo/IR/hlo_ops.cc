@@ -2829,7 +2829,6 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
     return attr;
   }
 
-  llvm::SmallVector<Value, 6> new_operands;
   for (auto operand : getOperands()) {
     auto ty = operand.getType().cast<ShapedType>();
     if (ty.getDimSize(axis) != 0) {
