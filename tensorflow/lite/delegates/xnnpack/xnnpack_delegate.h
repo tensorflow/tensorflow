@@ -90,7 +90,7 @@ TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateWeightsCacheFinalizeHard(
     struct TfLiteXNNPackDelegateWeightsCache* cache);
 // Destroys a weights cache created with
 // `TfLiteXNNPackDelegateWeightsCacheCreate` call.
-TFL_CAPI_EXPORT void TfLiteXNNPackWeightsCacheDelete(
+TFL_CAPI_EXPORT void TfLiteXNNPackDelegateWeightsCacheDelete(
     struct TfLiteXNNPackDelegateWeightsCache* cache);
 
 #ifdef __cplusplus
