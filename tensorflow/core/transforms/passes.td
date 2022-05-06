@@ -22,8 +22,11 @@ def TopoSort : Pass<"tfg-toposort"> {
     The main purpose is readability, as well as potentially faster processing
     of the body by analyses/transformation as it'll ensure that all uses appear
     after the producer (but note that cycles are allowed in TensorFlow graphs).
-    This is supposed to not change the semantics, and could be graduated to a
-    canonicalization in the future.
+
+    Note that some Grappler optimizers are sensitive to the textual order of the
+    operations in the graph. This pass is meant to be approximately stable, in
+    that the order of operations in the input graph is preserved as much as
+    possible so as to not alter the results of these optimizers.
   }];
 
   // A constructor must be provided to specify how to create a default instance.

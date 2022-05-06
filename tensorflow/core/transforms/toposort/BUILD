@@ -15,8 +15,8 @@ cc_library(
     srcs = ["pass.cc"],
     hdrs = ["pass.h"],
     deps = [
-        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:op_cat_helper",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
