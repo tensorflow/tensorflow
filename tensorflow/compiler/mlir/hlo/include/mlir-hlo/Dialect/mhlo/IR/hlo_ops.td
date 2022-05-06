@@ -131,12 +131,12 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
                                                   operands.front(),
                                                   &reifiedReturnShapes);
     }
-    // Replace the strict default implementation with one that allows
-    // for different sparsity encodings during the is-same test.
+    // Relax the strict default implementation with one that allows
+    // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
       for (auto it : llvm::zip(l, r))
-        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
+        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
           return false;
       return true;
     }
@@ -454,14 +454,13 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
                                                   operands.front(),
                                                   &reifiedReturnShapes);
     }
-    // Replace the strict default implementation with one that allows
-    // for different sparsity encodings during the is-same test.
+    // Relax the strict default implementation with one that allows
+    // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      // TODO(burmako): Re-enable this check by accounting for dynamism rules.
-      // if (l.size() != r.size()) return false;
-      // for (auto it : llvm::zip(l, r))
-      //   if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
-      //    return false;
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+         return false;
       return true;
     }
   }];
