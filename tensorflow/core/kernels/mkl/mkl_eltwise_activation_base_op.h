@@ -80,7 +80,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data, OpKernelContext* op_context) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
@@ -167,7 +167,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   struct EltwiseFwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

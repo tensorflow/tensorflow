@@ -117,10 +117,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
                const Tinput* bn_offset_data, const Tinput* bn_rsqrt_data,
                std::shared_ptr<stream> fwd_stream, void* sp_data) {
 #ifdef DNNL_AARCH64_USE_ACL
-    // when we are using single global cache then in this case
-    // we can have multiple threads running the same primitive
-    // that we created so this should happen under the lock
-    mutex_lock lock(mu_);
+    // When we are using single global cache then in this case we can have
+    // multiple threads running the same primitive that we created so this
+    // should happen under the lock.
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
@@ -430,7 +430,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
 
 #ifdef DNNL_AARCH64_USE_ACL
   // Guards Execution()
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

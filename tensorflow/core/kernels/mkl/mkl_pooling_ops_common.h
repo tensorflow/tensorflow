@@ -152,7 +152,7 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
   struct PoolingFwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
@@ -300,7 +300,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
 
   struct PoolingBwdContext context_;
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

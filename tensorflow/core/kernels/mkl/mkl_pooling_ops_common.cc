@@ -87,7 +87,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
                                         void* ws_data,
                                         std::shared_ptr<stream> fwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex_lock lock(mu_);
+  mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
   context_.src_mem->set_data_handle(
@@ -190,7 +190,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
                                         T* diff_src_data, const void* ws_data,
                                         std::shared_ptr<stream> bwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex_lock lock(mu_);
+  mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
   context_.diff_dst_mem->set_data_handle(

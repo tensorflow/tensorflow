@@ -94,7 +94,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
@@ -226,7 +226,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
 
   struct ConvBwdInputContext context_;
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
