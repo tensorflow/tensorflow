@@ -368,5 +368,5 @@ For more information about implementing machine learning in your mobile
 application with TensorFlow Lite, see the
 [TensorFlow Lite Developer Guide](https://www.tensorflow.org/lite/guide). You
 can find additional TensorFlow Lite models for image classification, object
-detection, and other applications on the TensorFlow Lite
-[Model library](https://www.tensorflow.org/lite/guide/hosted_models) page.
+detection, and other applications on the
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite).

@@ -18,7 +18,7 @@ classification models.
 The following models are guaranteed to be compatible with the `NLClassifier`
 API.
 
-*   The <a href="../../models/text_classification/overview.md">movie review
+*   The <a href="../../examples/text_classification/overview">movie review
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
@@ -136,7 +136,7 @@ for more details.
 ## Example results
 
 Here is an example of the classification results of the
-[movie review model](https://www.tensorflow.org/lite/models/text_classification/overview).
+[movie review model](https://www.tensorflow.org/lite/examples/text_classification/overview).
 
 Input: "What a waste of my time."
 
@@ -154,7 +154,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata.md). See examples of
+or without [TFLite Model Metadata](../../convert/metadata). See examples of
 creating metadata for natural language classifiers using the
 [TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
@@ -165,7 +165,7 @@ The compatible models should meet the following requirements:
     -   Input of the model should be either a kTfLiteString tensor raw input
         string or a kTfLiteInt32 tensor for regex tokenized indices of raw input
         string.
-    -   If input type is kTfLiteString, no [Metadata](../../convert/metadata.md)
+    -   If input type is kTfLiteString, no [Metadata](../../convert/metadata)
         is required for the model.
     -   If input type is kTfLiteInt32, a `RegexTokenizer` needs to be set up in
         the input tensor's
@@ -180,7 +180,7 @@ The compatible models should meet the following requirements:
         corresponding platforms
 
     -   Can have an optional associated file in the output tensor's
-        corresponding [Metadata](../../convert/metadata.md) for category labels,
+        corresponding [Metadata](../../convert/metadata) for category labels,
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
         outputs. See the

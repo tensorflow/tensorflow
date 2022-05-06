@@ -7,7 +7,7 @@ in a given picture. The task of predicting what an image represents is called
 classes of images. For example, a model might be trained to recognize photos
 representing three different types of animals: rabbits, hamsters, and dogs. See
 the
-[introduction of image classification](../../models/image_classification/overview.md)
+[image classification overview](../../examples/image_classification/overview)
 for more information about image classifiers.
 
 Use the Task Library `ImageClassifier` API to deploy your custom image
@@ -35,9 +35,6 @@ API.
 
 *   Models created by
     [TensorFlow Lite Model Maker for Image Classification](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification).
-
-*   The
-    [pretrained image classification models from TensorFlow Lite Hosted Models](https://www.tensorflow.org/lite/guide/hosted_models#image_classification).
 
 *   The
     [pretrained image classification models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/image-classifier/1).
@@ -151,7 +148,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+[TFLite Model Metadata](../../convert/metadata). See examples of creating
 metadata for image classifiers using the
 [TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_classifiers).
 
