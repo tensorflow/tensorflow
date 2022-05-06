@@ -33251,6 +33251,14 @@ func RangeDatasetMetadata(value string) RangeDatasetAttr {
 	}
 }
 
+// RangeDatasetReplicateOnSplit sets the optional replicate_on_split attribute to value.
+// If not specified, defaults to false
+func RangeDatasetReplicateOnSplit(value bool) RangeDatasetAttr {
+	return func(m optionalAttr) {
+		m["replicate_on_split"] = value
+	}
+}
+
 // Creates a dataset with a range of values. Corresponds to python's xrange.
 //
 // Arguments:
@@ -49446,6 +49454,14 @@ func TensorSliceDatasetIsFiles(value bool) TensorSliceDatasetAttr {
 func TensorSliceDatasetMetadata(value string) TensorSliceDatasetAttr {
 	return func(m optionalAttr) {
 		m["metadata"] = value
+	}
+}
+
+// TensorSliceDatasetReplicateOnSplit sets the optional replicate_on_split attribute to value.
+// If not specified, defaults to false
+func TensorSliceDatasetReplicateOnSplit(value bool) TensorSliceDatasetAttr {
+	return func(m optionalAttr) {
+		m["replicate_on_split"] = value
 	}
 }
 
