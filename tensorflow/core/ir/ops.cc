@@ -575,17 +575,19 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the result types and their attributes.
   if (succeeded(parser.parseOptionalArrow())) {
     if (failed(parser.parseLParen())) return failure();
-    // Parse individual function results.
-    do {
-      result_types.emplace_back();
-      NamedAttrList result_attr;
-      if (parser.parseType(result_types.back()) ||
-          parser.parseOptionalAttrDict(result_attr)) {
-        return failure();
-      }
-      result_attrs.push_back(builder.getDictionaryAttr(result_attr));
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen()) return failure();
+    if (failed(parser.parseOptionalRParen())) {
+      // Parse individual function results.
+      do {
+        result_types.emplace_back();
+        NamedAttrList result_attr;
+        if (parser.parseType(result_types.back()) ||
+            parser.parseOptionalAttrDict(result_attr)) {
+          return failure();
+        }
+        result_attrs.push_back(builder.getDictionaryAttr(result_attr));
+      } while (succeeded(parser.parseOptionalComma()));
+      if (parser.parseRParen()) return failure();
+    }
   }
 
   auto type = builder.getFunctionType(arg_types, result_types);

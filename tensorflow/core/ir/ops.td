@@ -94,8 +94,8 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     // ease of access and to cache the attribute names in the op.
     SymbolNameAttr:$sym_name,
     TypeAttrOf<FunctionType>:$function_type,
-    ArrayAttr:$arg_attrs,
-    ArrayAttr:$res_attrs,
+    OptionalAttr<ArrayAttr>:$arg_attrs,
+    OptionalAttr<ArrayAttr>:$res_attrs,
     // Optional function attributes.
     OptionalAttr<StrAttr>:$description,
     UnitAttr:$is_stateful,

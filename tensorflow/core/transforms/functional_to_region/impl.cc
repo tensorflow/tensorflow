@@ -250,13 +250,17 @@ static RegionAttr PreserveAttributes(GraphFuncOp func, bool drop_args = false,
     for (unsigned i = 0; i < attrs.size(); i += 2) others.push_back(attrs[i]);
     return ArrayAttr::get(attrs.getContext(), others);
   };
-  ArrayAttr arg_attrs = drop_args ? ArrayAttr::get(func.getContext(), {})
-                                  : every_other(func.arg_attrs());
 
-  if (!allow_empty &&
-      ArePreservedAttrsEmpty(func_attrs, arg_attrs, func.res_attrs()))
+  ArrayAttr arg_attrs = drop_args || !func.arg_attrs()
+                            ? ArrayAttr::get(func.getContext(), {})
+                            : every_other(*func.arg_attrs());
+  ArrayAttr res_attrs = func.res_attrs()
+                            ? *func.res_attrs()
+                            : ArrayAttr::get(func.getContext(), {});
+
+  if (!allow_empty && ArePreservedAttrsEmpty(func_attrs, arg_attrs, res_attrs))
     return nullptr;
-  return RegionAttr::get(func_attrs, arg_attrs, func.res_attrs());
+  return RegionAttr::get(func_attrs, arg_attrs, res_attrs);
 }
 
 YieldOp BasePattern::ReplaceReturnWithYield(Block &block, TypeRange types,
