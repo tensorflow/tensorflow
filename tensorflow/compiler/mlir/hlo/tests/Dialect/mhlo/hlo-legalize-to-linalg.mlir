@@ -1848,6 +1848,21 @@ func.func @dot_dot(%arg0: tensor<?xf32>,
 
 // -----
 
+func.func @dot_dot_unsigned(%arg0: tensor<?xui32>,
+              %arg1: tensor<?xui32>) -> tensor<ui32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xui32>, tensor<?xui32>) -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: func @dot_dot_unsigned(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xui32>, %[[ARG1:.*]]: tensor<?xui32>)
+// CHECK: %[[INIT:.*]] = linalg.init_tensor []
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}outs(%[[INIT]]
+// CHECK: linalg.dot
+// CHECK-SAME: ins(%{{.*}} : tensor<?xi32>, tensor<?xi32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<i32>)
+
+// -----
+
 func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
                   %arg1: tensor<?x3x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
@@ -1883,6 +1898,27 @@ func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
 // CHECK-SAME: {someattr}
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xf32>, tensor<?x3x?xf32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xf32>)
+
+// -----
+
+func.func @dot_general_batch_matmul_unsigned(%arg0: tensor<?x?x3xui32>,
+                  %arg1: tensor<?x3x?xui32>) -> tensor<?x?x?xui32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x3xui32>, tensor<?x3x?xui32>) -> tensor<?x?x?xui32>
+  func.return %0 : tensor<?x?x?xui32>
+// CHECK-LABEL: func @dot_general_batch_matmul_unsigned(
+// CHECK: linalg.batch_matmul
+// CHECK-SAME: ins({{.*}} : tensor<?x?x3xi32>, tensor<?x3x?xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
+}
 
 // -----
 
@@ -4371,3 +4407,25 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
 // CHECK:     linalg.yield %[[SUM]] : f32
 // CHECK: } -> tensor<?x?x?xf32>
+
+// -----
+
+func.func @dot_general_unsigned(%arg0: tensor<?x?x?xui32>,
+                  %arg1: tensor<?x?x?xui32>) -> tensor<?x?x?xui32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x?xui32>, tensor<?x?x?xui32>) -> tensor<?x?x?xui32>
+  func.return %0 : tensor<?x?x?xui32>
+}
+
+// CHECK-LABEL: func @dot_general_unsigned(
+// CHECK: linalg.generic
+// CHECK-SAME: ins({{.*}} : tensor<?x?x?xi32>, tensor<?x?x?xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
