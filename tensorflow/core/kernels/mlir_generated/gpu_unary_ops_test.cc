@@ -194,14 +194,16 @@ DstT baseline_cast(SrcT x) {
           .InputAttribute("SrcT")                                       \
           .OutputAttribute("DstT"))
 
-#define TEST_CAST_TO_NO_UNSIGNED(from_type) \
-  TEST_CAST_FROM_TO(from_type, DT_BOOL)     \
-  TEST_CAST_FROM_TO(from_type, DT_INT8)     \
-  TEST_CAST_FROM_TO(from_type, DT_INT16)    \
-  TEST_CAST_FROM_TO(from_type, DT_INT32)    \
-  TEST_CAST_FROM_TO(from_type, DT_INT64)    \
-  TEST_CAST_FROM_TO(from_type, DT_FLOAT)    \
-  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)
+#define TEST_CAST_TO_NO_UNSIGNED(from_type)  \
+  TEST_CAST_FROM_TO(from_type, DT_BOOL)      \
+  TEST_CAST_FROM_TO(from_type, DT_INT8)      \
+  TEST_CAST_FROM_TO(from_type, DT_INT16)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT32)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT64)     \
+  TEST_CAST_FROM_TO(from_type, DT_FLOAT)     \
+  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)    \
+  TEST_CAST_FROM_TO(from_type, DT_COMPLEX64) \
+  TEST_CAST_FROM_TO(from_type, DT_COMPLEX128)
 
 #define TEST_CAST_TO_UNSIGNED(from_type)  \
   TEST_CAST_FROM_TO(from_type, DT_UINT8)  \
