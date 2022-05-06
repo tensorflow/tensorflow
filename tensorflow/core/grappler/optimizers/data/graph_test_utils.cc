@@ -216,20 +216,6 @@ NodeDef MakeTakeNode(StringPiece name, StringPiece input_node_name,
       });
 }
 
-NodeDef MakeTensorSliceNode(StringPiece name, StringPiece tensor_node_name,
-                            bool replicate_on_split) {
-  return test::function::NDef(
-      name, "TensorSliceDataset",
-      {
-          string(tensor_node_name),
-      },
-      {
-          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-          {"output_types", gtl::ArraySlice<DataType>{}},
-          {"replicate_on_split", replicate_on_split},
-      });
-}
-
 NodeDef MakeSkipNode(StringPiece name, StringPiece input_node_name,
                      StringPiece count_node_name) {
   return test::function::NDef(

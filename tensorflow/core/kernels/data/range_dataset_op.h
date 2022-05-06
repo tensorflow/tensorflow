@@ -28,7 +28,6 @@ class RangeDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kStep = "step";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kReplicateOnSplit = "replicate_on_split";
 
   explicit RangeDatasetOp(OpKernelConstruction* ctx);
 
@@ -39,7 +38,6 @@ class RangeDatasetOp : public DatasetOpKernel {
   class Dataset;
   class RangeSplitProvider;
   DataTypeVector output_types_;
-  bool replicate_on_split_ = false;
 };
 
 }  // namespace data

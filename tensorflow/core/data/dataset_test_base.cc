@@ -1023,7 +1023,6 @@ Status RangeDatasetParams::GetInputNames(
 Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{"output_types", output_dtypes_},
                   {"output_shapes", output_shapes_},
-                  {"replicate_on_split", false},
                   {"metadata", ""}};
   return Status::OK();
 }
@@ -1107,7 +1106,6 @@ Status TensorSliceDatasetParams::GetAttributes(
   *attr_vector = {{"Toutput_types", output_dtypes_},
                   {"output_shapes", output_shapes_},
                   {"is_files", is_files_},
-                  {"replicate_on_split", false},
                   {"metadata", ""}};
   return Status::OK();
 }

@@ -37,17 +37,14 @@ namespace data {
 /* static */ constexpr const char* const TensorSliceDatasetOp::kToutputTypes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kIsFiles;
-/* static */ constexpr const char* const
-    TensorSliceDatasetOp::kReplicateOnSplit;
 
 class TensorSliceDatasetOp::Dataset : public DatasetBase {
  public:
   explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors,
-                   bool is_files, bool replicate_on_split)
+                   bool is_files)
       : DatasetBase(DatasetContext(ctx)),
         tensors_(std::move(tensors)),
-        is_files_(is_files),
-        replicate_on_split_(replicate_on_split) {
+        is_files_(is_files) {
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
       gtl::InlinedVector<int64_t, 4> element_dim_sizes;
@@ -135,13 +132,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(dtypes_, &dtypes);
     AttrValue is_files;
     b->BuildAttrValue(is_files_, &is_files);
-    AttrValue replicate_on_split;
-    b->BuildAttrValue(replicate_on_split_, &replicate_on_split);
     TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
-                                     {{kToutputTypes, dtypes},
-                                      {kIsFiles, is_files},
-                                      {kReplicateOnSplit, replicate_on_split}},
-                                     output));
+                                     {{kToutputTypes, dtypes}}, output));
     return Status::OK();
   }
 
@@ -152,7 +144,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {
+      if (ctx->split_providers().empty()) {
         split_provider_ = std::make_shared<IndexSplitProvider>(
             dataset()->tensors_[0].dim_size(0));
       } else {
@@ -206,8 +198,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   DataTypeVector dtypes_;
   std::vector<TensorShape> shapes_;
   std::vector<PartialTensorShape> partial_shapes_;
-  const bool is_files_;
-  const bool replicate_on_split_;
+  bool is_files_;
 };
 
 TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)
@@ -216,9 +207,6 @@ TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   if (ctx->HasAttr(kIsFiles)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kIsFiles, &is_files_));
-  }
-  if (ctx->HasAttr(kReplicateOnSplit)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kReplicateOnSplit, &replicate_on_split_));
   }
 }
 
@@ -242,8 +230,7 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
         errors::InvalidArgument(
             "All components must have the same size in the 0th dimension"));
   }
-  *output =
-      new Dataset(ctx, std::move(components), is_files_, replicate_on_split_);
+  *output = new Dataset(ctx, std::move(components), is_files_);
   OP_REQUIRES_OK(ctx,
                  VerifyTypesMatch((*output)->output_dtypes(), output_types_));
   OP_REQUIRES_OK(

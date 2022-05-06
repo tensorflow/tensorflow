@@ -56,7 +56,6 @@ REGISTER_OP("TensorSliceDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("is_files: bool = false")
     .Attr("metadata: string = ''")
-    .Attr("replicate_on_split: bool = false")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "Toutput_types"))
@@ -522,7 +521,6 @@ REGISTER_OP("RangeDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
-    .Attr("replicate_on_split: bool = false")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
@@ -534,16 +532,6 @@ REGISTER_OP("RangeDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
-
-REGISTER_OP("RewriteDataset")
-    .Input("input_dataset: variant")
-    .Input("rewrite_name: string")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
-                                                           "output_types"))
-    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("AnonymousSeedGenerator")
     .Input("seed: int64")

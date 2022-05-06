@@ -38,7 +38,6 @@ namespace data {
 /* static */ constexpr const char* const RangeDatasetOp::kStep;
 /* static */ constexpr const char* const RangeDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const RangeDatasetOp::kOutputShapes;
-/* static */ constexpr const char* const RangeDatasetOp::kReplicateOnSplit;
 
 namespace {
 constexpr char kNext[] = "next";
@@ -154,13 +153,12 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64_t start, int64_t stop, int64_t step,
-          DataTypeVector output_dtypes, bool replicate_on_split)
+          DataTypeVector output_dtypes)
       : DatasetBase(DatasetContext(ctx)),
         start_(start),
         stop_(stop),
         step_(step),
-        output_dtypes_(output_dtypes),
-        replicate_on_split_(replicate_on_split) {}
+        output_dtypes_(output_dtypes) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
@@ -239,13 +237,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(start_, &start));
     TF_RETURN_IF_ERROR(b->AddScalar(stop_, &stop));
     TF_RETURN_IF_ERROR(b->AddScalar(step_, &step));
-    AttrValue replicate_on_split;
-    b->BuildAttrValue(replicate_on_split_, &replicate_on_split);
-
-    TF_RETURN_IF_ERROR(b->AddDataset(
-        this, {start, stop, step},                                // Inputs
-        {std::make_pair(kReplicateOnSplit, replicate_on_split)},  // Attrs
-        output));
+    TF_RETURN_IF_ERROR(b->AddDataset(this, {start, stop, step}, output));
     return Status::OK();
   }
 
@@ -256,7 +248,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {
+      if (ctx->split_providers().empty()) {
         counter_ = absl::make_unique<RangeCounter>(
             dataset()->start_, dataset()->stop_, dataset()->step_);
       } else {
@@ -339,15 +331,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   const int64_t stop_;
   const int64_t step_;
   const DataTypeVector output_dtypes_;
-  const bool replicate_on_split_;
 };
 
 RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  if (ctx->HasAttr(kReplicateOnSplit)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kReplicateOnSplit, &replicate_on_split_));
-  }
 }
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
@@ -362,8 +350,7 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   OP_REQUIRES(ctx, step != 0,
               errors::InvalidArgument("step must be a non-zero integer."));
 
-  *output =
-      new Dataset(ctx, start, stop, step, output_types_, replicate_on_split_);
+  *output = new Dataset(ctx, start, stop, step, output_types_);
 }
 
 namespace {
