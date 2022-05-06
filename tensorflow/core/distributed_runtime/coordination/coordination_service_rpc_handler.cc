@@ -205,8 +205,11 @@ void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  // TODO(b/230630494): Implement service method.
-  done(errors::Unimplemented("GetKeyValueDirAsync() is not implemented yet."));
+  std::vector<KeyValueEntry> results =
+      service->GetKeyValueDir(request->directory_key());
+  *response->mutable_kv() = {std::make_move_iterator(results.begin()),
+                             std::make_move_iterator(results.end())};
+  done(Status::OK());
 }
 
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(
