@@ -36,6 +36,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -75,8 +76,14 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     os.environ['TF_USE_CUBLASLT'] = '1'
 
   def _maybe_skip(self, mode):
-    if mode == 'cuda' and not test.is_gpu_available(cuda_only=True):
-      self.skipTest('This test requires GPU.')
+    if mode == 'cuda':
+      if not test.is_gpu_available(cuda_only=True):
+        self.skipTest('This test requires GPU.')
+      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
+      if cuda_version < (11, 4):
+        self.skipTest('This test requires CUDA >= 11.4.')
+
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled.')
 
