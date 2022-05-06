@@ -181,6 +181,9 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
+#if TENSORFLOW_USE_ROCM
+    allow_gpu_device = false;
+#endif
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
                 &fused_matmul);
   }
