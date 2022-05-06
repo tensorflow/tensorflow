@@ -180,9 +180,11 @@ pytype_strict_library(
     deps = [
         ":api",
         ":layout",
+        ":multi_client_util",
         ":tpu_util",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
