@@ -90,7 +90,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   void Execute(void* src_data, void* dst_data,
                std::shared_ptr<stream> reorder_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
@@ -157,7 +157,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   }
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

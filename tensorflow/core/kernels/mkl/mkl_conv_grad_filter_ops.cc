@@ -92,7 +92,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
                const T* diff_bias_data, const T* diff_dst_data,
                std::shared_ptr<stream> bwd_filter_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
@@ -281,7 +281,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   struct ConvBwdFilterContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

@@ -283,7 +283,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                const MklConcatFwdParams& concat_fwd_dims,
                std::shared_ptr<stream> fwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
@@ -383,7 +383,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
   struct ConcatFwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

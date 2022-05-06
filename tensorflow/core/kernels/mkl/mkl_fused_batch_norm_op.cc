@@ -86,7 +86,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
@@ -331,7 +331,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   struct BatchNormFwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
@@ -439,7 +439,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                U* diff_weights_data, U* res_space_data,
                std::shared_ptr<stream> bwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
@@ -599,7 +599,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
   struct BatchNormBwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

@@ -126,10 +126,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                const Tbias* bias_data, Toutput* dst_data, void* sp_data,
                std::shared_ptr<stream> fwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    // when we are using single global cache then in this case
-    // we can have multiple threads running the same primitive
-    // that we created so this should happen under the lock
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
@@ -351,7 +348,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
 #ifdef DNNL_AARCH64_USE_ACL
   // Guards Execution()
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
@@ -630,7 +627,7 @@ class MklMatMulPrimitive : public MklPrimitive {
                const Trhs* b_data, const Toutput* c_data, void* sp_data,
                void* mul_data = nullptr, void* add_data = nullptr) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.a_mem->set_data_handle(
@@ -801,7 +798,7 @@ class MklMatMulPrimitive : public MklPrimitive {
 
   struct MklMatMulContext context_;
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
@@ -829,13 +826,6 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
 
     return matmul_prim;
   }
-
-#ifdef DNNL_AARCH64_USE_ACL
-  static int IncrementCounter() {
-    static std::atomic_int counter{1};
-    return counter.fetch_add(1);
-  }
-#endif
 
  private:
   MklMatMulPrimitiveFactory() {}

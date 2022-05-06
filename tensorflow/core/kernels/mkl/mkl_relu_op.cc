@@ -78,7 +78,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
@@ -161,7 +161,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   struct EltwiseFwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
@@ -260,7 +260,7 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
@@ -369,7 +369,7 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   struct EltwiseBwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 

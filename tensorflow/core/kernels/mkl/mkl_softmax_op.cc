@@ -64,7 +64,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_cpu_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
@@ -148,7 +148,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   struct SoftmaxFwdContext context_;
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
@@ -173,13 +173,6 @@ class MklSoftmaxPrimitiveFactory : public MklPrimitiveFactory<T> {
     static MklSoftmaxPrimitiveFactory instance_;
     return instance_;
   }
-
-#ifdef DNNL_AARCH64_USE_ACL
-  static int IncrementCounter() {
-    static std::atomic_int counter{1};
-    return counter.fetch_add(1);
-  }
-#endif
 
  private:
   MklSoftmaxPrimitiveFactory() {}

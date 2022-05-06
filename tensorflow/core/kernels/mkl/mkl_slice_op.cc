@@ -189,7 +189,7 @@ class MklSlicePrimitive : public MklPrimitive {
   void Execute(const MklSliceParams& sliceParams,
                std::shared_ptr<stream> slice_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
-    mutex_lock lock(mu_);
+    mutex_lock lock(primitive_execution_mu_);
 #endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(sliceParams.from->get_data_handle(),
@@ -251,7 +251,7 @@ class MklSlicePrimitive : public MklPrimitive {
   }
 
 #ifdef DNNL_AARCH64_USE_ACL
-  mutex mu_;
+  mutex primitive_execution_mu_;
 #endif
 };
 
