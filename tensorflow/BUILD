@@ -995,7 +995,6 @@ tf_cc_shared_library(
         "//tensorflow:tf_framework_version_script.lds",
         "//tensorflow:tf_private_symbols.lds",
     ],
-    exports_filter = PACKAGE_STATIC_DEPS,
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
