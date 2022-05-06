@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,37 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
 namespace data {
 
-class RangeDatasetOp : public DatasetOpKernel {
+class RewriteDatasetOp : public UnaryDatasetOpKernel {
  public:
-  static constexpr const char* const kDatasetType = "Range";
-  static constexpr const char* const kStart = "start";
-  static constexpr const char* const kStop = "stop";
-  static constexpr const char* const kStep = "step";
+  static constexpr const char* const kDatasetType = "Rewrite";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kRewriteName = "rewrite_name";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kReplicateOnSplit = "replicate_on_split";
 
-  explicit RangeDatasetOp(OpKernelConstruction* ctx);
+  explicit RewriteDatasetOp(OpKernelConstruction* ctx);
 
  protected:
-  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
-
- private:
-  class Dataset;
-  class RangeSplitProvider;
-  DataTypeVector output_types_;
-  bool replicate_on_split_ = false;
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override;
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_

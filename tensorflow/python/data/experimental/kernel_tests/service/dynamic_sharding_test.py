@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for dynamic sharding."""
+import collections
 from absl.testing import parameterized
 import numpy as np
 
@@ -281,11 +282,32 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     ds = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
-    expected = [words[i] for i in choice_array]
+    expected = num_workers*[words[i] for i in choice_array]
 
     assert_items_equal = (num_workers > 1)
     self.assertDatasetProduces(
         ds, expected, assert_items_equal=assert_items_equal)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testEnumerateReplicateOnSplit(self):
+    num_workers = 3
+    cluster = data_service_test_base.TestCluster(num_workers)
+    ds = dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"]).repeat()
+    ds = ds.enumerate()
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    get_next = self.getNext(ds)
+
+    counts = collections.defaultdict(int)
+    while True:
+      i, _ = self.evaluate(get_next())
+      counts[i] += 1
+      # Read until all workers have reached enumeration index 10.
+      if counts[10] == num_workers:
+        break
+
+    for i in range(10):
+      self.assertEqual(counts[i], num_workers)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

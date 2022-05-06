@@ -1451,8 +1451,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
 
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return Dataset.zip((Dataset.range(start, max_value, name=name), self),
-                       name=name)
+    range_dataset = Dataset.range(start, max_value, name=name)
+    # Replicate the range component so that each split is enumerated
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
+    return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(self,
               buffer_size,
@@ -3621,6 +3625,10 @@ name=None))
       raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
                       f"must be scalar `tf.int64` tensors but are "
                       f"{choice_dataset.element_spec}.")
+    # Replicate the `choice_dataset` component so that each split makes choices
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
     # pylint: disable=protected-access
     return _DirectedInterleaveDataset(choice_dataset, datasets,
                                       stop_on_empty_dataset)
@@ -6421,6 +6429,21 @@ class _DirectedInterleaveDataset(DatasetV2):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+def _apply_rewrite(dataset, rewrite):
+  # pylint: disable=protected-access
+  try:
+    return _VariantDataset(
+        gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                        **dataset._flat_structure),
+        dataset.element_spec)
+  except AttributeError as e:
+    if "has no attribute 'rewrite_dataset'" in str(e):
+      # The TF server may be outdated. This try/except can be removed after 6/4
+      # when the forward compatibility window elapses.
+      return dataset
+    raise e
 
 
 def _collect_resource_inputs(op):

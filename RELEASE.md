@@ -276,6 +276,9 @@ This release contains contributions from many people at Google, as well as:
         `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
         tf.data will run `Filter` transformation with multiple threads. Its
         default value is `False` if not specified.
+    *   Improved efficiency of using tf.data service dynamic sharding with
+        datasets containing `choose_from_datasets` and `enumerate`
+        transformations.
 
 *    `tf.keras`:
 
