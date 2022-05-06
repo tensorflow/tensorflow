@@ -1809,6 +1809,13 @@ func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1839,6 +1846,13 @@ func.func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1868,6 +1882,13 @@ func.func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -4262,12 +4283,19 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
 // CHECK: func @dot_general(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>)
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-// CHECK-DAG: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.generic

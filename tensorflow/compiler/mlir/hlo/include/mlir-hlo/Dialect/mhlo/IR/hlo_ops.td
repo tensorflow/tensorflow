@@ -1672,7 +1672,7 @@ def HLO_DotOp: HLO_Op<"dot",
   }];
 }
 
-def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]> {
+def HLO_DotGeneralOp: HLO_ShapedInterfaceOp<"dot_general", [NoSideEffect]> {
   let summary = "General Dot operator";
   let description = [{
     Performs general dot products between vectors, vector/matrix and
