@@ -128,7 +128,7 @@ static FailureOr<TFOp> CreateConstantTensorOp(
     // can be translated back to NodeDef while evaluation.
     state.attributes.set(
         TFGraphDialect::getNameAttrKey(),
-        builder.getStringAttr(Twine(name_prefix, "Const-folded")));
+        builder.getStringAttr(Twine(name_prefix, "Const_folded")));
   }
 
   state.addOperands(control_operands);
