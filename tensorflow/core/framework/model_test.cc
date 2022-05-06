@@ -1373,31 +1373,24 @@ TEST_F(ModelTimingTest, Interleave) {
   EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
 
   EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5,
-                   model_timing.GetTiming(interleave.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(interleave.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(1,
-                   model_timing.GetTiming(interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_weight);
 
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(10,
                    model_timing.GetTiming(interleave.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(30, model_timing.GetTiming(batch_1.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20,
+  EXPECT_DOUBLE_EQ(40, model_timing.GetTiming(batch_1.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(30,
                    model_timing.GetTiming(interleave.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_2.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->total_time_nsec);
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave) {
+TEST_F(ModelTimingTest, ParallelInterleave_DeterministicFalse) {
   auto batch_1 = model::MakeKnownRatioNode(
       {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
   auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
@@ -1409,7 +1402,15 @@ TEST_F(ModelTimingTest, ParallelInterleave) {
                             /*min=*/1, /*max=*/10),
        model::MakeParameter(kCycleLength, nullptr,
                             /*min=*/2,
-                            /*max=*/2)});
+                            /*max=*/2),
+       model::MakeNonTunableParameter(kDeterministic, /*value=*/0.0)});
+  auto first_input =
+      model::MakeKnownRatioNode({
+                                    /*id=*/3,
+                                    /*name=*/"Batch",
+                                    /*output=*/parallel_interleave,
+                                },
+                                /*ratio=*/1);
   auto batch_2 = model::MakeKnownRatioNode({
                                                /*id=*/3,
                                                /*name=*/"Batch",
@@ -1426,6 +1427,8 @@ TEST_F(ModelTimingTest, ParallelInterleave) {
   batch_1->add_processing_time(1000);
   RecordNumElements(parallel_interleave, 100);
   parallel_interleave->add_processing_time(2000);
+  RecordNumElements(first_input, 60);
+  first_input->add_processing_time(60);
   RecordNumElements(batch_2, 60);
   batch_2->add_processing_time(1200);
   RecordNumElements(batch_3, 40);
@@ -1437,6 +1440,8 @@ TEST_F(ModelTimingTest, ParallelInterleave) {
   model->AddNode([&parallel_interleave](
                      model::Node::Args args) { return parallel_interleave; },
                  "parallel_interleave", batch_1, &parallel_interleave);
+  model->AddNode([&first_input](model::Node::Args args) { return first_input; },
+                 "first_input", parallel_interleave, &first_input);
   model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
                  "batch_2", parallel_interleave, &batch_2);
   model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
@@ -1450,27 +1455,103 @@ TEST_F(ModelTimingTest, ParallelInterleave) {
 
   EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
+      1, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_weight);
 
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
       10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time_nsec);
 
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
       20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_2.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+}
+
+TEST_F(ModelTimingTest, ParallelInterleave_DeterministicTrue) {
+  auto batch_1 = model::MakeKnownRatioNode(
+      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
+  auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
+      {/*id=*/2,
+       /*name=*/"ParallelInterleaveV4", /*output=*/batch_1},
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/2, nullptr, nullptr),
+                            /*min=*/1, /*max=*/10),
+       model::MakeParameter(kCycleLength, nullptr,
+                            /*min=*/2,
+                            /*max=*/2),
+       model::MakeNonTunableParameter(kDeterministic, /*value=*/1.0)});
+  auto first_input =
+      model::MakeKnownRatioNode({
+                                    /*id=*/3,
+                                    /*name=*/"Batch",
+                                    /*output=*/parallel_interleave,
+                                },
+                                /*ratio=*/1);
+  auto batch_2 = model::MakeKnownRatioNode({
+                                               /*id=*/3,
+                                               /*name=*/"Batch",
+                                               /*output=*/parallel_interleave,
+                                           },
+                                           /*ratio=*/1);
+  auto batch_3 = model::MakeKnownRatioNode({
+                                               /*id=*/4,
+                                               /*name=*/"Batch",
+                                               /*output=*/parallel_interleave,
+                                           },
+                                           /*ratio=*/1);
+  RecordNumElements(batch_1, 100);
+  batch_1->add_processing_time(1000);
+  RecordNumElements(parallel_interleave, 100);
+  parallel_interleave->add_processing_time(2000);
+  RecordNumElements(first_input, 60);
+  first_input->add_processing_time(60);
+  RecordNumElements(batch_2, 60);
+  batch_2->add_processing_time(1200);
+  RecordNumElements(batch_3, 40);
+  batch_3->add_processing_time(1600);
+
+  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
+  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
+                 "batch_1", nullptr, &batch_1);
+  model->AddNode([&parallel_interleave](
+                     model::Node::Args args) { return parallel_interleave; },
+                 "parallel_interleave", batch_1, &parallel_interleave);
+  model->AddNode([&first_input](model::Node::Args args) { return first_input; },
+                 "first_input", parallel_interleave, &first_input);
+  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
+                 "batch_2", parallel_interleave, &batch_2);
+  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
+                 "batch_3", parallel_interleave, &batch_3);
+
+  ModelTiming model_timing(model);
+  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
+  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_interleave.get()));
+  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
+  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
+
+  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(
+      1, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
+
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(40, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+
+  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(
+      30, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(40, model_timing.GetTiming(batch_3.get())->total_time_nsec);
 }
 
 TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
@@ -1486,7 +1567,15 @@ TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
        model::MakeParameter("cycle_length",
                             std::make_shared<SharedState>(
                                 /*value=*/1, nullptr, nullptr),
-                            /*min=*/1, /*max=*/1)});
+                            /*min=*/2, /*max=*/2),
+       model::MakeNonTunableParameter(kDeterministic, /*value=*/0.0)});
+  auto first_input =
+      model::MakeKnownRatioNode({
+                                    /*id=*/3,
+                                    /*name=*/"Batch",
+                                    /*output=*/parallel_interleave,
+                                },
+                                /*ratio=*/1);
   auto batch_2 = model::MakeKnownRatioNode({
                                                /*id=*/3,
                                                /*name=*/"Batch",
@@ -1499,14 +1588,34 @@ TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
                                                /*output=*/parallel_interleave,
                                            },
                                            /*ratio=*/1);
+  auto batch_4 = model::MakeKnownRatioNode({
+                                               /*id=*/5,
+                                               /*name=*/"Batch",
+                                               /*output=*/parallel_interleave,
+                                           },
+                                           /*ratio=*/1);
+  auto batch_5 = model::MakeKnownRatioNode({
+                                               /*id=*/6,
+                                               /*name=*/"Batch",
+                                               /*output=*/parallel_interleave,
+                                           },
+                                           /*ratio=*/1);
   RecordNumElements(batch_1, 100);
   batch_1->add_processing_time(1000);
   RecordNumElements(parallel_interleave, 100);
   parallel_interleave->add_processing_time(2000);
+  RecordNumElements(first_input, 60);
+  first_input->add_processing_time(60);
   RecordNumElements(batch_2, 60);
   batch_2->add_processing_time(1200);
   RecordNumElements(batch_3, 40);
   batch_3->add_processing_time(800);
+  RecordNumElements(batch_4, 60);
+  batch_4->add_processing_time(1200);
+  RecordNumElements(batch_5, 40);
+  batch_5->add_processing_time(800);
+  batch_4->set_autotune(false);
+  batch_5->set_autotune(false);
 
   std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
   model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
@@ -1514,10 +1623,16 @@ TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
   model->AddNode([&parallel_interleave](
                      model::Node::Args args) { return parallel_interleave; },
                  "parallel_interleave", batch_1, &parallel_interleave);
+  model->AddNode([&first_input](model::Node::Args args) { return first_input; },
+                 "first_input", parallel_interleave, &first_input);
   model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
                  "batch_2", parallel_interleave, &batch_2);
   model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
                  "batch_3", parallel_interleave, &batch_3);
+  model->AddNode([&batch_4](model::Node::Args args) { return batch_4; },
+                 "batch_4", parallel_interleave, &batch_4);
+  model->AddNode([&batch_5](model::Node::Args args) { return batch_5; },
+                 "batch_5", parallel_interleave, &batch_5);
 
   ModelTiming model_timing(model);
   EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
@@ -1530,27 +1645,27 @@ TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
       1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_weight);
+  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_4.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_5.get())->pipeline_ratio);
 
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
       10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_4.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_5.get())->self_time_nsec);
 
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      30, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+      20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_4.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_5.get())->total_time_nsec);
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
+TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
   auto batch_1 = model::MakeKnownRatioNode(
       {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
   auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
@@ -1562,7 +1677,15 @@ TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
                             /*min=*/1, /*max=*/10),
        model::MakeParameter(kCycleLength, nullptr,
                             /*min=*/2,
-                            /*max=*/2)});
+                            /*max=*/2),
+       model::MakeNonTunableParameter(kDeterministic, /*value=*/0.0)});
+  auto first_input =
+      model::MakeKnownRatioNode({
+                                    /*id=*/3,
+                                    /*name=*/"Batch",
+                                    /*output=*/parallel_interleave,
+                                },
+                                /*ratio=*/1);
   auto batch_2 = model::MakeKnownRatioNode({
                                                /*id=*/3,
                                                /*name=*/"Batch",
@@ -1593,6 +1716,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
   batch_1->add_processing_time(1000);
   RecordNumElements(parallel_interleave, 100);
   parallel_interleave->add_processing_time(2000);
+  RecordNumElements(first_input, 60);
+  first_input->add_processing_time(60);
   RecordNumElements(batch_2, 60);
   batch_2->add_processing_time(1200);
   RecordNumElements(batch_3, 40);
@@ -1608,6 +1733,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
   model->AddNode([&parallel_interleave](
                      model::Node::Args args) { return parallel_interleave; },
                  "parallel_interleave", batch_1, &parallel_interleave);
+  model->AddNode([&first_input](model::Node::Args args) { return first_input; },
+                 "first_input", parallel_interleave, &first_input);
   model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
                  "batch_2", parallel_interleave, &batch_2);
   model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
@@ -1629,29 +1756,19 @@ TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
 
   EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
+      1, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(
       1, model_timing.GetTiming(parallel_map_1.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(
       1, model_timing.GetTiming(parallel_map_2.get())->pipeline_ratio);
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      1, model_timing.GetTiming(parallel_interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_map_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_map_2.get())->pipeline_weight);
-
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
       10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
       10, model_timing.GetTiming(parallel_map_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
@@ -1660,118 +1777,12 @@ TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
       20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_2.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_3.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      5, model_timing.GetTiming(parallel_map_1.get())->total_time_nsec);
+      10, model_timing.GetTiming(parallel_map_1.get())->total_time_nsec);
   EXPECT_DOUBLE_EQ(
-      5, model_timing.GetTiming(parallel_map_2.get())->total_time_nsec);
-}
-
-TEST_F(ModelTimingTest, ParallelInterleave_With_InactiveNodes) {
-  auto batch_1 = model::MakeKnownRatioNode(
-      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
-  auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
-      {/*id=*/2,
-       /*name=*/"ParallelInterleaveV4", /*output=*/batch_1},
-      {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(
-                                /*value=*/2, nullptr, nullptr),
-                            /*min=*/1, /*max=*/10),
-       model::MakeParameter(kCycleLength, nullptr,
-                            /*min=*/2,
-                            /*max=*/2)});
-  auto batch_2 = model::MakeKnownRatioNode({
-                                               /*id=*/3,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_3 = model::MakeKnownRatioNode({
-                                               /*id=*/4,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_4 = model::MakeKnownRatioNode({
-                                               /*id=*/5,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  // Set batch_4 to be inactive, which should make the total time of subtree
-  // rooted at it 0.
-  batch_4->set_autotune(false);
-  std::shared_ptr<Node> parallel_map_1 = model::MakeAsyncKnownRatioNode(
-      {/*id=*/1, /*name=*/"ParallelMapV2", /*output=*/batch_4}, /*ratio=*/1,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(/*value=*/2, nullptr, nullptr),
-          /*min=*/1,
-          /*max=*/16)});
-  RecordNumElements(batch_1, 100);
-  batch_1->add_processing_time(1000);
-  RecordNumElements(parallel_interleave, 100);
-  parallel_interleave->add_processing_time(2000);
-  RecordNumElements(batch_2, 60);
-  batch_2->add_processing_time(1200);
-  RecordNumElements(batch_3, 40);
-  batch_3->add_processing_time(800);
-  RecordNumElements(batch_4, 100);
-  batch_4->add_processing_time(2000);
-  RecordNumElements(parallel_map_1, 100);
-  parallel_map_1->add_processing_time(2000);
-
-  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
-  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
-                 "batch_1", nullptr, &batch_1);
-  model->AddNode([&parallel_interleave](
-                     model::Node::Args args) { return parallel_interleave; },
-                 "parallel_interleave", batch_1, &parallel_interleave);
-  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
-                 "batch_2", parallel_interleave, &batch_2);
-  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
-                 "batch_3", parallel_interleave, &batch_3);
-  model->AddNode([&batch_4](model::Node::Args args) { return batch_4; },
-                 "batch_4", parallel_interleave, &batch_4);
-  model->AddNode(
-      [&parallel_map_1](model::Node::Args args) { return parallel_map_1; },
-      "parallel_map_1", batch_4, &parallel_map_1);
-
-  ModelTiming model_timing(model);
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_interleave.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_4.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_map_1.get()));
-
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_4.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_map_1.get())->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_4.get())->self_time_nsec);
-  EXPECT_DOUBLE_EQ(
-      5, model_timing.GetTiming(parallel_map_1.get())->self_time_nsec);
-
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_2.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(batch_3.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_4.get())->total_time_nsec);
-  EXPECT_DOUBLE_EQ(
-      0, model_timing.GetTiming(parallel_map_1.get())->total_time_nsec);
+      10, model_timing.GetTiming(parallel_map_2.get())->total_time_nsec);
 }
 
 TEST(ModelTest, ModelMetrics) {
