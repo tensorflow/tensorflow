@@ -75,7 +75,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     // Create preempt sync manager for task 2.
     auto preempt_notifier2 = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier2_ = preempt_notifier2.get();
-    TF_CHECK_OK(preempt_sync_mgr_->Initialize(
+    TF_CHECK_OK(preempt_sync_mgr2_->Initialize(
         Env::Default(), coord_agent2_.get(), std::move(preempt_notifier2)));
   }
 
@@ -119,15 +119,17 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     coord_rpc_service_ = std::make_unique<GrpcCoordinationServiceImpl>(
         coord_compute_pool_.get(), &builder);
     grpc_server_ = builder.BuildAndStart();
+    coord_rpc_thread_ = absl::WrapUnique(Env::Default()->StartThread(
+        /*thread_options=*/{}, /*name=*/"CoordinationServiceHandleRPCsLoop",
+        [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
   }
   std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService() {
-    std::string job_name = kJobName;
     ServerDef server_def;
     server_def.set_protocol("grpc");
-    server_def.set_job_name(job_name);
+    server_def.set_job_name(kJobName);
     server_def.set_task_index(0);
     auto job_def = server_def.mutable_cluster()->add_job();
-    job_def->set_name(job_name);
+    job_def->set_name(kJobName);
     job_def->mutable_tasks()->insert({1, "TEST_ADDRESS_1"});
     job_def->mutable_tasks()->insert({2, "TEST_ADDRESS_2"});
     auto coordination_config = server_def.mutable_default_session_config()
