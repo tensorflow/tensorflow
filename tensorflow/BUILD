@@ -7,7 +7,6 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
-    "VERSION_MAJOR",
     "if_google",
     "if_oss",
     "tf_cc_shared_object",
@@ -1048,8 +1047,8 @@ tf_cc_shared_library(
 cc_import(
     name = "libtensorflow_framework_import_lib",
     shared_library = select({
-        "//tensorflow:macos": ":libtensorflow_framework.dylib.%s" % VERSION_MAJOR,
-        "//conditions:default": ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
     }),
 )
 
