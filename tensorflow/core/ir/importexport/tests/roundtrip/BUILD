@@ -16,15 +16,9 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/ir/importexport:import",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
     ],
 )
 

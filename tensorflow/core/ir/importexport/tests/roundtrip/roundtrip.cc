@@ -15,30 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
 
-#include "absl/strings/str_cat.h"
+#include <algorithm>
+
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
-
-using mlir::MLIRContext;
 
 namespace tensorflow {
 
 // Applies various normalization to a NodeDef to make it possible to perform
 // textual comparison (for example splat constant are detected, NaN are removed,
 // control input are alphabetically sorted, etc).
-void NormalizeNode(NodeDef* node, bool add_fulltype) {
+static void NormalizeNode(NodeDef* node, bool add_fulltype) {
   for (auto& named_attr : (*node->mutable_attr())) {
     AttrValue& attr_val = named_attr.second;
     if (attr_val.has_tensor()) {
@@ -154,54 +148,6 @@ void NormalizeTensorData(GraphDef& graphdef, bool add_fulltype) {
         NormalizeNode(func->mutable_node_def(i), add_fulltype);
     }
   }
-}
-
-Status TestRoundTrip(GraphDef& graphdef) {
-  MLIRContext context;
-  GraphDebugInfo debug_info;
-  auto errorOrModule =
-      mlir::tfg::ImportGraphDefToMlir(&context, debug_info, graphdef);
-  if (!errorOrModule.ok()) {
-    LOG(ERROR) << errorOrModule.status();
-    llvm::errs()
-        << "\n\n=========\n=========\n=========\n=========\n=========\n"
-        << graphdef.DebugString()
-        << "=========\n=========\n=========\n=========\n";
-    return errorOrModule.status();
-  }
-  GraphDef new_graph;
-  auto module = errorOrModule.ValueOrDie().get();
-  Status status = tensorflow::ExportMlirToGraphdef(module, &new_graph);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error exporting MLIR module to GraphDef: " << status;
-    return status;
-  }
-  GraphDef original_graph;
-  {
-    GraphConstructorOptions options;
-    options.allow_internal_ops = true;
-    options.add_default_attributes = true;
-    Graph graph(OpRegistry::Global());
-    GraphDef preprocessed_graphdef(graphdef);
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-        options, std::move(preprocessed_graphdef), &graph));
-    graph.ToGraphDef(&original_graph);
-  }
-  NormalizeTensorData(new_graph, /*add_fulltype=*/false);
-  NormalizeTensorData(original_graph, /*add_fulltype=*/true);
-
-  tensorflow::protobuf::util::MessageDifferencer differencer;
-  if (!differencer.Equivalent(original_graph, new_graph)) {
-    LOG(ERROR) << "GraphDef didn't Roundtrip:";
-    llvm::errs()
-        << "\n=========\n\n"
-        << module
-        << "\n\n=========\n=========\n=========\n=========\n=========\n"
-        << graphdef.DebugString()
-        << "=========\n=========\n=========\n=========\n";
-    return errors::InvalidArgument("GraphDef didn't roundtrip");
-  }
-  return {};
 }
 
 }  // namespace tensorflow
