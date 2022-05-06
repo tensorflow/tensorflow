@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -1092,6 +1093,22 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
   return dataset_store_->Get(key, dataset_def);
+}
+
+DispatcherStateExport DataServiceDispatcherImpl::ExportState() const
+    TF_LOCKS_EXCLUDED(mu_) {
+  DispatcherStateExport dispatcher_state_export;
+  *dispatcher_state_export.mutable_dispatcher_config() = config_;
+  mutex_lock l(mu_);
+  if (!started_) {
+    return dispatcher_state_export;
+  }
+
+  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  for (const auto& worker : workers) {
+    dispatcher_state_export.add_worker_addresses(worker->address);
+  }
+  return dispatcher_state_export;
 }
 
 }  // namespace data

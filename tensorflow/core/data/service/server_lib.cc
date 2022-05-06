@@ -23,6 +23,7 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
@@ -137,6 +138,13 @@ size_t DispatchGrpcDataServer::NumActiveJobs() {
   return service_->NumActiveJobs();
 }
 
+ServerStateExport DispatchGrpcDataServer::ExportState() const {
+  ServerStateExport server_state_export;
+  *server_state_export.mutable_dispatcher_state_export() =
+      service_->ExportState();
+  return server_state_export;
+}
+
 WorkerGrpcDataServer::WorkerGrpcDataServer(
     const experimental::WorkerConfig& config,
     std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
@@ -188,6 +196,10 @@ Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
   }
   *num_tasks = resp.tasks_size();
   return Status::OK();
+}
+
+ServerStateExport WorkerGrpcDataServer::ExportState() const {
+  return ServerStateExport();
 }
 
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
