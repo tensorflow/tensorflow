@@ -100,10 +100,7 @@ py_library(
     srcs = ["all_renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [":renames_v2"],
 )
 
