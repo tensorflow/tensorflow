@@ -150,6 +150,11 @@ def dtensor_shutdown_tpu_system():
 def dtensor_initialize_tpu_system(enable_coordination_service=False):
   """Initialize the TPU devices.
 
+  This functions performs additional TPU related initialization after
+  calling `dtensor.initialize_multi_client` to initialize multi-client DTensor.
+  Refer to `dtensor.initialize_multi_client` for relevant environment
+  variables that controls the initialization of multi-client DTensor.
+
   Args:
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, a
@@ -168,7 +173,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   in_multi_client_mode = api.job_name() != "localhost"
 
   # Collective GRPC servers are only necessary in mutli-client setup.
-  # Single clients (e.g. Forge) can use local mode of collectives.
+  # Single clients can use local mode of collectives.
   if in_multi_client_mode:
     if api.jobs() is None:
       raise ValueError(
@@ -180,6 +185,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
         dtensor_jobs=api.jobs(),
         client_id=api.client_id(),
         collective_leader=api.full_job_name(task_id=0),
+        protocol="grpc+loas",
         enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before attempting to run
@@ -293,7 +299,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
 
   except errors.InvalidArgumentError as e:
     raise errors.NotFoundError(
-        None, None, "Initialization failed, no valid TPUs found. " + str(e))
+        None, None,
+        "Initialization failed, no valid TPUs found. " + str(e)) from e
 
   except errors.InternalError as e:
     logging.error("Hit internal error during TPU system initialization. "
@@ -601,7 +608,6 @@ def _build_orthogonal_rings(
   return untransposed
 
 
-@tf_export("experimental.dtensor.create_tpu_mesh", v1=[])
 def create_tpu_mesh(mesh_dim_names: List[str],
                     mesh_shape: List[int],
                     mesh_name: str,
@@ -670,7 +676,7 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   global _tpu_topology
   if _tpu_topology is None:
     raise ValueError(
-        "Invalid TPU topology, run dtensor_initialize_tpu_system() first")
+        "Invalid TPU topology, run dtensor.initialize_tpu_system() first")
   topology_shape = list(_tpu_topology.mesh_shape)
   if ring_bounds is None:
     ring_bounds = topology_shape
@@ -724,7 +730,7 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   global _dtensor_device
   if _dtensor_device is None:
     raise ValueError(
-        "Invalid system device, run dtensor_initialize_tpu_system() first")
+        "Invalid system device, run dtensor.initialize_tpu_system() first")
   global_core_ids = _dtensor_device.tpu_core_locations_to_ids(
       global_core_locations)
 

@@ -23,14 +23,13 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import context
 
 
-def initialize_multi_client_cluster(
-    job_name: str,
-    dtensor_jobs: List[str],
-    client_id: int,
-    collective_leader: str,
-    port: Optional[int] = None,
-    protocol: Optional[str] = "grpc+loas",
-    enable_coordination_service: bool = False):
+def initialize_multi_client_cluster(job_name: str,
+                                    dtensor_jobs: List[str],
+                                    client_id: int,
+                                    collective_leader: str,
+                                    port: Optional[int] = None,
+                                    protocol: Optional[str] = "grpc",
+                                    enable_coordination_service: bool = False):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
   While single clients (e.g. Forge) can use local mode of collectives, GRPC

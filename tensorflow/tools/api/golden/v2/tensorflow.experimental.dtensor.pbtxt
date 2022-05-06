@@ -49,10 +49,6 @@ tf_module {
     argspec: "args=[\'mesh_dims\', \'mesh_name\', \'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\'], "
   }
   member_method {
-    name: "create_tpu_mesh"
-    argspec: "args=[\'mesh_dim_names\', \'mesh_shape\', \'mesh_name\', \'ring_dims\', \'ring_axes\', \'ring_bounds\', \'can_split_host_across_rings\', \'build_ring_across_rings\', \'rotate_ring_across_rings\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\', \'False\'], "
-  }
-  member_method {
     name: "device_name"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -71,6 +67,10 @@ tf_module {
   member_method {
     name: "heartbeat_enabled"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "initialize_multi_client"
+    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "initialize_tpu_system"
