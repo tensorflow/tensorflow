@@ -19,7 +19,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/iterator_range.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -464,26 +463,30 @@ template <>
 inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
     ValueRange args, OpBuilder* b) {
-  Type sourceType = getElementTypeOrSelf(arg_types.front());
-  Type targetType = getElementTypeOrSelf(result_types.front());
-  Type convertedSourceType = getElementTypeOrSelf(args.front());
+  assert(result_types.size() == 1 && "ConvertOp should return a single result");
+  assert(arg_types.size() == 1 && "ConvertOp should take a single argument");
+  assert(args.size() == 1 && "ConvertOp should take a single argument");
+
+  Type source_type = getElementTypeOrSelf(arg_types.front());
+  Type target_type = getElementTypeOrSelf(result_types.front());
+  Type converted_source_type = getElementTypeOrSelf(args.front());
 
   // A boolean value is considered to be unsigned when converting to
   // floating-point. Otherwise, it will become `-1`.
-  if ((sourceType.isInteger(/*width=*/1) || sourceType.isUnsignedInteger()) &&
-      mlir::arith::UIToFPOp::areCastCompatible(convertedSourceType,
-                                               targetType)) {
+  if ((source_type.isInteger(/*width=*/1) || source_type.isUnsignedInteger()) &&
+      mlir::arith::UIToFPOp::areCastCompatible(converted_source_type,
+                                               target_type)) {
     return b->create<mlir::arith::UIToFPOp>(loc, result_types, args,
                                             mlir::None);
   }
-  if (mlir::arith::SIToFPOp::areCastCompatible(convertedSourceType,
-                                               targetType)) {
+  if (mlir::arith::SIToFPOp::areCastCompatible(converted_source_type,
+                                               target_type)) {
     return b->create<mlir::arith::SIToFPOp>(loc, result_types, args,
                                             mlir::None);
   }
-  if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
-    FloatType src = sourceType.cast<FloatType>();
-    FloatType res = targetType.cast<FloatType>();
+  if (source_type.isa<FloatType>() && target_type.isa<FloatType>()) {
+    auto src = source_type.cast<FloatType>();
+    auto res = target_type.cast<FloatType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncFOp>(loc, result_types, args,
                                               mlir::None);
@@ -494,12 +497,12 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     // No conversion is needed for the same width floats
     return args.front();
   }
-  if (targetType.isInteger(/*width=*/1)) {
+  if (target_type.isInteger(/*width=*/1)) {
     // When casting to bool, we need to compare whether the value is equal to
     // zero.
-    if (sourceType.isSignlessInteger() || sourceType.isUnsignedInteger()) {
+    if (source_type.isSignlessInteger() || source_type.isUnsignedInteger()) {
       Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
-          loc, 0, sourceType.cast<IntegerType>().getWidth());
+          loc, 0, source_type.cast<IntegerType>().getWidth());
       if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
         zero_intval =
             b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
@@ -507,9 +510,9 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
       return b->create<mlir::arith::CmpIOp>(loc, arith::CmpIPredicate::ne,
                                             args.front(), zero_intval);
     }
-    if (sourceType.isa<FloatType>()) {
+    if (source_type.isa<FloatType>()) {
       Value zero =
-          b->create<arith::ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
+          b->create<arith::ConstantOp>(loc, b->getFloatAttr(source_type, 0.0));
       if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
         zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
       }
@@ -517,9 +520,9 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
                                             args.front(), zero);
     }
   }
-  if (sourceType.isa<IntegerType>() && targetType.isa<IntegerType>()) {
-    IntegerType src = sourceType.cast<IntegerType>();
-    IntegerType res = targetType.cast<IntegerType>();
+  if (source_type.isa<IntegerType>() && target_type.isa<IntegerType>()) {
+    auto src = source_type.cast<IntegerType>();
+    auto res = target_type.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncIOp>(loc, result_types, args,
                                               mlir::None);
@@ -536,10 +539,42 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     // No conversion is needed for the same width integers
     return args.front();
   }
-  if (mlir::arith::FPToSIOp::areCastCompatible(convertedSourceType,
-                                               targetType)) {
+  if (mlir::arith::FPToSIOp::areCastCompatible(converted_source_type,
+                                               target_type)) {
     return b->create<mlir::arith::FPToSIOp>(loc, result_types, args,
                                             mlir::None);
+  }
+  if (target_type.isa<ComplexType>()) {
+    Type target_element_type = target_type.cast<ComplexType>().getElementType();
+    assert(!target_element_type.isa<ComplexType>() &&
+           "elements of complex numbers should not be complex");
+    Value target_real;
+    Value target_imag;
+    if (source_type.isa<ComplexType>()) {
+      // We are converting from complex type: convert real and imaginary parts
+      // separately.
+      Type source_element_type =
+          source_type.cast<ComplexType>().getElementType();
+      assert(!source_element_type.isa<ComplexType>() &&
+             "elements of complex numbers should not be complex");
+      Value source_real = b->create<mlir::complex::ReOp>(
+          loc, source_element_type, args.front());
+      target_real = MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
+          loc, {target_element_type}, {source_element_type}, {source_real}, b);
+      Value source_imag = b->create<mlir::complex::ImOp>(
+          loc, source_element_type, args.front());
+      target_imag = MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
+          loc, {target_element_type}, {source_element_type}, {source_imag}, b);
+    } else {
+      // We are converting from real (float, integer, etc.) type, convert the
+      // real part and set the imaginary part to 0.
+      target_real = MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
+          loc, {target_element_type}, arg_types, args, b);
+      target_imag = b->create<mlir::arith::ConstantOp>(
+          loc, b->getFloatAttr(target_element_type, 0.0));
+    }
+    return b->create<mlir::complex::CreateOp>(loc, target_type, target_real,
+                                              target_imag);
   }
   return nullptr;
 }

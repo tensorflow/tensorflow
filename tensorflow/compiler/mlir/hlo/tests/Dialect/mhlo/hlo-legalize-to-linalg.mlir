@@ -1304,6 +1304,67 @@ func.func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_c64_to_c128
+func.func @convert_c64_to_c128(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>>
+  func.return %result : tensor<2x2xcomplex<f64>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %{{.*}}: complex<f64>):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-DAG:  %[[IMAG:.*]] = complex.im %[[OPERAND_IN]]
+// CHECK-DAG:  %[[REAL_RESULT:.*]] = arith.extf %[[REAL]] : f32 to f64
+// CHECK-DAG:  %[[IMAG_RESULT:.*]] = arith.extf %[[IMAG]] : f32 to f64
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL_RESULT]], %[[IMAG_RESULT]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f64>
+
+// CHECK-LABEL: func @convert_c128_to_c64
+func.func @convert_c128_to_c64(%input: tensor<2x2xcomplex<f64>>) -> tensor<2x2xcomplex<f32>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f64>>) -> tensor<2x2xcomplex<f32>>
+  func.return %result : tensor<2x2xcomplex<f32>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f64>, %{{.*}}: complex<f32>):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-DAG:  %[[IMAG:.*]] = complex.im %[[OPERAND_IN]]
+// CHECK-DAG:  %[[REAL_RESULT:.*]] = arith.truncf %[[REAL]] : f64 to f32
+// CHECK-DAG:  %[[IMAG_RESULT:.*]] = arith.truncf %[[IMAG]] : f64 to f32
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL_RESULT]], %[[IMAG_RESULT]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_c64
+func.func @convert_f32_to_c64(%input: tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
+  func.return %result : tensor<2x2xcomplex<f32>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %{{.*}}: complex<f32>):
+// CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[OPERAND_IN]], %[[IMAG]] 
+// CHECK:      linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_c128
+func.func @convert_i32_to_c128(%input: tensor<2x2xi32>) -> tensor<2x2xcomplex<f64>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xcomplex<f64>>
+  func.return %result : tensor<2x2xcomplex<f64>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: complex<f64>):
+// CHECK-DAG:  %[[REAL:.*]] = arith.sitofp %[[OPERAND_IN]] : i32 to f64
+// CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f64
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL]], %[[IMAG]] 
+// CHECK:      linalg.yield %[[RESULT]] : complex<f64>
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, -d1 + 2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
