@@ -139,3 +139,20 @@ func.func @sparse_dot(%arg0: tensor<?xf32, #SV>,
                   : (tensor<?xf32, #SV>, tensor<?xf32, #SV>) -> tensor<f32>
   return %0 : tensor<f32>
 }
+
+// CHECK-LABEL: func @sparse_transpose(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<100x200xf64, #{{.*}}>) -> tensor<200x100xf64, #{{.*}}> {
+// CHECK-DAG:     %[[C100:.*]] = arith.constant 100 : index
+// CHECK-DAG:     %[[C200:.*]] = arith.constant 200 : index
+// CHECK:         %[[T0:.*]] = sparse_tensor.init[%[[C200]], %[[C100]]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
+// CHECK:         %[[T1:.*]] = linalg.generic {{.*}} ins(%[[ARG0]] : tensor<100x200xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) outs(%[[T0]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>) {
+// CHECK:           linalg.yield
+// CHECK:         }
+// CHECK:         return %[[T1]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
+// CHECK:       }
+func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
+                                -> tensor<200x100xf64, #DCSR> {
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>}
+     : (tensor<100x200xf64, #CSR>) -> tensor<200x100xf64, #DCSR>
+  return %0 : tensor<200x100xf64, #DCSR>
+}
