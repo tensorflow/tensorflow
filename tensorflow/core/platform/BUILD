@@ -18,6 +18,7 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
+    "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
@@ -231,7 +232,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = tf_platform_deps("cuda_libdevice_path"),
+    deps = tf_cuda_libdevice_path_deps(),
 )
 
 cc_library(
