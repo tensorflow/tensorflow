@@ -428,10 +428,10 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  uint64_t profile_handle() const { return profile_handle_; }
+  int64_t profile_version() const { return profile_version_; }
 
-  void set_profile_handle(uint64_t profile_handle) {
-    profile_handle_ = profile_handle;
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
   }
 
   void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
@@ -517,7 +517,7 @@ class HloModule {
   bool is_dynamic_ = false;
 
   // Optional compilation profile handle.
-  uint64_t profile_handle_ = 0;
+  int64_t profile_version_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.
