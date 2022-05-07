@@ -14,7 +14,7 @@ landing_page:
     - description: >
             <p>
             TensorFlow Lite uses TensorFlow models converted into a smaller, more efficient machine
-            learning (ML) model format. You can use pre-built models with TensorFlow Lite, modify
+            learning (ML) model format. You can use pre-trained models with TensorFlow Lite, modify
             existing models, or build your own TensorFlow models and then convert them to
             TensorFlow Lite format. TensorFlow Lite models can perform almost any task a regular
             TensorFlow model can do: object detection, natural language processing, pattern
@@ -49,12 +49,12 @@ landing_page:
             <p>
             You don't have to build a TensorFlow Lite model to start using machine learning on
             mobile or edge devices. Many already-built and optimized models are available for you to
-            use right away in your application. You can start with using pre-built models in
+            use right away in your application. You can start with using pre-trained models in
             TensorFlow Lite and move up to building custom models over time, as follows:
             </p>
             <ol>
-            <li>Start developing machine learning features with
-            <a href="./ready">pre-built models.</a></li>
+            <li>Start developing machine learning features with already
+            <a href="./trained">trained models.</a></li>
             <li>Modify existing TensorFlow Lite models using tools such as
             <a href="../guide/model_maker">Model Maker</a>.</li>
             <li>Build a
@@ -117,9 +117,9 @@ landing_page:
     items:
     - classname: tfo-landing-page-card
       description: >
-        <a href="/lite/models/ready/index"><h3 class="no-link">Pick a built model</h3></a>
-        Learn how to pick a pre-built ML model to use with TensorFlow Lite.
-      path: /lite/ready/index
+        <a href="/lite/models/trained"><h3 class="no-link">Pick trained model</h3></a>
+        Learn how to pick a pre-trained ML model to use with TensorFlow Lite.
+      path: /lite/models/trained
     - classname: tfo-landing-page-card
       description: >
         <a href="/lite/guide/model_maker"><h3 class="no-link">Modify models</h3></a>

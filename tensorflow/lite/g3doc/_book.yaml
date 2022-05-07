@@ -206,9 +206,9 @@ upper_tabs:
       - title: "Overview"
         path: /lite/models
 
-      - heading: "Use built models"
+      - heading: "Use trained models"
       - title: "Guide"
-        path: /lite/models/ready/index
+        path: /lite/models/trained/index
 
       - heading: "Modify models"
       - title: "Model Maker"

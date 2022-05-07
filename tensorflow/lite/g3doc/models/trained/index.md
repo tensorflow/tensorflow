@@ -1,11 +1,11 @@
-# Pre-built models for TensorFlow Lite
+# Pre-trained models for TensorFlow Lite
 
-There are a variety of pre-built, open source models you can use immediately
-with TensorFlow Lite to accomplish many machine learning tasks. Using pre-built
-TensorFlow Lite models lets you add machine learning functionality to your
-mobile and edge device application quickly, without having to build and train a
-model. This guide helps you find and decide on pre-built models for use with
-TensorFlow Lite.
+There are a variety of already trained, open source models you can use
+immediately with TensorFlow Lite to accomplish many machine learning tasks.
+Using pre-trained TensorFlow Lite models lets you add machine learning
+functionality to your mobile and edge device application quickly, without having
+to build and train a model. This guide helps you find and decide on trained
+models for use with TensorFlow Lite.
 
 You can start browsing TensorFlow Lite models right away based on general use
 cases in the [TensorFlow Lite Examples](../../examples) section, or browse a
