@@ -112,6 +112,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",

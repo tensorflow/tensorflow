@@ -28,6 +28,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -6433,6 +6434,9 @@ class _DirectedInterleaveDataset(DatasetV2):
 
 def _apply_rewrite(dataset, rewrite):
   # pylint: disable=protected-access
+  if not compat.forward_compatible(2022, 6, 6):
+    return dataset
+
   try:
     return _VariantDataset(
         gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,

@@ -17,6 +17,7 @@ import collections
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
@@ -282,7 +283,9 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     ds = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
-    expected = num_workers*[words[i] for i in choice_array]
+    expected = [words[i] for i in choice_array]
+    if compat.forward_compatible(2022, 6, 6):
+      expected *= num_workers
 
     assert_items_equal = (num_workers > 1)
     self.assertDatasetProduces(
@@ -291,6 +294,9 @@ class DynamicShardingTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testEnumerateReplicateOnSplit(self):
+    if not compat.forward_compatible(2022, 6, 6):
+      self.skipTest("Replicate on split is not yet available.")
+
     num_workers = 3
     cluster = data_service_test_base.TestCluster(num_workers)
     ds = dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"]).repeat()
