@@ -4549,6 +4549,19 @@ func.func private @xla_reduce_window_op_reducer(%arg0: tensor<*xf32>, %arg1: ten
 
 // -----
 
+func.func @testLogStaticShapeInputAndDynamicShapeOutput(%arg0: tensor<8x16xf32>) -> tensor<*xf32> {
+  %0 = "tf.Log"(%arg0) : (tensor<8x16xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testReluStaticShapeInputAndDynamicShapeOutput(%arg0: tensor<8x16xf32>) -> tensor<*xf32> {
+  %0 = "tf.Relu"(%arg0) : (tensor<8x16xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+// -----
+
 func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   // expected-error @+1 {{dim_index (1) is out of range [0, 1)}}
