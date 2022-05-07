@@ -3823,6 +3823,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_grad_test.py"],
     python_version = "PY3",
+    tags = ["no_aarch64"],
     deps = [
         ":client_testlib",
         ":nn_grad",

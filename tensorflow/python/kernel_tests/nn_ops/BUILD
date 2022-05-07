@@ -35,6 +35,7 @@ cuda_py_test(
     srcs = ["atrous_conv2d_test.py"],
     shard_count = 2,
     tags = [
+        "no_aarch64",
         "no_gpu",  #  Flaky: b/80127739, b/127001953
     ],
     deps = [
@@ -148,6 +149,7 @@ cuda_py_test(
     srcs = ["conv2d_backprop_filter_grad_test.py"],
     shard_count = 2,
     tags = [
+        "no_aarch64",
         "optonly",  # flaky timeouts unless optimized
     ],
     deps = [
@@ -182,6 +184,7 @@ cuda_py_test(
     name = "conv3d_backprop_filter_v2_grad_test",
     size = "small",
     srcs = ["conv3d_backprop_filter_v2_grad_test.py"],
+    tags = ["no_aarch64"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -225,6 +228,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
+        "no_aarch64",
         "optonly",  # times out
     ],
     deps = [

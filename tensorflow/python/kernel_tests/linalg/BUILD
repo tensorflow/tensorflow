@@ -178,6 +178,7 @@ cuda_py_test(
     srcs = ["linear_operator_block_diag_test.py"],
     shard_count = 8,
     tags = [
+        "no_aarch64",
         "noasan",
         "optonly",
     ],
@@ -200,6 +201,7 @@ cuda_py_test(
     srcs = ["linear_operator_block_lower_triangular_test.py"],
     shard_count = 8,
     tags = [
+        "no_aarch64",
         "noasan",
         "optonly",
     ],
@@ -310,6 +312,7 @@ cuda_py_test(
     srcs = ["linear_operator_householder_test.py"],
     shard_count = 5,
     tags = [
+        "no_aarch64",
         "noasan",
         "optonly",
     ],
@@ -353,6 +356,7 @@ cuda_py_test(
     srcs = ["linear_operator_inversion_test.py"],
     shard_count = 5,
     tags = [
+        "no_aarch64",
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
@@ -375,6 +379,7 @@ cuda_py_test(
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
     tags = [
+        "no_aarch64",
         "no_rocm",
         "noasan",
         "optonly",

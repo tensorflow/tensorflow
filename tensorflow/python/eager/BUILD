@@ -411,6 +411,7 @@ cuda_py_test(
     name = "forwardprop_test",
     srcs = ["forwardprop_test.py"],
     python_version = "PY3",
+    tags = ["no_aarch64"],
     shard_count = 5,
     deps = [
         ":forwardprop",
