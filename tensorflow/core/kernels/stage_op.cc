@@ -264,6 +264,8 @@ class StagePeekOp : public OpKernel {
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
 
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+                errors::InvalidArgument("index must be scalar"));
     std::size_t index = ctx->input(0).scalar<int>()();
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
