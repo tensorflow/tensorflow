@@ -193,7 +193,6 @@ class SparseAddTest(test.TestCase):
                                                     [(nnz,), (n, m)], s, (n, m))
       self.assertLess(err, 1e-3)
 
-  @test_util.run_deprecated_v1
   def testInvalidSparseTensor(self):
     with test_util.force_cpu():
       shape = [2, 2]
@@ -205,11 +204,48 @@ class SparseAddTest(test.TestCase):
           [[1, 3]],  # ...so is 3.
       ]:
         sparse = sparse_tensor.SparseTensorValue(bad_idx, val, shape)
-        s = sparse_ops.sparse_add(sparse, dense)
-
-        with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                    "invalid index"):
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError), "invalid index"):
+          s = sparse_ops.sparse_add(sparse, dense)
           self.evaluate(s)
+
+  def _testSparseDenseInvalidInputs(self,
+                                    a_indices,
+                                    a_values,
+                                    a_shape,
+                                    b,
+                                    expected_error=""):
+    # Public API call to sparse-dense add.
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                expected_error):
+      a = sparse_tensor.SparseTensor(a_indices, a_values, a_shape)
+      self.evaluate(sparse_ops.sparse_add(a, b))
+    # Directly call generated kernel, by-passing SparseTensor validation.
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                expected_error):
+      self.evaluate(
+          sparse_ops.gen_sparse_ops.sparse_tensor_dense_add(
+              a_indices, a_values, a_shape, b))
+
+  def testSparseDenseInvalidInputs(self):
+    self._testSparseDenseInvalidInputs(
+        a_indices=constant_op.constant(0, shape=[17, 2], dtype=dtypes.int64),
+        a_values=constant_op.constant(0, shape=[5], dtype=dtypes.float32),
+        a_shape=constant_op.constant([3, 4], dtype=dtypes.int64),
+        b=constant_op.constant(1, shape=[3, 4], dtype=dtypes.float32),
+        expected_error="Dimensions 17 and 5 are not compatible")
+    self._testSparseDenseInvalidInputs(
+        a_indices=constant_op.constant(0, shape=[17, 4], dtype=dtypes.int64),
+        a_values=constant_op.constant(0, shape=[17], dtype=dtypes.float32),
+        a_shape=constant_op.constant([3, 4], dtype=dtypes.int64),
+        b=constant_op.constant(1, shape=[3, 4], dtype=dtypes.float32),
+        expected_error="Dimensions 4 and 2 are not compatible")
+    self._testSparseDenseInvalidInputs(
+        a_indices=constant_op.constant(7, shape=[17, 2], dtype=dtypes.int64),
+        a_values=constant_op.constant(0, shape=[17], dtype=dtypes.float32),
+        a_shape=constant_op.constant([3, 4], dtype=dtypes.int64),
+        b=constant_op.constant(1, shape=[3, 4], dtype=dtypes.float32),
+        expected_error="invalid index")
 
 ######################## Benchmarking code
 
