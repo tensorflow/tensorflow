@@ -976,10 +976,12 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
         self.assertEqual(3, get_total())
         summary_ops.flush(writer=writer)
         self.assertEqual(4, get_total())
-        summary_ops.write('tag', 1, step=0)
-        self.assertEqual(4, get_total())
-        summary_ops.flush(writer=writer._resource)  # pylint:disable=protected-access
-        self.assertEqual(5, get_total())
+
+  # Regression test for b/228097117.
+  def testFlushFunction_disallowsInvalidWriterInput(self):
+    with context.eager_mode():
+      with self.assertRaisesRegex(ValueError, 'Invalid argument to flush'):
+        summary_ops.flush(writer=())
 
   @test_util.assert_no_new_tensors
   def testNoMemoryLeak_graphMode(self):
