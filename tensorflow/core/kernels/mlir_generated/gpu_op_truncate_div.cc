@@ -19,8 +19,10 @@ limitations under the License.
 namespace tensorflow {
 
 // These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_INT8);
 GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_UINT32);
 GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_UINT64);
+#endif
 
 }  // namespace tensorflow
