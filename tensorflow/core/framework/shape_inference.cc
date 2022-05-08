@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace shape_inference {
@@ -1099,7 +1100,7 @@ Status InferenceContext::Multiply(DimensionHandle first,
     *out = UnknownDim();
   } else {
     // Invariant: Both values are known and greater than 1.
-    const int64 product = first_value * second_value;
+    const int64_t product = MultiplyWithoutOverflow(first_value, second_value);
     if (product < 0) {
       return errors::InvalidArgument(
           "Negative dimension size caused by overflow when multiplying ",
