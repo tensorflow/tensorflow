@@ -666,7 +666,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   tensor_key_feed_dict = {}
 
   inputs = preprocess_inputs_arg_string(inputs_str)
-  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str, safe=False)
+  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str)
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
