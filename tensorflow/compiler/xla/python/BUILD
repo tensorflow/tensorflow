@@ -566,6 +566,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
+        "//tensorflow/core/profiler/rpc/client:profiler_client",
         "//tensorflow/python/profiler/internal:traceme_wrapper",
         "@pybind11",
     ],
