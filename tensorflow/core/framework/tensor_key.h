@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_KEY_H_
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 
@@ -32,8 +33,7 @@ class TensorKey : public Tensor {
     }
     if (DataTypeCanUseMemcpy(t1.dtype())) {
       return t1.tensor_data() == t2.tensor_data();
-    }
-    if (t1.dtype() == DT_STRING) {
+    } else if (t1.dtype() == DT_STRING) {
       const auto s1 = t1.unaligned_flat<tstring>();
       const auto s2 = t2.unaligned_flat<tstring>();
       for (int64_t i = 0, n = t1.NumElements(); i < n; ++i) {
@@ -42,6 +42,9 @@ class TensorKey : public Tensor {
         }
       }
       return true;
+    } else {
+      DCHECK(false) << "Unimplemented dtype " << DataTypeString(t1.dtype())
+                    << std::endl;
     }
     return false;
   }
@@ -53,14 +56,19 @@ class TensorKey : public Tensor {
   // Needed for absl hash function.
   template <typename H>
   friend H AbslHashValue(H h, const TensorKey& k) {
-    const uint8* d = static_cast<uint8*>(k.data());
-    size_t s = k.AllocatedBytes();
-    std::vector<uint8> vec;
-    vec.reserve(s);
-    for (int i = 0; i < s; i++) {
-      vec.push_back(d[i]);
+    if (DataTypeCanUseMemcpy(k.dtype())) {
+      return H::combine(std::move(h), k.tensor_data());
+    } else if (k.dtype() == DT_STRING) {
+      const auto strs = k.unaligned_flat<tstring>();
+      for (int64_t i = 0, n = k.NumElements(); i < n; ++i) {
+        h = H::combine(std::move(h), strs(i));
+      }
+      return h;
+    } else {
+      DCHECK(false) << "Unimplemented dtype " << DataTypeString(k.dtype())
+                    << std::endl;
     }
-    return H::combine(std::move(h), s);
+    return h;
   }
 };
 
