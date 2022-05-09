@@ -143,7 +143,7 @@ catch {
 }
 
 // Run inference
-// There are other sources for GMLImage. For more details, please see:
+// There are other sources for MLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
 guard let image = UIImage (named: "your_input_image"), let mlImage = MLImage(image: image) else {
     return
