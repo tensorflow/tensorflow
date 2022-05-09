@@ -318,7 +318,7 @@ void OpProfileBuilder::Finalize(double peak_gigaflops_per_second_per_core,
 OpProfileBuilder::OpProfileBuilder(
     const OpProfileOptions& options,
     tensorflow::profiler::op_profile::Node* root,
-    const proto2::Map<uint64_t, std::string>* program_name_map)
+    const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map)
     : options_(options),
       root_(ABSL_DIE_IF_NULL(root)),
       program_name_map_(program_name_map) {

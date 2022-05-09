@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 
@@ -35,9 +36,9 @@ struct OpProfileOptions {
 
 class OpProfileBuilder {
  public:
-  OpProfileBuilder(
-      const OpProfileOptions& options, op_profile::Node* root,
-      const proto2::Map<uint64_t, std::string>* program_name_map = nullptr);
+  OpProfileBuilder(const OpProfileOptions& options, op_profile::Node* root,
+                   const tensorflow::protobuf::Map<uint64_t, std::string>*
+                       program_name_map = nullptr);
 
   void AddOp(const OpMetrics& op_metrics);
 
@@ -96,7 +97,8 @@ class OpProfileBuilder {
   absl::flat_hash_map<std::string, Category> category_map_;
 
   // Map to look up program names by id.
-  const proto2::Map<uint64_t, std::string>* program_name_map_ = nullptr;
+  const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map_ =
+      nullptr;
 };
 }  // namespace profiler
 }  // namespace tensorflow
