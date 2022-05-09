@@ -166,6 +166,15 @@ def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "func::FuncOp"
   let constructor = "createBroadcastPropagationPass()";
 }
 
+def RestrictMaxRankPass : Pass<"mhlo-restrict-max-rank", "func::FuncOp"> {
+  let summary = "Restrict maximum rank of any of the intermediate tensors";
+  let description = "Transform operations in the module so that the maximum "
+  "rank is restricted. This is done by doing transformations that could "
+  "potentially increase overhead but helps in reducing dimensionality. This "
+  "could be useful in backends that don't support higher ranked tensors.";
+  let constructor = "createRestrictMaxRankPass()";
+}
+
 def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
   let summary = "Prepare moving dynamic broadcasts up over element-wise "
     "operations and broadcast the operands rather than the result. This will "

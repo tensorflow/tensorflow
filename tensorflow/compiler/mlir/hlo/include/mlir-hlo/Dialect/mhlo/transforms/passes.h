@@ -87,6 +87,10 @@ createLegalizeTrigonometricToApproximationPass();
 // fusions.
 std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass();
 
+// Transformations that helps in restricting maximum rank among tensors in the
+// pass.
+std::unique_ptr<OperationPass<func::FuncOp>> createRestrictMaxRankPass();
+
 // Prepare moving dynamic broadcasts up over element-wise operations and
 // broadcast the operands rather than the result. This will eventually allow for
 // larger fusions.
