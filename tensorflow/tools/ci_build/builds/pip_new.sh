@@ -764,16 +764,8 @@ if [[ ${OS_TYPE} == "ubuntu" ]] && \
     echo "auditwheel repairing ${WHL_PATH}"
     auditwheel repair --plat ${AUDITWHEEL_TARGET_PLAT}_$(uname -m) -w "${WHL_DIR}" "${WHL_PATH}"
 
-    WHL_BASE_NAME=$(basename "${WHL_PATH}")
-    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/${AUDITWHEEL_TARGET_PLAT}}")
-
-    # Rename wheel to remove manylinux_${GLIBCMAJOR}_${GLIBCMINOR} tag
     if [[ $(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT} | wc -l) == 1 ]] ; then
-      mv ${WHL_DIR}/$(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT}) ${AUDITED_WHL_NAME}
-    fi
-
-    if [[ -f ${AUDITED_WHL_NAME} ]]; then
-      WHL_PATH=${AUDITED_WHL_NAME}
+      WHL_PATH=${WHL_DIR}/$(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT})
       echo "Repaired ${AUDITWHEEL_TARGET_PLAT} wheel file at: ${WHL_PATH}"
     else
       die "WARNING: Cannot find repaired wheel."
