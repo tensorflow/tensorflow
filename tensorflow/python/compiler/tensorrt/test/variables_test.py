@@ -181,5 +181,60 @@ class BiasAddTwoConstInputsTest(trt_test.TfTrtIntegrationTestBase):
     }
 
 
+class BatchMatMulTwoConstInputsModel(module.Module):
+  """Model with batched matmul taking only variable and constants inputs.
+  If the model were frozen, this would be constant-folded. This checks that
+  the BatchMatMul converter handles cases with two constant inputs.
+  """
+
+  def __init__(self):
+    self.v1 = None
+
+  @def_function.function
+  def __call__(self, input_0):
+    if self.v1 is None:
+        self.v1 = variables.Variable(
+            np.reshape(np.r_[:80].astype(np.float32), (4, 4, 5)),
+            name="v1")
+    c1 = constant_op.constant(np.reshape(
+        np.r_[:60].astype(np.float32), (4, 5, 3)), name="c1")
+    mmul = math_ops.matmul(self.v1, c1, name="mmul")
+    add = math_ops.add(mmul, input_0, name="add")
+    relu = nn.relu(add, "relu")
+    return array_ops.squeeze(relu, name="output_0")
+
+
+@run_all_without_freezing()
+class BatchMatMulTwoConstInputsTest(trt_test.TfTrtIntegrationTestBase):
+  def _MakeSavedModelV2(self, run_params):
+    my_model = BatchMatMulTwoConstInputsModel()
+    cfunc = my_model.__call__.get_concrete_function(
+        tensor_spec.TensorSpec([8, 4, 4, 3], dtypes.float32))
+    saved_model_dir = self._GetSavedModelDir(
+        run_params, trt_test.GraphState.ORIGINAL)
+    logging.info("Saving input SavedModel to %s", saved_model_dir)
+    save.save(my_model, saved_model_dir,
+              {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: cfunc})
+    return saved_model_dir
+
+  def ShouldRunTest(self, run_params):
+    # Variables are only supported in dynamic shape mode.
+    # TODO: dynamic engine / static engine?
+    return (run_params.dynamic_shape and
+            run_params.is_v2, "test v2 dynamic shape")
+
+  def GetParams(self):
+    shapes = [[8, 4, 4, 3]]
+    my_model = BatchMatMulTwoConstInputsModel()
+    return self.BuildParams(my_model.__call__, dtypes.float32,
+                            input_shapes=shapes,
+                            output_shapes=shapes)
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {
+        "TRTEngineOp_000": ["v1", "c1", "mmul", "add", "relu"],
+    }
+
 if __name__ == "__main__":
   test.main()

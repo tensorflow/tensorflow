@@ -4692,12 +4692,6 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // TODO(tfeher): Consider adding INT8 type because FC layer can support it.
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
-    // TODO(lsugy): don't assume that if all inputs are weights, grappler
-    // should fold them, because variables are weights.
-    return errors::InvalidArgument(
-        "All inputs are weights, but Grappler is expected to fold them.");
-  }
 
   bool transpose_a = false, transpose_b = false;
   AttrSlice attrs(node_def);
