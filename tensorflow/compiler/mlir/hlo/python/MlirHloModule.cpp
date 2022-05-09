@@ -34,6 +34,11 @@ std::vector<int64_t> attributePropertyVector(
   }
   return result;
 }
+
+auto toPyString(MlirStringRef mlirStringRef) {
+  return py::str(mlirStringRef.data, mlirStringRef.length);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_mlirHlo, m) {
@@ -322,13 +327,14 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &direction, MlirContext ctx) {
-            return cls(mlirMhloComparisonDirectionAttrGet(ctx, direction));
+            return cls(mlirMhloComparisonDirectionAttrGet(
+                ctx, mlirStringRefCreate(direction.c_str(), direction.size())));
           },
           py::arg("cls"), py::arg("comparison_direction"),
           py::arg("context") = py::none(),
           "Creates a ComparisonDirection attribute with the given direction.")
       .def_property_readonly("comparison_direction", [](MlirAttribute self) {
-        return mlirMhloComparisonDirectionAttrGetDirection(self);
+        return toPyString(mlirMhloComparisonDirectionAttrGetDirection(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
@@ -336,13 +342,14 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloComparisonTypeAttrGet(ctx, type));
+            return cls(mlirMhloComparisonTypeAttrGet(
+                ctx, mlirStringRefCreate(type.c_str(), type.size())));
           },
           py::arg("cls"), py::arg("comparison_type"),
           py::arg("context") = py::none(),
           "Creates a ComparisonType attribute with the given type.")
       .def_property_readonly("comparison_type", [](MlirAttribute self) {
-        return mlirMhloComparisonTypeAttrGetType(self);
+        return toPyString(mlirMhloComparisonTypeAttrGetType(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
@@ -350,13 +357,14 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloPrecisionAttrGet(ctx, type));
+            return cls(mlirMhloPrecisionAttrGet(
+                ctx, mlirStringRefCreate(type.c_str(), type.size())));
           },
           py::arg("cls"), py::arg("precision_type"),
           py::arg("context") = py::none(),
           "Creates a Precision attribute with the given type.")
       .def_property_readonly("precision_type", [](MlirAttribute self) {
-        return mlirMhloPrecisionAttrGetPrecision(self);
+        return toPyString(mlirMhloPrecisionAttrGetPrecision(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
@@ -364,12 +372,13 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloFftTypeAttrGet(ctx, type));
+            return cls(mlirMhloFftTypeAttrGet(
+                ctx, mlirStringRefCreate(type.c_str(), type.size())));
           },
           py::arg("cls"), py::arg("fft_type"), py::arg("context") = py::none(),
           "Creates a FftType attribute with the given type.")
       .def_property_readonly("fft_type", [](MlirAttribute self) {
-        return mlirMhloFftTypeAttrGetFftType(self);
+        return toPyString(mlirMhloFftTypeAttrGetFftType(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
@@ -377,13 +386,14 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloDequantizeModeAttrGet(ctx, type));
+            return cls(mlirMhloDequantizeModeAttrGet(
+                ctx, mlirStringRefCreate(type.c_str(), type.size())));
           },
           py::arg("cls"), py::arg("dequantize_mode"),
           py::arg("context") = py::none(),
           "Creates a DequantizeMode attribute with the given mode.")
       .def_property_readonly("dequantize_mode", [](MlirAttribute self) {
-        return mlirMhloDequantizeModeAttrGetDequantizeMode(self);
+        return toPyString(mlirMhloDequantizeModeAttrGetDequantizeMode(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
@@ -391,13 +401,14 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &type, MlirContext ctx) {
-            return cls(mlirMhloTransposeAttrGet(ctx, type));
+            return cls(mlirMhloTransposeAttrGet(
+                ctx, mlirStringRefCreate(type.c_str(), type.size())));
           },
           py::arg("cls"), py::arg("transpose_type"),
           py::arg("context") = py::none(),
           "Creates a Transpose attribute with the given type.")
       .def_property_readonly("transpose_type", [](MlirAttribute self) {
-        return mlirMhloTransposeAttrGetTranspose(self);
+        return toPyString(mlirMhloTransposeAttrGetTranspose(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
@@ -405,13 +416,14 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_classmethod(
           "get",
           [](py::object cls, const std::string &kind, MlirContext ctx) {
-            return cls(mlirMhloFusionKindAttrGet(ctx, kind));
+            return cls(mlirMhloFusionKindAttrGet(
+                ctx, mlirStringRefCreate(kind.c_str(), kind.size())));
           },
           py::arg("cls"), py::arg("fusion_kind"),
           py::arg("context") = py::none(),
           "Creates a FusionKind attribute with the given kind.")
       .def_property_readonly("fusion_kind", [](MlirAttribute self) {
-        return mlirMhloFusionKindAttrGetFusionKind(self);
+        return toPyString(mlirMhloFusionKindAttrGetFusionKind(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
