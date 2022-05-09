@@ -135,6 +135,10 @@ guard let modelPath = Bundle.main.path(forResource: "your_model_file_name",
 }
 
 let imageClassifierOptions = ImageClassifierOptions(modelPath: modelPath)
+
+// Configure any additional options:
+// imageClassifierOptions.classificationOptions.maxResults = 3
+
 do {
     imageClassifier = try ImageClassifier.imageClassifier(options: imageClassifierOptions)
 }
@@ -167,6 +171,9 @@ NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"your_model_file_n
 
 TFLImageClassifierOptions *imageClassifierOptions =
 [[TFLImageClassifierOptions alloc] initWithModelPath:modelPath];
+
+// Configure any additional options:
+// imageClassifierOptions.classificationOptions.maxResults = 3
 
 NSError *createError = nil;
 TFLImageClassifier *imageClassifier =
