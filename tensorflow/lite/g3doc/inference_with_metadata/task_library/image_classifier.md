@@ -124,6 +124,7 @@ Make sure the `.tflite` you will be using for inference is present in your app b
 #### Swift
 
 ```swift
+// Imports
 import TensorFlowLiteTaskVision
 
 // Initialization
@@ -163,6 +164,7 @@ catch {
 #### Objective C
 
 ```objc
+// Imports
 #import <TensorFlowLiteTaskVision/TFLTaskVision.h>
 
 // Initialization
