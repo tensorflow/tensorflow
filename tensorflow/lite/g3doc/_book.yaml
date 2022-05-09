@@ -231,6 +231,9 @@ upper_tabs:
           path: /lite/tutorials/model_maker_text_classification
         - title: "BERT question & answer"
           path: /lite/tutorials/model_maker_question_answer
+        - title: "Text search"
+          path: /lite/tutorials/model_maker_text_searcher
+          status: New
 
         - heading: "Audio"
         - title: "Audio classification"
