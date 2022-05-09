@@ -253,6 +253,8 @@ def dtensor_initialize_multi_client(
         `localhost:10000,localhost:10001,localhost:10002,localhost:10003`
       - 2 clients on host1, 2 clients on host2
         `host1:10000,host1:10001,host2:10000,host2:10003`
+  - DTENSOR_TPU_CORE_COUNT, DTENSOR_GPU_CORE_COUNT, DTENSOR_CPU_CORE_COUNT:
+    integers, the number of global devices of the type.
 
   Args:
     enable_coordination_service: If true, enable distributed coordination
