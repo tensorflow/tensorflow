@@ -77,6 +77,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   OP_REQUIRES(ctx, block_num_elems > 0,
               errors::InvalidArgument(
                   "The product of the block dimensions must be positive"));
+  const int64 batch_size = input_shape[0];
   const int64_t output_dim =
       MultiplyWithoutOverflow(batch_size, block_num_elems);
   if (output_dim < 0) {
@@ -99,7 +100,6 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   //       padded_shape[M] / block_shape[M-1],
   //       block_shape[M-1]] +
   //      remaining_shape
-  const int64 batch_size = input_shape[0];
   std::vector<int64> reshaped_padded_shape(input_rank + block_rank);
   reshaped_padded_shape[0] = batch_size;
   for (int i = 0; i < block_rank; ++i) {
