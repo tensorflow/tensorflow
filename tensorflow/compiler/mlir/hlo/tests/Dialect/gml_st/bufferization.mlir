@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt %s -test-gml-st-bufferization --canonicalize -cse \
 // RUN:   -split-input-file | FileCheck %s
 
-func private @some_use(memref<?xf32>)
+func.func private @some_use(memref<?xf32>)
 
 #TILE_MAP = affine_map<(d0)[s0] -> (3, -d0 + s0)>
 
