@@ -1,6 +1,11 @@
 # Release 2.7.2
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+8bitmp3, Abhilash Majumder, abhilash1910, AdeshChoudhar, Adrian Garcia Badaracco, Adrian Ratiu, ag.ramesh, Aleksandr Nikolaev, Alexander Bosch, Alexander Grund, Annie Tallund, Anush Elangovan, Artem Sokolovskii, azazhu, Balint Cristian, Bas Aarts, Ben Barsdell, bhack, cfRod, Cheney-Wang, Cheng Ren, Christopher Bate, collin, Danila Bespalov, David Datascientist, Deven Desai, Ehsan Kia, Ellie, Fan Du, fo40225, Frederic Bastien, fsx950223, Gauri1 Deshpande, geetachavan1, Guillaume Klein, guozhong.zhuang, helen, Håkon Sandsmark, japm48, jgehw, Jinzhe Zeng, Jonathan Dekhtiar, Kai Zhu, Kaixi Hou, Kanvi Khanna, Koan-Sin Tan, Koki Ibukuro, Kulin Seth, KumaTea, Kun-Lu, Lemo, lipracer, liuyuanqiang, Mahmoud Abuzaina, Marius Brehler, Maxiwell S. Garcia, mdfaijul, metarutaiga, Michal Szutenberg, nammbash, Nathan John Sircombe, Neil Girdhar, Nishidha Panpaliya, Nyadla-Sys, Patrice Vignola, Peter Kasting, Philipp Hack, PINTO0309, Prateek Gupta, puneeshkhanna, Rahul Butani, Rajeshwar Reddy T, Reza Rahimi, RinozaJiffry, rmothukuru, Rohit Santhanam, Sachin Muradi, Saduf2019, Samuel Marks, sclarkson, Sergii Khomenko, Sheng, Yang, Sidong-Wei, slowy07, Srinivasan Narayanamoorthy, Srishti Srivastava, stanley, Stella Alice Schlotter, Steven I Reeves, stevenireeves, svobora, Takayoshi Koizumi, Tamas Bela Feher, Thibaut Goetghebuer-Planchon, Trent Lo, Twice, Varghese, Jojimon, Vishnuvardhan Janapati, Wang Yanzhang, Wang,Quintin, William Muir, William Raveane, Yasuhiro Matsumoto, Yi Li, Yong Tang, zhaozheng09, Zhoulong Jiang, zzpmiracle
+
 
 # Release 2.7.1
 
