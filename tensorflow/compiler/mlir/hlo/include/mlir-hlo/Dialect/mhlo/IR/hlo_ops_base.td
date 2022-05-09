@@ -126,7 +126,7 @@ def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 
-def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
