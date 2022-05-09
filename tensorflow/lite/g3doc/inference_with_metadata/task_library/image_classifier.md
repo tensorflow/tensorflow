@@ -136,7 +136,7 @@ guard let modelPath = Bundle.main.path(forResource: "your_model_file_name",
 
 let imageClassifierOptions = ImageClassifierOptions(modelPath: modelPath)
 do {
-    imageClassifier = try ImageClassifier.classifier(options: imageClassifierOptions)
+    imageClassifier = try ImageClassifier.imageClassifier(options: imageClassifierOptions)
 }
 catch {
     // Handle failure. Check error.localizedDescription to understand the reason for failure.
@@ -149,7 +149,7 @@ guard let image = UIImage (named: "your_input_image_name"), let mlImage = MLImag
     return
 }
 do {
-    let classificationResults: ClassificationResult = try imageClassifier.classify(mlImage: mlImage)
+    let classificationResults: ClassificationResult = try imageClassifier.classify(gmlImage: mlImage)
 }
 catch {
     // Handle failure.
