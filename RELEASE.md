@@ -69,12 +69,12 @@
         *   oneDNN optimizations are *enabled by default* on CPUs with neural-network-focused hardware features such as AVX512_VNNI, AVX512_BF16, AMX, etc. ([Intel Cascade Lake](https://www.intel.com/content/www/us/en/products/platforms/details/cascade-lake.html) and newer CPUs.) 
             *   [Example performance speedups.](https://medium.com/intel-analytics-software/leverage-intel-deep-learning-optimizations-in-tensorflow-129faa80ee07)
         *   For older CPUs, oneDNN optimizations are disabled by default.
-        *   These optimizations can yield slightly different numerical results from when they are off due to floating-point round-off errors from different computation approaches and orders. 
     *   **Windows x86 package:** oneDNN optimizations are disabled by default.
     *   **Linux aach64 (`--config=mkl_aarch64`) package:**
         *    Experimental oneDNN optimizations are disabled by default.  
         *    If you experience issues with oneDNN optimizations on, we recommend turning them off.    
     *   To explicitly enable or disable oneDNN optimizations, set the environment variable `TF_ENABLE_ONEDNN_OPTS` to `1` (enable) or `0` (disable) before running TensorFlow. (The variable is checked during `import tensorflow`.) To fall back to default settings, unset the environment variable.
+    *   These optimizations can yield slightly different numerical results from when they are off due to floating-point round-off errors from different computation approaches and orders.
     *   To verify that the optimizations are on, look for a message with *"oneDNN custom operations are on"* in the log. If the exact phrase is not there, it means they are off.
 
     
