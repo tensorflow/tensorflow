@@ -159,7 +159,7 @@ catch {
 #### Objective C
 
 ```objc
-#import <TensorFlowLiteTaskVision/TensorFlowLiteTaskVision.h>
+#import <TensorFlowLiteTaskVision/TFLTaskVision.h>
 
 // Initialization
 NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mobilenet_v2_1.0_224"
