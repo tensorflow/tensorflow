@@ -38,8 +38,8 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -104,7 +104,8 @@ Status Runtime::CreateFunction(const FunctionDef& fdef) {
 Status Runtime::CreateFunction(OpaqueTfgGraphFuncOp* fop) {
   mlir::tfg::GraphFuncOp fop_proper =
       *reinterpret_cast<mlir::tfg::GraphFuncOp*>(fop);
-  return mlir::tfg::ExportFunction(fop_proper, *this->eager_ctx_.FuncLibDef());
+  return mlir::tfg::ConvertToFunctionDef(fop_proper,
+                                         *this->eager_ctx_.FuncLibDef());
 }
 
 Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
@@ -130,7 +131,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
   GraphDef graph;
   *graph.mutable_library()->add_function() = *fn;
   tensorflow::GraphDebugInfo debug_info;
-  auto mlir_fn = mlir::tfg::ImportGraphDefToMlir(&ctx, debug_info, graph);
+  auto mlir_fn = mlir::tfg::ImportGraphDef(&ctx, debug_info, graph);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(mlir_fn.status(), "importing function ",
                                   name);
 

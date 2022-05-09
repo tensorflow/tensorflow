@@ -18,6 +18,11 @@ message ErrorSourceProto {
     MLIR_BRIDGE_PHASE_1 = 3;
     // LegalizeToHlo.
     MLIR_BRIDGE_PHASE_2 = 4;
+<<<<<<< HEAD
+=======
+    // eager::RemoteMgr.
+    EAGER_REMOTE_MGR = 5;
+>>>>>>> upstream/master
   }
   ErrorSource error_source = 1;
 }

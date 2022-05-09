@@ -233,12 +233,29 @@ void LoopOp::print(OpAsmPrinter &p) {
                        LoopOp::getDistributionTypesAttrName()});
 }
 
+namespace {
+ParseResult parseAssignmentListWithTypes(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &lhs,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &rhs,
+    SmallVectorImpl<Type> &types) {
+  auto parseElt = [&]() -> ParseResult {
+    if (parser.parseOperand(lhs.emplace_back(), /*allowResultNumber=*/false) ||
+        parser.parseEqual() || parser.parseOperand(rhs.emplace_back()) ||
+        parser.parseColon() || parser.parseType(types.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt);
+}
+}  // namespace
+
 ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   // Parse an opening `(` followed by induction variables followed by `)`
   SmallVector<OpAsmParser::UnresolvedOperand, 4> ivs;
-  if (parser.parseRegionArgumentList(ivs, /*requiredOperandCount=*/-1,
-                                     OpAsmParser::Delimiter::Paren))
+  if (parser.parseOperandList(ivs, OpAsmParser::Delimiter::Paren,
+                              /*allowResultNumber=*/false))
     return failure();
 
   // Parse loop bounds.
@@ -270,8 +287,8 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   if (succeeded(parser.parseOptionalKeyword("ins"))) {
     SMLoc inputsOperandsLoc = parser.getCurrentLocation();
 
-    if (parser.parseAssignmentListWithTypes(inputRegionArgs, inputs,
-                                            inputTypes))
+    if (parseAssignmentListWithTypes(parser, inputRegionArgs, inputs,
+                                     inputTypes))
       return failure();
 
     if (parser.resolveOperands(inputs, inputTypes, inputsOperandsLoc,
@@ -285,8 +302,8 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
     SMLoc outputsOperandsLoc = parser.getCurrentLocation();
 
-    if (parser.parseAssignmentListWithTypes(outputRegionArgs, outputs,
-                                            outputTypes))
+    if (parseAssignmentListWithTypes(parser, outputRegionArgs, outputs,
+                                     outputTypes))
       return failure();
 
     if (parser.resolveOperands(outputs, outputTypes, outputsOperandsLoc,
@@ -344,11 +361,20 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   regionTypes.append(inputTypes);
   regionTypes.append(outputTypes);
 
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionArgs(ivs);
-  regionArgs.append(inputRegionArgs);
-  regionArgs.append(outputRegionArgs);
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
+  regionOperands.append(inputRegionArgs);
+  regionOperands.append(outputRegionArgs);
 
-  if (parser.parseRegion(*body, regionArgs, regionTypes)) return failure();
+  SmallVector<OpAsmParser::Argument, 4> regionArgs;
+
+  for (auto argAndType : llvm::zip(regionOperands, regionTypes)) {
+    OpAsmParser::Argument arg;
+    arg.ssaName = std::get<0>(argAndType);
+    arg.type = std::get<1>(argAndType);
+    regionArgs.push_back(arg);
+  }
+
+  if (parser.parseRegion(*body, regionArgs)) return failure();
 
   // Parse optional attributes.
   parser.parseOptionalAttrDict(result.attributes);

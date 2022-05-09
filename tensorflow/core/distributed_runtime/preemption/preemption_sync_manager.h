@@ -18,6 +18,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+<<<<<<< HEAD
+=======
+#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
+>>>>>>> upstream/master
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -26,12 +30,24 @@ namespace tensorflow {
 // receive a preemption notice. Example: tasks agree on a safe checkpointing
 // step after a preemption notice so that training can resume with minimal
 // disruption after the preemption.
+<<<<<<< HEAD
+=======
+// Note: the sync point can only be set once whenever the first preemption
+// occurs.
+// TODO(b/230630494): Add Reset() to allow multiple sync points to be set.
+>>>>>>> upstream/master
 class PreemptionSyncManager {
  public:
   virtual ~PreemptionSyncManager() = default;
 
   // TODO(b/230630494): Allow init with PjRT distributed client.
+<<<<<<< HEAD
   virtual Status Initialize(CoordinationServiceAgent& agent) = 0;
+=======
+  virtual Status Initialize(Env* env, CoordinationServiceAgent* agent) = 0;
+  virtual Status Initialize(Env* env, CoordinationServiceAgent* agent,
+                            std::unique_ptr<PreemptionNotifier> notifier) = 0;
+>>>>>>> upstream/master
 
   // Check if the synchronized point has been reached. When a task has been
   // preempted, a safe sync point will be determined by using the fastest task's

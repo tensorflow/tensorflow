@@ -1,0 +1,31 @@
+syntax = "proto2";
+
+package tensorflow;
+
+import "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+message TfCallbackData {
+  message BufferDescription {
+    optional TensorShapeProto shape = 1;
+    optional DataType type = 2;
+  }
+
+  message InputBufferDescription {
+    optional BufferDescription buffer_description = 1;
+
+    // The input value might be already fixed at the compilation time.
+    // This value may or may not be present.
+    optional TensorProto value = 2;
+  }
+
+  message OutputBufferDescription {
+    optional BufferDescription buffer_description = 1;
+  }
+
+  optional tensorflow.NodeDef op = 1;
+  repeated InputBufferDescription inputs = 2;
+  repeated OutputBufferDescription outputs = 3;
+}

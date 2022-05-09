@@ -109,7 +109,6 @@ tf_python_pybind_extension(
     hdrs = [
         "quantize_model_wrapper.h",
     ],
-    module_name = "pywrap_quantize_model",
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",

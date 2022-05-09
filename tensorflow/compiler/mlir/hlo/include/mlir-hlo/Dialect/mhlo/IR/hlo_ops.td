@@ -124,12 +124,6 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
   let arguments = (ins OperandType:$operand);
   let results = (outs ResultType:$result);
   let extraClassDeclaration = [{
-    static LogicalResult inferReturnTypeComponents(
-        MLIRContext* context, Optional<Location> location,
-        ValueRange operands, DictionaryAttr attributes, RegionRange regions,
-        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-      return failure();
-    }
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -137,15 +131,12 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
                                                   operands.front(),
                                                   &reifiedReturnShapes);
     }
-    bool inferInputOutputShapeEquality(int input, int output) {
-      return true;
-    }
-    // Replace the strict default implementation with one that allows
-    // for different sparsity encodings during the is-same test.
+    // Relax the strict default implementation with one that allows
+    // for MHLO-specific differences.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
       for (auto it : llvm::zip(l, r))
-        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
+        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
           return false;
       return true;
     }
@@ -456,12 +447,6 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
   );
 
   let extraClassDeclaration = [{
-    static  LogicalResult inferReturnTypeComponents(
-        MLIRContext* context, Optional<Location> location, ValueRange operands,
-        DictionaryAttr attributes, RegionRange regions,
-        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-      return failure();
-    }
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -469,10 +454,13 @@ class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
                                                   operands.front(),
                                                   &reifiedReturnShapes);
     }
-    bool inferInputsShapeEquality(int lhs, int rhs) {
-      return true;
-    }
-    bool inferInputOutputShapeEquality(int input, int output) {
+    // Relax the strict default implementation with one that allows
+    // for MHLO-specific differences.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+         return false;
       return true;
     }
   }];
@@ -494,7 +482,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect, SameOperandsAndResultType]> {
+      [Commutative, NoSideEffect,
+       HLO_CompatibleOperandsAndResultType, InferTensorType]> {
   let summary = "Addition operator";
   let description = [{
     Returns `lhs + rhs` element-wise.
@@ -822,6 +811,22 @@ def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect,
 // MHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
 
+def HLO_AddDependencyOp : HLO_Op<"add_dependency", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AddDependency operator";
+  let description = [{
+    AddDependency takes two operands: a data operand and a token. The output of
+    the operation is the data operand. When used with AfterAll this operation
+    enables ordering non-side-effecting operations (those that do not produce
+    token values).
+  }];
+
+  let arguments = (ins HLO_TensorOrToken:$operand, HLO_Token:$token);
+  let results = (outs HLO_TensorOrToken:$output);
+  let hasCustomHLOConverter = 1;
+}
+
+
 def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
 
   let summary = "AfterAll operator";
@@ -920,7 +925,7 @@ def HLO_WhileOp: HLO_Op<"while", [
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
-  let arguments = (ins Variadic<HLO_TensorOrToken>:$arg);
+  let arguments = (ins Variadic<HLO_TensorOrToken>:$operand);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
@@ -1035,7 +1040,7 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
     See https://www.tensorflow.org/xla/operation_semantics#reduce.
   }];
   let arguments = (ins
-    Variadic<HLO_Tensor>:$inputs,
+    Variadic<HLO_Tensor>:$operands,
     Variadic<HLO_Tensor>:$init_values,
     I64ElementsAttr:$dimensions
   );
@@ -1043,7 +1048,7 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
   let results = (outs Variadic<HLO_Tensor>);
 
   let builders = [
-    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
+    OpBuilder<(ins "ValueRange":$operands, "ValueRange":$init_values,
       "DenseIntElementsAttr":$dimensions)>];
 
   let hasCanonicalizer = 1;
@@ -1157,7 +1162,8 @@ def HLO_SliceOp: HLO_Op<
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       InferTensorType]> {
   let summary = "Dynamic Slice operator";
   let description = [{
     Extracts a sub-array from the input array at dynamic start_indices.
@@ -1620,7 +1626,7 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
   }];
   let arguments = (ins
-    Variadic<HLO_TensorOrTokenOrTuple>:$args,
+    Variadic<HLO_TensorOrTokenOrTuple>:$operands,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
@@ -1666,7 +1672,7 @@ def HLO_DotOp: HLO_Op<"dot",
   }];
 }
 
-def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]> {
+def HLO_DotGeneralOp: HLO_ShapedInterfaceOp<"dot_general", [NoSideEffect]> {
   let summary = "General Dot operator";
   let description = [{
     Performs general dot products between vectors, vector/matrix and
@@ -2018,7 +2024,7 @@ def HLO_ReverseOp: HLO_Op<"reverse",
 }
 
 def HLO_PadOp: HLO_Op<"pad",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Pad operator";
   let description = [{
     Pads the edges of `operand` with the `padding_value` and according to
@@ -2044,7 +2050,6 @@ def HLO_PadOp: HLO_Op<"pad",
   let hasCustomHLOConverter = 1;
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def HLO_TraceOp: HLO_Op<"trace", []> {
@@ -2137,13 +2142,13 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
 
   // TODO(hinsu): Verify that padding attribute is 2-d and the remaining
   // attributes are 1-d. Attributes' leading dimension should match rank of the
-  // inputs.
+  // operands.
   let arguments = (ins
-    Variadic<HLO_Tensor>:$inputs,
+    Variadic<HLO_Tensor>:$operands,
     Variadic<HLO_Tensor>:$init_values,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
-    // one for each of the input dimensions. Similarly, padding values are zero
+    // one for each of the operand dimensions. Similarly, padding values are zero
     // for both low and high in each of the dimensions, if not specified.
     OptionalAttr<I64ElementsAttr>:$window_strides,
     OptionalAttr<I64ElementsAttr>:$base_dilations,
@@ -2201,7 +2206,7 @@ def HLO_ReturnOp : HLO_Op<"return", [NoSideEffect, Terminator]> {
 
 def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
   let arguments = (ins
-    HLO_Tensor:$input,
+    HLO_Tensor:$operand,
     HLO_Tensor:$index,
     I64Attr:$dim,
     I64Attr:$batch_dims
@@ -2226,7 +2231,7 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
     https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier
   }];
 
-  let arguments = (ins Variadic<HLO_TensorOrToken>:$arg);
+  let arguments = (ins Variadic<HLO_TensorOrToken>:$operand);
 
   let results = (outs Variadic<HLO_TensorOrToken>);
 
@@ -2304,8 +2309,7 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
   }];
   let arguments = (ins
-    // TODO(jpienaar): This could be an enum instead.
-    I32Attr:$rng_algorithm,
+    HLO_RngAlgorithmAttr:$rng_algorithm,
     HLO_IntOrFpTensor:$initial_state
   );
 
@@ -2536,7 +2540,7 @@ def HLO_PrintOp : HLO_Op<"print", []> {
   }];
 
   let arguments = (ins
-      HLO_Tensor:$input
+      HLO_Tensor:$operand
   );
 
   let results = (outs

@@ -942,6 +942,12 @@ def register_binary_elementwise_assert_api(func):
   Different from `dispatch_for_binary_elementwise_apis`, this decorator is used
   for assert apis, such as assert_equal, assert_none_equal, etc, which return
   None in eager mode and an op in graph mode.
+
+  Args:
+    func: The function that implements the binary elementwise assert API.
+
+  Returns:
+    `func`
   """
   _BINARY_ELEMENTWISE_ASSERT_APIS.append(func)
   for args, handler in _ELEMENTWISE_API_HANDLERS.items():

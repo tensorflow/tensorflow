@@ -1165,6 +1165,12 @@ std::shared_ptr<Parameter> MakeParameter(const string& name,
   return std::make_shared<Parameter>(name, state, min, max);
 }
 
+std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
+                                                   double value) {
+  return std::make_shared<Parameter>(name, nullptr, /*min=*/value,
+                                     /*max=*/value);
+}
+
 std::shared_ptr<Node> MakeInterleaveManyNode(
     Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters) {
   DCHECK(absl::c_any_of(parameters,
@@ -2341,73 +2347,103 @@ const ModelTiming::NodeTiming* ModelTiming::GetTiming(Node* node) const {
 void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
   for (const auto& node : bfs_nodes) {
     auto& node_timing = timing_nodes_[node.get()];
-    node_timing.pipeline_weight = 1.0;
     double parent_pipeline_ratio = 1.0;
+    double parent_ratio = 1.0;
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
       const auto& output_timing = timing_nodes_[node->output()];
       parent_pipeline_ratio = output_timing.pipeline_ratio;
-      node_timing.pipeline_weight =
-          ComputeNodePipelineWeight(output_timing, node.get(), node->output());
+      parent_ratio = node->output()->Ratio();
+      if (parent_ratio <= 0.0) {
+        // Parent ratio is unknown, we use 1.0 as a guess.
+        parent_ratio = 1.0;
+      }
     }
-    auto node_ratio = node->Ratio();
-    if (node_ratio <= 0.0) {
-      node_ratio = 1.0;
-    }
-    node_timing.pipeline_ratio = parent_pipeline_ratio * node_ratio;
-    node_timing.self_time_nsec =
-        parent_pipeline_ratio * node->ComputeSelfTime();
+    node_timing.pipeline_ratio = parent_pipeline_ratio * parent_ratio;
+    node_timing.self_time_nsec = node->ComputeSelfTime();
   }
 }
 
-double ModelTiming::ComputeNodePipelineWeight(const NodeTiming& output_timing,
-                                              const Node* node,
-                                              const Node* output) {
-  DCHECK(node != nullptr);
-  if (!node->autotune() || node->num_elements() <= 0) {
-    return 0.0;
-  }
-  if (output == nullptr) {
-    return 1.0;
-  }
-#if !defined(IS_MOBILE_PLATFORM)
-  // This block of code is defined only for non-mobile platform because mobile
-  // platform lacks RTTI, i.e. the use of `dynamic_cast`.
-
-  // Pipeline weight is only computed for the inputs of `Interleave` nodes. They
-  // are propagated from output to input for other nodes.
-  auto* interleave = dynamic_cast<const InterleaveMany*>(output);
-  auto* async_interleave = dynamic_cast<const AsyncInterleaveMany*>(output);
-  if (interleave == nullptr && async_interleave == nullptr) {
-    return output_timing.pipeline_weight;
-  }
-  int64_t active_siblings = 0;
-  for (const auto& sibling : output->inputs()) {
-    if (!sibling->autotune() || sibling->num_elements() <= 0) {
+void ModelTiming::ComputeNodeTotalTime(std::shared_ptr<Node> node) {
+  DCHECK(timing_nodes_.contains(node.get()));
+  auto& node_timing = timing_nodes_[node.get()];
+  double input_total_time_nsec = 0.0;
+  for (auto input : node->inputs()) {
+    if (input->IsAsync()) {
       continue;
     }
-    active_siblings++;
+    if (!input->autotune() || input->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains(input.get()));
+    input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec;
   }
-  return output_timing.pipeline_weight / static_cast<double>(active_siblings);
-#else   // !IS_MOBILE_PLATFORM
-  return output_timing.pipeline_weight;
-#endif  // !IS_MOBILE_PLATFORM
+  node_timing.total_time_nsec =
+      node_timing.self_time_nsec + input_total_time_nsec * node->Ratio();
+}
+
+void ModelTiming::ComputeAsyncInterleaveManyTotalTime(
+    std::shared_ptr<Node> node) {
+  DCHECK(timing_nodes_.contains(node));
+  auto& node_timing = timing_nodes_[node.get()];
+  double max_input_total_time_nsec = 0.0;
+  double sum_input_throughput = 0.0;
+  auto inputs = node->inputs();
+  // `ParallelInterleave` is often used to interleave processing of datasets
+  // generated from the first input, e.g. reading from IO where the first input
+  // has the list of all filenames. The first input is typically not the
+  // bottleneck. We exclude the timing of the first input in the throughput
+  // computation of the remaining input. It also excluded from the total time
+  // computation of the async interleave node.
+  auto input = inputs.begin();
+  while ((input = std::next(input)) != inputs.end()) {
+    if ((*input)->IsAsync()) {
+      continue;
+    }
+    if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains((*input).get()));
+    auto input_total_time_nsec = timing_nodes_[(*input).get()].total_time_nsec;
+    max_input_total_time_nsec =
+        std::max(input_total_time_nsec, max_input_total_time_nsec);
+    if (input_total_time_nsec > 0.0) {
+      sum_input_throughput += 1.0 / input_total_time_nsec;
+    }
+  }
+  double input_total_time_nsec = 0.0;
+  auto deterministic = node->ParameterValue(kDeterministic);
+  // After cl/445005635, there should always be `deterministic` parameter for an
+  // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
+  // with protos saved and restored before that CL.
+  if (!deterministic.ok() || deterministic.ValueOrDie() == 1.0) {
+    // If deterministic = true, then the total time is `1/worst input
+    // throughput * cycle_length`, or `max input total time / cycle_length`.
+    input_total_time_nsec = max_input_total_time_nsec * node->Ratio();
+  } else if (sum_input_throughput > 0.0) {
+    // If deterministic = false, then the total time is
+    // `1/sum_input_throughput`.
+    input_total_time_nsec = 1.0 / sum_input_throughput;
+  }
+  node_timing.total_time_nsec =
+      node_timing.self_time_nsec + input_total_time_nsec;
 }
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
   for (const auto& node : reverse_bfs_nodes) {
-    DCHECK(timing_nodes_.find(node) != timing_nodes_.end());
-    auto& node_timing = timing_nodes_[node.get()];
-    double input_total_time = 0.0;
-    for (auto input : node->inputs()) {
-      if (input->IsAsync()) {
-        continue;
-      }
-      DCHECK(timing_nodes_.find(input.get()) != timing_nodes_.end());
-      input_total_time += timing_nodes_[input.get()].total_time_nsec;
+    if (!node->autotune() || node->num_elements() <= 0) {
+      continue;
     }
-    node_timing.total_time_nsec =
-        node_timing.self_time_nsec * node_timing.pipeline_weight +
-        input_total_time;
+#if !defined(IS_MOBILE_PLATFORM)
+    // This block of code is defined only for non-mobile platform because mobile
+    // platform lacks RTTI, i.e. the use of `dynamic_cast`.
+    if (dynamic_cast<const AsyncInterleaveMany*>(node.get()) != nullptr) {
+      ComputeAsyncInterleaveManyTotalTime(node);
+    } else {
+      ComputeNodeTotalTime(node);
+    }
+#else   // !IS_MOBILE_PLATFORM
+    ComputeNodeTotalTime(node);
+#endif  // !IS_MOBILE_PLATFORM
   }
 }
 

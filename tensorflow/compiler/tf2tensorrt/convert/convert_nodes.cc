@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/timing_cache.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -1243,6 +1244,29 @@ Status Converter::BuildCudaEngine(
     builder_config->setInt8Calibrator(use_calibration_ ? calibrator : nullptr);
   }
 
+  std::unique_ptr<TimingCacheRegistry::TimingCache> timing_cache = nullptr;
+  // We only use a timing cache if the algorithm selector is not used. If we
+  // are using TRT version >= 8.0, then we can try to deserialize an existing
+  // cache.
+  if (trt_algorithm_selector == nullptr) {
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    TimingCacheRegistry* registry = GetTimingCacheRegistry();
+
+    auto cache = registry->LookUp("default_cache", builder_config.get());
+    if (!cache.ok()) {
+      LOG(WARNING) << "failed to create a timing cache: "
+                   << cache.status().error_message();
+    } else {
+      timing_cache = std::move(*cache);
+      builder_config->setTimingCache(*timing_cache, /*ignoreMismatch*/ false);
+    }
+#endif  // IS_TRT_VERSION_GE(8, 0, 0, 0)
+  } else {
+    // Disabling the timing cache is recommended when using the algorithm
+    // selector.
+    builder_config->setFlag(nvinfer1::BuilderFlag::kDISABLE_TIMING_CACHE);
+  }
+
   string precision_mode_str;
   TF_RETURN_IF_ERROR(
       TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
@@ -1288,6 +1312,12 @@ Status Converter::BuildCudaEngine(
               << get_location_string(i);
     }
   }
+
+  // Write back the new timing cache results to the registry.
+  if (timing_cache) {
+    GetTimingCacheRegistry()->Upsert("default_cache", timing_cache.get());
+  }
+
   return Status::OK();
 }
 
@@ -3182,30 +3212,6 @@ Status ConvertPool(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertLeakyRelu(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-
-  float alpha{0.f};
-  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "alpha", &alpha));
-
-  // Use IActivationLayer when available.
-  if (params->validation_only) return Status::OK();
-
-  nvinfer1::IActivationLayer* layer =
-      params->converter->network()->addActivation(
-          *inputs.at(0).tensor()->trt_tensor(),
-          nvinfer1::ActivationType::kLEAKY_RELU);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def, "activation");
-  layer->setAlpha(alpha);
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return Status::OK();
-}
-
 Status ConvertClipByValue(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3242,76 +3248,6 @@ Status ConvertClipByValue(OpConverterParams* params) {
   layer->setAlpha(clip_value_min);
   layer->setBeta(clip_value_max);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def, "activation");
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return Status::OK();
-}
-
-const operationMap<nvinfer1::ActivationType>* ActivationTypeMap() {
-  static auto* const m =
-      new std::unordered_map<string, nvinfer1::ActivationType>({
-          {"Relu", nvinfer1::ActivationType::kRELU},
-          {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
-          {"Tanh", nvinfer1::ActivationType::kTANH},
-          {"Elu", nvinfer1::ActivationType::kELU},
-          {"Selu", nvinfer1::ActivationType::kSELU},
-          {"Softsign", nvinfer1::ActivationType::kSOFTSIGN},
-          {"Softplus", nvinfer1::ActivationType::kSOFTPLUS},
-      });
-  return m;
-}
-
-Status ConvertActivation(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  auto op_pair = ActivationTypeMap()->find(node_def.op());
-  if (op_pair == ActivationTypeMap()->end()) {
-    return errors::Unimplemented("Activation op: ", node_def.op(),
-                                 " not supported");
-  }
-  if (params->validation_only) return Status::OK();
-
-  // Start conversion.
-  nvinfer1::IActivationLayer* layer =
-      params->converter->network()->addActivation(
-          *inputs.at(0).tensor()->trt_tensor(), op_pair->second);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def, "activation");
-  // Set parameters.
-  if (node_def.op() == "Elu") {
-    layer->setAlpha(1.0f);
-  } else if (node_def.op() == "Selu") {
-    // From tensorflow/core/kernels/relu_op_functor.h
-    layer->setAlpha(1.7580993408473768599402175208123f);
-    layer->setBeta(1.0507009873554804934193349852946f);
-  } else if (node_def.op() == "Softplus") {
-    layer->setAlpha(1.0f);
-    layer->setBeta(1.0f);
-  }
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return Status::OK();
-}
-
-Status ConvertRelu6(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (params->validation_only) return Status::OK();
-
-  nvinfer1::IActivationLayer* layer =
-      params->converter->network()->addActivation(
-          *inputs.at(0).tensor()->trt_tensor(),
-          nvinfer1::ActivationType::kCLIP);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  layer->setAlpha(0.0f);
-  layer->setBeta(6.0f);
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-  params->converter->ProvideQuantizationRange(&output_tensor, 0.0f, 6.0f);
   params->converter->SetLayerName(layer, node_def, "activation");
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
@@ -4039,46 +3975,44 @@ Status ConvertUnpack(OpConverterParams* params) {
   return ConvertSplitHelper(params, inputs.at(0), tf_axis, num, true);
 }
 
-// Supports cast fp16=>fp32 through IIdentityLayer.
 Status ConvertCast(OpConverterParams* params) {
-  const NodeDef& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
   auto unsupport_cast_error = [&](string msg) {
     return errors::Unimplemented("Cast op is not supported - ", msg);
   };
 
+  if (isExperimentalFeatureActivated("reject_all_fp_cast_ops")) {
+    LOG(WARNING) << "`TF_TRT_EXPERIMENTAL_FEATURES=reject_all_fp_cast_ops`is "
+                 << "meant as a workaround. If the Cast converter leads to any "
+                 << "performance or accuracy regression, please open an issue "
+                 << "on GitHub.";
+    return unsupport_cast_error(
+        "TF_TRT_EXPERIMENTAL_FEATURES=reject_all_fp_cast_ops has been defined");
+  }
+
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+
   DataType input_type;
   TF_RETURN_IF_ERROR(GetInputTfType(*params, &input_type, 0));
-  if (input_type != DataType::DT_HALF) {
+
+  if (allowed_types.find(input_type) == allowed_types.end()) {
     return unsupport_cast_error(
-        StrCat("input dtype != ", DataTypeString(DataType::DT_HALF),
-               ", received: ", DataTypeString(input_type)));
+        StrCat("Allowed input dtypes: [", DataTypeString(DataType::DT_FLOAT),
+               ", ", DataTypeString(DataType::DT_HALF),
+               "]. Received: ", DataTypeString(input_type)));
   }
 
   DataType output_type;
   TF_RETURN_IF_ERROR(GetNodeDefTfType(params->node_def, &output_type,
                                       kCastOutputTypeAttrName));
 
-  if (output_type != DataType::DT_FLOAT) {
+  if (allowed_types.find(output_type) == allowed_types.end()) {
     return unsupport_cast_error(
-        StrCat("output dtype != ", DataTypeString(DataType::DT_FLOAT),
-               ", received: ", DataTypeString(output_type)));
+        StrCat("Allowed output dtypes: [", DataTypeString(DataType::DT_FLOAT),
+               ", ", DataTypeString(DataType::DT_HALF),
+               "]. Received: ", DataTypeString(output_type)));
   }
 
-  if (params->validation_only) return Status::OK();
-
-  ITensorProxyPtr input = params->inputs.at(0).tensor();
-  nvinfer1::IIdentityLayer* layer =
-      params->converter->network()->addIdentity(*input->trt_tensor());
-  params->converter->SetLayerName(layer, node_def);
-  layer->setPrecision(nvinfer1::DataType::kFLOAT);
-
-  if (layer->getOutput(0)->getType() != nvinfer1::DataType::kFLOAT) {
-    return errors::Internal("IIdentityLayer doesn't work as expected");
-  }
-
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return Status::OK();
+  return ConvertIdentity(params);
 }
 
 Status ConvertConcat(OpConverterParams* params) {
@@ -5783,11 +5717,9 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertExpandDims, "ExpandDims");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFusedConv2DBiasActivation,
                                   "FusedConv2DBiasActivation");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertGather, "GatherV2");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertLeakyRelu, "LeakyRelu");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertMatMul, "MatMul");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPack, "Pack");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPad, "Pad");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertRelu6, "Relu6");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertReshape, "Reshape");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv3D, "Conv3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv3DBackpropInputV2,
@@ -5809,8 +5741,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertActivation,
-                                  GetOperationNames(*ActivationTypeMap()));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool, {"MaxPool", "AvgPool"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFusedBatchNorm,
                                   {"FusedBatchNorm", "FusedBatchNormV2",

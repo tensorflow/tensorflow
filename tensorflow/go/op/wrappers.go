@@ -33251,6 +33251,14 @@ func RangeDatasetMetadata(value string) RangeDatasetAttr {
 	}
 }
 
+// RangeDatasetReplicateOnSplit sets the optional replicate_on_split attribute to value.
+// If not specified, defaults to false
+func RangeDatasetReplicateOnSplit(value bool) RangeDatasetAttr {
+	return func(m optionalAttr) {
+		m["replicate_on_split"] = value
+	}
+}
+
 // Creates a dataset with a range of values. Corresponds to python's xrange.
 //
 // Arguments:
@@ -45623,6 +45631,42 @@ func StatelessSampleDistortedBoundingBox(scope *Scope, image_size tf.Output, bou
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Randomly and deterministically shuffles a tensor along its first dimension.
+//
+// The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
+// to one and only one `output[i]`. For example, a mapping that might occur for a
+// 3x2 tensor is:
+//
+// ```
+// [[1, 2],       [[5, 6],
+//  [3, 4],  ==>   [1, 2],
+//  [5, 6]]        [3, 4]]
+// ```
+//
+// The outputs are a deterministic function of `value`, `key`, `counter` and `alg`.
+//
+// Arguments:
+//	value: The tensor to be shuffled.
+//	key: Key for the counter-based RNG algorithm (shape uint64[1]).
+//	counter: Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+//	alg: The RNG algorithm (shape int32[]).
+//
+// Returns A tensor of same shape and type as `value`, shuffled along its first
+// dimension.
+func StatelessShuffle(scope *Scope, value tf.Output, key tf.Output, counter tf.Output, alg tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessShuffle",
+		Input: []tf.Input{
+			value, key, counter, alg,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
 type StatelessTruncatedNormalAttr func(optionalAttr)
 
@@ -47640,6 +47684,26 @@ func TPUReshardVariables(scope *Scope, vars []tf.Output, new_format_key tf.Outpu
 	return scope.AddOperation(opspec)
 }
 
+// Round-robin load balancing on TPU cores.
+//
+// A load balancing op that round-robins among TPU cores.
+//
+// This op round-robins between the integers in [0, NumTPUCoresVisiblePerHost]. It
+// is useful for interfacing with TensorFlow ops that take as input a TPU core on
+// which to execute computations, such as `TPUPartitionedCall`.
+//
+// device_ordinal: An integer in [0, NumTPUCoresVisiblePerHost].
+func TPURoundRobin(scope *Scope) (device_ordinal tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TPURoundRobin",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TakeDatasetAttr is an optional argument to TakeDataset.
 type TakeDatasetAttr func(optionalAttr)
 
@@ -49393,6 +49457,14 @@ func TensorSliceDatasetMetadata(value string) TensorSliceDatasetAttr {
 	}
 }
 
+// TensorSliceDatasetReplicateOnSplit sets the optional replicate_on_split attribute to value.
+// If not specified, defaults to false
+func TensorSliceDatasetReplicateOnSplit(value bool) TensorSliceDatasetAttr {
+	return func(m optionalAttr) {
+		m["replicate_on_split"] = value
+	}
+}
+
 // Creates a dataset that emits each dim-0 slice of `components` once.
 func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape, optional ...TensorSliceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -50088,6 +50160,30 @@ func TopKWithUnique(scope *Scope, input tf.Output, k int64) (topk tf.Output, top
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Converts XRT's uid handles to TensorFlow-friendly input format.
+//
+// Converts a uid handle for a compiled program into a vector of proto keys.
+//
+// XRT compile ops return uids, and the TensorFlow execute op takes a proto
+// key. This op enables a client to compile on TPU using XRT and execute using the
+// standard TensorFlow execute op.
+//
+// 'uid' is the input handle.
+// 'proto_keys' is a vector of proto keys, one for each core program.
+func TpuHandleToProtoKey(scope *Scope, uid tf.Output) (proto_keys tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TpuHandleToProtoKey",
+		Input: []tf.Input{
+			uid,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Shuffle dimensions of x according to a permutation.

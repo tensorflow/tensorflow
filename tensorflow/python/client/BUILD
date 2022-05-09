@@ -45,7 +45,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_tf_session",
     deps = [
         "//third_party/eigen3",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -83,7 +82,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_debug_events_writer",
     srcs = ["debug_events_writer_wrapper.cc"],
-    module_name = "_pywrap_debug_events_writer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -100,7 +98,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_events_writer",
     srcs = ["events_writer_wrapper.cc"],
-    module_name = "_pywrap_events_writer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -165,7 +162,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_pywrap_device_lib",
     srcs = ["device_lib_wrapper.cc"],
-    module_name = "_pywrap_device_lib",
     deps = [
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core:protos_all_cc",

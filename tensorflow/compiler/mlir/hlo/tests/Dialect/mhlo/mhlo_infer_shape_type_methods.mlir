@@ -72,3 +72,28 @@ func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xi32> {
       : (tensor<3xi32>) -> tensor<1x2x3xi32>
   func.return %0 : tensor<1x2x3xi32>
 }
+
+// -----
+
+// CHECK-LABEL: @dynamic_slice
+func.func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xindex> {
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x4xi32>) -> tensor<1x4xindex>
+  func.return %1 : tensor<1x4xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @pad
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 4, 7], element_type0 = f16} : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
+  func.return %0 : tensor<2x4x7xf16>
+}

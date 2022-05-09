@@ -677,7 +677,7 @@ message ModelFile {
 
 // Where to store mini-benchmark state.
 message BenchmarkStoragePaths {
-  // Base path to the files used to to store benchmark results in. Two files
+  // Base path to the files used to store benchmark results in. Two files
   // will be generated: one with the given path and an extra file to store
   // events related to best acceleration results at path storage_file_path +
   // ".extra.fb". Must be specific to the model.

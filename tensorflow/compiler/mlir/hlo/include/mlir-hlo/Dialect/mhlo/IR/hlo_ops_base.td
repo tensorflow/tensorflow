@@ -126,7 +126,7 @@ def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 
-def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
+def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
@@ -235,5 +235,11 @@ def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
 // TODO(b/195086460) Promote this to be an mlir trait and remove it here.
 def HLO_PairwiseSameOperandAndResultType :
   HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
+
+// Op has operand and result types compatible with each other according to
+// the rules implemented in isCompatibleForMhloTypeInference, which account for
+// special properties dynamism, quantization and sparsity.
+def HLO_CompatibleOperandsAndResultType :
+  HLO_NativeOpTrait<"CompatibleOperandsAndResultType">;
 
 #endif // HLO_OPS_BASE

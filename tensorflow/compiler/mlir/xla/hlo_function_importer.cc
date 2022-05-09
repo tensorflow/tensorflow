@@ -1052,9 +1052,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
+      auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+          builder_->getContext(),
+          *mlir::mhlo::symbolizeRngAlgorithm(rng_op->algorithm()));
       auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, flattened_ret_types,
-          func_builder->getI32IntegerAttr(rng_op->algorithm()), operands[0]);
+          loc, flattened_ret_types, algorithm_attr, operands[0]);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
@@ -1335,6 +1337,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NO_ATTRIBUTE_CASE(kAbs, AbsOp);
+      NO_ATTRIBUTE_CASE(kAddDependency, AddDependencyOp);
       NO_ATTRIBUTE_CASE(kAnd, AndOp);
       NO_ATTRIBUTE_CASE(kAtan2, Atan2Op);
       NO_ATTRIBUTE_CASE(kBitcastConvert, BitcastConvertOp);
@@ -1432,11 +1435,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->getI32Type(), instruction->mantissa_bits()));
       return op.getOperation();
     }
-    case HloOpcode::kAddDependency:
-      // Arbitrary op code that I suspect we will not implement for quite a
-      // while and allows testing handling of unknown ops. Selected because it
-      // is not mentioned in xla client anywhere or in the hlo of our sample
-      // models.
     default: {
       mlir::OperationState result(loc, "mhlo.unknown");
       result.addOperands(operands);

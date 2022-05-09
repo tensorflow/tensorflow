@@ -175,8 +175,6 @@ message OverviewPageRunEnvironment {
   //   In GPU case, this corresponds to the number of GPUs (not the number of
   //   SMs).
   int32 device_core_count = 5;
-  // The per-device-core batch size.
-  int32 per_core_batch_size = 6;
   // Host-independent information about this job.
   OverviewPageHostIndependentJobInfo host_independent_job_info = 7;
   // Host-dependent information about this job.
@@ -187,6 +185,7 @@ message OverviewPageRunEnvironment {
   // The number of cores used for a single replica, e.g. model parallelism.
   // If there is no model parallelism, then num_cores_per_replica = 1
   int32 num_cores_per_replica = 10;
+  reserved 6;
 }
 
 message OverviewPage {

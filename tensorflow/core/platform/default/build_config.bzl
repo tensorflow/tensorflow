@@ -791,3 +791,6 @@ def tf_tpu_dependencies():
 
 def tf_dtensor_tpu_dependencies():
     return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
+
+def tf_cuda_libdevice_path_deps():
+    return tf_platform_deps("cuda_libdevice_path")

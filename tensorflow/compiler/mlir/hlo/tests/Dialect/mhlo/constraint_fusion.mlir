@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: @tree_conjunction
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?xi1>, %[[ARG1:.*]]: tensor<?xi1>, %[[ARG2:.*]]: tensor<?xi1>, %[[ARG3:.*]]: tensor<?xi1>
-func @tree_conjunction(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>,
+func.func @tree_conjunction(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>,
     %arg2: tensor<?xi1>, %arg3: tensor<?xi1>) -> tensor<?xi1> {
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
@@ -73,14 +73,14 @@ func @tree_conjunction(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>,
     %13 = mhlo.and %11, %12 : tensor<?xi1>
     shape.assuming_yield %13 : tensor<?xi1>
   }
-  return %9 : tensor<?xi1>
+  func.return %9 : tensor<?xi1>
 }
 
 // -----
 
 // CHECK-LABEL: @eliminate_duplicates
 // CHECK-SAME:  %[[W:.*]]: !shape.witness, %[[S:.*]]: tensor<?xindex>, %[[ARG:.*]]: tensor<?xi1>
-func @eliminate_duplicates(%arg0: !shape.witness, %arg1: tensor<?xindex>,
+func.func @eliminate_duplicates(%arg0: !shape.witness, %arg1: tensor<?xindex>,
     %arg2: tensor<?xi1>) -> (tensor<?xf32>, tensor<?xf32>) {
   // CHECK-DAG: %[[SARG:.*]] = shape.shape_of %[[ARG]]
   // CHECK-DAG: %[[BCAST_CSTR:.*]] = shape.cstr_broadcastable %[[S]], %[[SARG]]
@@ -108,14 +108,14 @@ func @eliminate_duplicates(%arg0: !shape.witness, %arg1: tensor<?xindex>,
     %9 = "some.b"() : () -> tensor<?xf32>
     shape.assuming_yield %9 : tensor<?xf32>
   }
-  return %5, %8 : tensor<?xf32>, tensor<?xf32>
+  func.return %5, %8 : tensor<?xf32>, tensor<?xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @inline_bcast
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>
-func @inline_bcast(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, 
+func.func @inline_bcast(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, 
     %arg2: tensor<?x?x32xf16>) -> tensor<?x?x32xf16> {
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
@@ -139,7 +139,7 @@ func @inline_bcast(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>,
     %7 = "some.op"() : () -> tensor<?x?x32xf16>
     shape.assuming_yield %7 : tensor<?x?x32xf16>
   }
-  return %6 : tensor<?x?x32xf16>
+  func.return %6 : tensor<?x?x32xf16>
 }
 
 // -----
@@ -163,7 +163,7 @@ func.func @move_cstr_broadcastable_out_of_assuming(%arg0 : !shape.witness,
     %2 = "some.op"() : () -> tensor<f32>
     shape.assuming_yield %2 : tensor<f32>
   }
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // -----
@@ -225,7 +225,7 @@ func.func @multiple_assuming_regions(%arg0: tensor<?x32xf16>,
 
 // CHECK-LABEL: @redundant_cstrs
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>, %[[SARG0:.*]]: tensor<?xindex>, %[[SARG1:.*]]: tensor<?xindex>, %[[SARG2:.*]]: tensor<?xindex>
-func @redundant_cstrs(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, 
+func.func @redundant_cstrs(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, 
     %arg2: tensor<?x?x32xf16>, %arg3: tensor<?xindex>, %arg4: tensor<?xindex>, 
     %arg5: tensor<?xindex>) {
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
@@ -256,14 +256,14 @@ func @redundant_cstrs(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>,
   shape.assuming %combined_cstr {
     "some.op"() : () -> ()
   }
-  return
+  func.return
 }
 
 // -----
 
 // CHECK-LABEL: @duplicate_cstr_args
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x32xf16>, %[[SHAPE:.*]]: tensor<?xindex>
-func @duplicate_cstr_args(%arg: tensor<?x32xf16>, %shape: tensor<?xindex>) {
+func.func @duplicate_cstr_args(%arg: tensor<?x32xf16>, %shape: tensor<?xindex>) {
   // CHECK-DAG: %[[S:.*]] = shape.shape_of %[[ARG]]
   // CHECK-DAG: %[[CSTR:.*]] = shape.cstr_broadcastable %[[SHAPE]], %[[S]]
   // CHECK:     shape.assuming %[[CSTR]]
@@ -275,5 +275,5 @@ func @duplicate_cstr_args(%arg: tensor<?x32xf16>, %shape: tensor<?xindex>) {
   shape.assuming %cstr {
     "some.op"() : () -> ()
   }
-  return
+  func.return
 }

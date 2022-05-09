@@ -71,6 +71,10 @@ class CoordinationClient {
                                 GetKeyValueResponse* response,
                                 StatusCallback done) = 0;
 
+  virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                                   GetKeyValueDirResponse* response,
+                                   StatusCallback done) = 0;
+
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,
                                    StatusCallback done) = 0;

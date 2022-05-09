@@ -166,6 +166,16 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
+  void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                           GetKeyValueDirResponse* response,
+                           StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/GetKeyValueDir", *request,
+        response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
   void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                            DeleteKeyValueResponse* response,
                            StatusCallback done) override {

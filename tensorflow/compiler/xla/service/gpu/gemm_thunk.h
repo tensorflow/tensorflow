@@ -27,10 +27,12 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/matmul_util.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
 
+<<<<<<< HEAD
 // A one-time scratch allocator for Blas. The scratch buffers allocated are
 // released on destruction.
 //
@@ -54,6 +56,8 @@ class BlasScratchAllocator : public se::ScratchAllocator {
   int64_t total_allocated_bytes_ = 0;
 };
 
+=======
+>>>>>>> upstream/master
 // This is thread-compatible.
 class GemmThunk : public Thunk {
  public:
@@ -83,7 +87,7 @@ class GemmThunk : public Thunk {
 Status RunGemm(
     const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream, BlasScratchAllocator* scratch_allocator,
+    se::Stream* stream, se::ScratchAllocator* scratch_allocator,
     se::blas::IBlasLtMatmulAlgorithm* const algorithm_being_profiled,
     se::blas::ProfileResult* profile_result = nullptr,
     absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);

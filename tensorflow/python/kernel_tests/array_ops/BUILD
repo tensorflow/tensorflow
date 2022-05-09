@@ -246,6 +246,10 @@ tf_py_test(
     name = "edit_distance_op_test",
     size = "small",
     srcs = ["edit_distance_op_test.py"],
+    tags = [
+        "noasan",  # b/231180000
+        "nomsan",  # b/231180000
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

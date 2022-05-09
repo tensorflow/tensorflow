@@ -29,6 +29,10 @@ tf_module {
     argspec: "args=[\'seed\', \'data\', \'alg\'], varargs=None, keywords=None, defaults=[\'auto_select\'], "
   }
   member_method {
+    name: "stateless_shuffle"
+    argspec: "args=[\'value\', \'seed\', \'alg\', \'name\'], varargs=None, keywords=None, defaults=[\'auto_select\', \'None\'], "
+  }
+  member_method {
     name: "stateless_split"
     argspec: "args=[\'seed\', \'num\', \'alg\'], varargs=None, keywords=None, defaults=[\'2\', \'auto_select\'], "
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "tensorflow/compiler/xla/pjrt/nccl_id_store.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
@@ -34,9 +35,6 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #endif  // TENSORFLOW_USE_ROCM
 
-#ifdef NCCL_ENABLED
-#include "third_party/nccl/nccl.h"
-#endif  // NCCL_ENABLED
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -204,10 +202,11 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
 
 // Builds an xla::LocalClient for the GPU platform.
 StatusOr<LocalClient*> GetGpuXlaClient(
+    const absl::optional<std::string>& platform_name,
     const absl::optional<std::set<int>>& allowed_devices) {
-  // "gpu" will be substitued by the default defined in platform_util.cc
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform("gpu"));
+  TF_ASSIGN_OR_RETURN(
+      se::Platform * platform,
+      PlatformUtil::GetPlatform(platform_name ? *platform_name : "gpu"));
   if (platform->VisibleDeviceCount() <= 0) {
     return FailedPrecondition("No visible GPU devices.");
   }
@@ -368,63 +367,6 @@ std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
       /*name=*/"xla_gpu_host_bfc", opts);
 }
 
-// A table mapping NcclCliqueKeys to ncclUniqueId values encoded as strings.
-// In a distributed setup the table of NCCL IDs is kept on the master node
-// (node 0). The node of the first participating device will create the unique
-// id.
-class NcclIdStore {
- public:
-  NcclIdStore(int node_id, std::shared_ptr<DistributedRuntimeClient> client,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node)
-      : node_id_(node_id),
-        client_(std::move(client)),
-        device_to_node_(std::move(device_to_node)) {}
-
-  StatusOr<std::string> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
-
- private:
-  const int node_id_;
-  const std::shared_ptr<DistributedRuntimeClient> client_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::NcclCliqueKey, std::string> cache_
-      ABSL_GUARDED_BY(mu_);
-};
-
-StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
-    const gpu::NcclCliqueKey& key) {
-  // The caller must ensure that threads calling this method concurrently have
-  // unique keys, otherwise the global key-value store may hold the wrong value.
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = cache_.find(key);
-    if (it != cache_.end()) {
-      return it->second;
-    }
-  }
-  std::string id_string;
-  int primary_node_id = device_to_node_.at(key.devices()[0]);
-  if (node_id_ == primary_node_id) {
-#ifdef NCCL_ENABLED
-    ncclUniqueId id;
-    ncclResult_t r = ncclGetUniqueId(&id);
-    TF_RET_CHECK(r == ncclSuccess);
-    id_string = std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
-    TF_RETURN_IF_ERROR(client_->KeyValueSet(key.ToString(), id_string));
-#else
-    return FailedPrecondition("NCCL support was not built into XLA binary.");
-#endif
-  } else {
-    TF_ASSIGN_OR_RETURN(id_string, client_->BlockingKeyValueGet(
-                                       key.ToString(), absl::Minutes(5)));
-  }
-  absl::MutexLock lock(&mu_);
-  auto result = cache_.emplace(key, std::move(id_string));
-  TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-  return result.first->second;
-}
-
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
@@ -493,12 +435,14 @@ Status BuildDistributedDevices(
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
+#ifdef GOOGLE_CUDA
   auto nccl_id_store = std::make_shared<NcclIdStore>(
       node_id, distributed_client, device_to_node);
   gpu_executable_run_options->set_nccl_unique_id_callback(
       [nccl_id_store](const gpu::NcclCliqueKey& key) {
         return nccl_id_store->GetNcclUniqueId(key);
       });
+#endif  // GOOGLE_CUDA
   return Status::OK();
 }
 
@@ -510,7 +454,11 @@ GpuDevice::GpuDevice(int id,
                      int node_id)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                std::move(device_kind), node_id),
-      device_vendor_(std::move(device_vendor)) {}
+      device_vendor_(std::move(device_vendor)) {
+  attributes_ = {
+      {"device_vendor", PjRtDeviceAttribute(device_vendor_)},
+  };
+}
 
 absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
 
@@ -522,9 +470,10 @@ std::string GpuDevice::ToString() const {
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const absl::optional<std::set<int>>& allowed_devices,
+    absl::optional<std::string> platform_name) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client,
-                      GetGpuXlaClient(allowed_devices));
+                      GetGpuXlaClient(platform_name, allowed_devices));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
       BuildLocalDeviceStates(xla_client, asynchronous));

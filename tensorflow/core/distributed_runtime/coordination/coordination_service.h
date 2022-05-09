@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
@@ -149,6 +150,13 @@ class CoordinationServiceInterface {
   // callback is invoked when the key-value becomes available.
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
+
+  // Gets all values under a directory (key).
+  // A value is considered to be in the directory if its key is prefixed with
+  // the directory. This is not a blocking call. Agent does not need to be
+  // connected to utilize the distributed key-value store.
+  virtual std::vector<KeyValueEntry> GetKeyValueDir(
+      absl::string_view directory_key) = 0;
 
   // Delete configuration key-value. If key is a directory, recursively clean
   // up all key-values under the directory.

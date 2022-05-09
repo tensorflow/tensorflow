@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
@@ -68,7 +69,8 @@ struct GpuAllocatorConfig {
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
+    const absl::optional<std::set<int>>& allowed_devices = absl::nullopt,
+    absl::optional<std::string> platform_name = absl::nullopt);
 
 }  // namespace xla
 

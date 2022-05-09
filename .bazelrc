@@ -306,6 +306,10 @@ build:windows --copt=/W0
 build:windows --copt=/D_USE_MATH_DEFINES
 build:windows --host_copt=/D_USE_MATH_DEFINES
 
+# Windows has a relatively short command line limit, which TF has begun to hit.
+# See https://docs.bazel.build/versions/main/windows.html
+build:windows --features=compiler_param_file
+
 # Speed Windows compile times. Available in VS 16.4 (we are on 16.11). See
 # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 build:windows --copt=/d2ReducedOptimizeHugeFunctions

@@ -254,7 +254,7 @@ func.func @sort(%arg0 : tensor<2xi32>, %arg1 : tensor<2xi32>) -> (tensor<2xi32>,
       %cmp_result = tensor.from_elements %52 : tensor<i1>
       "mhlo.return"(%cmp_result) : (tensor<i1>) -> ()
     }) {dimension = 0 : i64, is_stable = true} : (tensor<2xi32>, tensor<2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
-  return %result#0, %result#1 : tensor<2xi32>, tensor<2xi32>
+  func.return %result#0, %result#1 : tensor<2xi32>, tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @sort(
@@ -332,7 +332,7 @@ func.func @dyn_sort(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> (tensor<?xi
       %cmp_result = tensor.from_elements %52 : tensor<i1>
       "mhlo.return"(%cmp_result) : (tensor<i1>) -> ()
     }) {dimension = 0 : i64, is_stable = true} : (tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
-  return %result#0, %result#1 : tensor<?xi32>, tensor<?xi32>
+  func.return %result#0, %result#1 : tensor<?xi32>, tensor<?xi32>
 }
 // CHECK-LABEL:   func @dyn_sort(
 // CHECK-SAME:               %[[ARG0:.*]]: tensor<?xi32>,

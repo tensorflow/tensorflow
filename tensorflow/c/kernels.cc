@@ -187,9 +187,37 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
                               TF_Status* status) {
   using tensorflow::register_kernel::Name;
 
+  TF_RegisterKernelBuilderWithKernelDef(
+      /*serialized_kernel_def=*/nullptr, name, builder, status);
+}
+
+void TF_RegisterKernelBuilderWithKernelDef(const char* serialized_kernel_def,
+                                           const char* name,
+                                           TF_KernelBuilder* builder,
+                                           TF_Status* status) {
+  using tensorflow::register_kernel::Name;
+  if (serialized_kernel_def == nullptr) {
+    // If user doesn't provide a serialized KernelDef, use the kernel builder
+    // to build a new one.
+    tensorflow::kernel_factory::OpKernelRegistrar(
+        builder->cc_builder->Build(), name,
+        std::make_unique<tensorflow::KernelBuilderFactory>(builder));
+
+    TF_SetStatus(status, TF_OK, "");
+    return;
+  }
+
+  tensorflow::KernelDef* kernel_def = new tensorflow::KernelDef();
+  bool success = kernel_def->ParsePartialFromString(serialized_kernel_def);
+  if (!success) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Error parsing serialized KernelDef.");
+    return;
+  }
+
   tensorflow::kernel_factory::OpKernelRegistrar(
-      builder->cc_builder->Build(), name,
-      absl::make_unique<tensorflow::KernelBuilderFactory>(builder));
+      kernel_def, name,
+      std::make_unique<tensorflow::KernelBuilderFactory>(builder));
 
   TF_SetStatus(status, TF_OK, "");
 }

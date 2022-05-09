@@ -30,10 +30,12 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
 namespace xla {
 namespace gpu {
 
+<<<<<<< HEAD
 BlasScratchAllocator::BlasScratchAllocator(
     int device_ordinal, se::DeviceMemoryAllocator *memory_allocator)
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
@@ -65,6 +67,8 @@ StatusOr<se::DeviceMemory<uint8_t>> BlasScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8_t>(buffer_addr);
 }
 
+=======
+>>>>>>> upstream/master
 GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
                      const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
@@ -85,8 +89,9 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
 
   auto &buffer_allocations = *params.buffer_allocations;
-  BlasScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
-                                         buffer_allocations.memory_allocator());
+  se::OwningScratchAllocator<> scratch_allocator(
+      buffer_allocations.device_ordinal(),
+      buffer_allocations.memory_allocator());
 
   VLOG(3) << "Running GEMM thunk";
   return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
@@ -294,7 +299,7 @@ static Status DoGemmLt(
 Status RunGemm(const GemmConfig &config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
-               BlasScratchAllocator *scratch_allocator,
+               se::ScratchAllocator *scratch_allocator,
                se::blas::IBlasLtMatmulAlgorithm *const algorithm_being_profiled,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {

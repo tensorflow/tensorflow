@@ -4819,7 +4819,8 @@ bool TfLiteXNNPackDelegateWeightsCacheFinalizeHard(
   return status == xnn_status_success;
 }
 
-void TfLiteXNNPackWeightsCacheDelete(TfLiteXNNPackDelegateWeightsCache* cache) {
+void TfLiteXNNPackDelegateWeightsCacheDelete(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
   if (cache == nullptr) {
     return;
   }

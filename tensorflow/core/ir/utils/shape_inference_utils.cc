@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
-#include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -233,8 +233,11 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     if (!status.ok())
       return emitOptionalError(location, status.error_message());
   } else {
+    auto* dialect = cast<TFGraphDialect>(op->getDialect());
     tensorflow::NodeDef node_def;
-    tensorflow::Status status = ConvertOperationToNode(*op, &node_def);
+    tensorflow::Status status = ConvertToNodeDef(
+        op, &node_def, dialect,
+        [&](Value value) { return GetValueName(value, dialect); });
     if (!status.ok())
       return emitOptionalError(location, status.error_message());
     attributes = node_def.attr();

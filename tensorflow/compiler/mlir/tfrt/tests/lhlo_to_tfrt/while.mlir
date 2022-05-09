@@ -12,7 +12,7 @@ func.func @while(
     gpu.memcpy %dst, %src : memref<8xf32>, memref<8xf32>
     "lmhlo.terminator"() : () -> ()
   }) : (memref<i1>) -> ()
-  return
+  func.return
 }
 
 // RUN: lhlo-tfrt-opt %s \

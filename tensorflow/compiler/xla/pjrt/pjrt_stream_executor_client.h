@@ -120,6 +120,14 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
     return nullptr;
   }
 
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ protected:
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+
  private:
   const int id_;
   const int device_ordinal_;  // -1 means not local.

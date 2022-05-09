@@ -241,10 +241,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       return model::MakeInterleaveManyNode(
-          std::move(args),
-          {model::MakeParameter(kCycleLength, nullptr,
-                                /*min=*/dataset()->cycle_length_,
-                                /*max=*/dataset()->cycle_length_)});
+          std::move(args), {model::MakeNonTunableParameter(
+                               kCycleLength, dataset()->cycle_length_)});
     }
 
     Status SaveInternal(SerializationContext* ctx,

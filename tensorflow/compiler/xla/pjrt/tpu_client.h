@@ -37,7 +37,14 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
       : PjRtStreamExecutorDevice(core.Id(), std::move(local_device_state),
                                  std::move(device_kind), process_index),
         core_(core),
-        coords_(coords) {}
+        coords_(coords) {
+    std::vector<int64_t> v_coords(coords_.begin(), coords_.end());
+    int64_t core_index = core_on_chip();
+    attributes_ = {
+        {"coords", xla::PjRtDeviceAttribute(v_coords)},
+        {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
+    };
+  }
 
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_.index(); }

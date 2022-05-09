@@ -73,6 +73,12 @@ REGISTER_OP("AllToAll")
                                        " is out of range of input rank ", rank);
       }
 
+      if (!c->ValueKnown(c->Dim(input, concat_dimension)) ||
+          !c->ValueKnown(c->Dim(input, split_dimension))) {
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
       std::vector<DimensionHandle> dims;
       dims.resize(rank);
 

@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -29,18 +32,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 using mlir::MLIRContext;
-using mlir::tfg::ImportGraphDefToMlir;
 using tensorflow::GraphDef;
 using tensorflow::LoadProtoFromFile;
 using tensorflow::Status;

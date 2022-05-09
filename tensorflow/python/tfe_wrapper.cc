@@ -413,6 +413,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
   IrExportStage selected_stage = [&] {
     if (s_stage == "hlo") {
       return IrExportStage::HLO;
+    } else if (s_stage == "hlo_no_metadata") {
+      return IrExportStage::HLO_NO_METADATA;
     } else if (s_stage == "hlo_serialized") {
       return IrExportStage::HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo") {

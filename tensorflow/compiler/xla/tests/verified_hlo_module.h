@@ -53,10 +53,10 @@ class VerifiedHloModule : public HloModule {
   // included in the failure message.
   void VerifyOrAddFailure(absl::string_view message);
 
- private:
   // Verifies the module using HloVerifier and returns the status.
   Status Verify();
 
+ private:
   HloVerifier verifier_;
 };
 

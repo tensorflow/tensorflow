@@ -52,6 +52,9 @@ class HloInstruction;
 namespace internal {
 
 struct XlaBuilderFriend {
+  static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
+                                  XlaOp token, const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,

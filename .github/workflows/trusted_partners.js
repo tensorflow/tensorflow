@@ -19,6 +19,7 @@
 
   @param {!object}
     github enables querying for PR and also create issue using rest endpoint
+<<<<<<< HEAD
     context has the commit message details in the payload
   @return {string} Return the domain name of the user's email. Empty string if not found
 */
@@ -30,6 +31,19 @@ const get_email_domain = async ({github, context}) => {
   if (user.status >= 400) {
     console.log(user);
     throw `Error Getting user data for ${context.actor}`;
+=======
+    username has the login username of the Pull Request Event
+  @return {string} Return the domain name of the user's email. Empty string if not found
+*/
+
+const get_email_domain = async ({github, username}) => {
+  const user = await github.rest.users.getByUsername({
+    username
+  });
+  if (user.status >= 400) {
+    console.log(user);
+    throw `Error Getting user data for ${username}`;
+>>>>>>> upstream/master
   }
   const email = user.data.email;
   let domain = "";

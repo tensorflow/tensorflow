@@ -763,10 +763,12 @@ bool ProcessRegionWhileOp(
   }
 
   if (*region_idx < region_while.getNumRegions()) {
-    SmallVector<Type> arg_types;
-    for (auto arg : region_while.arg()) arg_types.push_back(arg.getType());
-    RewriteControlFlowOpRegion(builder, region_while, *region_idx, arg_types,
-                               ops_to_visit, control_flow_blocks, token);
+    SmallVector<Type> operand_types;
+    for (auto operand : region_while.operand())
+      operand_types.push_back(operand.getType());
+    RewriteControlFlowOpRegion(builder, region_while, *region_idx,
+                               operand_types, ops_to_visit, control_flow_blocks,
+                               token);
     return true;
   }
 

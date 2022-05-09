@@ -202,10 +202,19 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
+    copts = tflite_copts() + select({
+        "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":c_api_types",
-    ],
+    ] + select({
+        "//tensorflow/lite:tensorflow_profiler_config": [
+            "//tensorflow/lite:macros",
+            "//tensorflow/lite:tensorflow_profiler_logger_shim",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 

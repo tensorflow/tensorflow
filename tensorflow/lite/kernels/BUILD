@@ -763,7 +763,6 @@ pybind_extension(
     ],
     additional_exported_symbols = ["VariableOpsRegisterer"],
     link_in_framework = True,
-    module_name = "pywrap_variable_ops",
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
@@ -2755,7 +2754,11 @@ cc_test(
     ],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
+tflite_portable_test_suite_combined(
+    combine_conditions = {"deps": [":test_main"]},
+    # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
+    nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],
+)
 
 # Note this is created mainly for validating external delegates in OSS.
 tflite_combine_cc_tests(

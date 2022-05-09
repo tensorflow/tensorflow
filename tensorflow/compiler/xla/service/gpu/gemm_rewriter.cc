@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -38,7 +39,9 @@ namespace m = match;
 Status SetName(HloModule *module, HloInstruction *gemm) {
   GemmBackendConfig config;
   TF_ASSIGN_OR_RETURN(config, gemm->backend_config<GemmBackendConfig>());
-  bool is_batch_dot = config.batch_size() > 1;
+  const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
+  bool is_batch_dot = !dot_dims.lhs_batch_dimensions().empty() ||
+                      !dot_dims.rhs_batch_dimensions().empty();
 
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
@@ -67,9 +70,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       CHECK(!lhs->IsRank2Transpose());
       CHECK(!rhs->IsRank2Transpose());
       const Shape &output_shape = instr->shape();
-      int64_t batch_size = std::accumulate(output_shape.dimensions().begin(),
-                                           output_shape.dimensions().end() - 2,
-                                           1, std::multiplies<int64_t>());
       std::unique_ptr<HloInstruction> gemm_call =
           HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
                                            kGemmCallTarget);
@@ -79,17 +79,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       gemm_config.set_beta(0.0);
       *gemm_config.mutable_dot_dimension_numbers() =
           instr->dot_dimension_numbers();
-      gemm_config.set_batch_size(batch_size);
 
-      int64_t lhs_batch_dims_size =
-          instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-      int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
-                           lhs->shape().dimensions(lhs_batch_dims_size + 1);
-      int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
-                           rhs->shape().dimensions(lhs_batch_dims_size + 1);
-
-      gemm_config.set_lhs_stride(lhs_stride);
-      gemm_config.set_rhs_stride(rhs_stride);
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
       TF_RETURN_IF_ERROR(

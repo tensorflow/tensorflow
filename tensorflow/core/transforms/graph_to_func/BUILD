@@ -27,8 +27,8 @@ cc_library(
 
 cc_library(
     name = "Pass",
-    srcs = ["graph_to_func_pass.cc"],
-    hdrs = ["graph_to_func_pass.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         ":GraphToFunc",
         "//tensorflow/core/ir:Dialect",

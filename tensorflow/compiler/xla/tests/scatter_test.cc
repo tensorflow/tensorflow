@@ -821,13 +821,6 @@ ENTRY main {
   Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
   Literal updates0 = LiteralUtil::CreateR2<int32_t>({{-10, 10}, {-40, 40}});
   Literal updates1 = LiteralUtil::CreateR2<float>({{-11, 11}, {-41, 41}});
-  Literal expected = LiteralUtil::MakeTupleOwned(
-      LiteralUtil::CreateR3<int32_t>({{{-10, 10}, {-2, 2}, {-3, 3}},  //
-                                      {{-40, 40}, {-5, 5}, {-6, 6}},  //
-                                      {{-7, 7}, {-8, 8}, {-9, 9}}}),
-      LiteralUtil::CreateR3<float>({{{-11, 11}, {-3, 3}, {-4, 4}},  //
-                                    {{-41, 41}, {-6, 6}, {-7, 7}},  //
-                                    {{-8, 8}, {-9, 9}, {-10, 10}}}));
   RunTest(hlo_text,
           {&operand0, &operand1, &scatter_indices, &updates0, &updates1});
 }

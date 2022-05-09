@@ -20,10 +20,8 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 
 namespace mlir {

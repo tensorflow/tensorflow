@@ -16,6 +16,10 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
+set(LLVM_OPTIONAL_SOURCES
+  bufferizable_op_interface_impl.cpp
+)
+
 add_mlir_library(GmlStTilingInterface
   tiling_interface.cc
 
@@ -26,6 +30,16 @@ add_mlir_library(GmlStTilingInterface
 
   DEPENDS
   MLIRGmlStTilingInterfaceIncGen
+)
+
+add_mlir_library(GmlStBufferizableOpInterface
+  bufferizable_op_interface_impl.cpp
+
+  LINK_LIBS PUBLIC
+  MLIRBufferization
+  MLIRBufferizationTransforms
+  MLIRIR
+  MLIRSupport
 )
 
 add_mlir_library(GmlStPasses
@@ -69,6 +83,7 @@ add_mlir_library(GmlStTestPasses
   Core
 
   LINK_LIBS PUBLIC
+  GmlStBufferizableOpInterface
   GmlStTransforms
   MLIRPass
   MLIRTransforms

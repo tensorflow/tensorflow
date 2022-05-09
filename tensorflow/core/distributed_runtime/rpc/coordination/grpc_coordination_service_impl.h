@@ -89,6 +89,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(ReportErrorToService);
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);
+  HANDLER(GetKeyValueDir);
   HANDLER(DeleteKeyValue);
   HANDLER(Barrier);
   HANDLER(CancelBarrier);
