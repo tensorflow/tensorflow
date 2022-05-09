@@ -131,7 +131,7 @@ var imageClassifier: ImageClassifier
 
 guard let modelPath = Bundle.main.path(forResource: modelFilename,
                                             ofType: "tflite") else {
-    // Return on failure
+    return
 }
 
 let imageClassifierOptions = ImageClassifierOptions(modelPath: modelPath)
@@ -143,7 +143,7 @@ catch {
 }
 // Run inference
 
-guard let mlImage = MLImage(sampleBuffer: sampleBuffer) else {
+guard let image = UIImage (named: "your_input_image"), let mlImage = MLImage(image: image) else {
     return
 }
 do {
@@ -175,7 +175,7 @@ if (!imageClassifier) {
 }
 
 // Run inference
-UIImage *inputImage = [UIImage imageNamed:@"input_image_name"];
+UIImage *inputImage = [UIImage imageNamed:@"your_input_image"];
 
 // There are other sources for GMLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
