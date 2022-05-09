@@ -1,6 +1,11 @@
 # Release 2.8.1
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+8bitmp3, Adam Lanicek, ag.ramesh, alesapin, Andrew Goodbody, annasuheyla, Ariel Elkin, Arnab Dutta, Ben Barsdell, bhack, cfRod, Chengji Yao, Christopher Bate, dan, Dan F-M, David Korczynski, DEKHTIARJonathan, dengzhiyuan, Deven Desai, Duncan Riach, Eli Osherovich, Ewout Ter Hoeven, ez2take, Faijul Amin, fo40225, Frederic Bastien, gadagashwini, Gauri1 Deshpande, Georgiy Manuilov, Guilherme De Lázari, Guozhong Zhuang, H1Gdev, homuler, Hongxu Jia, Jacky_Yin, jayfurmanek, jgehw, Jhalak Patel, Jinzhe Zeng, Johan Gunnarsson, John Laxson, Jonathan Dekhtiar, Kaixi Hou, Kanvi Khanna, Kevin Cheng, Koan-Sin Tan, Kruglov-Dmitry, Kun Lu, Lemo, Lequn Chen, long.chen, Louis Sugy, Mahmoud Abuzaina, Mao, Marius Brehler, Mark Harfouche, Martin Patz, Maxiwell S. Garcia, Meenakshi Venkataraman, Michael Melesse, Mrinal Tyagi, Måns Nilsson, Nathan John Sircombe, Nathan Luehr, Nilesh Agarwalla, Oktay Ozturk, Patrice Vignola, Pawel-Polyai, pkanwar23, Rama Ketineni, Ramesh Sampath, Reza Rahimi, Rob Suderman, Robert Kalmar, Rohit Santhanam, Sachin Muradi, Saduf2019, Samuel Marks, Shi,Guangyong, Sidong-Wei, Srinivasan Narayanamoorthy, Srishti Srivastava, Steven I Reeves, stevenireeves, Supernovae, Tamas Bela Feher, Tao Xu, Thibaut Goetghebuer-Planchon, Thomas Schmeyer, tilakrayal, Valery Mironov, Victor Guo, Vignesh Kothapalli, Vishnuvardhan Janapati, wamuir, Wang,Quintin, William Muir, William Raveane, Yash Goel, Yimei Sun, Yong Tang, Yuduo Wu
+
 
 # Release 2.8.0
 
