@@ -32,12 +32,16 @@ upper_tabs:
           path: /lite/inference_with_metadata/task_library/object_detector
         - title: "ImageSegmenter"
           path: /lite/inference_with_metadata/task_library/image_segmenter
+        - title: "ImageSearcher"
+          path: /lite/inference_with_metadata/task_library/image_searcher
         - title: "NLClassifier"
           path: /lite/inference_with_metadata/task_library/nl_classifier
         - title: "BertNLClassifier"
           path: /lite/inference_with_metadata/task_library/bert_nl_classifier
         - title: "BertQuestionAnswerer"
           path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "TextSearcher"
+          path: /lite/inference_with_metadata/task_library/text_searcher
         - title: "AudioClassifier"
           path: /lite/inference_with_metadata/task_library/audio_classifier
         - title: "Customized API"
