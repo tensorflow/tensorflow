@@ -1,3 +1,7 @@
+# Release 2.7.2
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.7.1
 
 This releases introduces several vulnerability fixes:
