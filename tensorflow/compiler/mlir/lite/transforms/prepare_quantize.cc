@@ -80,6 +80,13 @@ static llvm::cl::opt<bool> disable_per_channel(
     llvm::cl::desc("Whether disable per-channel quantized weights."),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> disable_set_input_nodes_quantization_params(
+    "tfl-test-disable-set-input-nodes-quantization-params",
+    llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether disable set input nodes quantization parameters."),
+    llvm::cl::init(false));
+
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass.
 //
@@ -114,6 +121,8 @@ class PrepareQuantizePass
         quantize_signed ? tensorflow::DT_QINT8 : tensorflow::DT_QUINT8;
     quant_specs_.post_training_quantization = post_training_quantize;
     quant_specs_.legacy_float_scale = legacy_float_scale;
+    quant_specs_.disable_set_input_nodes_quantization_params =
+        disable_set_input_nodes_quantization_params;
   }
 
   // Constructor used by manually creating the pass.
@@ -149,7 +158,8 @@ class PrepareQuantizePass
   // current function.
   bool IsLegalQuantSpecs(func::FuncOp func) {
     if (func.getName() == quant_specs_.target_func) {
-      return func.getNumArguments() == quant_specs_.input_ranges.size();
+      return (quant_specs_.disable_set_input_nodes_quantization_params ||
+              func.getNumArguments() == quant_specs_.input_ranges.size());
     }
     return true;
   }
@@ -178,6 +188,10 @@ class PrepareQuantizePass
 };
 
 bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
+  if (quant_specs_.disable_set_input_nodes_quantization_params) {
+    return false;
+  }
+
   StringRef func_name = func.getName();
   auto& target_func = quant_specs_.target_func;
   // Skip this function because it isn't the target function from the spec or
