@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -324,6 +325,16 @@ void ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout,
                   "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
+}
+
+void ResourceHandleWithLayout::UpdateAttrs(const EmbeddingResourceAttrs& attrs,
+                                           TF_Status* status) {
+  if (attrs_.has_value()) {
+    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                  "Attepted to overwrite an existing embedding resource "
+                  "attribute.");
+  }
+  attrs_.emplace(attrs);
 }
 
 StatusOr<std::unique_ptr<TensorWithLayout>> SparseTensorWithLayout::Wrap(

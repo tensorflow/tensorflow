@@ -130,6 +130,12 @@ struct DTensorOperation {
   inline bool is_func() const { return function_def != nullptr; }
 };
 
+struct EmbeddingResourceAttrs {
+  int64_t table_id;
+  absl::optional<int64_t> slot_id;  // NOLINT
+  bool is_dirty = false;
+};
+
 // Contains a mesh bundled with a parallel device over all of the devices in
 // that mesh.
 class MeshWithParallelDevice {
@@ -258,6 +264,13 @@ class TensorWithLayout {
                  "Attempt to update shape and layout on non-resource-handle");
   }
 
+  // Update Attrs for this Tensor.
+  virtual void UpdateAttrs(const EmbeddingResourceAttrs& attrs,
+                           TF_Status* status) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Attempt to update layout on non-resource-handle");
+  }
+
   virtual TFE_TensorHandle* get_tensor(size_t index) const {
     return tensor()->tensor(index);
   }
@@ -368,6 +381,19 @@ class ResourceHandleWithLayout : public TensorWithLayout {
     set_dereferenced_dtype(dtype);
   }
 
+  void UpdateAttrs(const EmbeddingResourceAttrs& attrs,
+                   TF_Status* status) override;
+
+  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
+
+  void UpdateDirtyness(bool is_dirty, TF_Status* status) {
+    if (!attrs_.has_value()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Attempt to update dirtyness on non embedding resource");
+    }
+    attrs_.value().is_dirty = is_dirty;
+  }
+
   void set_dereferenced_shape(const TensorShapeProto& shape) {
     dereferenced_shape_.emplace(shape);
   }
@@ -396,6 +422,7 @@ class ResourceHandleWithLayout : public TensorWithLayout {
   // The shape and dtype of the tensor pointed to by this resource tensor.
   absl::optional<TensorShapeProto> dereferenced_shape_;
   absl::optional<DataType> dereferenced_dtype_;
+  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // TensorWithLayout for SparseTensors.
