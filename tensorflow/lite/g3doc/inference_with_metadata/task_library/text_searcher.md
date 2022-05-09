@@ -115,9 +115,22 @@ for more options to configure `TextSearcher`.
 
 ## Run inference in Python
 
+### Step 1: Install TensorFlow Lite Support Pypi package.
+
+You can install the TensorFlow Lite Support Pypi package using the following
+command:
+
+```sh
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
 ```python
+from tflite_support.task import text
+
 # Initialization
-text_searcher = TextSearcher.create_from_file(model_file)
+text_searcher = text.TextSearcher.create_from_file(model_file)
 
 # Run inference
 result = text_searcher.search(text)

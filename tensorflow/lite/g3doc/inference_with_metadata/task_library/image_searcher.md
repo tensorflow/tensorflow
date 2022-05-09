@@ -113,12 +113,25 @@ for more options to configure `ImageSearcher`.
 
 ## Run inference in Python
 
+### Step 1: Install TensorFlow Lite Support Pypi package.
+
+You can install the TensorFlow Lite Support Pypi package using the following
+command:
+
+```sh
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
 ```python
+from tflite_support.task import vision
+
 # Initialization
-image_searcher = ImageSearcher.create_from_file(model_file)
+image_searcher = vision.ImageSearcher.create_from_file(model_file)
 
 # Run inference
-image = TensorImage.create_from_file(image_file)
+image = vision.TensorImage.create_from_file(image_file)
 result = image_searcher.search(image)
 ```
 
