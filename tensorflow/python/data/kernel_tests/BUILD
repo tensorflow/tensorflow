@@ -707,6 +707,9 @@ tf_py_test(
     name = "prefetch_test",
     size = "small",
     srcs = ["prefetch_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231979296)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
