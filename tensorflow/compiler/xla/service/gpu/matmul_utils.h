@@ -68,6 +68,14 @@ struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
   static StatusOr<GemmConfig> For(mlir::Operation* op, bool use_cublaslt);
 
+  static StatusOr<GemmConfig> For(
+      const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
+      absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
+      absl::Span<const int64_t> rhs_batch_dims,
+      absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
+      double alpha_real, double alpha_imag, double beta,
+      absl::optional<int64_t> algorithm, bool use_cublaslt);
+
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
   MatrixLayout output_layout;

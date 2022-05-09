@@ -179,7 +179,9 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   }
 }
 
-StatusOr<GemmConfig> GetGemmConfig(
+}  // namespace
+
+/*static*/ StatusOr<GemmConfig> GemmConfig::For(
     const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
@@ -269,8 +271,6 @@ StatusOr<GemmConfig> GetGemmConfig(
   };
 }
 
-}  // namespace
-
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(const HloInstruction* gemm) {
   TF_ASSIGN_OR_RETURN(GemmBackendConfig config,
                       gemm->backend_config<GemmBackendConfig>());
@@ -286,7 +286,7 @@ StatusOr<GemmConfig> GetGemmConfig(
   bool use_cublaslt =
       gemm->GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
 
-  return GetGemmConfig(
+  return GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
       dot_dims.lhs_contracting_dimensions(), rhs_shape,
       dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
@@ -302,7 +302,7 @@ StatusOr<GemmConfig> GetGemmConfig(
     absl::optional<int64_t> algorithm;
     if (op.algorithm()) algorithm = *op.algorithm();
 
-    return GetGemmConfig(
+    return GemmConfig::For(
         GetShape(op.lhs()), dot_dims.getLhsBatchingDimensions(),
         dot_dims.getLhsContractingDimensions(), GetShape(op.rhs()),
         dot_dims.getRhsBatchingDimensions(),
