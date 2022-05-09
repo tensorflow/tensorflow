@@ -16,14 +16,19 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 namespace mlir {
 namespace chlo {
@@ -430,6 +435,45 @@ LogicalResult RankSpecializationClusterOp::verify() {
     }
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TopKOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TopKOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  Builder builder(context);
+  TopKOp::Adaptor adaptor(operands, attributes, regions);
+  Value operand = adaptor.operand();
+  uint64_t k = adaptor.k();
+
+  auto operand_ty = operand.getType().dyn_cast<RankedTensorType>();
+  if (!operand_ty) {
+    return emitOptionalError(location, "operand must be ranked");
+  }
+  if (operand_ty.getRank() < 1) {
+    return emitOptionalError(location, "operand's rank must be at least 1");
+  }
+  auto operand_last_dim = operand_ty.getShape()[operand_ty.getRank() - 1];
+  if (operand_last_dim == ShapedType::kDynamicSize) {
+    return emitOptionalError(location,
+                             "operand's last dimension must be static");
+  }
+  if (operand_last_dim < k) {
+    return emitOptionalError(location,
+                             "operand's last dimension must be at least ", k);
+  }
+
+  SmallVector<int64_t> result_shape;
+  append_range(result_shape, operand_ty.getShape());
+  result_shape[operand_ty.getRank() - 1] = k;
+
+  inferredReturnShapes.emplace_back(result_shape, operand_ty.getElementType());
+  inferredReturnShapes.emplace_back(result_shape, builder.getI32Type());
   return success();
 }
 

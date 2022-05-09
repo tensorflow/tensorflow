@@ -768,6 +768,43 @@ def CHLO_BroadcastSelectOp : CHLO_Op<"broadcast_select",
 }
 
 //===----------------------------------------------------------------------===//
+// Miscellaneous ops
+//===----------------------------------------------------------------------===//
+
+def CHLO_TopKOp : CHLO_Op<"top_k",
+    [NoSideEffect, InferTensorType]> {
+  string summary = "Finds values and indices of the `k` largest elements for the last dimension";
+
+  string description = [{
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
+
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+  }];
+
+  let arguments = (ins
+    Arg<HLO_Tensor, [{1-D or higher with last dimension at least `k`.}]>:$operand,
+    Arg<I64Attr, [{0-D.  Number of top elements to look for along the last dimension (along each
+row for matrices).}]>:$k
+  );
+
+  let results = (outs
+    HLO_Tensor:$values,
+    HLO_Tensor:$indices);
+
+  let assemblyFormat = [{
+    `(`$operand `,` `k` `=` $k`)` attr-dict `:`
+    type($operand) `->` `(`type($values)`,` type($indices)`)`
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Helper ops
 //===----------------------------------------------------------------------===//
 

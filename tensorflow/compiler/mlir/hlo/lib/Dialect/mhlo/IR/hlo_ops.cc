@@ -7916,6 +7916,65 @@ bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
 }
 
 //===----------------------------------------------------------------------===//
+// Builder utilities
+//===----------------------------------------------------------------------===//
+
+// Builds the region `body` for mhlo.sort's comparator: for each type in
+// `element_types`, create two block arguments, one for lhs and one for rhs, and
+// generates mhlo.compare op to compare them with the given `direction`.
+//
+// Note that this right now only does comparision on the first pair of block
+// arguments.
+static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
+                                    ComparisonDirection direction,
+                                    llvm::Optional<StringRef> compare_type,
+                                    Region* body, OpBuilder* builder) {
+  OpBuilder::InsertionGuard insertion_point_gurad(*builder);
+
+  Location loc = body->getLoc();
+  Block* block = builder->createBlock(body);
+  // Add two arguments for each element type.
+  for (Type element_type : element_types) {
+    TensorType tensor_type = RankedTensorType::get({}, element_type);
+    block->addArguments({tensor_type, tensor_type},
+                        SmallVector<Location, 2>(2, loc));
+  }
+
+  ComparisonType type_attr;
+  if (compare_type)
+    type_attr = symbolizeComparisonType(*compare_type).getValue();
+  else
+    type_attr = ComparisonType::NOTYPE;
+  Value compare = builder->create<mhlo::CompareOp>(
+      loc, block->getArgument(0), block->getArgument(1), direction, type_attr);
+
+  builder->create<mhlo::ReturnOp>(loc, compare);
+}
+
+SortOp CreateSortOp(PatternRewriter* rewriter, const Location& loc,
+                    const llvm::ArrayRef<Value>& operands,
+                    const llvm::ArrayRef<Type>& element_types,
+                    int64_t dimension, bool is_stable,
+                    ComparisonDirection direction) {
+  assert(!operands.empty() && "No operands to sort");
+  // Create the sort op.
+  auto sort_op =
+      rewriter->create<mhlo::SortOp>(loc, operands, dimension, is_stable);
+
+  // Use TOTALORDER comparison type instead of the default comparison if the
+  // element type is of type float.
+  llvm::Optional<StringRef> compare_type = llvm::None;
+  for (auto const& element_type : element_types)
+    if (element_type.isa<FloatType>()) {
+      compare_type.emplace("TOTALORDER");
+      break;
+    }
+  BuildSortComparisonBody(element_types, direction, compare_type,
+                          &sort_op.comparator(), rewriter);
+  return sort_op;
+}
+
+//===----------------------------------------------------------------------===//
 // Shape inference
 //===----------------------------------------------------------------------===//
 

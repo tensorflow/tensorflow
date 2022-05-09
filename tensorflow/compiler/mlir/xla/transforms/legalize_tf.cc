@@ -924,66 +924,6 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 }
 
 //===----------------------------------------------------------------------===//
-// Sort op utilities.
-//===----------------------------------------------------------------------===//
-
-// Builds the region `body` for mhlo.sort's comparator: for each type in
-// `element_types`, create two block arguments, one for lhs and one for rhs, and
-// generates mhlo.compare op to compare them with the given `direction`.
-//
-// Note that this right now only does comparision on the first pair of block
-// arguments.
-static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
-                                    ComparisonDirection direction,
-                                    llvm::Optional<StringRef> compare_type,
-                                    Region *body, OpBuilder *builder) {
-  OpBuilder::InsertionGuard insertion_point_gurad(*builder);
-
-  Location loc = body->getLoc();
-  Block *block = builder->createBlock(body);
-  // Add two arguments for each element type.
-  for (Type element_type : element_types) {
-    TensorType tensor_type = RankedTensorType::get({}, element_type);
-    block->addArguments({tensor_type, tensor_type},
-                        SmallVector<Location, 2>(2, loc));
-  }
-
-  ComparisonType type_attr;
-  if (compare_type)
-    type_attr = symbolizeComparisonType(*compare_type).getValue();
-  else
-    type_attr = ComparisonType::NOTYPE;
-  Value compare = builder->create<mhlo::CompareOp>(
-      loc, block->getArgument(0), block->getArgument(1), direction, type_attr);
-
-  builder->create<mhlo::ReturnOp>(loc, compare);
-}
-
-// Creates a mhlo.sort op.
-static mhlo::SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
-                                 const llvm::ArrayRef<Value> &operands,
-                                 const llvm::ArrayRef<Type> &element_types,
-                                 int64_t dimension, bool is_stable,
-                                 ComparisonDirection direction) {
-  assert(!operands.empty() && "No operands to sort");
-  // Create the sort op.
-  auto sort_op =
-      rewriter->create<mhlo::SortOp>(loc, operands, dimension, is_stable);
-
-  // Use TOTALORDER comparison type instead of the default comparison if the
-  // element type is of type float.
-  llvm::Optional<StringRef> compare_type = llvm::None;
-  for (auto const &element_type : element_types)
-    if (element_type.isa<FloatType>()) {
-      compare_type.emplace("TOTALORDER");
-      break;
-    }
-  BuildSortComparisonBody(element_types, direction, compare_type,
-                          &sort_op.comparator(), rewriter);
-  return sort_op;
-}
-
-//===----------------------------------------------------------------------===//
 // XlaGather op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -5441,36 +5381,7 @@ class ConvertOutfeedEnqueueTupleOp
   }
 };
 
-// Converts tf.TopKV2 to XLA HLO iota, sort, and slice ops when k is a constant.
-//
-// tf.TopKV2 sorts along last dimension of the input tensor and then returns
-// the top K components' values and indices. This is translated into a few
-// ops in XLA HLO: first generating an integer sequence for the indices,
-// then sort both the original input tensor and the indices togheter, and
-// at last slice out the top K components.
-//
-// For example, for the following IR:
-//
-// %k = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
-// %0:2 = "tf.TopKV2"(%input, %k): (tensor<16x16xf32>, tensor<i32>) ->
-//                                 (tensor<16x8xf32>, tensor<16x8xi32>)
-//
-// We will get:
-//
-// %1 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<16x16xi32>
-// %2 = "mhlo.sort"(%input, %1) ({
-// ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>,
-//      %arg3: tensor<i32>, %arg4: tensor<i32>):
-//   %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"}: ...
-//   "mhlo.return"(%7) : (tensor<i1>) -> ()
-// }) {dimension = 1 : i64, is_stable = true} : ...
-// %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : ...
-// %4 = "mhlo.get_tuple_element"(%2) {index = 1 : i32} : ...
-// %5 = "mhlo.slice"(%3) {limit_indices = dense<[16, 8]> : tensor<2xi64>,
-//                           start_indices dense<0> : tensor<2xi64>,
-//                           strides = dense<1> : tensor<2xi64>} :
-//                              (tensor<16x16xf32>) -> tensor<16x8xf32>
-// %6 = "mhlo.slice"(%4) ...
+// Converts tf.TopKV2 to chlo.top_k.
 class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -5480,9 +5391,8 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
     // We can only match when the `k` operand is a constant scalar.
     DenseIntElementsAttr k_attr;
     if (!matchPattern(op.k(), m_Constant(&k_attr))) return failure();
+    int64_t k = (*k_attr.begin()).getSExtValue();
 
-    // The last dimension of the input tensor's shape should be known so we can
-    // have clamped end_indices for slices.
     TensorType input_type = op.input().getType().cast<TensorType>();
     if (!input_type.hasRank()) return failure();
     int64_t input_rank = input_type.getRank();
@@ -5490,46 +5400,7 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
     int64_t last_dim_size = input_type.getDimSize(last_dim_index);
     if (last_dim_size == ShapedType::kDynamicSize) return failure();
 
-    // Create an Itoa op for indices.
-    auto i32_type = rewriter.getIntegerType(32);
-    Type iota_type = RankedTensorType::get(input_type.getShape(), i32_type);
-    Value iota_op = rewriter.create<mhlo::IotaOp>(
-        op.getLoc(), iota_type, rewriter.getI64IntegerAttr(last_dim_index));
-
-    // Create the sort op. It takes two inputs, one for the original input, the
-    // other for the indices. Use TOTALORDER comparison type instead of the
-    // default comparison if the element type is of type float.
-    Type element_type = input_type.getElementType();
-    auto sort_op = CreateSortOp(&rewriter, op.getLoc(), {op.input(), iota_op},
-                                {element_type, i32_type}, last_dim_index,
-                                /*is_stable=*/true,
-                                /*direction=*/ComparisonDirection::GT);
-
-    // Get the sorted input and index tuple element.
-    auto tuple_first_element = sort_op.getResult(0);
-    auto tuple_second_element = sort_op.getResult(1);
-
-    SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
-    end_indices.back() =
-        std::min((*k_attr.begin()).getSExtValue(), last_dim_size);
-    SmallVector<int64_t, 4> strides(input_rank, 1);
-
-    // Get the slice for the top K elements.
-
-    Value values = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tuple_first_element,
-        GetI64ElementsAttr(begin_indices, &rewriter),
-        GetI64ElementsAttr(end_indices, &rewriter),
-        GetI64ElementsAttr(strides, &rewriter));
-
-    Value indices = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tuple_second_element,
-        GetI64ElementsAttr(begin_indices, &rewriter),
-        GetI64ElementsAttr(end_indices, &rewriter),
-        GetI64ElementsAttr(strides, &rewriter));
-
-    rewriter.replaceOp(op, {values, indices});
+    rewriter.replaceOpWithNewOp<chlo::TopKOp>(op, op.input(), k);
     return success();
   }
 };
