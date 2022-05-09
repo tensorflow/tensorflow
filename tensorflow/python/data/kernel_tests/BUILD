@@ -68,6 +68,9 @@ tf_py_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.py"],
+    tags = [
+        "no_oss",  # Times out during patch release
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -536,6 +539,9 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 19,
+    tags = [
+        "no_oss",  # Times out during patch release
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
