@@ -44,6 +44,7 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::Pair;
+using ::testing::SizeIs;
 using ::testing::TestWithParam;
 using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedElementsAreArray;
@@ -221,7 +222,8 @@ TEST(DataServiceTest, GcMissingClientsWithSmallTimeout) {
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK_AND_ASSIGN(int64_t job_client_id, dataset_client.CreateJob());
+  TF_ASSERT_OK_AND_ASSIGN(int64_t job_client_id,
+                          dataset_client.CreateJob(RangeDataset(10)));
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
   // Job should not be garbage collected before the client has started reading.
   EXPECT_THAT(cluster.NumActiveJobs(), IsOkAndHolds(1));
@@ -245,7 +247,7 @@ TEST(DataServiceTest, DontGcMissingClientsWithLargeTimeout) {
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK(dataset_client.CreateJob().status());
+  TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
   // Job should not be garbage collected, since the client hasn't timed out.
   EXPECT_THAT(cluster.NumActiveJobs(), IsOkAndHolds(1));
@@ -263,11 +265,23 @@ TEST(DataServiceTest, GetWorkers) {
 TEST(DataServiceTest, DispatcherStateExport) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
+  DatasetClient<tstring> dataset_client(cluster);
+  TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
 
-  ServerStateExport dispatcher_state_export = cluster.ExportDispatcherState();
+  DispatcherStateExport::Job job;
+  ServerStateExport server_state_export = cluster.ExportDispatcherState();
+  EXPECT_THAT(server_state_export.dispatcher_state_export().worker_addresses(),
+              ElementsAre(HasSubstr("localhost")));
+  ASSERT_THAT(server_state_export.dispatcher_state_export().jobs(), SizeIs(1));
+  EXPECT_EQ(server_state_export.dispatcher_state_export().jobs(0).dataset_id(),
+            1000);
   EXPECT_THAT(
-      dispatcher_state_export.dispatcher_state_export().worker_addresses(),
-      ElementsAre(HasSubstr("localhost")));
+      server_state_export.dispatcher_state_export().jobs(0).job_key().name(),
+      HasSubstr("anonymous_job"));
+  EXPECT_EQ(server_state_export.dispatcher_state_export().jobs(0).num_clients(),
+            1);
+  EXPECT_FALSE(
+      server_state_export.dispatcher_state_export().jobs(0).finished());
 }
 
 }  // namespace

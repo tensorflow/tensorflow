@@ -69,7 +69,9 @@ tf_proto_library(
     srcs = ["export.proto"],
     cc_api_version = 2,
     create_java_proto = False,
-    protodeps = tf_additional_all_protos(),
+    protodeps = tf_additional_all_protos() + [
+        ":common_proto",
+    ],
 )
 
 cc_library(

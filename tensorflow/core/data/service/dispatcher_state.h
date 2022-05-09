@@ -232,7 +232,7 @@ class DispatcherState {
   // Returns the next available job id.
   int64_t NextAvailableJobId() const;
   // Returns a list of all jobs.
-  std::vector<std::shared_ptr<const Job>> ListJobs();
+  std::vector<std::shared_ptr<const Job>> ListJobs() const;
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64_t id, std::shared_ptr<const Job>& job) const;
   // Gets a job by key. Returns NOT_FOUND if there is no such job.

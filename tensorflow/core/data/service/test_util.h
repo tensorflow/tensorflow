@@ -55,8 +55,8 @@ StatusOr<DatasetDef> InterleaveTextlineDataset(
 // Returns an error if `f()` returns an error.
 Status WaitWhile(std::function<StatusOr<bool>()> f);
 
-// TODO(yangchen): Make EqualsProto available in Googletest
-// (https://github.com/google/googletest/issues/1761).
+// TODO(b/229726259): Make EqualsProto available in Googletest
+// (Public feature request: https://github.com/google/googletest/issues/1761).
 class ProtoStringMatcher {
  public:
   explicit ProtoStringMatcher(const tensorflow::protobuf::Message& expected)
