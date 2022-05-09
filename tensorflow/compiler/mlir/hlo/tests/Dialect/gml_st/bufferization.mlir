@@ -49,7 +49,7 @@ func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
                     outs(%arg6 : tensor<f32>) -> tensor<f32>
 
     //     CHECK:   call @some_use(%{{.*}}) : (memref<?xf32>) -> ()
-    call @some_use(%use) : (memref<?xf32>) -> ()
+    func.call @some_use(%use) : (memref<?xf32>) -> ()
 
     gml_st.yield %8 : tensor<f32>
     //     CHECK:   gml_st.yield
