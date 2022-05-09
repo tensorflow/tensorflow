@@ -13,7 +13,7 @@ func private @some_use(memref<?xf32>)
 // CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32, #[[$DYN_1D_MAP]]>
 // CHECK-SAME:    %[[B:[a-zA-Z0-9]*]]: memref<?xf32, #[[$DYN_1D_MAP]]>
 // CHECK-SAME:    %[[c:[a-zA-Z0-9]*]]: memref<f32, #[[$DYN_0D_MAP]]>
-func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
+func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
                 %B: tensor<?xf32> {bufferization.writeable = false},
                 %c: tensor<f32> {bufferization.writeable = true},
                 %effecting: memref<?xf32>) -> tensor<f32> {
@@ -58,7 +58,7 @@ func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
 
   //     CHECK: return
   // CHECK-NOT: tensor
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // -----
@@ -69,7 +69,7 @@ func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
 
 //      CHECK:  func @tiled_fill(
 // CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32, #[[$DYN_MAP]]>
-func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?xf32> {
+func.func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?xf32> {
   %c3 = arith.constant 3 : index
   %c0 = arith.constant 0 : index
   %f0 = arith.constant 0.0 : f32
@@ -100,7 +100,7 @@ func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?
 
   //     CHECK: return
   // CHECK-NOT: tensor
-  return %1 : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
 }
 
 // -----
@@ -110,7 +110,7 @@ func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?
 //      CHECK:  func @tiled_loop_yield_out_of_place(
 // CHECK-SAME:    %[[A:[a-zA-Z0-9]*]]: memref<?xf32, #[[$TILE_MAP]]>
 // CHECK-SAME:    %[[B:[a-zA-Z0-9]*]]: memref<?xf32, #[[$TILE_MAP]]>
-func @tiled_loop_yield_out_of_place(
+func.func @tiled_loop_yield_out_of_place(
     %A: tensor<?xf32> {bufferization.writeable = true},
     %B: tensor<?xf32> {bufferization.writeable = true}) -> tensor<?xf32> {
   %c3 = arith.constant 3 : index
@@ -134,5 +134,5 @@ func @tiled_loop_yield_out_of_place(
 
   //     CHECK: return
   // CHECK-NOT: tensor
-  return %1 : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
 }

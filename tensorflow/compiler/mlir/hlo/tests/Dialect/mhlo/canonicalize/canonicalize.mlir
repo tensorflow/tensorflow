@@ -1981,7 +1981,7 @@ func public @scatter_complex() -> tensor<1xcomplex<f32>> {
   ^bb0(%arg0: tensor<complex<f32>>, %arg1: tensor<complex<f32>>):
     "mhlo.return"(%arg1) : (tensor<complex<f32>>) -> ()
   }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<inserted_window_dims = [0], scatter_dims_to_operand_dims = [0]>, unique_indices = true} : (tensor<1xcomplex<f32>>, tensor<1xi32>, tensor<complex<f32>>) -> tensor<1xcomplex<f32>>
-  return %3 : tensor<1xcomplex<f32>>
+  func.return %3 : tensor<1xcomplex<f32>>
 }
 // CHECK: "mhlo.scatter"
 

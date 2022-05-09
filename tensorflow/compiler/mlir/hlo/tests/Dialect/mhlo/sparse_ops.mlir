@@ -165,7 +165,7 @@ func.func @dot1(%arg0: tensor<4xf64, #SV>,
                                         precision_config = [#mhlo<"precision DEFAULT">,
                                         #mhlo<"precision DEFAULT">]}
            : (tensor<4xf64, #SV>, tensor<4xf64>) -> tensor<f64>
-  return %0 : tensor<f64>
+  func.return %0 : tensor<f64>
 }
 
 // CHECK-LABEL: func @dot2(
@@ -181,7 +181,7 @@ func.func @dot2(%arg0: tensor<4xf64>,
                                         precision_config = [#mhlo<"precision DEFAULT">,
                                         #mhlo<"precision DEFAULT">]}
            : (tensor<4xf64>, tensor<4xf64, #SV>) -> tensor<f64>
-  return %0 : tensor<f64>
+  func.return %0 : tensor<f64>
 }
 
 // CHECK-LABEL: func @dot3(
@@ -197,7 +197,7 @@ func.func @dot3(%arg0: tensor<4xf64, #SV>,
                                         precision_config = [#mhlo<"precision DEFAULT">,
                                         #mhlo<"precision DEFAULT">]}
            : (tensor<4xf64, #SV>, tensor<4xf64, #SV>) -> tensor<f64>
-  return %0 : tensor<f64>
+  func.return %0 : tensor<f64>
 }
 
 //
@@ -216,7 +216,7 @@ func.func @sparse_reduce(%arg0: tensor<10xi64, #SV>) -> tensor<i64> {
     %2 = mhlo.add %arg1, %arg2 : tensor<i64>
     "mhlo.return"(%2) : (tensor<i64>) -> ()
   }
-  return %1 : tensor<i64>
+  func.return %1 : tensor<i64>
 }
 
 //
@@ -231,7 +231,7 @@ func.func @sparse_transpose(%arg0: tensor<100x100xf64, #CSR>)
                                 -> tensor<100x100xf64, #DCSR> {
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>}
      : (tensor<100x100xf64, #CSR>) -> tensor<100x100xf64, #DCSR>
-  return %0 : tensor<100x100xf64, #DCSR>
+  func.return %0 : tensor<100x100xf64, #DCSR>
 }
 
 //
@@ -258,7 +258,7 @@ func.func @sparse_zero_preserving_math(%arg0: tensor<64xf64, #SV>) -> tensor<64x
   %5 = mhlo.sine(%4) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
   %6 = mhlo.sqrt(%5) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
   %7 = mhlo.tanh(%6) : (tensor<64xf64, #SV>) -> tensor<64xf64, #SV>
-  return %7 : tensor<64xf64, #SV>
+  func.return %7 : tensor<64xf64, #SV>
 }
 
 //
@@ -270,5 +270,5 @@ func.func @sparse_zero_preserving_math(%arg0: tensor<64xf64, #SV>) -> tensor<64x
 //       CHECK: return %[[A]] : tensor<1x!quant.uniform<i8:f32, 1.000000e+00:17>, #{{.*}}>
 func.func @quantization_and_sparse(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>)
                                        -> tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV> {
-  return %arg0 : tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>
+  func.return %arg0 : tensor<1x!quant.uniform<i8:f32, 1.0:17>, #SV>
 }

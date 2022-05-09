@@ -68,7 +68,7 @@ func.func @move_shape_of_into_assuming(%arg0 : !shape.witness,
 
 // CHECK-LABEL: @tree_conjunction
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?xi1>, %[[ARG1:.*]]: tensor<?xi1>, %[[ARG2:.*]]: tensor<?xi1>, %[[ARG3:.*]]: tensor<?xi1>
-func @tree_conjunction(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>, 
+func.func @tree_conjunction(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>, 
     %arg2: tensor<?xi1>, %arg3: tensor<?xi1>) -> tensor<?xi1> {
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
@@ -141,5 +141,5 @@ func @tree_conjunction(%arg0: tensor<?xi1>, %arg1: tensor<?xi1>,
     %15 = mhlo.and %13, %14 : tensor<?xi1>
     shape.assuming_yield %15 : tensor<?xi1>
   }
-  return %11 : tensor<?xi1>
+  func.return %11 : tensor<?xi1>
 }

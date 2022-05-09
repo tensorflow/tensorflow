@@ -100,7 +100,7 @@ func.func @sparse_math(%arg0: tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64,
   %5 = mhlo.sine(%4) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
   %6 = mhlo.sqrt(%5) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
   %7 = mhlo.tanh(%6) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  return %7 : tensor<10x20x30xf64, #ST>
+  func.return %7 : tensor<10x20x30xf64, #ST>
 }
 
 // CHECK-LABEL: func @sparse_reduce(
@@ -117,7 +117,7 @@ func.func @sparse_reduce(%arg0: tensor<10xi64, #SV>) -> tensor<i64> {
     %2 = mhlo.add %arg1, %arg2 : tensor<i64>
     "mhlo.return"(%2) : (tensor<i64>) -> ()
   }
-  return %1 : tensor<i64>
+  func.return %1 : tensor<i64>
 }
 
 // CHECK-LABEL: func @sparse_dot(
@@ -137,7 +137,7 @@ func.func @sparse_dot(%arg0: tensor<?xf32, #SV>,
                                           precision_config = [#mhlo<"precision DEFAULT">,
                                           #mhlo<"precision DEFAULT">]}
                   : (tensor<?xf32, #SV>, tensor<?xf32, #SV>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @sparse_transpose(
@@ -154,5 +154,5 @@ func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
                                 -> tensor<200x100xf64, #DCSR> {
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>}
      : (tensor<100x200xf64, #CSR>) -> tensor<200x100xf64, #DCSR>
-  return %0 : tensor<200x100xf64, #DCSR>
+  func.return %0 : tensor<200x100xf64, #DCSR>
 }
