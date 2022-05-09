@@ -113,7 +113,7 @@ Add the TensorFlowLiteTaskVision pod in Podfile
 ```
 target 'MyAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskVision'
+  pod 'TensorFlowLiteTaskVision', '~>0.0.1-nightly.20220508'
 end
 ```
 
