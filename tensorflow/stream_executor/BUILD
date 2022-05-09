@@ -438,9 +438,9 @@ cc_library(
     deps = [
         ":device_memory",
         ":stream_header",
-        ":temporary_device_memory",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

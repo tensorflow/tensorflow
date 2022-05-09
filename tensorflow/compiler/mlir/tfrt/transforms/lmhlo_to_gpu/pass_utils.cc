@@ -14,6 +14,9 @@
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 
+#include <string>
+#include <utility>
+
 #include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
@@ -36,14 +39,24 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
   tensorflow::applyTensorflowAndCLOptions(pm);
   pm.addPass(tensorflow::createConvertLmhloToGpuBinaryPass());
   populateLmhloToTfrtGpuPasses(pm);
+  pm.addPass(tfrt::gpu::CreateSetEntryPointPass(
+      kGpuTargetPlatform, entry_function_name, buffer_sizes));
+
+  // Dump IR on failure.
+  std::string error_string;
+  llvm::raw_string_ostream error_stream(error_string);
+  pm.enableIRPrinting(
+      nullptr, [](mlir::Pass*, mlir::Operation*) { return true; },
+      /*printModuleScope=*/false,
+      /*printAfterOnlyOnChange=*/false, /*printAfterOnlyOnFailure=*/true,
+      error_stream);
 
   if (pm.run(module).failed()) {
     return errors::Internal(
-        "Failed to lower LMHLO to TFRT Dialect with gpu kernels.");
+        "Failed to lower LMHLO to TFRT Dialect with gpu kernels:\n",
+        std::move(error_stream.str()));
   }
 
-  tfrt::gpu::setEntryPoint(module, kGpuTargetPlatform, entry_function_name,
-                           buffer_sizes);
   return Status::OK();
 }
 

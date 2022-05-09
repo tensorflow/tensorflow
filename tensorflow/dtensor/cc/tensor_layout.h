@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -113,7 +114,6 @@ class Mesh {
       const std::vector<std::int64_t>& local_device_ids,
       const std::vector<std::string>& local_devices,
       const std::vector<std::string>& global_devices);
-
   Mesh() = default;
 
   bool IsEmpty() const;
@@ -149,6 +149,9 @@ class Mesh {
   // Parses names of local_devices according to TF's Device Name Utils.
   StatusOr<const std::vector<DeviceNameUtils::ParsedName>> ParsedDevices()
       const;
+
+  // Convert to given device type.
+  StatusOr<Mesh> ToDeviceType(const std::string& device_type) const;
   absl::Span<const std::string> local_devices() const { return local_devices_; }
   absl::Span<const int64_t> local_device_ids() const {
     return local_device_ids_;
@@ -209,7 +212,7 @@ class Mesh {
   // the core represented by global device ID of i in this mesh.
   //
   // The entry stored under the empty name key (the so-called "default mapping"
-  // in some comments) is special. Is is always set at the end of TPU
+  // in some comments) is special. It is always set at the end of TPU
   // initialization. It represents the mapping for any mesh whose global device
   // IDs follow TF task-device ordinals. Legacy and test meshes created without
   // using the `create_tpu_mesh` helper follow that rule and can use this entry.

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
 #include "tensorflow/lite/core/shims/cc/model_builder.h"
+#include "tensorflow/lite/core/shims/cc/tools/verifier_internal.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
@@ -84,9 +85,8 @@ int getDataType(TfLiteType data_type) {
 }
 
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
-bool VerifyModel(const void* buf, size_t len) {
-  flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  return tflite::VerifyModelBuffer(verifier);
+bool VerifyModel(const void* buf, size_t length) {
+  return tflite_shims::internal::VerifyFlatBufferAndGetModel(buf, length);
 }
 
 // Verifies whether the model is a flatbuffer file.
@@ -372,8 +372,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "ByteBuffer is not a valid flatbuffer model");
+    ThrowException(
+        env, tflite::jni::kIllegalArgumentException,
+        "ByteBuffer is not a valid TensorFlow Lite model flatbuffer");
     return 0;
   }
 
@@ -499,6 +500,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
       const char* error_message = error_reporter->CachedErrorMessage();
       if (std::strcmp(
               error_message,
+              "Restored original execution plan after delegate application "
+              "failure.") == 0 ||
+          std::strcmp(
+              error_message,
+              "Restored original execution plan after delegate application "
+              "failure.\n"
               "Restored original execution plan after delegate application "
               "failure.") == 0) {
         ThrowException(env, tflite::jni::kIllegalArgumentException,

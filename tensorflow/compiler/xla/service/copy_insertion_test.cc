@@ -2830,6 +2830,36 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 1);
 }
 
+TEST_F(CopyInsertionTest, ScatterSharedOperand) {
+  // If an in-place op has an additional operand that has the same value as the
+  // in-place buffer, a copy needs to be inserted on one of these values only.
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+update_s32 {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+fused_computation {
+  iota.1 = s32[73729]{0} iota(), iota_dimension=0
+  ROOT indices.1 = s32[73729]{0} reverse(iota.1), dimensions={0}
+}
+
+ENTRY main {
+  iota.2 = s32[73729]{0} iota(), iota_dimension=0
+  fusion = s32[73729]{0} fusion(), kind=kLoop, calls=fused_computation
+  ROOT scatter = s32[73729]{0} scatter(iota.2, fusion, iota.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Scatter(op::Copy(op::Iota()), op::Fusion(), op::Iota()));
+}
+
 TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
   const std::string& hlo_string = R"(
     HloModule test

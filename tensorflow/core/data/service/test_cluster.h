@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -77,6 +78,9 @@ class TestCluster {
   void StopWorker(size_t index);
   // Stops all workers.
   void StopWorkers();
+
+  // Returns the dispatcher state export.
+  ServerStateExport ExportDispatcherState() const;
 
  private:
   bool initialized_ = false;

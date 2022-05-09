@@ -133,6 +133,14 @@ func.func @testLog(tensor<? x f32>) -> tensor<? x f32> {
   func.return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testLogStaticShapeInputAndDynamicShapeOutput
+func.func @testLogStaticShapeInputAndDynamicShapeOutput(tensor<8 x f32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<8 x f32>):
+  // CHECK: "tfl.log"(%arg0)
+  %0 = "tfl.log"(%arg0): (tensor<8 x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // CHECK-LABEL: testNeg
 func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):

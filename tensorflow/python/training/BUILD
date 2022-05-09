@@ -63,7 +63,7 @@ filegroup(
         "training_ops.py",
         "warm_starting_util.py",
     ],
-    visibility = ["//tensorflow/python/training:__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 py_library(

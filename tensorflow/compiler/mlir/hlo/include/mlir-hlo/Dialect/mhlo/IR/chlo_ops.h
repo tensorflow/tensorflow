@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"

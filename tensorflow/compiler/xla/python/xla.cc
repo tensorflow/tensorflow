@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
+#include "pybind11/detail/common.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -163,24 +164,26 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return LiteralToPython(std::move(literal));
            })
-      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
-        return device.client->LiveBuffersOnDevice(device.get());
-      });
+      .def("live_buffers",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             return device.client->LiveBuffersOnDevice(device.get());
+           })
+      .def(
+          "__getattr__",
+          [](PjRtDevice& device, std::string name) -> py::object {
+            const auto& attrs = device.Attributes();
+            if (auto it = attrs.find(name); it != attrs.end()) {
+              return absl::visit([](auto&& v) { return py::cast(v); },
+                                 it->second);
+            }
+            throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
+          });
 
-  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
-      .def_property_readonly("device_vendor", &GpuDevice::device_vendor);
-
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
-      m, "TpuDevice")
-      .def_property_readonly(
-          "coords",
-          [](const PjRtTpuDevice& device) -> pybind11::tuple {
-            return SpanToTuple(absl::MakeConstSpan(device.coords()));
-          },
-          "The coordinates of this TpuDevice's chip in the TPU mesh network.")
-      .def_property_readonly(
-          "core_on_chip", &PjRtTpuDevice::core_on_chip,
-          "The index of this TpuDevice's core on the TPU chip.");
+  // TODO(tomhennigan): Remove these types.
+  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
+      m, "GpuDevice");
+  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
+      m, "TpuDevice");
 
   // Local XLA client methods.
 
@@ -247,6 +250,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
+      .def("get_emit_python_callback_descriptor",
+           &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
+           py::arg("operand_shapes"), py::arg("result_shapes") = absl::nullopt)
+      // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback", &PyClient::EmitPythonCallback,
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
            py::arg("result_shapes"), py::arg("operand_layouts") = absl::nullopt,
@@ -280,17 +287,21 @@ PYBIND11_MODULE(xla_extension, m) {
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
+         int node_id, absl::optional<std::set<int>> allowed_devices,
+         absl::optional<std::string> platform_name)
+          -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtClient> client,
-            GetGpuClient(asynchronous, allocator_config,
-                         std::move(distributed_client), node_id));
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                            GetGpuClient(asynchronous, allocator_config,
+                                         std::move(distributed_client), node_id,
+                                         allowed_devices, platform_name));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
-      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
+      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
+      py::arg("allowed_devices") = absl::nullopt,
+      py::arg("platform_name") = absl::nullopt);
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {

@@ -113,7 +113,11 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+
+  // TODO(b/229995333): Add PrepareLiftingPass for QAT. In QAT, AffineOps are
+  // connected to FakeQuantOp instead of the ConstOp so need to add separate
+  // pattern for FakeQuantOp.
+  // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
@@ -182,6 +186,8 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
 
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  // TODO(b/230426953): Add TFShapeInferencePass to infer shapes for unranked
+  // types. pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -36,7 +37,21 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::InvokeArgument;
 using ::testing::SetArgPointee;
+using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+
+MATCHER(KvEq, "simple KeyValueEntry matcher") {
+  const KeyValueEntry& kv0 = std::get<0>(arg);
+  const KeyValueEntry& kv1 = std::get<1>(arg);
+  return kv0.key() == kv1.key() && kv0.value() == kv1.value();
+}
+
+KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
+  KeyValueEntry kv;
+  kv.set_key(key);
+  kv.set_value(value);
+  return kv;
+}
 
 class TestCoordinationClient : public CoordinationClient {
  public:
@@ -45,6 +60,9 @@ class TestCoordinationClient : public CoordinationClient {
   // instead.
   MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
                                       GetKeyValueResponse*, StatusCallback));
+  MOCK_METHOD3(GetKeyValueDirAsync,
+               void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
+                    StatusCallback));
   MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
                                        RegisterTaskResponse*, StatusCallback));
   MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
@@ -187,7 +205,7 @@ TEST_F(CoordinationServiceAgentTest,
   // Initialize coordination service agent.
   InitializeAgent();
 
-  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(3));
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
 
   // Delayed server response: set key-value response, and invoke done callback.
@@ -235,6 +253,27 @@ TEST_F(CoordinationServiceAgentTest,
 
   TF_EXPECT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
+  const std::string test_key = "test_key_dir";
+  std::vector<KeyValueEntry> test_values;
+  test_values.push_back(CreateKv("test_key_dir/task_0", "0"));
+  test_values.push_back(CreateKv("test_key_dir/task_1", "1"));
+  // Mock server response: set key-value pair and invoke done callback.
+  GetKeyValueDirResponse mocked_response;
+  mocked_response.set_directory_key(test_key);
+  *mocked_response.mutable_kv() = {test_values.begin(), test_values.end()};
+  ON_CALL(*GetClient(), GetKeyValueDirAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(Status::OK())));
+  // Initialize coordination agent.
+  InitializeAgent();
+
+  auto result = agent_->GetKeyValueDir(test_key);
+
+  TF_EXPECT_OK(result.status());
+  EXPECT_THAT(result.ValueOrDie(), UnorderedPointwise(KvEq(), test_values));
 }
 
 TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
@@ -301,6 +340,27 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
   TF_EXPECT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
   TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
+  InitializeAgent();
+
+  auto result = agent_->GetOwnTask();
+
+  TF_EXPECT_OK(result.status());
+  CoordinatedTask actual_task = result.ValueOrDie();
+  // These fields are from the arguments used in InitializeAgent().
+  CoordinatedTask expected_task;
+  expected_task.set_job_name("test_job");
+  expected_task.set_task_id(0);
+  EXPECT_EQ(actual_task.job_name(), expected_task.job_name());
+  EXPECT_EQ(actual_task.task_id(), expected_task.task_id());
+}
+
+TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
+  auto result = agent_->GetOwnTask();
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(result.status()));
 }
 }  // namespace
 }  // namespace tensorflow

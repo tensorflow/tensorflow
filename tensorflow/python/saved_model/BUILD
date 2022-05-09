@@ -700,7 +700,6 @@ tf_python_pybind_extension(
         "pywrap_saved_model_metrics.h",
     ],
     features = ["-layering_check"],
-    module_name = "pywrap_saved_model",
     visibility = [
         "//tensorflow/python/saved_model:__subpackages__",
         "//tensorflow/python/training:__subpackages__",

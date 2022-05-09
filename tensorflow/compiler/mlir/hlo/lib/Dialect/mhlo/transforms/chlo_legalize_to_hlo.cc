@@ -642,6 +642,27 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       lgamma);
 }
 
+// Uses `rewriter` to materialize the IR for generating a constant tensor of
+// log(1/2) values with the same shape and type as `operand`, and associates the
+// generated IR to code location `loc`.
+//
+// Since we currently only support generating integer constants, we actually
+// generate the code for -log(2) (which equals log(1/2)).
+// TODO(b/190374484): Remove when mhlo::ConstantLikeOp supports complex types.
+Value MaterializeLogOneHalf(ConversionPatternRewriter &rewriter, Location loc,
+                            Value operand) {
+  auto result_ty = operand.getType().cast<ShapedType>();
+
+  Value two = rewriter.create<mhlo::ConstOp>(
+      loc, hlo::GetScalarOfType(getElementTypeOrSelf(operand.getType()), 2));
+  Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
+  Value two_with_operand_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
+
+  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_operand_shape);
+  return rewriter.create<mhlo::NegOp>(loc, log_two);
+}
+
 // Express `cosh` as
 //   cosh(x) = (e^x + e^-x) / 2
 //           = e^(x + log(1/2)) + e^(-x + log(1/2))
@@ -657,8 +678,8 @@ Value MaterializeCoshApproximation(ConversionPatternRewriter &rewriter,
   CoshOp::Adaptor transformed(operands);
   Value x = transformed.operand();
 
-  Value log_one_half =
-      rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
+  // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
+  Value log_one_half = MaterializeLogOneHalf(rewriter, loc, x);
   Value exp_add = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
   Value exp_sub = rewriter.create<mhlo::ExpOp>(
@@ -1130,17 +1151,9 @@ Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
                                             Location loc, ValueRange operands) {
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
-  auto result_ty = x.getType().cast<ShapedType>();
 
   // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
-  Value two = rewriter.create<mhlo::ConstOp>(
-      loc, hlo::GetScalarOfType(getElementTypeOrSelf(x.getType()), 2));
-  Value shape = rewriter.create<shape::ShapeOfOp>(loc, x);
-  Value two_with_x_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
-      loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
-
-  Value log_two = rewriter.create<mhlo::LogOp>(loc, two_with_x_shape);
-  Value log_one_half = rewriter.create<mhlo::NegOp>(loc, log_two);
+  Value log_one_half = MaterializeLogOneHalf(rewriter, loc, x);
   Value exp_add = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, log_one_half));
   Value exp_sub = rewriter.create<mhlo::ExpOp>(

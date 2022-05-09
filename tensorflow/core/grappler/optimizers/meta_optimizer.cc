@@ -66,6 +66,7 @@ limitations under the License.
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
 #ifndef __Fuchsia__
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
+#include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 #endif
 
 namespace tensorflow {
@@ -406,10 +407,20 @@ Status MetaOptimizer::InitializeOptimizers(
     }
   }
   if (BOTH_NOT_OFF(remapping)) {
-    if (USER_IS_EXPERIMENTAL_MLIR(remapping) ||
-        USER_IS_EXPERIMENTAL_BOTH(remapping)) {
-      VLOG(2) << "remapping is not implemented in TFG yet";
-    } else {
+    bool enable_mlir_pass = USER_IS_EXPERIMENTAL_MLIR(remapping) ||
+                            USER_IS_EXPERIMENTAL_BOTH(remapping);
+    bool enable_grappler_pass =
+        !enable_mlir_pass || USER_IS_EXPERIMENTAL_BOTH(remapping);
+    if (enable_mlir_pass) {
+// #TODO(b/200087693): LLVM does not build on Fuchsia.
+#ifndef __Fuchsia__
+      optimizers->push_back(MakeUnique<mlir::tfg::TFGGrapplerOptimizer>(
+          mlir::tfg::RemapperPassBuilder));
+#else
+      VLOG(2) << "mlir Remapper pass is not supported on Fuchsia";
+#endif
+    }
+    if (enable_grappler_pass) {
       optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping(),
                                                  cfg_.cpu_layout_conversion(),
                                                  xla_auto_clustering_on_));
@@ -1106,6 +1117,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // Propagate `_tf_data_function` attributes from functions to their callees.
   PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
 
+  // True if this is a TPU graph using the old bridge.
+  bool is_tpu_graph = IsTPUGraphDef(*optimized_graph);
+
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
   while (optimize_function_library) {
@@ -1170,7 +1184,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
-      if (IsTPUGraphDef(*optimized_graph)) {
+      if (is_tpu_graph) {
         // Skip optimizing functions if this is a TPU graph. Currently, Grappler
         // passes do not handle TPU functions correctly in a variety of ways
         // (Note that due to the pre-placement TPU graph rewriting passes, the
@@ -1223,12 +1237,13 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     }
   }
 
-  // Run module-level TFG optimizations at the end of the meta-optimizer.
+  // Run module-level TFG optimizations at the end of the meta-optimizer, but
+  // skip TPU graphs.
   // TODO(jeffniu): None of the TFG optimizations are meant to create new
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
 #ifndef __Fuchsia__
-  {
+  if (!is_tpu_graph) {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(

@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -214,9 +215,12 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
           tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
           index_64bit, cpu_codegen, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
-  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
+  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
+
+  pm.addPass(mlir::CreateFinalBufferizePass(
+      /*alignment=*/64,
+      mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
+      mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
 
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal(
@@ -284,8 +288,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // TODO(pifon): Rename the pass to CreateHloLinalgBufferizePass or bufferize
   // in 2 steps: first Linalg, then Hlo. That would need refactoring of
   // BufferizeTypeConverter.
-  pm.addPass(
-      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Remove copies which are introduced by canonicalizing
@@ -366,7 +369,10 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
-  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
+  pm.addPass(mlir::CreateFinalBufferizePass(
+      /*alignment=*/64,
+      mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
+      mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
   // TODO(herhut): Enable once no-longer broken.
   pm.addNestedPass<FuncOp>(::mlir::bufferization::createBufferHoistingPass());
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(

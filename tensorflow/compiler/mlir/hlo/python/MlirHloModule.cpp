@@ -413,4 +413,20 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_property_readonly("fusion_kind", [](MlirAttribute self) {
         return mlirMhloFusionKindAttrGetFusionKind(self);
       });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "RngAlgorithmAttr", mlirMhloAttributeIsARngAlgorithmAttr)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const std::string &algorithm, MlirContext ctx) {
+            return cls(mlirMhloRngAlgorithmAttrGet(
+                ctx, mlirStringRefCreate(algorithm.c_str(), algorithm.size())));
+          },
+          py::arg("cls"), py::arg("rng_algorithm"),
+          py::arg("context") = py::none(),
+          "Creates a RngAlgorithm attribute with the given rng algorithm.")
+      .def_property_readonly("rng_algorithm", [](MlirAttribute self) {
+        auto algorithm = mlirMhloRngAlgorithmAttrGetRngAlgorithm(self);
+        return py::str(algorithm.data, algorithm.length);
+      });
 }

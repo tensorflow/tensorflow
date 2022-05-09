@@ -1342,7 +1342,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            f"`reduce_op`={reduce_op} is not supported. Currently we only "
             "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
@@ -1390,11 +1390,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       else:
         return (fn(var, *args, **kwargs),)
 
+    # Inside `tf.function`, we don't expand PackedVariable in python as it will
+    # be expanded later during function instantiation in the runtime.
+    packed_var = var._packed_variable  # pylint: disable=protected-access
+    if packed_var is not None and not context.executing_eagerly():
+      if group:
+        return fn(packed_var, *args, **kwargs)
+      else:
+        return (fn(packed_var, *args, **kwargs),)
+
     # Otherwise, we revert to MirroredStrategy behavior and update the variable
     # on each replica directly.
     updates = []
     values_and_devices = []
-    packed_var = var._packed_variable  # pylint: disable=protected-access
     if packed_var is not None:
       for device in packed_var.devices:
         values_and_devices.append((packed_var, device))

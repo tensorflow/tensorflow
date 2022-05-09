@@ -3,7 +3,7 @@
 The Task Library `BertQuestionAnswerer` API loads a Bert model and answers
 questions based on the content of a given passage. For more information, see the
 documentation for the Question-Answer model
-<a href="../../models/bert_qa/overview.md">here</a>.
+<a href="../../examples/bert_qa/overview">here</a>.
 
 ## Key features of the BertQuestionAnswerer API
 
@@ -159,7 +159,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `BertQuestionAnswerer` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata).
 
 The Metadata should meet the following requirements:
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -156,6 +157,11 @@ auto* tf_data_service_multi_trainer_cache_queries_counter =
         "tf.data service multi-client cache queries counter. The result can be "
         "hit or miss.",
         "cache_hit");
+
+auto* tf_data_service_multi_trainer_cache_size_bytes =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/multi_trainer_cache_size_bytes",
+        "tf.data service multi-client cache memory usage in bytes.");
 
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -383,6 +389,11 @@ void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit) {
       ->IncrementBy(1);
 }
 
+void RecordTFDataServiceMultiTrainerCacheSizeBytes(size_t bytes) {
+  tf_data_service_multi_trainer_cache_size_bytes->GetCell()->Set(
+      static_cast<int64_t>(bytes));
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
@@ -546,9 +557,9 @@ void UpdateTpuErrorCounter(const string& op, const string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }
 
-void UpdateEagerClientErrorCounter(const string& source,
+void UpdateEagerClientErrorCounter(const string& error_source,
                                    const string& error_type) {
-  eager_client_error_counter->GetCell(source, error_type)->IncrementBy(1);
+  eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

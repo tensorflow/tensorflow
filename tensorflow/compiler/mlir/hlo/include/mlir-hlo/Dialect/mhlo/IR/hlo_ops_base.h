@@ -21,6 +21,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+// Forward declaration for a function declared in hlo_ops.h.
+bool isCompatibleForMhloTypeInference(Type tp1, Type tp2);
+
 namespace OpTrait {
 
 template <typename ConcreteType>
@@ -48,6 +52,31 @@ class PairwiseSameOperandAndResultType
       }
     }
     return success();
+  }
+};
+
+template <typename ConcreteType>
+class CompatibleOperandsAndResultType
+    : public mlir::OpTrait::TraitBase<ConcreteType,
+                                      CompatibleOperandsAndResultType> {
+ public:
+  static LogicalResult verifyTrait(Operation *op) {
+    Type expected;
+    if (op->getNumResults() != 0) expected = op->getResult(0).getType();
+    if (op->getNumOperands() != 0) expected = op->getOperand(0).getType();
+    if (!expected) return failure();
+
+    auto type_match = [&](Type actual) {
+      return isCompatibleForMhloTypeInference(actual, expected);
+    };
+    auto all_match = llvm::all_of(op->getOperandTypes(), type_match) &&
+                     llvm::all_of(op->getResultTypes(), type_match);
+    if (!all_match) {
+      return op->emitOpError(
+          "requires compatible types for all operands and results");
+    }
+
+    return success(all_match);
   }
 };
 

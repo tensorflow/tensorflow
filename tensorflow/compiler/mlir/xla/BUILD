@@ -107,7 +107,6 @@ cc_library(
         "transforms/xla_passes.h",
     ],
     deps = [
-        ":legalize_tf",
         ":xla_framework",
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
@@ -538,6 +537,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -641,6 +641,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,

@@ -376,6 +376,11 @@ if(_TFLITE_ENABLE_NNAPI)
   populate_tflite_source_vars(
     "nnapi" TFLITE_NNAPI_SRCS FILTER "(_disabled)\\.(cc|h)$"
   )
+
+  list(APPEND TFLITE_NNAPI_SRCS
+    "${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc"
+  )
+
   if(${TFLITE_ENABLE_NNAPI_VERBOSE_VALIDATION})
     list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DNNAPI_VERBOSE_VALIDATION")
   endif()

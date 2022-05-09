@@ -29,19 +29,6 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
-namespace {
-// TODO(chiahungduan): This is a simple wrapper for unregistered ops and it'd
-// better to be implemented in the mlir::OpBuilder.
-Operation *CreateOperation(
-    OpBuilder &builder, Location loc, StringRef op_name, ValueRange operands,
-    TypeRange types, ArrayRef<NamedAttribute> attributes,
-    BlockRange successors = {},
-    MutableArrayRef<std::unique_ptr<Region>> regions = {}) {
-  OperationState state(loc, op_name, operands, types, attributes, successors,
-                       regions);
-  return builder.create(state);
-}
-}  // namespace
 
 // Convert Sigmoid+Mul to Swish
 // Mul(x, Sigmoid(x)) --> _MklSwish(x)
@@ -84,8 +71,8 @@ class MatchMulSigmoid : public RewritePattern {
     llvm::append_range(operands, mul_wrapper.getControlOperands());
 
     Operation *new_op =
-        CreateOperation(rewriter, op->getLoc(), "tfg._MklSwish", operands,
-                        op->getResultTypes(), op->getAttrs());
+        rewriter.create(op->getLoc(), rewriter.getStringAttr("tfg._MklSwish"),
+                        operands, op->getResultTypes(), op->getAttrs());
     rewriter.replaceOp(op, new_op->getResults());
 
     return success();

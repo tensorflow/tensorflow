@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
 namespace tensorflow {

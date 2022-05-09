@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
     ] + if_not_android([
+        "//tensorflow/core:lib_internal",
         ":profiler_interface",
         ":profiler_factory",
         ":profiler_collection",

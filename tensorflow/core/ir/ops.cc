@@ -541,7 +541,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // Parse argument name if present.
     entry_args.emplace_back();
     arg_types.emplace_back();
-    if (parser.parseRegionArgument(entry_args.back()) ||
+    if (parser.parseOperand(entry_args.back(), /*allowResultNumber=*/false) ||
         parser.parseColonType(arg_types.back()))
       return failure();
 
@@ -575,17 +575,19 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the result types and their attributes.
   if (succeeded(parser.parseOptionalArrow())) {
     if (failed(parser.parseLParen())) return failure();
-    // Parse individual function results.
-    do {
-      result_types.emplace_back();
-      NamedAttrList result_attr;
-      if (parser.parseType(result_types.back()) ||
-          parser.parseOptionalAttrDict(result_attr)) {
-        return failure();
-      }
-      result_attrs.push_back(builder.getDictionaryAttr(result_attr));
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen()) return failure();
+    if (failed(parser.parseOptionalRParen())) {
+      // Parse individual function results.
+      do {
+        result_types.emplace_back();
+        NamedAttrList result_attr;
+        if (parser.parseType(result_types.back()) ||
+            parser.parseOptionalAttrDict(result_attr)) {
+          return failure();
+        }
+        result_attrs.push_back(builder.getDictionaryAttr(result_attr));
+      } while (succeeded(parser.parseOptionalComma()));
+      if (parser.parseRParen()) return failure();
+    }
   }
 
   auto type = builder.getFunctionType(arg_types, result_types);
@@ -610,9 +612,16 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the function body.
   auto *body = result.addRegion();
   llvm::SMLoc loc = parser.getCurrentLocation();
-  if (failed(parser.parseRegion(
-          *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
-          /*enableNameShadowing=*/false)))
+  SmallVector<OpAsmParser::Argument> args;
+  if (entry_args.size()) {
+    for (auto argAndType : llvm::zip(entry_args, arg_types)) {
+      auto &arg = args.emplace_back();
+      arg.ssaName = std::get<0>(argAndType);
+      arg.type = std::get<1>(argAndType);
+    }
+  }
+
+  if (failed(parser.parseRegion(*body, args, /*enableNameShadowing=*/false)))
     return failure();
 
   // Function body was parsed, make sure it's not empty.
@@ -1361,10 +1370,10 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<RankedTensorType>();
-  if (!index || index.getRank() != 0 ||
-      !index.getElementType().isSignlessInteger(32)) {
-    return emitOpError("expected first body block argument to be tensor<i32>");
+  auto index = args.front().getType().dyn_cast<TensorType>();
+  if (!index || !index.getElementType().isSignlessInteger(32)) {
+    return emitOpError(
+        "expected first body block argument to be an i32 tensor");
   }
 
   if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();

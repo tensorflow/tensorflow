@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ImageSummary"
   input_arg {
     name: "tag"

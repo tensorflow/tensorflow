@@ -37,11 +37,21 @@ const binaryOperationMap *BinaryOperationMap() {
   return m;
 }
 
+const binaryOperationMap *BinaryBooleanOperationMap() {
+  static auto *const m = new binaryOperationMap({
+      {"LogicalOr", nvinfer1::ElementWiseOperation::kOR},
+      {"LogicalAnd", nvinfer1::ElementWiseOperation::kAND},
+  });
+  return m;
+}
+
 class ConvertBinaryImpl {
  protected:
   ConvertBinaryImpl(const binaryOperationMap *pOperMap) : pOperMap_(pOperMap) {}
 
-  Status ImplValidate(const OpConverterParams &params) {
+  Status ValidateImpl(const OpConverterParams &params,
+                      bool both_tensors = false,
+                      const std::vector<string> &not_supported_ops = {}) {
     const auto &node_def = params.node_def;
     const auto op = node_def.op();
     const auto op_pair = pOperMap_->find(op);
@@ -55,6 +65,21 @@ class ConvertBinaryImpl {
       return errors::Unimplemented(
           "Constant folding is falled back to TensorFlow, binary op '", op,
           "' received both input as constant");
+    }
+
+    if (!not_supported_ops.empty() && params.use_implicit_batch) {
+      const auto &end = not_supported_ops.end();
+      if (std::find(not_supported_ops.begin(), end, op) != end) {
+        return errors::Unimplemented(
+            "Binary op: '", op, "' is not supported in implicit batch mode");
+      }
+    }
+
+    if (both_tensors) {
+      if (inputs.at(0).is_weights() || inputs.at(1).is_weights()) {
+        return errors::InvalidArgument("Both inputs  of '", op,
+                                       "' are expected to be tensors");
+      }
     }
 
     nvinfer1::Dims broadcasted_dims[2];
@@ -73,7 +98,7 @@ class ConvertBinaryImpl {
     return Status::OK();
   }
 
-  Status ImplConvert(const OpConverterParams &params) {
+  Status ConvertImpl(const OpConverterParams &params) {
     const auto &node_def = params.node_def;
     // Add ElementWise layer.
     nvinfer1::ILayer *layer = params.converter->network()->addElementWise(
@@ -88,6 +113,7 @@ class ConvertBinaryImpl {
     params.outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
     return Status::OK();
   }
+
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return std::array<InputArgSpec, 2>{
         InputArgSpec::Create("x", TrtInputArg::kBoth),
@@ -115,12 +141,42 @@ class ConvertBinary : public OpConverterBase<ConvertBinary>,
     return ConvertBinaryImpl::InputSpec();
   }
 
-  Status Validate() { return ImplValidate(*params_); }
-  Status Convert() { return ImplConvert(*params_); }
+  Status Validate() { return ValidateImpl(*params_); }
+  Status Convert() { return ConvertImpl(*params_); }
+};
+
+class ConvertBooleanBinary : public OpConverterBase<ConvertBooleanBinary>,
+                             public ConvertBinaryImpl {
+ public:
+  explicit ConvertBooleanBinary(OpConverterParams *params)
+      : OpConverterBase<ConvertBooleanBinary>(params),
+        ConvertBinaryImpl(BinaryBooleanOperationMap()) {}
+
+  static constexpr std::array<DataType, 1> AllowedDataTypes() {
+    return {DataType::DT_BOOL};
+  }
+
+  static constexpr std::array<InputArgSpec, 2> InputSpec() {
+    return ConvertBinaryImpl::InputSpec();
+  }
+
+  static constexpr const char *NodeDefDataTypeAttributeName() { return ""; }
+  Status Validate() {
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    return ValidateImpl(*params_, true, {"LogicalOr", "LogicalAnd"});
+#else
+    return errors::Unimplemented("Boolean op: ", params_->node_def.op(),
+                                 " is not supported in TRT version < 8.2");
+#endif
+  }
+  Status Convert() { return ConvertImpl(*params_); }
 };
 
 REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertBinary>(),
                                   GetOperationNames(*BinaryOperationMap()));
+REGISTER_DEFAULT_TRT_OP_CONVERTER(
+    MakeConverterFunction<ConvertBooleanBinary>(),
+    GetOperationNames(*BinaryBooleanOperationMap()));
 
 }  // namespace convert
 }  // namespace tensorrt

@@ -27,6 +27,7 @@ from tensorflow.python.training.saving import saveable_object as saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import trackable_utils
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
@@ -199,8 +200,10 @@ class ObjectGraphView(object):
     """
     # pylint: disable=protected-access
     obj._maybe_initialize_trackable()
-    children = [base.TrackableReference(name, ref) for name, ref
-                in obj._trackable_children(save_type, **kwargs).items()]
+    children = []
+    for name, ref in obj._trackable_children(save_type, **kwargs).items():
+      ref = tracking.convert_to_trackable(ref, parent=obj)
+      children.append(base.TrackableReference(name, ref))
     # pylint: enable=protected-access
 
     # GraphView objects may define children of the root object that are not

@@ -103,6 +103,20 @@ inline void Relu(const RuntimeShape& input_shape, const T* input_data,
 }
 
 template <typename T>
+inline void Relu0To1(const RuntimeShape& input_shape, const T* input_data,
+                     const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Relu0To1 (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const T val = input_data[i];
+    const T upper = 1;
+    const T lower = 0;
+    const T clamped = val > upper ? upper : val < lower ? lower : val;
+    output_data[i] = clamped;
+  }
+}
+
+template <typename T>
 inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Relu1 (not fused)");

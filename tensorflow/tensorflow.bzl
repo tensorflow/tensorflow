@@ -962,45 +962,6 @@ def tf_native_cc_binary(
         **kwargs
     )
 
-# buildozer: disable=function-docstring-args
-def tf_native_cc_shared_library(
-        name,
-        srcs = [],
-        data = [],
-        static_deps = [],
-        deps = [],
-        copts = tf_copts(),
-        linkopts = [],
-        defines = [],
-        visibility = None):
-    """ A simple wrap around cc_shared_library rule."""
-    cc_library_name = name + "_cclib"
-    cc_library(
-        name = cc_library_name,
-        srcs = srcs,
-        data = data,
-        deps = deps,
-        copts = copts,
-        defines = defines,
-    )
-    cc_shared_library(
-        name = name,
-        roots = [cc_library_name],
-        static_deps = static_deps,
-        shared_lib_name = name,
-        user_link_flags = select({
-            clean_dep("//tensorflow:windows"): [],
-            clean_dep("//tensorflow:macos"): [
-                "-lm",
-            ],
-            "//conditions:default": [
-                "-lpthread",
-                "-lm",
-            ],
-        }) + linkopts + _rpath_user_link_flags(name) + lrt_if_needed(),
-        visibility = visibility,
-    )
-
 def tf_gen_op_wrapper_cc(
         name,
         out_ops_file,
@@ -2494,6 +2455,8 @@ def tf_py_test(
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
 
+    env = kwargs.pop("env", {})
+
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY3")
     py_test(
@@ -2510,9 +2473,14 @@ def tf_py_test(
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
         deps = depset(deps + xla_test_true_list),
+        env = env,
         **kwargs
     )
     if tfrt_enabled_internal:
+        tfrt_env = {}
+        tfrt_env.update(env)
+        tfrt_env["EXPERIMENTAL_ENABLE_TFRT"] = "1"
+
         # None `main` defaults to `name` + ".py" in `py_test` target. However, since we
         # are appending _tfrt. it becomes `name` + "_tfrt.py" effectively. So force
         # set `main` argument without `_tfrt`.
@@ -2520,6 +2488,7 @@ def tf_py_test(
             main = name + ".py"
 
         py_test(
+            env = tfrt_env,
             name = name + "_tfrt",
             size = size,
             srcs = srcs,
@@ -2532,7 +2501,7 @@ def tf_py_test(
             tags = tags + ["tfrt"],
             visibility = [clean_dep("//tensorflow:internal")] +
                          additional_visibility,
-            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            deps = depset(deps + xla_test_true_list),
             **kwargs
         )
 
@@ -2842,7 +2811,7 @@ def pybind_library(
 def pybind_extension(
         name,
         srcs,
-        module_name,
+        module_name = None,
         hdrs = [],
         static_deps = [],
         deps = [],
@@ -2873,6 +2842,7 @@ def pybind_extension(
         sname = name[p + 1:]
         prefix = name[:p + 1]
     so_file = "%s%s.so" % (prefix, sname)
+    filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
         "init%s" % sname,
@@ -2965,23 +2935,10 @@ def pybind_extension(
 
         # cc_shared_library can generate more than one file.
         # Solution to avoid the error "variable '$<' : more than one input file."
-        filegroup_name = name + "_filegroup"
         filegroup(
             name = filegroup_name,
             srcs = [so_file],
             output_group = "main_shared_library_output",
-            testonly = testonly,
-        )
-        native.genrule(
-            name = name + "_pyd_copy",
-            srcs = [filegroup_name],
-            outs = [pyd_file],
-            cmd = "cp $< $@",
-            output_to_bindir = True,
-            visibility = visibility,
-            deprecation = deprecation,
-            restricted_to = restricted_to,
-            compatible_with = compatible_with,
             testonly = testonly,
         )
     else:
@@ -3028,18 +2985,26 @@ def pybind_extension(
             restricted_to = restricted_to,
             compatible_with = compatible_with,
         )
-        native.genrule(
-            name = name + "_pyd_copy",
-            srcs = [so_file],
-            outs = [pyd_file],
-            cmd = "cp $< $@",
-            output_to_bindir = True,
-            visibility = visibility,
-            deprecation = deprecation,
-            restricted_to = restricted_to,
-            compatible_with = compatible_with,
-            testonly = testonly,
+
+        # For Windows, emulate the above filegroup with the shared object.
+        native.alias(
+            name = filegroup_name,
+            actual = so_file,
         )
+
+    # For Windows only.
+    native.genrule(
+        name = name + "_pyd_copy",
+        srcs = [filegroup_name],
+        outs = [pyd_file],
+        cmd = "cp $< $@",
+        output_to_bindir = True,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
+        testonly = testonly,
+    )
 
     native.py_library(
         name = name,
@@ -3130,7 +3095,7 @@ def tf_python_pybind_static_deps(testonly = False):
 def tf_python_pybind_extension(
         name,
         srcs,
-        module_name,
+        module_name = None,
         hdrs = [],
         deps = [],
         static_deps = [],
@@ -3151,7 +3116,7 @@ def tf_python_pybind_extension(
     pybind_extension(
         name,
         srcs,
-        module_name,
+        module_name = module_name,
         hdrs = hdrs,
         static_deps = static_deps,
         deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),

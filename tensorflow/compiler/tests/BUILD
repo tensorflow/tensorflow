@@ -2255,6 +2255,7 @@ tpu_py_test(
     # TODO(b/225357162): Flaky segfault when transfering from device to host
     # using TFRT.
     disable_tfrt = True,
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",

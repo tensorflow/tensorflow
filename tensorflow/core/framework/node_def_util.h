@@ -255,6 +255,13 @@ Status GetNodeAttr(
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
 
+template <typename T>
+StatusOr<T> GetNodeAttr(const NodeDef& ndef, absl::string_view attr_name) {
+  T val;
+  TF_RETURN_IF_ERROR(GetNodeAttr(ndef, attr_name, &val));
+  return val;
+}
+
 // This version avoids copying the TensorProto.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,

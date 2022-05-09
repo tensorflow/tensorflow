@@ -227,9 +227,7 @@ build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
-# This build is for the inference regime only.
 build:mkl_aarch64 --define=build_with_mkl_aarch64=true
-build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_aarch64 --define=build_with_openmp=true
 build:mkl_aarch64 -c opt
 
@@ -307,6 +305,10 @@ build:windows --copt=/W0
 # _USE_MATH_DEFINES is defined.
 build:windows --copt=/D_USE_MATH_DEFINES
 build:windows --host_copt=/D_USE_MATH_DEFINES
+
+# Windows has a relatively short command line limit, which TF has begun to hit.
+# See https://docs.bazel.build/versions/main/windows.html
+build:windows --features=compiler_param_file
 
 # Speed Windows compile times. Available in VS 16.4 (we are on 16.11). See
 # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion

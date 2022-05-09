@@ -4,10 +4,10 @@ Object detectors can identify which of a known set of objects might be present
 and provide information about their positions within the given image or a video
 stream. An object detector is trained to detect the presence and location of
 multiple classes of objects. For example, a model might be trained with images
-that contain various pieces of fruit, along with a _label_ that specifies the
+that contain various pieces of fruit, along with a *label* that specifies the
 class of fruit they represent (e.g. an apple, a banana, or a strawberry), and
 data specifying where each object appears in the image. See the
-[introduction of object detection](../../models/object_detection/overview.md)
+[introduction of object detection](../../examples/object_detection/overview)
 for more information about object detectors.
 
 Use the Task Library `ObjectDetector` API to deploy your custom object detectors
@@ -152,7 +152,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ObjectDetector` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+[TFLite Model Metadata](../../convert/metadata). See examples of creating
 metadata for object detectors using the
 [TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#object_detectors).
 

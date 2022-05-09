@@ -107,6 +107,12 @@ class IrEmitterUnnested : public IrEmitter {
         absl::Span<llvm::Value* const> idx_major_to_minor,
         const llvm::Twine& name = "") const;
 
+    // Calculuate the pointee type of the llvm::Value returned by
+    // GEPIntoSharedMemory
+    llvm::Type* GEPIntoSharedMemoryType(
+        llvm::GlobalVariable* shared,
+        absl::Span<llvm::Value* const> idx_major_to_minor) const;
+
    private:
     llvm::Value* scaling;
   };

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -41,6 +42,7 @@ using ::tensorflow::data::testing::WaitWhile;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::Pair;
 using ::testing::TestWithParam;
 using ::testing::UnorderedElementsAre;
@@ -256,6 +258,16 @@ TEST(DataServiceTest, GetWorkers) {
   std::vector<WorkerInfo> workers;
   TF_EXPECT_OK(dispatcher.GetWorkers(workers));
   EXPECT_EQ(1, workers.size());
+}
+
+TEST(DataServiceTest, DispatcherStateExport) {
+  TestCluster cluster(1);
+  TF_ASSERT_OK(cluster.Initialize());
+
+  ServerStateExport dispatcher_state_export = cluster.ExportDispatcherState();
+  EXPECT_THAT(
+      dispatcher_state_export.dispatcher_state_export().worker_addresses(),
+      ElementsAre(HasSubstr("localhost")));
 }
 
 }  // namespace

@@ -453,9 +453,19 @@ func.func @complex_cmp_neq(%lhs: tensor<2xcomplex<f64>>,
 // CHECK-LABEL: func @float_cos
 func.func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
-  // CHECK: cos
+  // CHECK: math.cos
   %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_cos
+func.func @complex_cos(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.cos
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -463,9 +473,19 @@ func.func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @float_sin
 func.func @float_sin(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
-  // CHECK: sin
+  // CHECK: math.sin
   %0 = "mhlo.sine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_sin
+func.func @complex_sin(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.sin
+  %0 = "mhlo.sine"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -762,7 +782,7 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 // CHECK-LABEL: real_dynamic_slice_with_int
 // Verify that legalization of real_dynamic_slice legalization with integer
 // dims work & passes verification.
-func public @real_dynamic_slice_with_int(%arg0: tensor<10xi32> , %arg1: tensor<1xi32> ) -> tensor<?xi32> {
+func.func public @real_dynamic_slice_with_int(%arg0: tensor<10xi32> , %arg1: tensor<1xi32> ) -> tensor<?xi32> {
   %0 = mhlo.constant dense<0> : tensor<1xi32>
   %1 = mhlo.constant dense<1> : tensor<1xi32>
   %2 = mhlo.constant dense<0> : tensor<i32>
@@ -772,7 +792,7 @@ func public @real_dynamic_slice_with_int(%arg0: tensor<10xi32> , %arg1: tensor<1
 // CHECK: %[[SIZE2:.*]] = arith.index_cast %[[SIZE1]] : i32 to index
 // CHECK: arith.subi %{{.*}}, %[[SIZE2]] : index
   %4 = "mhlo.real_dynamic_slice"(%arg0, %0, %arg1, %1) : (tensor<10xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<?xi32>
-  return %4 : tensor<?xi32>
+  func.return %4 : tensor<?xi32>
 }
 
 // -----
@@ -1284,6 +1304,67 @@ func.func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_c64_to_c128
+func.func @convert_c64_to_c128(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>>
+  func.return %result : tensor<2x2xcomplex<f64>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %{{.*}}: complex<f64>):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-DAG:  %[[IMAG:.*]] = complex.im %[[OPERAND_IN]]
+// CHECK-DAG:  %[[REAL_RESULT:.*]] = arith.extf %[[REAL]] : f32 to f64
+// CHECK-DAG:  %[[IMAG_RESULT:.*]] = arith.extf %[[IMAG]] : f32 to f64
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL_RESULT]], %[[IMAG_RESULT]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f64>
+
+// CHECK-LABEL: func @convert_c128_to_c64
+func.func @convert_c128_to_c64(%input: tensor<2x2xcomplex<f64>>) -> tensor<2x2xcomplex<f32>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f64>>) -> tensor<2x2xcomplex<f32>>
+  func.return %result : tensor<2x2xcomplex<f32>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f64>, %{{.*}}: complex<f32>):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-DAG:  %[[IMAG:.*]] = complex.im %[[OPERAND_IN]]
+// CHECK-DAG:  %[[REAL_RESULT:.*]] = arith.truncf %[[REAL]] : f64 to f32
+// CHECK-DAG:  %[[IMAG_RESULT:.*]] = arith.truncf %[[IMAG]] : f64 to f32
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL_RESULT]], %[[IMAG_RESULT]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_c64
+func.func @convert_f32_to_c64(%input: tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
+  func.return %result : tensor<2x2xcomplex<f32>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %{{.*}}: complex<f32>):
+// CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[OPERAND_IN]], %[[IMAG]] 
+// CHECK:      linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_c128
+func.func @convert_i32_to_c128(%input: tensor<2x2xi32>) -> tensor<2x2xcomplex<f64>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xcomplex<f64>>
+  func.return %result : tensor<2x2xcomplex<f64>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: complex<f64>):
+// CHECK-DAG:  %[[REAL:.*]] = arith.sitofp %[[OPERAND_IN]] : i32 to f64
+// CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f64
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL]], %[[IMAG]] 
+// CHECK:      linalg.yield %[[RESULT]] : complex<f64>
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, -d1 + 2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
@@ -1767,6 +1848,21 @@ func.func @dot_dot(%arg0: tensor<?xf32>,
 
 // -----
 
+func.func @dot_dot_unsigned(%arg0: tensor<?xui32>,
+              %arg1: tensor<?xui32>) -> tensor<ui32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xui32>, tensor<?xui32>) -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: func @dot_dot_unsigned(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xui32>, %[[ARG1:.*]]: tensor<?xui32>)
+// CHECK: %[[INIT:.*]] = linalg.init_tensor []
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}outs(%[[INIT]]
+// CHECK: linalg.dot
+// CHECK-SAME: ins(%{{.*}} : tensor<?xi32>, tensor<?xi32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<i32>)
+
+// -----
+
 func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
                   %arg1: tensor<?x3x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
@@ -1789,12 +1885,40 @@ func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
 // CHECK-SAME: {someattr}
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xf32>, tensor<?x3x?xf32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xf32>)
+
+// -----
+
+func.func @dot_general_batch_matmul_unsigned(%arg0: tensor<?x?x3xui32>,
+                  %arg1: tensor<?x3x?xui32>) -> tensor<?x?x?xui32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x3xui32>, tensor<?x3x?xui32>) -> tensor<?x?x?xui32>
+  func.return %0 : tensor<?x?x?xui32>
+// CHECK-LABEL: func @dot_general_batch_matmul_unsigned(
+// CHECK: linalg.batch_matmul
+// CHECK-SAME: ins({{.*}} : tensor<?x?x3xi32>, tensor<?x3x?xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
+}
 
 // -----
 
@@ -1819,6 +1943,13 @@ func.func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1848,6 +1979,13 @@ func.func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -4242,12 +4380,19 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
 // CHECK: func @dot_general(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>)
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-// CHECK-DAG: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.generic
@@ -4300,3 +4445,25 @@ func.func @dot_general_two_batch(%arg0: tensor<64x16x128x32xf32>,
 // CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
 // CHECK:     linalg.yield %[[SUM]] : f32
 // CHECK: } -> tensor<16x32x64x256xf32>
+
+// -----
+
+func.func @dot_general_unsigned(%arg0: tensor<?x?x?xui32>,
+                  %arg1: tensor<?x?x?xui32>) -> tensor<?x?x?xui32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x?xui32>, tensor<?x?x?xui32>) -> tensor<?x?x?xui32>
+  func.return %0 : tensor<?x?x?xui32>
+}
+
+// CHECK-LABEL: func @dot_general_unsigned(
+// CHECK: linalg.generic
+// CHECK-SAME: ins({{.*}} : tensor<?x?x?xi32>, tensor<?x?x?xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)

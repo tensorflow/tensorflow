@@ -18,7 +18,6 @@ package(
 tf_python_pybind_extension(
     name = "_pywrap_file_io",
     srcs = ["file_io_wrapper.cc"],
-    module_name = "_pywrap_file_io",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -49,7 +48,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_pywrap_record_io",
     srcs = ["record_io_wrapper.cc"],
-    module_name = "_pywrap_record_io",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

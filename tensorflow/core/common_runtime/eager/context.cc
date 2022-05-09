@@ -164,7 +164,7 @@ EagerContext::EagerContext(
       num_active_steps_(0),
       step_container_(std::make_unique<ScopedStepContainer>(
           0, [this](const string& name) { ClearResourceContainer(name); })),
-      default_executor_(async),
+      default_executor_(async, /*enable_streaming_enqueue=*/true),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       collective_executor_mgr_(collective_executor_mgr, /*owned=*/false),
@@ -488,6 +488,10 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   kernel_cache_.clear();
   for (auto& entry : registered_functions_) {
     entry.second->cached_kernel_keys->clear();
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    device_cache_.clear();
   }
   {
     mutex_lock ml(metadata_mu_);
@@ -850,6 +854,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, request.get(), response,
         [request, response](const Status& status) {
           if (!status.ok()) {
@@ -894,6 +899,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     for (int i = 0; i < requests.size(); i++) {
       auto response = std::make_shared<eager::EnqueueResponse>();
       eager_client->StreamingEnqueueAsync(
+          this->Executor().StreamingEnqueue(),
           /*call_opts=*/nullptr, requests[i].get(), response.get(),
           [request = requests[i], response](const Status& s) {
             if (!s.ok()) {
@@ -1031,6 +1037,7 @@ Status EagerContext::SyncExecutors() {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, &request, response,
         [response, target, &counter, &s = statuses[i]](const Status& status) {
           s = status;
@@ -1062,6 +1069,13 @@ core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
   return new_ref;
 }
 
+Device* EagerContext::GetCachedDevice(Fprint128 device_cache_key) {
+  tf_shared_lock l(device_cache_mu_);
+  auto iter = device_cache_.find(device_cache_key);
+  if (iter == device_cache_.end()) return nullptr;
+  return iter->second;
+}
+
 void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
@@ -1074,6 +1088,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
   }
+}
+
+void EagerContext::AddDeviceToCache(Fprint128 device_cache_key,
+                                    Device* device) {
+  mutex_lock l(device_cache_mu_);
+  device_cache_[device_cache_key] = device;
 }
 
 bool EagerContext::ShouldStoreGraphs() { return should_store_graphs_.load(); }

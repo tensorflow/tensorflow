@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "AddSparseToTensorsMap"
   input_arg {
     name: "sparse_indices"

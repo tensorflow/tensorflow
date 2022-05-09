@@ -89,7 +89,6 @@ tf_python_pybind_extension(
     name = "pywrap_tensor_test_util",
     testonly = True,
     srcs = ["pywrap_tensor_test_util.cc"],
-    module_name = "pywrap_tensor_test_util",
     deps = [
         ":pywrap_tfe_lib",
         "//tensorflow/c:tf_status_helper",
@@ -226,7 +225,6 @@ tf_python_pybind_extension(
     name = "custom_device_testutil",
     testonly = True,
     srcs = ["custom_device_testutil.cc"],
-    module_name = "custom_device_testutil",
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
@@ -673,12 +671,17 @@ py_library(
     srcs = ["function_saved_model_utils.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/training/tracking:asset",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:resource",
+    ],
 )
 
 pybind_extension(
     name = "_concrete_function",
     srcs = ["function.cc"],
-    module_name = "_concrete_function",
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",

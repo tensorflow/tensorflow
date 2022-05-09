@@ -513,11 +513,13 @@ using operationMap = std::unordered_map<std::string, T>;
 // Map of all supported UnaryOperations.
 typedef operationMap<nvinfer1::UnaryOperation> unaryOperationMap;
 const unaryOperationMap* UnaryOperationMap();
+const unaryOperationMap* UnaryBooleanOperationMap();
 // Map of all supported ActivationTypes.
 const operationMap<nvinfer1::ActivationType>* ActivationTypeMap();
 // Map of all supported BinaryOperations.
 typedef operationMap<nvinfer1::ElementWiseOperation> binaryOperationMap;
 const binaryOperationMap* BinaryOperationMap();
+const binaryOperationMap* BinaryBooleanOperationMap();
 
 template <typename T>
 absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {

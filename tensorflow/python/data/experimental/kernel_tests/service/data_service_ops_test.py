@@ -790,6 +790,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertNotEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testDoubleDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = self.make_distributed_range_dataset(num_elements=10, cluster=cluster)
+    ds = self.make_distributed_dataset(dataset=ds, cluster=cluster)
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3
     cluster_1 = data_service_test_base.TestCluster(num_workers=cluster_1_size)
@@ -831,6 +838,27 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.from_tensors(tensor)
     ds = self.make_distributed_dataset(ds, cluster)
     self.assertDatasetProduces(ds, [tensor])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBatchDropsAllElements(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=2, fault_tolerant_mode=False)
+    dataset = dataset_ops.Dataset.range(10).batch(1000, drop_remainder=True)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster, processing_mode=data_service_ops.ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBatchDoesNotDropRemainder(self):
+    num_workers = 2
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers, fault_tolerant_mode=False)
+    dataset = dataset_ops.Dataset.range(10).batch(1000, drop_remainder=False)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster, processing_mode=data_service_ops.ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, [list(range(10))] * num_workers)
 
   @combinations.generate(
       combinations.times(test_base.graph_only_combinations(),

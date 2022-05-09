@@ -69,6 +69,7 @@ using ::llvm::any_cast;
 #endif
 
 using ::llvm::Expected;
+using ::llvm::MutableArrayRef;
 using ::llvm::None;
 using ::llvm::Optional;
 
@@ -85,6 +86,7 @@ using ::tfrt::DType;
 using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
+using ::tfrt::Index;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
 using ::tfrt::MakeAvailableAsyncValueRef;
@@ -203,8 +205,8 @@ static std::string AsTensorType(const MemrefDesc& desc) {
   llvm::raw_string_ostream os(str);
 
   os << "tensor<";
-  for (ssize_t size : desc.sizes) os << size << "x";
-  os << desc.dtype;
+  for (size_t size : desc.sizes()) os << size << "x";
+  os << desc.dtype();
   os << ">";
 
   return str;
@@ -216,20 +218,21 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
   llvm::raw_string_ostream os(str);
 
   auto print_0d = [&](auto type_tag) {
-    os << desc.dtype << ": " << *static_cast<decltype(type_tag)*>(desc.data);
+    os << desc.dtype() << ": "
+       << *static_cast<decltype(type_tag)*>(desc.data());
   };
 
   auto print_1d = [&](auto type_tag) {
-    os << desc.dtype << ": [";
-    for (size_t i = 0; i < desc.sizes[0]; ++i) {
+    os << desc.dtype() << ": [";
+    for (size_t i = 0; i < desc.size(0); ++i) {
       if (i != 0) os << ",";
-      os << static_cast<decltype(type_tag)*>(desc.data)[i];
+      os << static_cast<decltype(type_tag)*>(desc.data())[i];
     }
     os << "]";
   };
 
   auto type_dispatch = [&](auto functor) {
-    switch (desc.dtype) {
+    switch (desc.dtype()) {
       case DType::I32:
         functor(int32_t{});
         break;
@@ -237,11 +240,11 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
         functor(int64_t{});
         break;
       default:
-        os << "<unsupported dtype " << desc.dtype << ">";
+        os << "<unsupported dtype " << desc.dtype() << ">";
     }
   };
 
-  size_t rank = desc.sizes.size();
+  size_t rank = desc.rank();
 
   switch (rank) {
     case 0:
@@ -251,7 +254,7 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
       type_dispatch(print_1d);
       break;
     default:
-      os << "<unsupported rank " << desc.sizes.size() << ">";
+      os << "<unsupported rank " << desc.rank() << ">";
   }
 
   return str;
@@ -572,36 +575,30 @@ using TensorflowReturnValueConverter =
     StaticReturnValueConverter<TensorflowConversionContext,
                                ReturnTensorflowTensor>;
 
-// Converts Tensor to the Memref Descriptor and verifies that the Tensor
-// value is compatible with the memref type.
-static void ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor,
-                                      MemrefDesc* memref) {
-  memref->dtype = tfd::GetTfrtDtype(tensor.dtype());
-  memref->data = const_cast<void*>(tensor.data());
-  memref->offset = 0;
+static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
+  // Fills memref sizes and strides with a tensor shape;
+  auto fill_desc = [&](MutableArrayRef<Index> sizes,
+                       MutableArrayRef<Index> strides) {
+    int64_t multiplier = 1;
+    for (int i = tensor.dims() - 1; i >= 0; --i) {
+      int64_t dim_size = tensor.dim_size(i);
+      sizes[i] = dim_size;
+      strides[i] = multiplier;
+      multiplier *= dim_size;
+    }
+  };
 
-  int rank = tensor.dims();
-  memref->sizes.resize_for_overwrite(rank);
-  memref->strides.resize_for_overwrite(rank);
-
-  // Fill memref sizes and compute strides from the tensor dimensions.
-  int64_t multiplier = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    int64_t dim_size = tensor.dim_size(i);
-    memref->sizes[i] = dim_size;
-    memref->strides[i] = multiplier;
-    multiplier *= dim_size;
-  }
+  return MemrefDesc(tensor.dims(), tfd::GetTfrtDtype(tensor.dtype()),
+                    const_cast<void*>(tensor.data()), 0, fill_desc);
 }
 
-static void ConvertTensorOperandsToMemrefDesc(
-    RepeatedArguments<FallbackTensor> operands,
-    llvm::SmallVectorImpl<MemrefDesc>* memrefs) {
-  assert(memrefs->empty() && "memrefs must be empty");
-  memrefs->resize(operands.size());
-
-  for (unsigned i = 0; i < operands.size(); ++i)
-    ConvertTensorToMemrefDesc(operands[i].tensor(), &(*memrefs)[i]);
+static std::vector<MemrefDesc> ConvertTensorOperandsToMemrefDesc(
+    RepeatedArguments<FallbackTensor> operands) {
+  std::vector<MemrefDesc> memrefs;
+  memrefs.reserve(operands.size());
+  for (FallbackTensor& operand : operands)
+    memrefs.emplace_back(ConvertTensorToMemrefDesc(operand.tensor()));
+  return memrefs;
 }
 
 struct DebugListener : public SpecializationListener {
@@ -639,8 +636,7 @@ static void ReturnErrors(RemainingResults results, Error error,
   ReturnErrors(results, std::move(error));
 }
 
-static void ExecuteImpl(Executable& executable,
-                        const llvm::SmallVectorImpl<MemrefDesc>& memrefs,
+static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
                         RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx) {
@@ -701,8 +697,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx, bool debug) {
   // Convert Tensor operands to memref descriptors.
-  llvm::SmallVector<MemrefDesc> memrefs;
-  ConvertTensorOperandsToMemrefDesc(operands, &memrefs);
+  auto memrefs = ConvertTensorOperandsToMemrefDesc(operands);
 
   // Get an executable that might be specialized to the operands.
   DebugListener debug_listener;

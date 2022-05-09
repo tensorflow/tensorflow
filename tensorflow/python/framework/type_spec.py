@@ -473,10 +473,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
   # argument not a TensorSpec argument as it should be.
   def __tf_tracing_type__(self,
                           context: trace.TracingContext) -> trace.TraceType:
-    if context.include_tensor_ranks_only:
-      return self._with_tensor_ranks_only()
-    else:
-      return self
+    return self
 
   def __check_tensor_list(self, tensor_list):
     """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""

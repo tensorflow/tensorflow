@@ -1348,7 +1348,7 @@ class Stream {
                                     &beta_storage);
     port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
         this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, stride_a, lda, b,
+        blas::ToDataType<InputType>::value, lda, stride_a, b,
         blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
         computation_type, algorithm, output_profile_result);

@@ -129,7 +129,7 @@ func.func @collective_reduce_v2_add_id(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
   // CHECK-NEXT: return %[[REDUCE]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_max_id
@@ -143,7 +143,7 @@ func.func @collective_reduce_v2_max_id(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
   // CHECK-NEXT: return %[[REDUCE]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Max", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_min_id
@@ -157,7 +157,7 @@ func.func @collective_reduce_v2_min_id(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
   // CHECK-NEXT: return %[[REDUCE]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Min", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_mul_id
@@ -171,7 +171,7 @@ func.func @collective_reduce_v2_mul_id(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
   // CHECK-NEXT: return %[[REDUCE]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_add_div
@@ -187,7 +187,7 @@ func.func @collective_reduce_v2_add_div(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[RESULT:.*]] = mhlo.divide %[[REDUCE]], %[[GROUP_SIZE]]
   // CHECK-NEXT: return %[[RESULT]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Div"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_max_div
@@ -203,7 +203,7 @@ func.func @collective_reduce_v2_max_div(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[RESULT:.*]] = mhlo.divide %[[REDUCE]], %[[GROUP_SIZE]]
   // CHECK-NEXT: return %[[RESULT]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Max", final_op = "Div"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_min_div
@@ -219,7 +219,7 @@ func.func @collective_reduce_v2_min_div(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[RESULT:.*]] = mhlo.divide %[[REDUCE]], %[[GROUP_SIZE]]
   // CHECK-NEXT: return %[[RESULT]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Min", final_op = "Div"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @collective_reduce_v2_mul_div
@@ -235,7 +235,7 @@ func.func @collective_reduce_v2_mul_div(%input: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[RESULT:.*]] = mhlo.divide %[[REDUCE]], %[[GROUP_SIZE]]
   // CHECK-NEXT: return %[[RESULT]]
   %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Div"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 

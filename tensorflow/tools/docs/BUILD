@@ -223,6 +223,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",

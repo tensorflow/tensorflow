@@ -90,11 +90,17 @@ class TpuDevice : public PjRtDevice {
     return nullptr;
   }
 
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   const int id_;
   const int process_index_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
   // Index of the core of the same chip.
   int core_on_chip_;
   PyTpuClient* tpu_client_;

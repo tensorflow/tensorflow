@@ -256,6 +256,39 @@ cc_library(
     ],
 )
 
+# A config for enabling tensorflow profiler in TFLite. Currently, it only supports dynamic
+# allocation. Add '--define=tflite_tensorflow_profiler=true' in your build command line to use it.
+config_setting(
+    name = "tensorflow_profiler_config",
+    define_values = {"tflite_tensorflow_profiler": "true"},
+)
+
+# This is intended to be used only by allocators.
+cc_library(
+    name = "tensorflow_profiler_logger_shim",
+    srcs = ["tensorflow_profiler_logger_shim.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":macros",
+    ],
+    alwayslink = 1,
+)
+
+# Benchmarks should link this library to see the actual result.
+cc_library(
+    name = "tensorflow_profiler_logger",
+    srcs = ["tensorflow_profiler_logger.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "simple_memory_arena_debug_dump",
     srcs = ["simple_memory_arena_debug_dump.cc"],

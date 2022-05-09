@@ -1344,10 +1344,9 @@ class Trackable(object):
     Override this method to define the children of this instance. Please read
     the implementation restrictions:
 
-    **Rule 1: All children must be instances of `Trackable`.**
+    **Rule 1: All children must be convertable to `Trackable`.**
 
-    SavedModels and checkpoints do not store the entire python object structure,
-    only the object structure defined by the TensorFlow `Trackable`.
+    Must pass `isinstance` check or `tracking.convert_to_trackable`.
 
     **Rule 2: [Checkpoint-only] Do not create new objects.**
 

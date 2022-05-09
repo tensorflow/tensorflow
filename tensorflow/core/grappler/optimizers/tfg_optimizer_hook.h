@@ -26,12 +26,6 @@ class PassManager;
 
 namespace tfg {
 
-// Constructs the default graph/function-level TFG pass pipeline.
-void DefaultGrapplerPipeline(PassManager& mgr);
-
-// Constructs the default module-level TFG pass pipeline.
-void DefaultModuleGrapplerPipeline(PassManager& mgr);
-
 // A function that builds the TFG pass pipeline.
 using TFGPassPipelineBuilder = std::function<void(PassManager& pm)>;
 

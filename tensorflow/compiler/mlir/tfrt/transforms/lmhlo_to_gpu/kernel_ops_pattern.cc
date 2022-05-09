@@ -22,6 +22,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -327,7 +328,7 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   rewriter.setInsertionPoint(op->getParentOfType<mlir::func::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
-  gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),
+  gpu_module->setAttr(tfrt::gpu::GetGpuBinaryAttrName(),
                       rewriter.getStringAttr(gpu_module_data));
 
   // Annotate memref.global ops with the gpu.module symbol, and annotate the
@@ -341,13 +342,13 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
                    << "unused (spurious) constant.";
       continue;
     }
-    global_op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
+    global_op->setAttr(tfrt::gpu::GetGpuModuleAttrName(),
                        mlir::SymbolRefAttr::get(gpu_module));
     if (!constant.content.empty())
       const_attrs.emplace_back(mlir::SymbolRefAttr::get(global_op));
   }
   if (!const_attrs.empty()) {
-    gpu_module->setAttr(tfrt::gpu::getGpuConstantsAttrName(),
+    gpu_module->setAttr(tfrt::gpu::GetGpuConstantsAttrName(),
                         rewriter.getArrayAttr(const_attrs));
   }
 

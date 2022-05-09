@@ -4803,7 +4803,24 @@ TfLiteXNNPackDelegateWeightsCache* TfLiteXNNPackDelegateWeightsCacheCreate() {
   return reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(weights_cache);
 }
 
-void TfLiteXNNPackWeightsCacheDelete(TfLiteXNNPackDelegateWeightsCache* cache) {
+bool TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_status status = xnn_finalize_weights_cache(
+      weights_cache, xnn_weights_cache_finalization_kind_soft);
+  return status == xnn_status_success;
+}
+
+bool TfLiteXNNPackDelegateWeightsCacheFinalizeHard(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_status status = xnn_finalize_weights_cache(
+      weights_cache, xnn_weights_cache_finalization_kind_hard);
+  return status == xnn_status_success;
+}
+
+void TfLiteXNNPackDelegateWeightsCacheDelete(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
   if (cache == nullptr) {
     return;
   }

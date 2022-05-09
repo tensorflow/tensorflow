@@ -111,7 +111,7 @@ class AsyncRemoteExecuteNode : public AsyncEagerNode {
 // TODO(agarwal): Implement optimizations over EagerNode traces.
 class EagerExecutor {
  public:
-  explicit EagerExecutor(bool async);
+  explicit EagerExecutor(bool async, bool enable_streaming_enqueue = true);
 
   ~EagerExecutor();
 
@@ -123,6 +123,8 @@ class EagerExecutor {
   Status ShutDown();
 
   bool Async() const;
+
+  bool StreamingEnqueue() const;
 
   // Inline execute node if executor is in sync mode.
   Status SyncExecute(EagerNode* node);
@@ -258,11 +260,18 @@ class EagerExecutor {
 
   const bool enable_async_wait_for_remote_function_;
 
+  // Enable sending remote executions through streaming enqueue.
+  const bool enable_streaming_enqueue_;
+
   // Callbacks to run on destruction.
   std::unordered_map<intptr_t, std::vector<std::function<void()>>> cleanups_;
 };
 
 inline bool EagerExecutor::Async() const { return thread_ != nullptr; }
+
+inline bool EagerExecutor::StreamingEnqueue() const {
+  return enable_streaming_enqueue_;
+}
 
 }  // namespace tensorflow
 
