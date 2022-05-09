@@ -166,7 +166,7 @@ NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mobilenet_v2_1.0_
                                                       ofType:@"tflite"];
 
 TFLImageClassifierOptions *imageClassifierOptions =
-[[TFLImageClassifierOptions alloc] initWithModelPath:self.modelPath];
+[[TFLImageClassifierOptions alloc] initWithModelPath:modelPath];
 
 NSError *createError = nil;
 TFLImageClassifier *imageClassifier =
