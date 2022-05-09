@@ -64,12 +64,19 @@
 
 *   `tf.experimental.dtensor`: Added DTensor, an extension to TensorFlow for large-scale modeling with minimal changes to user code. You are welcome to try it out, though be aware that the DTensor API is experimental and up-to backward-incompatible changes. DTensor and Keras integration is published under `tf.keras.dtensor` in this release (refer to the `tf.keras` entry). The tutoral and guide for DTensor will be published on https://www.tensorflow.org/. Please stay tuned.
 
-*   [oneDNN optimizations](https://medium.com/intel-analytics-software/leverage-intel-deep-learning-optimizations-in-tensorflow-129faa80ee07):
-    *   oneDNN optimizations are enabled by default in Linux x86 packages on CPUs with neural-network-focused hardware features such as AVX512_VNNI, AVX512_BF16, AMX, etc, which are found on [Intel Cascade Lake](https://www.intel.com/content/www/us/en/products/platforms/details/cascade-lake.html) and newer CPUs. 
-    *   For Linux x86 packages that are run on older CPUs and Windows x86 packages, oneDNN optimizations are disabled by default. They can be turned on by setting the environment variable `TF_ENABLE_ONEDNN_OPTS=1` before running TensorFlow.
-    *   These optimizations can yield slightly different numerical results from when they are off due to floating-point round-off errors from different computation approaches and orders. To turn oneDNN optimizations off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0` before running TensorFlow.
-    *   To verify that the optimizations are on, look for a message beginning with “oneDNN custom operations are on” in the log. If the message is not there, it means oneDNN optimizations are off.
-    *   For more details on how oneDNN optimizations work, please refer to TensorFlow [RFC #400](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md).
+*   [oneDNN CPU custom operations and performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md) are available in Linux x86, Windows x86, and Linux aarch64 packages.
+    *   **Linux and Windows x86 packages:**
+        *   **Linux x86:** oneDNN custom ops are *enabled by default* on CPUs with neural-network-focused hardware features such as AVX512_VNNI, AVX512_BF16, AMX, etc., which are found on [Intel Cascade Lake](https://www.intel.com/content/www/us/en/products/platforms/details/cascade-lake.html) and newer CPUs. 
+            *   [Example performance speedups.](https://medium.com/intel-analytics-software/leverage-intel-deep-learning-optimizations-in-tensorflow-129faa80ee07)
+            *   For older CPUs, oneDNN custom ops are disabled by default.
+        *   **Windows x86:** oneDNN custom ops are disabled by default.
+        *   These custom ops can yield slightly different numerical results from when they are off due to floating-point round-off errors from different computation approaches and orders. 
+    *   **Linux aach64 (`--config=mkl_aarch64`) package:**
+        *    Experimental oneDNN custom ops are disabled by default.  
+        *    If you experience issues with oneDNN custom ops on, we recommend turning them off.    
+    *   To explicitly enable or disable oneDNN custom ops and optimizations, set the environment variable `TF_ENABLE_ONEDNN_OPTS` to `1` (enable) or `0` (disable) before running TensorFlow. (The variable is checked during `import tensorflow`.) To fall back to default settings, unset the environment variable.
+    *   To verify that the custom ops are on, look for a message with *"oneDNN custom operations are on"* in the log. If the message is not there, it means they are off.
+        * This is not to be confused with the log message beginning with *"This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN)..."*. The message can be printed regardless of whether oneDNN custom ops are enabled, because TensorFlow Linux x86's default matrix multiplication and convolution ops also call oneDNN matrix multiplication routines as a basic building block. (See Figure 2 of [TensorFlow RFC #400](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md).) 
     
 # Bug Fixes and Other Changes
 
