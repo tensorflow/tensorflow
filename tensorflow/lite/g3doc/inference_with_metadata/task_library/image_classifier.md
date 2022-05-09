@@ -129,7 +129,7 @@ import TensorFlowLiteTaskVision
 // Initialization
 var imageClassifier: ImageClassifier
 
-guard let modelPath = Bundle.main.path(forResource: modelFilename,
+guard let modelPath = Bundle.main.path(forResource: "your_model_file_name",
                                             ofType: "tflite") else {
     return
 }
@@ -145,7 +145,7 @@ catch {
 // Run inference
 // There are other sources for MLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
-guard let image = UIImage (named: "your_input_image"), let mlImage = MLImage(image: image) else {
+guard let image = UIImage (named: "your_input_image_name"), let mlImage = MLImage(image: image) else {
     return
 }
 do {
@@ -162,7 +162,7 @@ catch {
 #import <TensorFlowLiteTaskVision/TFLTaskVision.h>
 
 // Initialization
-NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mobilenet_v2_1.0_224"
+NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"your_model_file_name"
                                                       ofType:@"tflite"];
 
 TFLImageClassifierOptions *imageClassifierOptions =
@@ -177,7 +177,7 @@ if (!imageClassifier) {
 }
 
 // Run inference
-UIImage *inputImage = [UIImage imageNamed:@"your_input_image"];
+UIImage *inputImage = [UIImage imageNamed:@"your_input_image_name"];
 
 // There are other sources for GMLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
