@@ -149,7 +149,7 @@ guard let image = UIImage (named: "your_input_image_name"), let mlImage = MLImag
     return
 }
 do {
-    let classificationResults: ClassificationResult = try imageClassifier.classify(mlImage: pixelBuffer)
+    let classificationResults: ClassificationResult = try imageClassifier.classify(mlImage: mlImage)
 }
 catch {
     // Handle failure.
