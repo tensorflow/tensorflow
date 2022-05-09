@@ -301,11 +301,10 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // -> T: 1 1 1 -1 3 5 1
   // -> W: 1 1 1  1 3 5 1
   // ***************************************************************************
-  if (!operand_l.is_tensor() && !operand_r.is_tensor()) {
-    // TODO(lsugy): remove this check in dynamic shapes mode. This should work
-    // if both inputs are weights.
+  if (use_implicit_batch && !operand_l.is_tensor() && !operand_r.is_tensor()) {
     return errors::InvalidArgument(
-        "Broadcasting requires at least one of the operands be tensors");
+        "Broadcasting requires at least one of the operands be tensors in "
+        "implicit batch mode");
   }
 
   constexpr int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
@@ -3324,13 +3323,6 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
-
-  if (inputs[0].is_weights() && inputs[1].is_weights()) {
-    // TODO(lsugy): don't assume that if all inputs are weights, grappler
-    // should fold them, because variables are weights.
-    return errors::InvalidArgument(
-        "All inputs are weights, but Grappler is expected to fold them.");
-  }
 
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));

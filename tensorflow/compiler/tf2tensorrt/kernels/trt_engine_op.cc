@@ -1285,6 +1285,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   VLOG(1) << "Constructing calibrator";
   for (int i = 0; i < ctx->num_inputs(); i++) {
     if(!input_mask_[i]) {
+      shapes.emplace_back(); // Empty shape
       continue;
     }
     // allocate workspace on device for inputs

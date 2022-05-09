@@ -513,6 +513,27 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name="variables_test",
+    srcs=[
+        "variables_test.py",
+    ],
+    python_version="PY3",
+    tags=[
+        "no_cuda_on_cpu_tap",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit=False,
+    deps=[
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+        "//tensorflow/python/compiler/tensorrt/test:test_utils",
+    ],
+)
+
+cuda_py_test(
     name = "vgg_block_nchw_test",
     srcs = [
         "vgg_block_nchw_test.py",
@@ -577,6 +598,7 @@ test_suite(
         "trt_engine_op_shape_test",
         "trt_mode_test",
         "unary_test",
+        "variables_test",
         "vgg_block_nchw_test",
         "vgg_block_test",
     ],
