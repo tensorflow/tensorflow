@@ -637,16 +637,20 @@ LogicalResult ReduceScatterOp::verify() {
 // AddOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AddOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  auto lhs_type = (*operands.begin()).getType().cast<ShapedType>();
-  // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
-  // support quantization or sparsity.
-  inferredReturnShapes.push_back(lhs_type);
-  return success();
-}
+// TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+// support quantization or sparsity.
+#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
+  LogicalResult Op::inferReturnTypeComponents(                                \
+      MLIRContext* context, Optional<Location> location,                      \
+      ValueShapeRange operands, DictionaryAttr attributes,                    \
+      RegionRange regions,                                                    \
+      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
+    return inferReturnTypeComponentsFromOperands(context, location, operands, \
+                                                 attributes, regions,         \
+                                                 inferredReturnShapes);       \
+  }
+
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AddOp)
 
 //===----------------------------------------------------------------------===//
 // ConstOp

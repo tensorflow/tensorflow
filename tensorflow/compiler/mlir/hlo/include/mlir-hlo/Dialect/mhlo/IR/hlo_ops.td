@@ -482,8 +482,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect,
-       HLO_CompatibleOperandsAndResultType, InferTensorType]> {
+      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Addition operator";
   let description = [{
     Returns `lhs + rhs` element-wise.

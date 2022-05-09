@@ -17,6 +17,7 @@ limitations under the License.
 #define HLO_OPS_BASE
 
 include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
@@ -239,7 +240,12 @@ def HLO_PairwiseSameOperandAndResultType :
 // Op has operand and result types compatible with each other according to
 // the rules implemented in isCompatibleForMhloTypeInference, which account for
 // special properties dynamism, quantization and sparsity.
-def HLO_CompatibleOperandsAndResultType :
-  HLO_NativeOpTrait<"CompatibleOperandsAndResultType">;
+def HLO_CompatibleOperandsAndResultType : TraitList<
+  // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+  // support quantization or sparsity.
+  InferTensorType.traits #
+  [
+    HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
+  ]>;
 
 #endif // HLO_OPS_BASE

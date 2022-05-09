@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/Sequence.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 namespace mlir {
 namespace mhlo {
@@ -77,6 +78,24 @@ class CompatibleOperandsAndResultType
     }
 
     return success(all_match);
+  }
+
+  // This function is not going to be called automatically.
+  // It needs to be paired with INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS
+  // (see examples in hlo_ops.cc).
+  static LogicalResult inferReturnTypeComponentsFromOperands(
+      MLIRContext *, Optional<Location> location, ValueShapeRange operands,
+      DictionaryAttr attributes, RegionRange regions,
+      SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+    // support quantization or sparsity.
+    if (operands.empty())
+      return emitOptionalError(
+          location,
+          "Expected non-empty operands for [CompatibleOperandsAndResultType]");
+    auto first_operand_type = operands[0].getType().cast<ShapedType>();
+    inferredReturnShapes.push_back(first_operand_type);
+    return success();
   }
 };
 
