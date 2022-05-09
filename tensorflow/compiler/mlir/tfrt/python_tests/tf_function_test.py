@@ -37,9 +37,9 @@ class TfFunction(test.TestCase):
     for specialize in specializations:
       for vectorize in vectorization:
         mlir_function = """
-        func @test(%arg0: tensor<1x?xf32>,
-                   %arg1: tensor<1x?xf32>,
-                   %arg2: tensor<1x?xf32>) -> tensor<1x?xf32> {
+        func.func @test(%arg0: tensor<1x?xf32>,
+                       %arg1: tensor<1x?xf32>,
+                       %arg2: tensor<1x?xf32>) -> tensor<1x?xf32> {
           %c = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
                : () -> tensor<f32>
           %0 = "tf.Tanh"(%arg0)

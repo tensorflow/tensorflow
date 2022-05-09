@@ -1973,7 +1973,7 @@ func.func @scatter_out_of_bound() -> tensor<3x3xi32> {
 }
 
 // CHECK-LABEL: @scatter_complex
-func public @scatter_complex() -> tensor<1xcomplex<f32>> {
+func.func public @scatter_complex() -> tensor<1xcomplex<f32>> {
   %0 = mhlo.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
   %1 = mhlo.constant dense<0> : tensor<1xi32>
   %2 = mhlo.constant dense<(0.000000e+00,0.000000e+00)> : tensor<1xcomplex<f32>>
