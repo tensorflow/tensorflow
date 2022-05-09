@@ -77,6 +77,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   OP_REQUIRES(ctx, block_num_elems > 0,
               errors::InvalidArgument(
                   "The product of the block dimensions must be positive"));
+  const int64_t batch_size = input_shape[0];
   const int64_t output_dim =
       MultiplyWithoutOverflow(batch_size, block_num_elems);
   if (output_dim < 0) {
