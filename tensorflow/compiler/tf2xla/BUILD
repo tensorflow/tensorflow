@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -866,6 +867,46 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "light_outside_compilation_kernels_for_test",
+    testonly = True,
+    srcs = ["light_outside_compilation_kernels_for_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/tf2xla/kernels:gpu_tf_kernel_custom_call",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+tf_gen_op_wrapper_py(
+    name = "test_ops_for_light_outside_compilation",
+    testonly = True,
+    out = "test_ops_for_light_outside_compilation.py",
+    deps = [
+        ":light_outside_compilation_kernels_for_test",
+    ],
+)
+
+cuda_py_test(
+    name = "light_outside_compilation_test",
+    srcs = ["light_outside_compilation_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        ":test_ops_for_light_outside_compilation",
+    ] + if_google([":light_outside_compilation_kernels_for_test"]),
 )
 
 cc_library(
