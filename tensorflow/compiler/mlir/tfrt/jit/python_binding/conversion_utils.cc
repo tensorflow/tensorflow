@@ -83,6 +83,8 @@ DType FromPythonStructFormat(char dtype) {
       return DType::UI16;
     case 'I':
       return DType::UI32;
+    case 'L':
+      return DType::UI64;
     case 'Q':
       return DType::UI64;
     case '?':
@@ -93,6 +95,8 @@ DType FromPythonStructFormat(char dtype) {
       return DType::I16;
     case 'i':
       return DType::I32;
+    case 'l':
+      return DType::I64;
     case 'q':
       return DType::I64;
     case 'f':
