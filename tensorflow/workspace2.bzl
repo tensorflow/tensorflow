@@ -158,9 +158,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "42199b34ad892c48202a567ff5b982a9c2cc6a2ddff7d7b48754aa4b8f4308a0",
-        strip_prefix = "cudnn-frontend-0.6.1",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.6.1.zip"),
+        sha256 = "314569f65d5c7d05fb7e90157a838549db3e2cfb464c80a6a399b39a004690fa",
+        strip_prefix = "cudnn-frontend-0.6.2",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.6.2.zip"),
     )
 
     tf_http_archive(
