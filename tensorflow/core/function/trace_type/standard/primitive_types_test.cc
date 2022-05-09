@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/function/trace_type/standard/primitive_types.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -89,6 +88,54 @@ TEST(PrimitiveTypesTest, LiteralStringType) {
       string_1.most_specific_common_supertype({&string_1});
   EXPECT_EQ(*result, string_1);
   EXPECT_EQ(string_1.most_specific_common_supertype({&string_2}), nullptr);
+}
+
+TEST(PrimitiveTypesTest, NoneType) {
+  None none_1 = None();
+  std::unique_ptr<TraceType> none_1_copy = none_1.clone();
+  Literal<std::string> string = Literal<std::string>("b");
+
+  EXPECT_EQ(none_1.to_string(), "None<>");
+  EXPECT_EQ(none_1_copy->to_string(), "None<>");
+
+  EXPECT_EQ(none_1, *none_1_copy);
+  EXPECT_EQ(none_1.hash(), none_1_copy->hash());
+  EXPECT_NE(none_1, string);
+
+  EXPECT_TRUE(none_1.is_subtype_of(*none_1_copy));
+  EXPECT_FALSE(none_1.is_subtype_of(string));
+
+  std::unique_ptr<TraceType> result =
+      none_1.most_specific_common_supertype({&none_1});
+  EXPECT_EQ(*result, none_1);
+  EXPECT_EQ(none_1.most_specific_common_supertype({&string}), nullptr);
+}
+
+TEST(PrimitiveTypesTest, Any) {
+  Any any_1 = Any(std::make_unique<Literal<std::string>>("a"));
+  std::unique_ptr<TraceType> any_1_copy = any_1.clone();
+  Any any_2 = Any(absl::nullopt);
+
+  EXPECT_EQ(any_1.to_string(), "Any<String<a>>");
+  EXPECT_EQ(any_1_copy->to_string(), "Any<String<a>>");
+  EXPECT_EQ(any_2.to_string(), "Any<Any>");
+
+  EXPECT_EQ(any_1, *any_1_copy);
+  EXPECT_EQ(any_1.hash(), any_1_copy->hash());
+  EXPECT_NE(any_1, any_2);
+
+  EXPECT_TRUE(any_1.is_subtype_of(*any_1_copy));
+  EXPECT_TRUE(any_1.is_subtype_of(any_2));
+  EXPECT_FALSE(any_2.is_subtype_of(any_1));
+
+  std::unique_ptr<TraceType> result_1 =
+      any_1.most_specific_common_supertype({&any_1});
+  EXPECT_EQ(*result_1, any_1);
+  EXPECT_EQ(any_1.most_specific_common_supertype({any_1.base().value()}),
+            nullptr);
+  std::unique_ptr<TraceType> result_2(
+      any_1.most_specific_common_supertype({&any_2}));
+  EXPECT_EQ(*result_2, any_2);
 }
 
 }  // namespace trace_type

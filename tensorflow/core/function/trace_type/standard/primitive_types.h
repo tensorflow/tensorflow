@@ -19,10 +19,49 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/function/trace_type/standard/trace_type.h"
 
 namespace tensorflow {
 namespace trace_type {
+
+// Represents cases where the value is not defined.
+class None : public TraceType {
+ public:
+  explicit None();
+  std::unique_ptr<TraceType> clone() const override;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> most_specific_common_supertype(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+};
+
+// Represents type hierarchies that have a generic top type.
+class Any : public TraceType {
+ public:
+  // Passing in absl::nullopt instantiates the top type.
+  explicit Any(absl::optional<std::unique_ptr<TraceType>> base);
+  std::unique_ptr<TraceType> clone() const override;
+
+  absl::optional<const TraceType*> base() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> most_specific_common_supertype(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  absl::optional<std::unique_ptr<TraceType>> base_;
+};
 
 // TODO(b/231340870): Add support for other types such as tf.dtype.
 template <typename T>
