@@ -114,12 +114,6 @@ tf_cc_test(
     srcs = ["cpu_device_test.cc"],
     deps = [
         ":cpu_device",
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test_main",
-=======
         ":pjrt_client",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
@@ -129,7 +123,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:random",
         "@com_google_absl//absl/types:span",
->>>>>>> upstream/master
     ],
 )
 

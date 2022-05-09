@@ -16,17 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
 #include "tensorflow/core/ir/ops.h"
-<<<<<<< HEAD
-#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
-#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
-#include "tensorflow/core/transforms/functional_to_region/pass.h"
 #include "tensorflow/core/transforms/pass_registration.h"
-#include "tensorflow/core/transforms/region_to_functional/pass.h"
-#include "tensorflow/core/transforms/remapper/pass.h"
-#include "tensorflow/core/transforms/shape_inference/pass.h"
-=======
-#include "tensorflow/core/transforms/pass_registration.h"
->>>>>>> upstream/master
 #include "tensorflow/core/util/util.h"
 
 namespace mlir {
@@ -39,13 +29,9 @@ void DefaultGrapplerPipeline(PassManager& manager) {
   manager.addPass(CreateConsolidateAttributesPass());
   // Infer the shape of operation if possible. The TFG importer doesn't do shape
   // inference for almost all operations.
-<<<<<<< HEAD
-  manager.addPass(CreateShapeInferencePass());
-=======
   // TODO(chiahungduan): Temporarily disable it because it hangs on certain
   // operations. We need to set a proper limit of iteration.
   // manager.addPass(CreateShapeInferencePass());
->>>>>>> upstream/master
   // Contruct the shape attrs back from types.
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.

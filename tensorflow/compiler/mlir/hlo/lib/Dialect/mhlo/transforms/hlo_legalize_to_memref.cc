@@ -296,13 +296,8 @@ struct DynamicBroadcastInDimOpInterface
         rewriter, broadcast_in_dim_op->getOpOperand(0) /*operand*/);
     if (failed(operand_buffer)) return failure();
 
-<<<<<<< HEAD
-    Value result = InsertDynamicMemrefCastOp(broadcast_in_dim_op,
-                                             *operand_buffer, &rewriter);
-=======
     Value result = InsertDynamicMemrefCastOp(
         broadcast_in_dim_op, *operand_buffer, rewriter, state.getOptions());
->>>>>>> upstream/master
 
     bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
     return success();

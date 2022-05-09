@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-<<<<<<< HEAD
-name: assign-partner-tags
-=======
 name: Trusted Partner PR
->>>>>>> upstream/master
 on:
   pull_request_target:
 
@@ -41,12 +37,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const script = require('./.github/workflows/trusted_partners.js');
-<<<<<<< HEAD
-            const domain = await script.get_email_domain({github, context});
-=======
             const username = context.payload.pull_request.user.login;
             const domain = await script.get_email_domain({github, username});
->>>>>>> upstream/master
             switch(domain) {
             case "intel.com":
               console.log(await script.intel({github, context}));

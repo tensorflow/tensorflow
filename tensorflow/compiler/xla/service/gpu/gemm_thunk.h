@@ -32,32 +32,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-<<<<<<< HEAD
-// A one-time scratch allocator for Blas. The scratch buffers allocated are
-// released on destruction.
-//
-// Not thread-safe in that AllocateBytes, destructor are not locked.
-class BlasScratchAllocator : public se::ScratchAllocator {
- public:
-  BlasScratchAllocator(int device_ordinal,
-                       se::DeviceMemoryAllocator* memory_allocator);
-
-  int64_t GetMemoryLimitInBytes() override;
-
-  int64_t TotalByteSize() { return total_allocated_bytes_; }
-
-  se::port::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(
-      int64_t byte_size) override;
-
- private:
-  const int device_ordinal_;
-  se::DeviceMemoryAllocator* memory_allocator_;
-  std::vector<se::OwningDeviceMemory> allocated_buffers_;
-  int64_t total_allocated_bytes_ = 0;
-};
-
-=======
->>>>>>> upstream/master
 // This is thread-compatible.
 class GemmThunk : public Thunk {
  public:

@@ -77,10 +77,6 @@ void CustomCallFail(float*, float** in, XlaCustomCallStatus* status) {
 void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
                                         size_t opaque_len,
                                         XlaCustomCallStatus* status) {
-<<<<<<< HEAD
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in[0], sizeof(float));
-=======
->>>>>>> upstream/master
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(opaque, opaque_len);
   auto msg = absl::StrFormat("Fail with raw backend config str: %s.",
                              absl::string_view(opaque, opaque_len));

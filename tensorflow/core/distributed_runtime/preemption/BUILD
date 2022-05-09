@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-cc_library(
-    name = "preemption_sync_manager",
-    hdrs = ["preemption_sync_manager.h"],
-    deps = [
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-=======
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 
@@ -23,20 +16,12 @@ cc_library(
         ":preemption_notifier",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:env",
->>>>>>> upstream/master
         "//tensorflow/core/platform:status",
     ],
 )
 
 cc_library(
     name = "preemption_notifier",
-<<<<<<< HEAD
-    hdrs = ["preemption_notifier.h"],
-    deps = [
-        "@com_google_absl//absl/time",
-    ],
-)
-=======
     srcs = ["preemption_notifier.cc"],
     hdrs = ["preemption_notifier.h"],
     deps = [
@@ -69,4 +54,3 @@ tf_cc_test(
         "//tensorflow/core/protobuf:for_core_protos_cc",
     ] + tf_grpc_cc_dependencies(),
 )
->>>>>>> upstream/master

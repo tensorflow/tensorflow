@@ -3379,8 +3379,6 @@ func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> te
        (tensor<64x8x8x8xi4>, tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8>
   func.return %0 : tensor<64x3x3x32xi8>
 }
-<<<<<<< HEAD
-=======
 
 // -----
 
@@ -3631,4 +3629,3 @@ func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tens
   %7 = "mhlo.add"(%arg1, %arg1) : (tensor<1xf32, #SV>, tensor<1xf32, #SV>) -> tensor<1xf32, #SV>
   func.return
 }
->>>>>>> upstream/master

@@ -35,14 +35,8 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/ir/dialect.h"
-<<<<<<< HEAD
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
-#include "tensorflow/core/ir/ops.h"
-=======
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
->>>>>>> upstream/master
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"

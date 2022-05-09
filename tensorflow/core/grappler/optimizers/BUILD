@@ -713,13 +713,8 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:tf_op_registry",
-<<<<<<< HEAD
-        "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/ir/importexport:import",
-=======
         "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/importexport:graphdef_import",
->>>>>>> upstream/master
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
