@@ -158,12 +158,14 @@ void CreateTFStandardPipeline(OpPassManager& pm,
 // Propagates device attributes of resources from callers to callees.
 std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass();
 
-// Creates a pass that promotes resource reads/writes in the main function to
-// inputs and outputs of the main function, assuming that resource operations
-// have already been decomposed and function calls have already been inlined.
-// The pass also annotates the input arguments for resources with the indices
-// of their aliasing output arguments.
-std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass();
+// Creates a pass that promotes resource reads/writes in `functions` to inputs
+// and outputs of `functions`, assuming that resource operations have already
+// been decomposed and function calls have already been inlined. If `functions`
+// is empty, the pass is applied to the main function by default. The pass also
+// annotates the input arguments for resources with the indices of their
+// aliasing output arguments.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass(
+    llvm::ArrayRef<std::string> functions = {});
 
 // Creates a pass that promotes tf.VarHandleOp to resource arguments for all
 // functions.
