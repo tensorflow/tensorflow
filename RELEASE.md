@@ -1,7 +1,11 @@
 # Release 2.6.4
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
 
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aadhitya A, Abhilash Mahendrakar, Abhishek Varma, Abin Shahab, Adam Hillier, Aditya Kane, AdityaKane2001, ag.ramesh, Amogh Joshi, Armen Poghosov, armkevincheng, Avrosh K, Ayan Moitra, azazhu, Banikumar Maiti, Bas Aarts, bhack, Bhanu Prakash Bandaru Venkata, Billy Cao, Bohumir Zamecnik, Bradley Reece, Connor Brinton, CyanXu, Daniel Situnayake, David Pal, Ddavis-2015, DEKHTIARJonathan, Deven Desai, Duncan Riach, Edward, Eli Osherovich, Eugene Kuznetsov, europeanplaice, evelynmitchell, Evgeniy Polyakov, Felix Vollmer, Florentin Hennecker, François Chollet, Frederic Bastien, Fredrik Knutsson, Gabriele Macchi, Gaurav Shukla, Gauri1 Deshpande, geetachavan1, Georgiy Manuilov, H, Hengwen Tong, Henri Woodcock, Hiran Sarkar, Ilya Arzhannikov, Janghoo Lee, jdematos, Jens Meder, Jerry Shih, jgehw, Jim Fisher, Jingbei Li, Jiri Podivin, Joachim Gehweiler, Johannes Lade, Jonas I. Liechti, Jonas Liechti, Jonas Ohlsson, Jonathan Dekhtiar, Julian Gross, Kaixi Hou, Kevin Cheng, Koan-Sin Tan, Kulin Seth, linzewen, Liubov Batanina, luisleee, Lukas Geiger, Mahmoud Abuzaina, mathgaming, Matt Conley, Max H. Gerlach, mdfaijul, Mh Kwon, Michael Martis, Michal Szutenberg, Måns Nilsson, nammbash, Neil Girdhar, Nicholas Vadivelu, Nick Kreeger, Nirjas Jakilim, okyanusoz, Patrice Vignola, Patrik Laurell, Pedro Marques, Philipp Hack, Phillip Cloud, Piergiacomo De Marchi, Prashant Kumar, puneeshkhanna, pvarouktsis, QQ喵, Rajeshwar Reddy T, Rama Ketineni, Reza Rahimi, Robert Kalmar, rsun, Ryan Kuester, Saduf2019, Sean Morgan, Sean Moriarity, Shaochen Shi, Sheng, Yang, Shu Wang, Shuai Zhang, Soojeong, Stanley-Nod, Steven I Reeves, stevenireeves, Suraj Sudhir, Sven Mayer, Tamas Bela Feher, tashuang.zk, tcervi, Teng Lu, Thales Elero Cervi, Thibaut Goetghebuer-Planchon, Thomas Walther, Till Brychcy, Trent Lo, Uday Bondhugula, vishakha.agrawal, Vishnuvardhan Janapati, wamuir, Wenwen Ouyang, wenwu, Williard Joshua Jose, xiaohong1031, Xiaoming (Jason) Cui, Xinan Jiang, Yasir Modak, Yi Li, Yong Tang, zilinzhu, 박상준, 이장후
 # Release 2.6.3
 
 This releases introduces several vulnerability fixes:
