@@ -164,7 +164,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:convert_types",
-        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:types",
         "@llvm-project//llvm:Support",

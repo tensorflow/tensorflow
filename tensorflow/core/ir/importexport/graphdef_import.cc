@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -43,12 +42,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
@@ -60,6 +60,8 @@ using tensorflow::DataType;
 using tensorflow::DataTypeVector;
 using tensorflow::FullTypeDef;
 using tensorflow::FunctionDef;
+using tensorflow::FunctionLibraryDefinition;
+using tensorflow::Graph;
 using tensorflow::GraphDebugInfo;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -70,6 +72,7 @@ using tensorflow::Status;
 using tensorflow::StatusOr;
 using tensorflow::StringPiece;
 using tensorflow::TensorId;
+using tensorflow::VersionDef;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::errors::NotFound;
 
@@ -233,6 +236,31 @@ class GraphDefImporter {
 };
 }  // namespace
 
+// Convert a VersionDef to an MLIR version attribute.
+static VersionAttr ConvertVersionAttr(MLIRContext *context,
+                                      const VersionDef &version) {
+  ArrayRef<int32_t> bad_consumers(version.bad_consumers().data(),
+                                  version.bad_consumers().size());
+  return VersionAttr::get(context, version.producer(), version.min_consumer(),
+                          bad_consumers);
+}
+
+// Returns true if the function is a generic function, i.e. it contains
+// placeholder attributes.
+//
+// TODO(jeffniu): Having to iterate over every function just to check for
+// placeholder attributes is slow. Since most functions are not generic, we can
+// speculate by converting all functions as non-generic until we see a
+// placeholder attribute, bail out, and fall back to the generic function
+// converter.
+static bool IsGenericFunction(const FunctionDef &fdef) {
+  for (const NodeDef &node : fdef.node_def())
+    for (const auto &named_attr : node.attr())
+      if (!named_attr.second.placeholder().empty()) return true;
+
+  return false;
+}
+
 StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     const GraphDef &graph) {
   // Create the module.
@@ -265,7 +293,6 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
   // A function to convert a generic or non-generic function.
   const auto convert_func = [this, &gradient_map](GraphFuncOp func_op,
                                                   const FunctionDef &function) {
-    // TODO(jeffniu): `IsGenericFunction` is slow.
     if (IsGenericFunction(function)) {
       // Generic functions aren't on the hot path so just call the old
       // importer.
@@ -871,6 +898,17 @@ StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
   GraphDefImporter importer(context->getOrLoadDialect<TFGraphDialect>(),
                             *OpRegistry::Global(), debug_info);
   return importer.ConvertGraphDef(graph_def);
+}
+
+StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const Graph &graph, const GraphDebugInfo &debug_info,
+    const FunctionLibraryDefinition &flib_def) {
+  // TODO(b/231723721): This conversion path is slow because both the graph and
+  // the function library are converted to GraphDef.
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  *graph_def.mutable_library() = flib_def.ToProto();
+  return ImportGraphDef(context, debug_info, graph_def);
 }
 
 }  // namespace tfg

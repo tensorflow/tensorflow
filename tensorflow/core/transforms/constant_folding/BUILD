@@ -17,7 +17,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:convert_types",
-        "//tensorflow/core/ir/importexport:export",
         "//tensorflow/core/transforms:PassDetail",
         "//tensorflow/core/transforms:eval_utils",
         "//tensorflow/core/transforms:op_cat_helper",
