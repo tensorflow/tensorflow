@@ -44,6 +44,7 @@ cuda_py_test(
     main = "csr_sparse_matrix_ops_test.py",
     shard_count = 10,
     tags = [
+        "no_oss",  # Times out during patch release
         "notsan",  # b/149115441
     ],
     deps = [
