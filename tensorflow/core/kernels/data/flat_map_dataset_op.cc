@@ -214,9 +214,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       return model::MakeInterleaveManyNode(
-          std::move(args), {model::MakeParameter(kCycleLength, nullptr,
-                                                 /*min=*/1,
-                                                 /*max=*/1)});
+          std::move(args),
+          {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
     Status SaveInternal(SerializationContext* ctx,
