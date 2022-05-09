@@ -501,6 +501,27 @@ ENTRY test {
                                        m::Op(), m::Op())));
 }
 
+TEST_F(DynamicPadderTest, PadToStaticForCustomCall) {
+  const std::string hlo_text = R"(
+HloModule test
+ENTRY test {
+  a = f32[64] parameter(0)
+  ROOT c = f32[<=128] custom-call(a),
+    custom_call_target="UnknownOp"
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+
+  EXPECT_THAT(
+      module_->entry_computation()->root_instruction(),
+      GmockMatch(m::CustomCall("SliceToDynamic",
+                               m::GetTupleElement(m::CustomCall(
+                                   "PadToStatic", m::CustomCall("UnknownOp"))),
+                               m::Op())));
+}
+
 // Test that dynamic padder has the same result as if not padded.
 class ExecutionTest : public HloTestBase {
  protected:

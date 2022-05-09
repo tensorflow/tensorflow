@@ -1830,20 +1830,31 @@ StatusOr<HloInstruction*> InsertPadToStaticOnInstruction(HloInstruction* inst) {
       HloInstruction::CreateTuple(static_tuple_elements));
 }
 
+// Inserts PadToStatic for parameters and custom-calls which "materialize"
+// dynamic outputs given only static inputs.
 Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
   std::vector<HloInstruction*> params;
   HloComputation* entry = module->entry_computation();
-  for (int64_t i = 0; i < entry->num_parameters(); ++i) {
-    HloInstruction* param =
-        module->entry_computation()->parameter_instruction(i);
-    auto users = param->users();
-    TF_ASSIGN_OR_RETURN(HloInstruction * static_param,
-                        InsertPadToStaticOnInstruction(param));
-    for (auto* user : users) {
-      TF_RETURN_IF_ERROR(param->ReplaceUseWith(user, static_param));
-    }
-    if (param == entry->root_instruction()) {
-      module->entry_computation()->set_root_instruction(static_param);
+  for (HloComputation* comp : module->MakeNonfusionComputationsSorted()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      if (!instr->shape().is_static() &&
+          ((instr->opcode() == HloOpcode::kParameter && comp == entry) ||
+           instr->opcode() == HloOpcode::kCustomCall) &&
+          absl::c_all_of(instr->operands(), [&](HloInstruction* operand) {
+            return operand->shape().is_static();
+          })) {
+        LOG(ERROR) << "Inserting PadToStatic for instruction: "
+                   << instr->ToString();
+        auto users = instr->users();
+        TF_ASSIGN_OR_RETURN(HloInstruction * instr_static,
+                            InsertPadToStaticOnInstruction(instr));
+        for (auto* user : users) {
+          TF_RETURN_IF_ERROR(instr->ReplaceUseWith(user, instr_static));
+        }
+        if (instr == entry->root_instruction()) {
+          module->entry_computation()->set_root_instruction(instr_static);
+        }
+      }
     }
   }
   return Status::OK();
