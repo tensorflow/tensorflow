@@ -606,6 +606,11 @@ LogicalResult verifyReducerShape(
   return success();
 }
 
+unsigned potentiallyComplexBitwidth(Type type) {
+  auto complex_ty = type.dyn_cast<ComplexType>();
+  return complex_ty ? 2 * complex_ty.getElementType().getIntOrFloatBitWidth()
+                    : type.getIntOrFloatBitWidth();
+}
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -2129,6 +2134,106 @@ LogicalResult BitcastConvertOp::reifyReturnTypeShapes(
 
   return ::mlir::mhlo::deriveShapeFromOperand(
       &builder, getOperation(), operands.front(), &reifiedReturnShapes);
+}
+
+/*
+ * We intend to verify the following properties
+ * P1. We cannot convert between complex and real types (cf xla)
+ * P2. The operand's element bitwidth must be divisible by the result's element
+ * bitwidth, or vice versa.
+ * P3. The dimensions of the operand and the target
+ * shape must match, except that the shape with the smaller element bitwidth has
+ * an appropriately-sized additional innermost dimension, e.g.
+ * ... x f32 => [bitcast_convert] => ... x 4 x i8
+ * ... x 4 x i8 => [bitcast_convert] => ... x f32
+ */
+LogicalResult BitcastConvertOp::verify() {
+  auto operand_tensor_type = operand().getType().cast<TensorType>();
+  auto target_tensor_type = getResult().getType().cast<TensorType>();
+
+  // P1.
+  auto target_elt = target_tensor_type.getElementType();
+  auto operand_elt = operand_tensor_type.getElementType();
+  if (target_elt.isa<ComplexType>() != operand_elt.isa<ComplexType>()) {
+    return emitOpError()
+           << "cannot convert between real and complex types, but got: "
+           << operand_tensor_type << " and " << target_tensor_type;
+  }
+
+  auto target_elt_bitwidth = potentiallyComplexBitwidth(target_elt);
+  auto operand_elt_bitwidth = potentiallyComplexBitwidth(operand_elt);
+
+  // P2.
+  auto smaller_elt_bitwidth =
+      std::min(target_elt_bitwidth, operand_elt_bitwidth);
+  auto bigger_elt_bitwidth =
+      std::max(target_elt_bitwidth, operand_elt_bitwidth);
+  if (bigger_elt_bitwidth % smaller_elt_bitwidth != 0) {
+    // NOTE: cannot avoid this check by just checking that dim * bitwidth ==
+    // other bitwidth.
+    return emitOpError()
+           << "bitwidth of a bigger element type needs to be divisible by the "
+              "bitwidth of a smaller element type, but "
+           << "got: " << operand_tensor_type << " and " << target_tensor_type
+           << ".";
+  }
+
+  // P3.
+  auto operand_type = operand_tensor_type.dyn_cast<RankedTensorType>();
+  auto target_type = target_tensor_type.dyn_cast<RankedTensorType>();
+  if (!operand_type || !target_type) return success();
+
+  auto target_shape = target_type.getShape();
+  auto operand_shape = operand_type.getShape();
+  ArrayRef<int64_t> smaller_elt_shape, bigger_elt_shape;
+  Type smaller_elt, bigger_elt;
+  if (operand_elt_bitwidth < target_elt_bitwidth) {
+    smaller_elt_shape = operand_shape;
+    smaller_elt = operand_elt;
+    bigger_elt_shape = target_shape;
+    bigger_elt = target_elt;
+  } else {
+    smaller_elt_shape = target_shape;
+    smaller_elt = target_elt;
+    bigger_elt_shape = operand_shape;
+    bigger_elt = operand_elt;
+  }
+
+  ArrayRef<int64_t> smaller_elt_prefix;
+  if (operand_elt_bitwidth != target_elt_bitwidth) {
+    if (smaller_elt_shape.empty()) {
+      return emitOpError() << "does not allow the smaller element type to be "
+                              "part of a 0d tensor, but got: "
+                           << operand_type << " and " << target_type << ".";
+    }
+    smaller_elt_prefix = smaller_elt_shape.drop_back();
+    if (!isDynamicDimSize(smaller_elt_shape.back()) &&
+        smaller_elt_shape.back() * smaller_elt_bitwidth !=
+            bigger_elt_bitwidth) {
+      return emitOpError() << "requires compatible bitwidths. "
+                           << "Got: " << operand_type << " and " << target_type
+                           << ", but " << smaller_elt_bitwidth << " * "
+                           << smaller_elt_shape.back()
+                           << " != " << bigger_elt_bitwidth << ".";
+    }
+  } else {
+    smaller_elt_prefix = smaller_elt_shape;
+  }
+
+  for (auto it : llvm::zip(smaller_elt_prefix, bigger_elt_shape)) {
+    auto target_dim = std::get<0>(it);
+    auto operand_dim = std::get<1>(it);
+    if (!isDynamicDimSize(target_dim) && !isDynamicDimSize(operand_dim)) {
+      if (target_dim != operand_dim) {
+        return emitOpError() << "operand and result shapes must match except "
+                                "for the innermost dimension of the shape with "
+                                "the smaller element type. Got: "
+                             << operand_type << " and " << target_type << ".";
+      }
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
