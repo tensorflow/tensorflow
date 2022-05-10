@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
-import argparse
-import os
 import re
 import time
 import unittest
@@ -1065,26 +1063,10 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
   """Test that strided slice's custom gradient produces correct gradients."""
 
-  def conditional_decorator(self, dec, is_disable):
-    def decorator(func):
-      if is_disable:
-        return func
-      return dec(func)
-    return decorator
-
-  is_disable_where_op_auto_cluster = True
-  tf_xla_flags= os.environ.get('TF_XLA_FLAGS')
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--tf_xla_cluster_exclude_ops')
-  if tf_xla_flags is not None:
-    args = parser.parse_args(tf_xla_flags.split())
-    candidates = vars(args)['tf_xla_cluster_exclude_ops'].split(',')
-    is_disable_where_op_auto_cluster = 'Where' in candidates
-
   @parameterized.parameters(set((True, context.executing_eagerly())))
-  @conditional_decorator(self, test_util.disable_xla(
+  @test_util.disable_xla(
       "b/210077724: Auto-clustering with where op isn't supported. Has loose "
-      "output shape bounds"), is_disable_where_op_auto_cluster)
+      "output shape bounds")
   def testGradient(self, use_tape):
     with test_util.device(use_gpu=True):
       var = variables.Variable(
