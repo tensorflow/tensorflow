@@ -40,16 +40,53 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
     with context.device('/gpu:0'):
       z = random_ops.random_normal([2, 2])
+
+      # TODO(cheshire): Ideally, control HloDumpOptions.
       hlo = compiled_f.experimental_get_compiler_ir(z)('hlo_no_metadata')
 
+      # TODO(cheshire): How much effort would it be to use regexps instead to
+      # not have to hardcode names/etc?
+      # OR we can take the protobuf out and do matchings on that? A: all
+      # brackets would need to be escaped =/
       self.assertIn(
           r'f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %reshape.2), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING, backend_config="{\"op\":{\"name\":\"TestStaticTf\",\"op\":\"TestStaticTf\",\"input\":[\"x\"],\"device\":\"\",\"attr\":{}},\"inputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}],\"outputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}]}',
           hlo)
 
       self.assertAllClose(compiled_f(z), z)
 
+  def test_unranked_output_error(self):
+    """Test that we error out for unranked dynamic shape."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f():
+      return test_ops_for_light_outside_compilation.dynamic_unranked()
+
+    with context.device('/gpu:0'):
+
+      with self.assertRaisesRegex(ValueError, 'Output 0 has unknown rank'):
+        compiled_f.experimental_get_compiler_ir()()
+
+  def test_dynamic_output_multidim(self):
+    """Test that we correctly handle multi-dimensional dynamic output."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f(shape):
+      return test_ops_for_light_outside_compilation.dynamic_multidim(shape)
+
+    with context.device('/gpu:0'):
+
+      # Rank is hardcoded to 5.
+      shape = [3, 4, 5, 4, 3]
+      hlo = compiled_f.experimental_get_compiler_ir(shape)('hlo_no_metadata')
+      out = compiled_f(shape)
+
+      self.assertIn(
+          r'%custom-call.2 = f32[<=20,<=20,<=20,<=20,<=20]{4,3,2,1,0} custom-call(), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING, backend_config="{\"op\":{\"name\":\"DynamicMultidim\",\"op\":\"DynamicMultidim\",\"input\":[\"DynamicMultidim/output_shape\"]},\"inputs\":[{\"bufferDescription\":{\"shape\":{\"dim\":[{\"size\":\"5\"}]},\"type\":\"DT_INT32\"},\"value\":{\"dtype\":\"DT_INT32\",\"tensorShape\":{\"dim\":[{\"size\":\"5\"}]},\"tensorContent\":\"AwAAAAQAAAAFAAAABAAAAAMAAAA=\"}}],\"outputs\":[{\"bufferDescription\":{\"shape\":{\"dim\":[{\"size\":\"20\"},{\"size\":\"20\"},{\"size\":\"20\"},{\"size\":\"20\"},{\"size\":\"20\"}]},\"type\":\"DT_FLOAT\"},\"isDynamicallyPadded\":true}]}"',
+          hlo)
+      self.assertAllClose(out, array_ops.ones(shape))
+
   def test_dynamic_output_tf_op(self):
-    """Test dynamic output => returns bad status at runtime."""
+    """Test that dynamic output is sliced properly to the size known at runtime."""
 
     @def_function.function(jit_compile=True)
     def compiled_f(x):
@@ -58,9 +95,14 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
     with context.device('/gpu:0'):
       z = random_ops.random_normal([10])
+      out = compiled_f(z)
+      hlo = compiled_f.experimental_get_compiler_ir(z)('hlo_no_metadata')
 
-      with self.assertRaisesRegex(ValueError, 'Found unknown dimension'):
-        compiled_f.experimental_get_compiler_ir(z)()
+      self.assertIn(
+          r'f32[<=5]{0} custom-call(f32[10]{0} %reshape.2), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING, backend_config="{\"op\":{\"name\":\"TestDynamicTf\",\"op\":\"TestDynamicTf\",\"input\":[\"x\"],\"attr\":{\"max_size\":{\"i\":\"5\"}}},\"inputs\":[{\"bufferDescription\":{\"shape\":{\"dim\":[{\"size\":\"10\"}]},\"type\":\"DT_FLOAT\"}}],\"outputs\":[{\"bufferDescription\":{\"shape\":{\"dim\":[{\"size\":\"5\"}]},\"type\":\"DT_FLOAT\"},\"isDynamicallyPadded\":true}]}"',
+          hlo)
+      self.assertAllClose(out, z[:2])
+      self.assertEqual(len(out), 2)
 
   def test_dynamic_input(self):
     """Test dynamic input => returns bad status at runtime."""
