@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
 namespace memory_space_assignment {
@@ -3364,12 +3363,24 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
                                  const BufferInterval& y) {
     float x_memory_boundedness = cost_analysis.GetMemoryBoundedness(x, cache);
     float y_memory_boundedness = cost_analysis.GetMemoryBoundedness(y, cache);
+
+    VLOG(4) << "Comparing: " << x.buffer->ToShortString() << ", "
+            << x_memory_boundedness << " with " << y.buffer->ToShortString()
+            << ", " << y_memory_boundedness;
     if (x_memory_boundedness != y_memory_boundedness) {
       return x_memory_boundedness > y_memory_boundedness;
     }
     // Tie-break if the memory boundedness is the same.
-    return GlobalDecreasingSizeBestFitHeap<
-        HloValue>::GetSpatialBufferIntervalCompare()(x, y);
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    if (x.end - x.start != y.end - y.start) {
+      return x.end - x.start > y.end - y.start;
+    }
+
+    const auto& map = cost_analysis.hlo_live_range().instruction_schedule();
+    return map.at(x.buffer->defining_instruction()) <
+           map.at(y.buffer->defining_instruction());
   };
 }
 
