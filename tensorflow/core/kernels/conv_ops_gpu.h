@@ -32,10 +32,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
 bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
                           bool is_conv2d);
-#endif  // GOOGLE_CUDA
+
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
