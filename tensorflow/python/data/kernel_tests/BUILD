@@ -72,6 +72,7 @@ tf_py_test(
     srcs = ["cache_test.py"],
     tags = [
         "noasan",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notap",  # TODO(b/231479582): re-enable after flakiness resolved.
         "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
     ],
     deps = [
