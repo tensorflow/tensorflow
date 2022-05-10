@@ -2060,7 +2060,8 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             FAIL() << "Binary op test map does not contain op " << op_name;
           }
 
-          if (!operand_1_is_tensor && !operand_2_is_tensor) {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch &&
+              !operand_1_is_tensor && !operand_2_is_tensor) {
             runExpectedToFailTest(op_name);
             continue;
           }

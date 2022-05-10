@@ -475,10 +475,18 @@ Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
       }
     }
   }
+  int trt_inputs = 0;
+  for(auto& input: inputs) {
+    if(input.data_type != DT_RESOURCE) {
+      trt_inputs++;
+    }
+  }
   // We don't support segments with no inputs. Fall back to native TF here to
   // avoid crash later. Constant folding should've folded the ops that make up
   // these segments.
-  if (inputs.empty()) {
+  // In non-frozen mode, it is possible to have segments with only resource
+  // inputs. But we can't build a TRT engine in that case either.
+  if (trt_inputs == 0) {
     return errors::Internal(
         "Segment has no inputs (possible constfold failure)");
   }
