@@ -106,7 +106,7 @@ for more options to configure `AudioClassifier`.
 
 ### Step 1: Install the pip package
 ```
-pip install -q -U tflite-support
+pip install tflite-support
 ```
 
 ### Step 2: Using the model
