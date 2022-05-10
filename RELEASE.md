@@ -15,6 +15,9 @@
 
 # Major Features and Improvements
 
+*   `tf.lite`:
+    *   New operations supported:
+          * tflite SelectV2 now supports 5D.
 *   `tf.keras`:
 
     *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
