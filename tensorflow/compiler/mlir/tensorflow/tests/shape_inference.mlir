@@ -1581,6 +1581,67 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5: tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
   }
 
+  // CHECK-LABEL: passthrough_reducedataset_unspecified_variant
+  func.func @passthrough_reducedataset_unspecified_variant(
+      %arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,
+      %arg1 : tensor<!tf_type.variant>,
+      %arg2 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
+      %arg3 : tensor<!tf_type.resource<tensor<i64>>>,
+      %arg4 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
+      %arg5 : tensor<!tf_type.resource<tensor<256x640xf32>>>,
+      %arg6 : tensor<!tf_type.resource<tensor<640xf32>>>,
+      %arg7 : tensor<!tf_type.resource<tensor<512x640xf32>>>,
+      %arg8 : tensor<!tf_type.resource<tensor<640x640xf32>>>,
+      %arg9 : tensor<!tf_type.resource<tensor<4096xf32>>>,
+      %arg10 : tensor<!tf_type.resource<tensor<640x4096xf32>>>,
+      %arg11 : tensor<!tf_type.resource<tensor<512xf32>>>
+      ) {
+    %cst_0 = arith.constant dense<0.1> : tensor<f32>
+    %cst_2 = arith.constant dense<2> : tensor<i64>
+    %cst_12 = arith.constant dense<0> : tensor<i32>
+    %cst_13 = arith.constant dense<> : tensor<0x!tf_type.string>
+
+    %117:6 = "tf.ReduceDataset"(%arg1, %cst_12, %cst_12, %cst_12, %cst_12, %cst_13, %cst_13, %arg2, %arg3, %arg4, %arg5, %arg6, %arg6, %arg6, %arg6, %arg7, %arg8, %arg9, %arg10, %cst_0, %arg0, %arg6, %arg11, %arg6, %arg6, %arg6, %arg6, %arg9) {
+
+      // The reduce function __reduce_func_3 has 36 arguments, and the source of those arguments are listed below:
+      //   [arg0, arg5]:   these are states coming from ReduceDatasetOp's [arg1, arg6]
+      //   [arg6: arg14]:  these are the input elements coming from arg1 variant with undefined dataset outputs.
+      //   [arg15: arg35]: these are the captured elements from ReduceDatasetOp's [arg7:arg27]
+
+      Targuments = [!tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, f32, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource, !tf_type.resource],
+      Tstate = [i32, i32, i32, i32, !tf_type.string, !tf_type.string], device = "",
+      f = @__reduce_func_3, f._tf_data_function = true,
+      output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<?>],
+      output_types = [i32, i32, i32, i32, !tf_type.string, !tf_type.string], use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<!tf_type.resource<tensor<4096x128xf32>>>, tensor<!tf_type.resource<tensor<i64>>>, tensor<!tf_type.resource<tensor<4096x128xf32>>>, tensor<!tf_type.resource<tensor<256x640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<512x640xf32>>>, tensor<!tf_type.resource<tensor<640x640xf32>>>, tensor<!tf_type.resource<tensor<4096xf32>>>, tensor<!tf_type.resource<tensor<640x4096xf32>>>, tensor<f32>, tensor<!tf_type.resource<tensor<4096xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<512xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<640xf32>>>, tensor<!tf_type.resource<tensor<4096xf32>>>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*x!tf_type.string>, tensor<*x!tf_type.string>)
+    func.return
+  }
+
+  // CHECK: private @__reduce_func_3(
+  // CHECK-SAME: %arg15: tensor<!tf_type.resource<tensor<4096x128xf32>>>
+  // CHECK-SAME: %arg16: tensor<!tf_type.resource<tensor<i64>>>
+  // CHECK-SAME: %arg17: tensor<!tf_type.resource<tensor<4096x128xf32>>>
+  // CHECK-SAME: %arg18: tensor<!tf_type.resource<tensor<256x640xf32>>>
+  // CHECK-SAME: %arg19: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg20: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg21: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg22: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg23: tensor<!tf_type.resource<tensor<512x640xf32>>>
+  // CHECK-SAME: %arg24: tensor<!tf_type.resource<tensor<640x640xf32>>>
+  // CHECK-SAME: %arg25: tensor<!tf_type.resource<tensor<4096xf32>>>
+  // CHECK-SAME: %arg26: tensor<!tf_type.resource<tensor<640x4096xf32>>>
+  // CHECK-SAME: %arg28: tensor<!tf_type.resource<tensor<4096xf32>>>
+  // CHECK-SAME: %arg29: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg30: tensor<!tf_type.resource<tensor<512xf32>>>
+  // CHECK-SAME: %arg31: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg32: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg33: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg34: tensor<!tf_type.resource<tensor<640xf32>>>
+  // CHECK-SAME: %arg35: tensor<!tf_type.resource<tensor<4096xf32>>>)
+  func.func private @__reduce_func_3(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+    %0:6 = "tf.JustPretend"() : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
+    func.return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5: tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
+  }
+
   // CHECK-LABEL: infer_output_type_for_restore
   func.func @infer_output_type_for_restore(%arg0: tensor<!tf_type.string>) -> (tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>) {
     %cst = arith.constant dense<"client/1"> : tensor<1x!tf_type.string>

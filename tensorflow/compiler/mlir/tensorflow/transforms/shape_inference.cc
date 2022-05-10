@@ -1143,14 +1143,25 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
 
   DatasetInput input_elements = GetDatasetInput(op.input_dataset());
-  if (!input_elements) {
-    op.emitWarning("unexpected dataset input; skipping function refinement");
-    return false;
-  }
 
   const int num_states = op.output_shapes().size();
-  const int num_input_elements = input_elements.shapes.size();
   const int num_captured_arguments = op.getNumOperands() - 1 - num_states;
+
+  // If input_elements is undefined, we can still infer the shapes for the
+  // states and captured arguments.
+  int num_input_elements;
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
+  if (input_elements) {
+    num_input_elements = input_elements.shapes.size();
+  } else {
+    num_input_elements =
+        input_types.size() - num_states - num_captured_arguments;
+  }
+
+  VLOG(0) << "Inferring shape for ReduceDataset with #states = " << num_states
+          << " , #input_elements = " << num_input_elements
+          << " , and #captured_arguments = " << num_captured_arguments;
   DCOMMENT_OP(op,
               "Inferring shape for ReduceDataset with #states = "
                   << num_states << " , #input_elements = " << num_input_elements
@@ -1162,10 +1173,6 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
         "number of arguments");
     return false;
   }
-
-  // Initialize with function input types.
-  auto input_types = llvm::to_vector<1>(
-      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;
@@ -1180,12 +1187,17 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   }
 
   // Second set the following num_input_elements arguments from
-  // repeat_dataset_op.
+  // repeat_dataset_op.  Skip propagating shape if input_elements is
+  // undefined.
   for (int i = 0; i < num_input_elements; ++i) {
-    Type t = GetType(input_elements.shapes[i], input_elements.types[i]);
-    t = TypeMeet(*it, t);
-    changed = changed || (t != *it);
-    *it++ = t;
+    if (input_elements) {
+      Type t = GetType(input_elements.shapes[i], input_elements.types[i]);
+      t = TypeMeet(*it, t);
+      changed = changed || (t != *it);
+      *it++ = t;
+    } else {
+      it++;
+    }
   }
 
   // Last set the remaining num_captured_arguments from op.
