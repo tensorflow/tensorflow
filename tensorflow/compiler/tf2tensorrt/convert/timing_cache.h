@@ -32,7 +32,7 @@ namespace convert {
 // operations become no-ops.
 class TimingCacheRegistry {
  public:
-  TimingCacheRegistry() = default;
+  TimingCacheRegistry();
   ~TimingCacheRegistry() = default;
 
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
@@ -58,6 +58,10 @@ class TimingCacheRegistry {
 
   mutex mu_;
   std::unordered_map<std::string, SerializedTimingCache> map_;
+
+  // An optional path specifying where the directory where the caches should be
+  // loaded/saved.
+  absl::optional<string> cache_dir_{absl::nullopt};
 };
 
 TimingCacheRegistry* GetTimingCacheRegistry();
