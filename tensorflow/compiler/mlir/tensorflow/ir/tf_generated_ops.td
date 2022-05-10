@@ -11769,7 +11769,7 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RecvOp : TF_Op<"Recv", []> {
+def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -14756,7 +14756,7 @@ if outputs < 0, `scale * gradients` otherwise.}]>:$backprops
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SendOp : TF_Op<"Send", []> {
+def TF_SendOp : TF_Op<"Send", [TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
@@ -19907,6 +19907,28 @@ containing only non-negative values.}]>:$padding_interior
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_XlaRecvOp : TF_Op<"XlaRecv", [TF_RecvSideEffect]> {
+  let summary = [{
+Receives the named tensor from another XLA computation. Wraps the XLA Recv
+  }];
+
+  let description = [{
+operator documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#recv .
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_name,
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The tensor to receive.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", [TF_RecvSideEffect]> {
   let summary = "An op to receive a tensor from the host.";
 
@@ -20145,6 +20167,27 @@ multiplicity.}]>:$w,
     Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{The column v[..., :, i] is the normalized eigenvector corresponding to the
 eigenvalue w[..., i].}]>:$v
   );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSendOp : TF_Op<"XlaSend", [TF_SendSideEffect]> {
+  let summary = [{
+Sends the named tensor to another XLA computation. Wraps the XLA Send operator
+  }];
+
+  let description = [{
+documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#send .
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to send.}]>:$tensor,
+
+    StrAttr:$tensor_name
+  );
+
+  let results = (outs);
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
