@@ -296,7 +296,6 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_topology_external",
         "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
     ],
