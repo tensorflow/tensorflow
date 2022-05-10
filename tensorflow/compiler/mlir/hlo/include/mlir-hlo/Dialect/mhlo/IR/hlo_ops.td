@@ -971,12 +971,7 @@ def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
 }
 
 def HLO_AllReduceOp : HLO_Op<"all_reduce",
-    // TODO(b/231448733): Replace this with HLO_CompatibleOperandsAndResultType
-    // once we fix the Python bindings whose canInferType currently requires:
-    //   1) [SameOperandsAndResultType]
-    //   2) Or [FirstAttrDerivedResultType]
-    //   3) Or InferTypeOpInterface with getNumRegions() == 0.
-    [SameOperandsAndResultType]> {
+    [HLO_CompatibleOperandsAndResultType]> {
   let summary = "AllReduce operator";
   let description = [{
     Performs a custom reduction across replicas.
