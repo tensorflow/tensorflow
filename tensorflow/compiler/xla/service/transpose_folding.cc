@@ -258,17 +258,18 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
 
   const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
 
-  size_t num_batch_dims = std::max(dot_dims.lhs_batch_dimensions().size(),
-                                   dot_dims.rhs_batch_dimensions().size());
-  if (dot.shape().rank() != num_batch_dims + 2) {
-    return false;
-  }
-
   auto batch_dims = (operand_idx == 0) ? dot_dims.lhs_batch_dimensions()
                                        : dot_dims.rhs_batch_dimensions();
-  return absl::c_all_of(batch_dims, [&](int64_t dim) {
-    return transpose.dimensions(dim) == dim;
-  });
+
+  auto contracting_dims = (operand_idx == 0)
+                              ? dot_dims.lhs_contracting_dimensions()
+                              : dot_dims.rhs_contracting_dimensions();
+
+  return (batch_dims.size() == transpose.shape().rank() - 2) &&
+         (contracting_dims.size() == 1) &&
+         absl::c_all_of(batch_dims, [&](int64_t dim) {
+           return transpose.dimensions(dim) == dim;
+         });
 }
 
 }  // namespace xla

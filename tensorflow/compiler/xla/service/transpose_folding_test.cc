@@ -124,6 +124,23 @@ ENTRY entry_computation {
   EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(TransposeFoldingTest, DontFoldTransposeOfDotWithoutContractingDims) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldDotTranspose
+
+ENTRY entry_computation {
+  x = f32[3,4] parameter(0)
+  y = f32[3,4,6,7] parameter(1)
+  transpose = f32[3,4,7,6] transpose(y), dimensions={0,1,3,2}
+  ROOT dot = f32[3,4,7,6] dot(x, transpose), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={}, rhs_contracting_dims={}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
+}
+
 TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
   constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTransposeConstant
