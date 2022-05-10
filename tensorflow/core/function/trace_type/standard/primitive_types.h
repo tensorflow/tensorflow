@@ -116,6 +116,28 @@ inline std::string Literal<std::string>::to_string() const {
   return "String<" + value_ + ">";
 }
 
+// TODO(b/232114163): Reconsider flexibility of structural subtyping.
+// Represents a fixed collection of types.
+class Product : public TraceType {
+ public:
+  explicit Product(std::vector<std::unique_ptr<TraceType>> elements);
+  std::unique_ptr<TraceType> clone() const override;
+
+  const std::vector<const TraceType*> elements() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> most_specific_common_supertype(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  std::vector<std::unique_ptr<TraceType>> elements_;
+};
+
 }  // namespace trace_type
 }  // namespace tensorflow
 

@@ -16,6 +16,7 @@ cc_library(
     hdrs = ["primitive_types.h"],
     deps = [
         ":trace_type",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:optional",
     ],
 )
