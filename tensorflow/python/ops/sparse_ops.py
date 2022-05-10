@@ -2675,13 +2675,21 @@ def sparse_softmax(sp_input, name=None):
   Example:
 
   ```python
-  import tensorflow as tf
-  shape = [2, 2, 2]  # 3-D SparseTensor
-  values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
-  indices = np.vstack(np.where(values)).astype(np.int64).T
-  values = values[np.where(values)] # Flatten values
-  result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape)) 
-  print(tf.sparse.to_dense(result))
+  >>> import tensorflow as tf
+  >>> shape = [2, 2, 2]  # 3-D SparseTensor
+  >>> values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
+  >>> indices = np.vstack(np.where(values)).astype(np.int64).T
+  >>> values = values[np.where(values)] # Flatten values
+  >>> result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape)) 
+  >>> print(tf.sparse.to_dense(result))
+  
+  <... output:
+  tf.Tensor(
+[[[0.  1. ]
+  [1.  0. ]]
+
+ [[1.  0. ]
+  [0.5 0.5]]], shape=(2, 2, 2), dtype=float64) ...>
   ```
 
   Args:
