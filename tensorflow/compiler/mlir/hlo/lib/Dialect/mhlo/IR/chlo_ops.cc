@@ -60,6 +60,41 @@ Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
 }
 
 //===----------------------------------------------------------------------===//
+// CompatibleOperandsAndResultType
+//===----------------------------------------------------------------------===//
+
+// TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+// support quantization or sparsity.
+#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
+  LogicalResult Op::inferReturnTypeComponents(                                \
+      MLIRContext* context, Optional<Location> location,                      \
+      ValueShapeRange operands, DictionaryAttr attributes,                    \
+      RegionRange regions,                                                    \
+      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
+    return inferReturnTypeComponentsFromOperands(context, location, operands, \
+                                                 attributes, regions,         \
+                                                 inferredReturnShapes);       \
+  }
+
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcosOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcoshOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ConjOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NextAfterOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PolygammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ZetaOp)
+
+//===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
 
