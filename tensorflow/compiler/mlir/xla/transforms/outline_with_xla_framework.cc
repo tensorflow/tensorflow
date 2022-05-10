@@ -123,6 +123,11 @@ struct OutlineXLAFunc : public RewritePattern {
     }
 
     rewriter.create<func::ReturnOp>(loc, results);
+
+    // Finally, mark the called function as private to prevent users from
+    // accidentally trying to use it.
+    func.setVisibility(SymbolTable::Visibility::Private);
+
     return success();
   }
 };
