@@ -20567,7 +20567,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__HostRecvOp : TF_Op<"_HostRecv", [TF_RecvSideEffect]> {
+def TF__HostRecvOp : TF_Op<"_HostRecv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let description = [{
@@ -20590,7 +20590,7 @@ output on device memory.
   TF_DerivedResultTypeAttr tensor_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__HostSendOp : TF_Op<"_HostSend", [TF_SendSideEffect]> {
+def TF__HostSendOp : TF_Op<"_HostSend", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let description = [{
@@ -20629,7 +20629,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF__RecvOp : TF_Op<"_Recv", [TF_RecvSideEffect]> {
+def TF__RecvOp : TF_Op<"_Recv", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
   let arguments = (ins
@@ -20699,7 +20699,7 @@ of the embedding lookup operation.
   );
 }
 
-def TF__SendOp : TF_Op<"_Send", [TF_SendSideEffect]> {
+def TF__SendOp : TF_Op<"_Send", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {
   let summary = "Sends the named tensor from send_device to recv_device.";
 
   let arguments = (ins
