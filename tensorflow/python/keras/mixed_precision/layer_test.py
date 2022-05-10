@@ -211,15 +211,14 @@ class LayerTest(keras_parameterized.TestCase):
         # applied to a float16 value, but instead the float32 variable.
         opt = gradient_descent.SGD(2**-14)
 
-        def run_fn():
-          with backprop.GradientTape() as tape:
-            y = layer(x)
-            # Divide by num_replicas_in_sync, as the effective total loss is the
-            # sum of each of the replica's losses.
-            y /= strategy.num_replicas_in_sync
+        with backprop.GradientTape() as tape:
+          y = layer(x)
+          # Divide by num_replicas_in_sync, as the effective total loss is the
+          # sum of each of the replica's losses.
+          y /= strategy.num_replicas_in_sync
 
           grad = tape.gradient(y, layer.v)
-          return opt.apply_gradients([(grad, layer.v)])
+          run_fn = opt.apply_gradients([(grad, layer.v)])
 
         op = strategy.experimental_run(run_fn)
         if not context.executing_eagerly():
