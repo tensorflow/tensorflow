@@ -180,6 +180,11 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device = "cpu");
 
+// Creates a pass to perform device assignment for TF dialect ops that do not
+// have device assignment, by using the device attribute of the function.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFDeviceAssignmentByFuncAttrPass();
+
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.
 LogicalResult ResourceLiftingForFunctionalControlFlow(func::FuncOp function);
