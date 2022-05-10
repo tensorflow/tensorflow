@@ -31,6 +31,8 @@
         `tf.keras.utils.text_dataset_from_directory`, and
         `audio_dataset_from_directory`, to be used with the `validation_split`
         argument, for returning both dataset splits at once, as a tuple.
+    *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object
+        or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
 
 *   `tf.math`:
 
