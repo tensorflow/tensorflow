@@ -316,21 +316,21 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   }
   // Transform the Linalg ops inside of the loop nest into parallel loops.
   pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToParallelLoopsPass());
-  // Canonicalize the code to simplify index computations. This is needed so
-  // that loop bounds have the same value.
-  pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
-  // Run CSE to ensure that loads and stores to the same subview get
-  // recognized as such.
-  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
 
   if (!cpu_codegen) {
-    // Collapse and tile parallel loops. Collapsing shouldn't provide benefits
-    // to CPU and tiling is handled by vectorization.
+    // Canonicalize the code to simplify index computations. This is needed so
+    // that loop bounds have the same value.
+    pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+    // Run CSE to ensure that loads and stores to the same subview get
+    // recognized as such.
+    pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
+    // Collapse and tile parallel loops for GPU only. Collapsing shouldn't
+    // provide benefits to CPU and tiling is handled by vectorization.
     pm.addNestedPass<FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
     pm.addNestedPass<FuncOp>(
         std::make_unique<TileLoops>(tile_sizes, unroll_factors));
   }
+
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   if (failed(pm.run(module))) {
