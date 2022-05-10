@@ -10,7 +10,7 @@ package(
 )
 
 exports_files([
-    "include/mlir-hlo/Dialect/mhlo/IR/clo_ops.td",
+    "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
     "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td",
 ])
