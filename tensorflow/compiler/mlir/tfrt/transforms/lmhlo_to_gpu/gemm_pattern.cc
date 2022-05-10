@@ -57,24 +57,18 @@ namespace {
 // dimensions.
 struct MatrixDescriptor {
   Value data;
+  int64_t leading_dim_stride;
+  int64_t batch_stride;
   bool transpose;  // Whether this matrix needs to be transposed.
-  int64_t num_rows;
-  int64_t num_cols;
-  int64_t stride;
 };
 
 MatrixDescriptor GetMatrixDesc(const xla::gpu::MatrixLayout& layout,
                                Value data) {
-  // TODO(cjfj): Add support for batch not in most major physical dimension.
-  CHECK((layout.batch_stride == 0) ||
-        (layout.batch_stride == layout.num_rows * layout.num_cols));
-  bool transpose = layout.order != xla::gpu::MatrixLayout::Order::kColumnMajor;
   return {
       data,
-      transpose,
-      transpose ? layout.num_cols : layout.num_rows,
-      transpose ? layout.num_rows : layout.num_cols,
+      layout.leading_dim_stride,
       layout.batch_stride,
+      /*transpose=*/layout.order != xla::gpu::MatrixLayout::Order::kColumnMajor,
   };
 }
 
@@ -82,11 +76,12 @@ void TransposeMatrixDesc(MatrixDescriptor& matrix_desc) {
   matrix_desc.transpose = !matrix_desc.transpose;
 }
 
-void MakeBlasGemmCompatible(MatrixDescriptor& lhs, MatrixDescriptor& rhs,
-                            MatrixDescriptor& output) {
+void MakeBlasGemmCompatible(int64_t& m, int64_t& n, MatrixDescriptor& lhs,
+                            MatrixDescriptor& rhs, MatrixDescriptor& output) {
   // BLAS GeMM doesn't support transposed output, but we can use the identity:
   // C^T = (A @ B)^T = B^T @ A^T.
   if (output.transpose) {
+    std::swap(m, n);
     std::swap(lhs, rhs);
     lhs.transpose = !lhs.transpose;
     rhs.transpose = !rhs.transpose;
@@ -129,39 +124,39 @@ tfrt::gpu::wrapper::BlasOperation MatrixTransposeToBlasOperation(
 template <class GemmOp>
 Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
                     Value stream, mlir::Type input_type, mlir::Type output_type,
-                    int64_t batch_size, const MatrixDescriptor& lhs,
-                    const MatrixDescriptor& rhs, const MatrixDescriptor& output,
-                    xla::complex128 alpha, double beta,
-                    ConversionPatternRewriter& rewriter) {
+                    int64_t batch_size, int64_t m, int64_t n, int64_t k,
+                    const MatrixDescriptor& lhs, const MatrixDescriptor& rhs,
+                    const MatrixDescriptor& output, xla::complex128 alpha,
+                    double beta, ConversionPatternRewriter& rewriter) {
   auto loc = op.getLoc();
   if (auto bias = GetBias(adaptor)) {
     chain = rewriter.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(), bias,
                                                   stream, chain);
   }
 
-  auto k_val = lhs.transpose ? lhs.num_rows : lhs.num_cols;
-
   const Type mlir_compute_type = MlirComputationType(output_type, rewriter);
 
-  auto m = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, output.num_rows);
-  auto n = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, output.num_cols);
-  auto k = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, k_val);
+  auto m_ = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, m);
+  auto n_ = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, n);
+  auto k_ = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, k);
 
   // Scale type must match compute type, except for complex types, where
   // it must match the output type
   const Type mlir_scale_type =
       output_type.isa<mlir::ComplexType>() ? output_type : mlir_compute_type;
 
-  auto const_alpha = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
-                                               llvm::APFloat(alpha.real()),
-                                               llvm::APFloat(alpha.imag()));
-  auto const_beta = MakeScalingFactorConstant(
+  auto alpha_ = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
+                                          llvm::APFloat(alpha.real()),
+                                          llvm::APFloat(alpha.imag()));
+  auto beta_ = MakeScalingFactorConstant(
       rewriter, loc, mlir_scale_type, llvm::APFloat(beta), llvm::APFloat(0.));
 
-  auto lda = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, lhs.num_rows);
-  auto ldb = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, rhs.num_rows);
-  auto ldc =
-      rewriter.create<tfrt::compiler::ConstantI32Op>(loc, output.num_rows);
+  auto lda = rewriter.create<tfrt::compiler::ConstantI32Op>(
+      loc, lhs.leading_dim_stride);
+  auto ldb = rewriter.create<tfrt::compiler::ConstantI32Op>(
+      loc, rhs.leading_dim_stride);
+  auto ldc = rewriter.create<tfrt::compiler::ConstantI32Op>(
+      loc, output.leading_dim_stride);
 
   tfrt::gpu::wrapper::BlasGemmAlgo algorithm = GetBlasGemmAlgoOrDefault(op);
   auto algo = rewriter.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
@@ -177,18 +172,18 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
   const auto compute_type = MlirTypeToBlasComputeType(mlir_compute_type);
   if (batch_size != 1) {
     auto lhs_stride =
-        rewriter.create<tfrt::compiler::ConstantI64Op>(loc, lhs.stride);
+        rewriter.create<tfrt::compiler::ConstantI64Op>(loc, lhs.batch_stride);
     auto rhs_stride =
-        rewriter.create<tfrt::compiler::ConstantI64Op>(loc, rhs.stride);
-    auto output_stride =
-        rewriter.create<tfrt::compiler::ConstantI64Op>(loc, output.stride);
+        rewriter.create<tfrt::compiler::ConstantI64Op>(loc, rhs.batch_stride);
+    auto output_stride = rewriter.create<tfrt::compiler::ConstantI64Op>(
+        loc, output.batch_stride);
     auto batch =
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
     return rewriter
         .create<tfrt::gpu::BlasGemmBatchExOp>(
-            loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
-            const_alpha, lhs.data, input_data_type, lda, lhs_stride, rhs.data,
-            input_data_type, ldb, rhs_stride, const_beta, output.data,
+            loc, chain.getType(), handle, stream, lhs_op, rhs_op, m_, n_, k_,
+            alpha_, lhs.data, input_data_type, lda, lhs_stride, rhs.data,
+            input_data_type, ldb, rhs_stride, beta_, output.data,
             output_data_type, ldc, output_stride, batch, compute_type, algo,
             chain)
         .getResult();
@@ -196,10 +191,10 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   return rewriter
       .create<tfrt::gpu::BlasGemmOp>(
-          loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
-          const_alpha, lhs.data, input_data_type, lda, rhs.data,
-          input_data_type, ldb, const_beta, output.data, output_data_type, ldc,
-          compute_type, algo, chain)
+          loc, chain.getType(), handle, stream, lhs_op, rhs_op, m_, n_, k_,
+          alpha_, lhs.data, input_data_type, lda, rhs.data, input_data_type,
+          ldb, beta_, output.data, output_data_type, ldc, compute_type, algo,
+          chain)
       .getResult();
 }
 
@@ -223,17 +218,20 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   if (!config.ok())
     return rewriter.notifyMatchFailure(op, config.status().ToString());
 
+  int64_t m = config->output_layout.num_rows;
+  int64_t n = config->output_layout.num_cols;
+  int64_t k = config->lhs_layout.num_cols;
   MatrixDescriptor lhs = GetMatrixDesc(config->lhs_layout, adaptor.lhs());
   MatrixDescriptor rhs = GetMatrixDesc(config->rhs_layout, adaptor.rhs());
   MatrixDescriptor output =
       GetMatrixDesc(config->output_layout, adaptor.output());
   int64_t batch_size = config->output_layout.batch_size;
 
-  MakeBlasGemmCompatible(lhs, rhs, output);
+  MakeBlasGemmCompatible(m, n, lhs, rhs, output);
 
   return CreateTfrtOps(op, adaptor, chain, stream, get_element_type(op.lhs()),
-                       get_element_type(op.output()), batch_size, lhs, rhs,
-                       output, config->alpha, config->beta, rewriter);
+                       get_element_type(op.output()), batch_size, m, n, k, lhs,
+                       rhs, output, config->alpha, config->beta, rewriter);
 }
 
 template <class GemmOpType>

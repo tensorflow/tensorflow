@@ -108,7 +108,8 @@ static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
 
 template <typename Input, typename Output>
 static Status DoGemmWithAlgorithm(
-    int64_t batch_size, const se::blas::MatrixDescriptor &lhs,
+    int64_t batch_size, int64_t m, int64_t n, int64_t k,
+    const se::blas::MatrixDescriptor &lhs,
     const se::blas::MatrixDescriptor &rhs,
     const se::blas::MatrixDescriptor &output, Output alpha, Output beta,
     se::Stream *stream, se::blas::AlgorithmType algorithm,
@@ -121,29 +122,23 @@ static Status DoGemmWithAlgorithm(
 
   if (batch_size != 1) {
     return stream->ThenBlasGemmStridedBatchedWithAlgorithm(
-        lhs.transpose, rhs.transpose, output.num_rows, output.num_cols,
-        /*size of reduce dim=*/lhs.reduced_dim(),
-        /*alpha=*/alpha, lhs.cast<Input>(),
-        /*leading dim of LHS=*/lhs.num_rows, lhs.stride, rhs.cast<Input>(),
-        /*leading dim of RHS=*/rhs.num_rows, rhs.stride,
-        /*beta=*/beta, &output_data,
-        /*leading dim of output=*/output.num_rows, output.stride, batch_size,
+        lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
+        lhs.leading_dim_stride, lhs.batch_stride, rhs.cast<Input>(),
+        rhs.leading_dim_stride, rhs.batch_stride, beta, &output_data,
+        output.leading_dim_stride, output.batch_stride, batch_size,
         computation_type, algorithm, output_profile_result);
   } else {
     return stream->ThenBlasGemmWithAlgorithm(
-        lhs.transpose, rhs.transpose, output.num_rows, output.num_cols,
-        /*size of reduce dim=*/lhs.reduced_dim(),
-        /*alpha=*/alpha, lhs.cast<Input>(),
-        /*lda=*/lhs.num_rows, rhs.cast<Input>(),
-        /*ldb=*/rhs.num_rows,
-        /*beta=*/beta, &output_data,
-        /*ldc=*/output.num_rows, computation_type, algorithm,
+        lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
+        lhs.leading_dim_stride, rhs.cast<Input>(), rhs.leading_dim_stride, beta,
+        &output_data, output.leading_dim_stride, computation_type, algorithm,
         output_profile_result);
   }
 }
 
 template <typename Input>
-static Status DoGemm(int64_t batch_size, const se::blas::MatrixDescriptor &lhs,
+static Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
+                     const se::blas::MatrixDescriptor &lhs,
                      const se::blas::MatrixDescriptor &rhs,
                      const se::blas::MatrixDescriptor &output, Input alpha,
                      Input beta, se::Stream *stream,
@@ -153,35 +148,29 @@ static Status DoGemm(int64_t batch_size, const se::blas::MatrixDescriptor &lhs,
   se::DeviceMemory<Input> output_data(output.data);
 
   if (algorithm) {
-    return DoGemmWithAlgorithm<Input, Input>(batch_size, lhs, rhs, output,
-                                             alpha, beta, stream, *algorithm,
-                                             output_profile_result);
+    return DoGemmWithAlgorithm<Input, Input>(batch_size, m, n, k, lhs, rhs,
+                                             output, alpha, beta, stream,
+                                             *algorithm, output_profile_result);
   }
 
   if (batch_size != 1) {
     return stream->ThenBlasGemmStridedBatched(
-        lhs.transpose, rhs.transpose, output.num_rows, output.num_cols,
-        /*size of reduce dim=*/lhs.reduced_dim(),
-        /*alpha=*/alpha, lhs.cast<Input>(),
-        /*leading dim of LHS=*/lhs.num_rows, lhs.stride, rhs.cast<Input>(),
-        /*leading dim of RHS=*/rhs.num_rows, rhs.stride,
-        /*beta=*/beta, &output_data,
-        /*leading dim of output=*/output.num_rows, output.stride, batch_size);
+        lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
+        lhs.leading_dim_stride, lhs.batch_stride, rhs.cast<Input>(),
+        rhs.leading_dim_stride, rhs.batch_stride, beta, &output_data,
+        output.leading_dim_stride, output.batch_stride, batch_size);
   }
 
-  return stream->ThenBlasGemm(
-      lhs.transpose, rhs.transpose, output.num_rows, output.num_cols,
-      /*size of reduce dim=*/lhs.reduced_dim(),
-      /*alpha=*/alpha, lhs.cast<Input>(),
-      /*leading dim of LHS=*/lhs.num_rows, rhs.cast<Input>(),
-      /*leading dim of RHS=*/rhs.num_rows,
-      /*beta=*/beta, &output_data,
-      /*leading dim of output=*/output.num_rows);
+  return stream->ThenBlasGemm(lhs.transpose, rhs.transpose, m, n, k, alpha,
+                              lhs.cast<Input>(), lhs.leading_dim_stride,
+                              rhs.cast<Input>(), rhs.leading_dim_stride, beta,
+                              &output_data, output.leading_dim_stride);
 }
 
 template <typename Input>
 static Status DoGemmLt(
-    int64_t batch_size, const se::blas::MatrixDescriptor &lhs,
+    int64_t batch_size, int64_t m, int64_t n, int64_t k,
+    const se::blas::MatrixDescriptor &lhs,
     const se::blas::MatrixDescriptor &rhs,
     const se::blas::MatrixDescriptor &output, se::Stream *stream, Input alpha,
     Input beta, se::ScratchAllocator *scratch_allocator,
@@ -194,10 +183,6 @@ static Status DoGemmLt(
 
   bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
   bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
-
-  int64_t m = output.num_rows;
-  int64_t n = output.num_cols;
-  auto k = lhs.reduced_dim();
   bool broadcast = batch_size == 1;
   VLOG(2) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
           << " adj_x " << false << " adj_y " << false << " m " << m << " n "
@@ -210,8 +195,8 @@ static Status DoGemmLt(
 
   TF_ASSIGN_OR_RETURN(
       const se::blas::PlanAndAlgorithms *plan_and_algorithms,
-      GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, dtype, lhs,
-                           rhs, output));
+      GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, m, n, k,
+                           dtype, lhs, rhs, output));
 
   const std::unique_ptr<se::blas::IBlasLtMatmulPlan> &plan =
       plan_and_algorithms->plan;
@@ -269,6 +254,9 @@ Status RunGemm(const GemmConfig &config, se::DeviceMemoryBase lhs_buffer,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
   VLOG(2) << "Executing a GemmThunk";
+  int64_t m = config.output_layout.num_rows;
+  int64_t n = config.output_layout.num_cols;
+  int64_t k = config.lhs_layout.num_cols;
   se::blas::MatrixDescriptor lhs = GetMatrixDesc(config.lhs_layout, lhs_buffer);
   se::blas::MatrixDescriptor rhs = GetMatrixDesc(config.rhs_layout, rhs_buffer);
   se::blas::MatrixDescriptor output =
@@ -276,7 +264,7 @@ Status RunGemm(const GemmConfig &config, se::DeviceMemoryBase lhs_buffer,
   int64_t batch_size = config.output_layout.batch_size;
 
   // TODO(cjfj): Support transposed output when using cuBLASLt.
-  MakeBlasGemmCompatible(lhs, rhs, output);
+  MakeBlasGemmCompatible(m, n, lhs, rhs, output);
 
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
   if (config.use_cublaslt && stream->parent()->SupportsBlasPlans()) {
@@ -287,30 +275,30 @@ Status RunGemm(const GemmConfig &config, se::DeviceMemoryBase lhs_buffer,
     switch (config.output_layout.dtype) {
       case F16:
         return DoGemmLt<Eigen::half>(
-            batch_size, lhs, rhs, output, stream,
+            batch_size, m, n, k, lhs, rhs, output, stream,
             static_cast<Eigen::half>(config.alpha.real()),
             static_cast<Eigen::half>(config.beta), scratch_allocator, algorithm,
             /*output_profile_result=*/profile_result);
       case F32:
-        return DoGemmLt<float>(batch_size, lhs, rhs, output, stream,
+        return DoGemmLt<float>(batch_size, m, n, k, lhs, rhs, output, stream,
                                static_cast<float>(config.alpha.real()),
                                static_cast<float>(config.beta),
                                scratch_allocator, algorithm,
                                /*output_profile_result=*/profile_result);
       case F64:
-        return DoGemmLt<double>(batch_size, lhs, rhs, output, stream,
+        return DoGemmLt<double>(batch_size, m, n, k, lhs, rhs, output, stream,
                                 static_cast<double>(config.alpha.real()),
                                 config.beta, scratch_allocator, algorithm,
                                 /*output_profile_result=*/profile_result);
       case C64:
-        return DoGemmLt<complex64>(batch_size, lhs, rhs, output, stream,
-                                   static_cast<complex64>(config.alpha),
+        return DoGemmLt<complex64>(batch_size, m, n, k, lhs, rhs, output,
+                                   stream, static_cast<complex64>(config.alpha),
                                    static_cast<complex64>(config.beta),
                                    scratch_allocator, algorithm,
                                    /*output_profile_result=*/profile_result);
       case C128:
         return DoGemmLt<complex128>(
-            batch_size, lhs, rhs, output, stream, config.alpha,
+            batch_size, m, n, k, lhs, rhs, output, stream, config.alpha,
             static_cast<complex64>(config.beta), scratch_allocator, algorithm,
             /*output_profile_result=*/profile_result);
       default:
@@ -325,40 +313,43 @@ Status RunGemm(const GemmConfig &config, se::DeviceMemoryBase lhs_buffer,
       case S32:
         if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
         return DoGemmWithAlgorithm<int8_t, int32_t>(
-            batch_size, lhs, rhs, output,
+            batch_size, m, n, k, lhs, rhs, output,
             static_cast<int32_t>(config.alpha.real()),
             static_cast<int32_t>(config.beta), stream, *algorithm,
             /*output_profile_result=*/profile_result);
       case F16:
         return DoGemm<Eigen::half>(
-            batch_size, lhs, rhs, output,
+            batch_size, m, n, k, lhs, rhs, output,
             static_cast<Eigen::half>(config.alpha.real()),
             static_cast<Eigen::half>(config.beta), stream, algorithm,
             /*output_profile_result=*/profile_result);
       case BF16:
         return DoGemm<Eigen::bfloat16>(
-            batch_size, lhs, rhs, output,
+            batch_size, m, n, k, lhs, rhs, output,
             static_cast<Eigen::bfloat16>(config.alpha.real()),
             static_cast<Eigen::bfloat16>(config.beta), stream, algorithm,
             /*output_profile_result=*/profile_result);
       case F32:
-        return DoGemm<float>(batch_size, lhs, rhs, output, config.alpha.real(),
-                             config.beta, stream, algorithm,
+        return DoGemm<float>(batch_size, m, n, k, lhs, rhs, output,
+                             config.alpha.real(), config.beta, stream,
+                             algorithm,
                              /*output_profile_result=*/profile_result);
       case F64:
-        return DoGemm<double>(batch_size, lhs, rhs, output, config.alpha.real(),
-                              config.beta, stream, algorithm,
+        return DoGemm<double>(batch_size, m, n, k, lhs, rhs, output,
+                              config.alpha.real(), config.beta, stream,
+                              algorithm,
                               /*output_profile_result=*/profile_result);
       case C64:
-        return DoGemm<complex64>(
-            batch_size, lhs, rhs, output, static_cast<complex64>(config.alpha),
-            static_cast<complex64>(config.beta), stream, algorithm,
-            /*output_profile_result=*/profile_result);
+        return DoGemm<complex64>(batch_size, m, n, k, lhs, rhs, output,
+                                 static_cast<complex64>(config.alpha),
+                                 static_cast<complex64>(config.beta), stream,
+                                 algorithm,
+                                 /*output_profile_result=*/profile_result);
       case C128:
-        return DoGemm<complex128>(batch_size, lhs, rhs, output, config.alpha,
-                                  static_cast<complex128>(config.beta), stream,
-                                  algorithm,
-                                  /*output_profile_result=*/profile_result);
+        return DoGemm<complex128>(
+            batch_size, m, n, k, lhs, rhs, output, config.alpha,
+            static_cast<complex128>(config.beta), stream, algorithm,
+            /*output_profile_result=*/profile_result);
       default:
         return InternalError("Unexpected GEMM dtype: %s",
                              primitive_util::LowercasePrimitiveTypeName(

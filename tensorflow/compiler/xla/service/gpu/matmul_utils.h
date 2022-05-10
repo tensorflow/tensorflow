@@ -64,6 +64,10 @@ struct MatrixLayout {
   int64_t batch_stride;  // `batch_stride` is set to `0` when `batch_size == 1`.
 };
 
+// GPU folding rule for the `TransposeFolding` pass.
+StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
+                                              int64_t operand_idx);
+
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
   static StatusOr<GemmConfig> For(mlir::Operation* op, bool use_cublaslt);
@@ -88,7 +92,8 @@ struct GemmConfig {
 se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
                                          se::DeviceMemoryBase data);
 
-void MakeBlasGemmCompatible(se::blas::MatrixDescriptor& lhs,
+void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
+                            se::blas::MatrixDescriptor& lhs,
                             se::blas::MatrixDescriptor& rhs,
                             se::blas::MatrixDescriptor& output);
 

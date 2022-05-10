@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -237,51 +240,56 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
-    // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout, which
-    // will allow the NVidia GPUs to use TensorCores.
     if (IsMatrixMultiplication(*instruction)) {
       Shape output_shape = instruction->shape();
-      Shape p1_shape = instruction->operand(0)->shape();
-      Shape p2_shape = instruction->operand(1)->shape();
-      if (output_shape.element_type() == PrimitiveType::S32 &&
-          p1_shape.element_type() == PrimitiveType::S8 &&
-          p2_shape.element_type() == PrimitiveType::S8 &&
-          output_shape.dimensions_size() == 2 &&
-          p1_shape.dimensions_size() == 2 && p2_shape.dimensions_size() == 2) {
-        LayoutUtil::SetToDefaultLayout(&p1_shape);
-        SetFortranLayout(&p2_shape);
-        LayoutUtil::SetToDefaultLayout(&output_shape);
-        TF_RETURN_IF_ERROR(SetOperandLayout(p1_shape, instruction, 0));
-        TF_RETURN_IF_ERROR(SetOperandLayout(p2_shape, instruction, 1));
-        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
-        continue;
-      }
-    }
+      const Shape& lhs_shape = instruction->operand(0)->shape();
+      const Shape& rhs_shape = instruction->operand(1)->shape();
+      const DotDimensionNumbers& dot_dims =
+          instruction->dot_dimension_numbers();
 
-    // For batched dot we require the default layout.
-    // TODO(b/112111608): This is overly conservative, the only real restriction
-    // is that batch dimensions must be major.
-    if (IsMatrixMultiplication(*instruction) &&
-        instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
-      // Verify that the batch dims come before the row and col dims.
-      DotDimensionNumbers dim_nums = instruction->dot_dimension_numbers();
-      CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
-               dim_nums.rhs_batch_dimensions_size());
-      CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
-               instruction->shape().rank());
-      for (int64_t batch_dim : dim_nums.lhs_batch_dimensions()) {
-        CHECK_LT(batch_dim, instruction->shape().rank() - 2);
+      // Matmuls require the batch dimensions to be in consecutive physical
+      // dimensions and likewise for the contracting and non-contracting
+      // dimensions. Additionally, no batch dimension can be in the most
+      // minor physical dimension for inputs or the output.
+      absl::Span<const int64_t> lhs_batch_dims =
+          dot_dims.lhs_batch_dimensions();
+      absl::Span<const int64_t> lhs_col_dims =
+          dot_dims.lhs_contracting_dimensions();
+      TF_ASSIGN_OR_RETURN(
+          std::vector<int64_t> lhs_row_dims,
+          GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_col_dims));
+
+      absl::Span<const int64_t> rhs_batch_dims =
+          dot_dims.rhs_batch_dimensions();
+      absl::Span<const int64_t> rhs_row_dims =
+          dot_dims.rhs_contracting_dimensions();
+      TF_ASSIGN_OR_RETURN(
+          std::vector<int64_t> rhs_col_dims,
+          GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_row_dims));
+
+      // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout,
+      // which will allow the NVidia GPUs to use TensorCores.
+      bool is_s8_to_s32 = (output_shape.element_type() == PrimitiveType::S32 &&
+                           lhs_shape.element_type() == PrimitiveType::S8 &&
+                           rhs_shape.element_type() == PrimitiveType::S8 &&
+                           output_shape.dimensions_size() == 2 &&
+                           lhs_shape.dimensions_size() == 2 &&
+                           rhs_shape.dimensions_size() == 2);
+
+      if (is_s8_to_s32) {
+        TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
+            instruction, 0, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
+        TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
+            instruction, 1, rhs_batch_dims, rhs_col_dims, rhs_row_dims));
+      } else {
+        TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
+                                               lhs_row_dims, lhs_col_dims));
+        TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
+                                               rhs_row_dims, rhs_col_dims));
       }
 
-      // Set both inputs and the output to default layout.
-      Shape op0_shape = instruction->operand(0)->shape();
-      LayoutUtil::SetToDefaultLayout(&op0_shape);
-      Shape op1_shape = instruction->operand(1)->shape();
-      LayoutUtil::SetToDefaultLayout(&op1_shape);
-      Shape output_shape = instruction->shape();
+      // Dot output is implicitly ordered (batch dims, row dims, col dims).
       LayoutUtil::SetToDefaultLayout(&output_shape);
-      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kFft) {
       // cuFFT requires a dim0 major layout.
@@ -355,6 +363,45 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     }
   }
   return Status::OK();
+}
+
+Status GpuLayoutAssignment::SetDotOperandLayout(
+    HloInstruction* instruction, int64_t operand,
+    absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
+    absl::Span<const int64_t> col_dims) {
+  Shape shape = instruction->operand(operand)->shape();
+
+  // First, try to use the existing layout, if present.
+  if (shape.has_layout() &&
+      MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
+    // Re-set the operand layout, so it becomes mandatory.
+    return SetOperandLayout(shape, instruction, operand);
+
+  // Next, try the default layout (for the sake of everybody's sanity).
+  LayoutUtil::SetToDefaultLayout(&shape);
+  if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
+    return SetOperandLayout(shape, instruction, operand);
+
+  // Otherwise, fallback to forcing a (batch, rows, cols) layout.
+  return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
+                                       row_dims, col_dims);
+}
+
+Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(
+    HloInstruction* instruction, int64_t operand,
+    absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
+    absl::Span<const int64_t> col_dims) {
+  std::vector<int64_t> major_to_minor;
+  major_to_minor.reserve(batch_dims.size() + row_dims.size() + col_dims.size());
+  major_to_minor.insert(major_to_minor.end(), batch_dims.begin(),
+                        batch_dims.end());
+  major_to_minor.insert(major_to_minor.end(), row_dims.begin(), row_dims.end());
+  major_to_minor.insert(major_to_minor.end(), col_dims.begin(), col_dims.end());
+
+  Shape shape = instruction->operand(operand)->shape();
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayoutFromMajorToMinor(major_to_minor);
+  return SetOperandLayout(shape, instruction, operand);
 }
 
 }  // namespace gpu
