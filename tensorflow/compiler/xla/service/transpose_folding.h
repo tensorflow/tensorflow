@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_TRANSPOSE_FOLDING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TRANSPOSE_FOLDING_H_
 
-#include <functional>
-
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -31,11 +29,10 @@ class TransposeFolding : public HloModulePass {
 
   // Returns the set of foldable operands for a given HLO and some candidate
   // operands.
-  using TransposableConvOperandsFn = std::function<OperandIndices(
-      const HloInstruction&, const OperandIndices&)>;
-
-  using CanFoldTransposeOperand = std::function<StatusOr<bool>(
-      const HloInstruction&, int64_t /*operand_idx*/)>;
+  using FoldableOperands = std::function<OperandIndices(const HloInstruction&,
+                                                        const OperandIndices&)>;
+  using TransposableGemmOperandsFn = FoldableOperands;
+  using TransposableConvOperandsFn = FoldableOperands;
 
   // Helper function to explicitly not fold transposes.
   static OperandIndices NeverFoldTranspose(const HloInstruction&,
@@ -49,26 +46,24 @@ class TransposeFolding : public HloModulePass {
     return ids;
   }
 
-  // `dot_can_fold_transpose_operand` returns whether the dot operation can fold
-  // in the given transpose operand.
+  // transposable_gemm_operands returns the set of operands it wants to fold if
+  // the instruction argument is implemented as a GEMM kernel that supports
+  // transposing its arguments.
   //
   // transposable_conv_operands returns the set of operands it wants to fold if
   // the instruction argument is implemented as a convolution that supports
   // transposing its arguments.
   explicit TransposeFolding(
-      CanFoldTransposeOperand dot_can_fold_transpose_operand =
-          IsRowColumnTransposeDotOperand,
+      TransposableGemmOperandsFn transposable_gemm_operands =
+          AlwaysFoldTranspose,
       TransposableConvOperandsFn transposable_conv_operands =
           AlwaysFoldTranspose);
   absl::string_view name() const override { return "transpose-folding"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
-  static StatusOr<bool> IsRowColumnTransposeDotOperand(
-      const HloInstruction& dot, int64_t operand_idx);
-
  private:
-  CanFoldTransposeOperand dot_can_fold_transpose_operand_;
+  TransposableGemmOperandsFn transposable_gemm_operands_;
   TransposableConvOperandsFn transposable_conv_operands_;
 };
 

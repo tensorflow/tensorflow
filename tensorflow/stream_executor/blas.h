@@ -228,9 +228,14 @@ class AlgorithmConfig {
 // dimensions.
 struct MatrixDescriptor {
   DeviceMemoryBase data;
-  int64_t leading_dim_stride;
-  int64_t batch_stride;
   Transpose transpose;
+  int64_t num_rows;
+  int64_t num_cols;
+  int64_t stride;
+
+  int64_t reduced_dim() const {
+    return transpose == Transpose::kTranspose ? num_rows : num_cols;
+  }
 
   template <typename T>
   DeviceMemory<T> cast() const {

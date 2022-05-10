@@ -5091,10 +5091,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -326,20 +326,14 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     // The cublasLt views the matrix as column major. Considering A*B=C is
     // equivalent to B.t*A.t=C.t (.t=transpose), we swap the A and B and view
     // them in the column major dimensions.
-    se::blas::MatrixDescriptor lhs_matrix = {
-        b_ptr,
-        /*leading_dim_stride=*/trans_b ? k : n,
-        /*batch_stride=*/k * n, trans[trans_b ? 1 : 0]};
-    se::blas::MatrixDescriptor rhs_matrix = {
-        a_ptr,
-        /*leading_dim_stride=*/trans_a ? m : k,
-        /*batch_stride=*/m * k, trans[trans_a ? 1 : 0]};
+    se::blas::MatrixDescriptor lhs_matrix = {b_ptr, trans[trans_b ? 1 : 0], n,
+                                             k, n * k};
+    se::blas::MatrixDescriptor rhs_matrix = {a_ptr, trans[trans_a ? 1 : 0], k,
+                                             m, k * m};
     se::blas::MatrixDescriptor output_matrix = {
-        c_ptr, /*leading_dim_stride=*/n, /*batch_stride=*/m * n,
-        se::blas::Transpose::kNoTranspose};
-    auto plan_and_algorithms_or =
-        se::GetPlanAndAlgorithms(stream, matmul_params, 1, n, m, k, dtype,
-                                 lhs_matrix, rhs_matrix, output_matrix);
+        c_ptr, se::blas::Transpose::kNoTranspose, n, m, n * m};
+    auto plan_and_algorithms_or = se::GetPlanAndAlgorithms(
+        stream, matmul_params, 1, dtype, lhs_matrix, rhs_matrix, output_matrix);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     const auto* plan_and_algorithms =
         plan_and_algorithms_or.ConsumeValueOrDie();

@@ -65,7 +65,7 @@ ENTRY entry_computation {
                       /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/1));
 }
 
-TEST_F(TransposeFoldingTest, DontFoldTransposeOfBatchDimByDefault) {
+TEST_F(TransposeFoldingTest, DontFoldTransposeOfBatchDim) {
   constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTranspose
 
@@ -80,31 +80,6 @@ ENTRY entry_computation {
                           ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
-}
-
-TEST_F(TransposeFoldingTest, FoldTransposeOfBatchWhenPermitted) {
-  constexpr absl::string_view kHloString = R"(
-HloModule FoldDotTranspose
-
-ENTRY entry_computation {
-  x = f32[5,2,3] parameter(0)
-  y = f32[3,5,4] parameter(1)
-  transpose = f32[5,3,4] transpose(y), dimensions={1,0,2}
-  ROOT dot = f32[5,2,4] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  TransposeFolding transpose_folding(
-      /*dot_can_fold_transpose_operand=*/[](const HloInstruction&, int64_t) {
-        return true;
-      });
-  EXPECT_THAT(transpose_folding.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::Parameter(0), op::Parameter(1),
-                      /*lhs_contracting_dim=*/2, /*rhs_contracting_dim=*/0));
 }
 
 TEST_F(TransposeFoldingTest, DontFoldTransposeOfRank1Dot) {

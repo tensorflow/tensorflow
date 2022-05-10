@@ -94,14 +94,44 @@ static inline port::StatusOr<blas::ComputationType> GetBlasComputationType(
   }
 }
 
-namespace {
+port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
+    Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
+    tensorflow::DataType dtype, blas::MatrixDescriptor lhs_matrix,
+    blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix) {
+  static const int64_t max_scratch_size =
+      GetWorkspaceLimit(1LL << 32);  // 4GB by default
+  static const int64_t max_autotune_algorithm_count =
+      MatmulMaxAutotuneAlgorithmCount();
+  const blas::PlanAndAlgorithms* plan_and_algorithms =
+      BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
+  if (!plan_and_algorithms) {
+    TF_ASSIGN_OR_RETURN(
+        blas::BlasLtMatmulPlanParams plan_params,
+        CreatePlanParams(batch_size, dtype, matmul_parameters.GetEpilogOp(),
+                         lhs_matrix, rhs_matrix, output_matrix));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<blas::IBlasLtMatmulPlan> plan,
+                        stream->parent()->CreateBlasLtMatmulPlan(plan_params));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>> algorithms,
+        stream->parent()->GetBlasLtMatmulAlgorithms(
+            plan.get(), max_scratch_size,
+            /* max_algorithm_count */ max_autotune_algorithm_count));
+
+    plan_and_algorithms = BatchMatmulPlanMapSingleton::GetInstance()->Insert(
+        matmul_parameters, {std::move(plan), std::move(algorithms)});
+  }
+  return plan_and_algorithms;
+}
 
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
-    int64_t batch_size, int64_t m, int64_t n, int64_t k,
-    tensorflow::DataType dtype, blas::Epilogue epilog_op,
+    int64_t batch_size, tensorflow::DataType dtype, blas::Epilogue epilog_op,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix) {
   blas::BlasLtMatmulPlanParams plan_params;
+  int64_t m = output_matrix.num_rows;
+  int64_t n = output_matrix.num_cols;
+  int64_t k = lhs_matrix.reduced_dim();
+
   TF_ASSIGN_OR_RETURN(blas::DataType blas_dtype, GetBlasDataType(dtype));
   plan_params.ab_type = blas_dtype;
   plan_params.c_type = blas_dtype;
@@ -120,13 +150,17 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
   plan_params.m = m;
   plan_params.n = n;
   plan_params.k = k;
-  plan_params.lda = lhs_matrix.leading_dim_stride;
-  plan_params.ldb = rhs_matrix.leading_dim_stride;
-  plan_params.ldc = output_matrix.leading_dim_stride;
+  plan_params.lda = lhs_matrix.num_rows;
+  plan_params.ldb = rhs_matrix.num_rows;
+  plan_params.ldc = output_matrix.num_rows;
   plan_params.batch_count = batch_size;
-  plan_params.stride_a = lhs_matrix.batch_stride;
-  plan_params.stride_b = rhs_matrix.batch_stride;
-  plan_params.stride_c = output_matrix.batch_stride;
+
+  bool broadcast = batch_size == 1;
+  int64_t lhs_stride = broadcast ? 0 : lhs_matrix.stride;
+  int64_t rhs_stride = broadcast ? 0 : rhs_matrix.stride;
+  plan_params.stride_a = lhs_stride;
+  plan_params.stride_b = rhs_stride;
+  plan_params.stride_c = output_matrix.stride;
 
   if (VLOG_IS_ON(4)) {
     bool trans_x = lhs_matrix.transpose == blas::Transpose::kTranspose;
@@ -146,39 +180,6 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
             << " plan_params.stride_c: " << plan_params.stride_c;
   }
   return plan_params;
-}
-
-}  // namespace
-
-port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
-    Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
-    int64_t m, int64_t n, int64_t k, tensorflow::DataType dtype,
-    blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
-    blas::MatrixDescriptor output_matrix) {
-  static const int64_t max_scratch_size =
-      GetWorkspaceLimit(1LL << 32);  // 4GB by default
-  static const int64_t max_autotune_algorithm_count =
-      MatmulMaxAutotuneAlgorithmCount();
-  const blas::PlanAndAlgorithms* plan_and_algorithms =
-      BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
-  if (!plan_and_algorithms) {
-    TF_ASSIGN_OR_RETURN(
-        blas::BlasLtMatmulPlanParams plan_params,
-        CreatePlanParams(batch_size, m, n, k, dtype,
-                         matmul_parameters.GetEpilogOp(), lhs_matrix,
-                         rhs_matrix, output_matrix));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<blas::IBlasLtMatmulPlan> plan,
-                        stream->parent()->CreateBlasLtMatmulPlan(plan_params));
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>> algorithms,
-        stream->parent()->GetBlasLtMatmulAlgorithms(
-            plan.get(), max_scratch_size,
-            /* max_algorithm_count */ max_autotune_algorithm_count));
-
-    plan_and_algorithms = BatchMatmulPlanMapSingleton::GetInstance()->Insert(
-        matmul_parameters, {std::move(plan), std::move(algorithms)});
-  }
-  return plan_and_algorithms;
 }
 
 }  // namespace stream_executor

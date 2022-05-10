@@ -22,7 +22,6 @@ limitations under the License.
 #include <iterator>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
@@ -105,7 +104,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
@@ -497,7 +495,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
-      pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
+      pipeline.AddPass<TransposeFolding>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -716,8 +714,13 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // GemmRewriter assumes that all transposes are folded into gemms, but,
   // since commit 7d529df, this is not always true at this point.
   // Therefore, rerun transpose folding.
-  pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
-                                     TransposeFolding::NeverFoldTranspose);
+  pipeline.AddPass<TransposeFolding>(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return IsMatrixMultiplication(dot) ? candidate_operands
+                                           : TransposeFolding::OperandIndices{};
+      },
+      TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();
 

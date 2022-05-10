@@ -163,7 +163,11 @@ struct BatchMatmulPlanMapSingleton {
 
 port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
-    int64_t m, int64_t n, int64_t k, tensorflow::DataType dtype,
+    tensorflow::DataType dtype, blas::MatrixDescriptor lhs_matrix,
+    blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix);
+
+port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
+    int64_t batch_size, tensorflow::DataType dtype, blas::Epilogue epilog,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix);
 

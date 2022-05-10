@@ -556,12 +556,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
-      [&](const HloInstruction& dot, int64_t operand) -> StatusOr<bool> {
-        if (DotImplementationCanHandleTranspose(dot,
-                                                *target_machine_features)) {
-          return TransposeFolding::IsRowColumnTransposeDotOperand(dot, operand);
-        }
-        return false;
+      [&](const HloInstruction& dot,
+          const TransposeFolding::OperandIndices& candidate_operands) {
+        return DotImplementationCanHandleTranspose(dot,
+                                                   *target_machine_features)
+                   ? candidate_operands
+                   : TransposeFolding::OperandIndices{};
       },
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);

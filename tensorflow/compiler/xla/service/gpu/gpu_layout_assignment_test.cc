@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -38,8 +37,6 @@ namespace gpu {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tensorflow::testing::IsOkAndHolds;
-using ::testing::AllOf;
 
 using LayoutAssignmentTest = HloTestBase;
 
@@ -81,7 +78,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
 
         GpuLayoutAssignment layout_assignment(
             &computation_layout, backend().default_stream_executor());
-        EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+        EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
           EXPECT_TRUE(LayoutUtil::Equal(add->shape().layout(),
@@ -92,94 +89,33 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
   }
 }
 
-TEST_F(LayoutAssignmentTest, DotLayoutUnchangedIfValid) {
-  const char* hlo_text = R"(
-  HloModule DotLayout
-  ENTRY dot {
-    p0 = f32[5,2,3]{1,2,0} parameter(0)
-    p1 = f32[5,3,4]{1,2,0} parameter(1)
-    ROOT dot.1330.10585 = f32[5,2,4]{2,1,0} dot(p0, p1),
-      lhs_batch_dims={0}, lhs_contracting_dims={2},
-      rhs_batch_dims={0}, rhs_contracting_dims={1}
-  })";
+// Returns a list shapes with all the possible layouts of this shape, including
+// a shape with no layout.
+std::vector<Shape> AllLayoutsOf(const Shape& s) {
+  std::vector<int64_t> layout_vec(s.dimensions_size());
+  std::iota(layout_vec.begin(), layout_vec.end(), 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  std::vector<Shape> shapes;
+  shapes.push_back(s);
+  shapes.back().clear_layout();
 
-  ComputationLayout computation_layout(
-      module->entry_computation()->ComputeProgramShape(),
-      /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Dot(op::ShapeWithLayout("f32[5,2,3]{1,2,0}"),
-                            op::ShapeWithLayout("f32[5,3,4]{1,2,0}")),
-                    op::ShapeWithLayout("f32[5,2,4]{2,1,0}")));
+  do {
+    shapes.push_back(s);
+    *shapes.back().mutable_layout() = LayoutUtil::MakeLayout(layout_vec);
+  } while (std::next_permutation(layout_vec.begin(), layout_vec.end()));
+
+  return shapes;
 }
 
-TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
+TEST_F(LayoutAssignmentTest, DotLayout) {
   const char* hlo_text = R"(
   HloModule DotLayout
   ENTRY dot {
-    p0 = f32[5,3,2] parameter(0)
-    p1 = f32[5,4,3]{0,1,2} parameter(1)
-    ROOT dot.1330.10585 = f32[5,2,4] dot(p0, p1),
-      lhs_batch_dims={0}, lhs_contracting_dims={1},
-      rhs_batch_dims={0}, rhs_contracting_dims={2}
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-
-  ComputationLayout computation_layout(
-      module->entry_computation()->ComputeProgramShape(),
-      /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
-
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Dot(op::ShapeWithLayout("f32[5,3,2]{2,1,0}"),
-                            op::ShapeWithLayout("f32[5,4,3]{2,1,0}")),
-                    op::ShapeWithLayout("f32[5,2,4]{2,1,0}")));
-}
-
-TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
-  const char* hlo_text = R"(
-  HloModule DotLayout
-  ENTRY dot {
-    p0 = f32[2,3,5]{2,1,0} parameter(0)
-    p1 = f32[3,4,5] parameter(1)
-    ROOT dot.1330.10585 = f32[5,2,4] dot(p0, p1),
-      lhs_batch_dims={2}, lhs_contracting_dims={1},
-      rhs_batch_dims={2}, rhs_contracting_dims={0}
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-
-  ComputationLayout computation_layout(
-      module->entry_computation()->ComputeProgramShape(),
-      /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
-
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("f32[2,3,5]{1,0,2}"),
-                      op::ShapeWithLayout("f32[3,4,5]{1,0,2}")));
-}
-
-TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
-  const char* hlo_text = R"(
-  HloModule DotLayout
-  ENTRY dot {
-    p0 = f32[5,6,2,3] parameter(0)
-    p1 = f32[6,5,3,4] parameter(1)
-    ROOT dot.1330.10585 = f32[5,6,2,4] dot(p0, p1),
+    p0 = f32[8,8,256,64]{3,1,2,0} parameter(0)
+    p1 = f32[8,8,256,64]{3,1,2,0} parameter(1)
+    ROOT dot.1330.10585 = f32[8,8,256,256]{3,2,1,0} dot(p0, p1),
       lhs_batch_dims={0,1}, lhs_contracting_dims={3},
-      rhs_batch_dims={1,0}, rhs_contracting_dims={2}
+      rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -190,20 +126,22 @@ TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
       /*ignore_layouts=*/false);
   GpuLayoutAssignment layout_assignment(&computation_layout,
                                         backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+  Shape expected_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {8, 8, 256, 64}, {3, 2, 1, 0});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("f32[5,6,2,3]{3,2,1,0}"),
-                      op::ShapeWithLayout("f32[6,5,3,4]{3,2,0,1}")));
+              op::Dot(op::ShapeWithLayout(expected_shape),
+                      op::ShapeWithLayout(expected_shape)));
 }
 
 TEST_F(LayoutAssignmentTest, DotLayoutS8) {
   const char* hlo_text = R"(
   HloModule DotLayout
   ENTRY int8_t {
-    p0 = s8[32,64] parameter(0)
-    p1 = s8[64,96] parameter(1)
-    ROOT out = s32[32,96] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    p0 = s8[1024,65536] parameter(0)
+    p1 = s8[65536,65536] parameter(1)
+    ROOT out = s32[1024,65536] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -214,11 +152,15 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
       /*ignore_layouts=*/false);
   GpuLayoutAssignment layout_assignment(&computation_layout,
                                         backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+  Shape expected_shape_p0 =
+      ShapeUtil::MakeShapeWithLayout(S8, {1024, 65536}, {1, 0});
+  Shape expected_shape_p1 =
+      ShapeUtil::MakeShapeWithLayout(S8, {65536, 65536}, {0, 1});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("s8[32,64]{1,0}"),
-                      op::ShapeWithLayout("s8[64,96]{0,1}")));
+              op::Dot(op::ShapeWithLayout(expected_shape_p0),
+                      op::ShapeWithLayout(expected_shape_p1)));
 }
 
 TEST_F(LayoutAssignmentTest, SortLayout) {
@@ -249,11 +191,12 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
       /*ignore_layouts=*/false);
   GpuLayoutAssignment layout_assignment(&computation_layout,
                                         backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+  Shape expected_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 2}, {1, 0});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Sort(op::ShapeWithLayout("f32[3,2]{1,0}"),
-                       op::ShapeWithLayout("f32[3,2]{1,0}")));
+              op::Sort(op::ShapeWithLayout(expected_shape),
+                       op::ShapeWithLayout(expected_shape)));
 }
 
 TEST_F(LayoutAssignmentTest, FftLayout) {
@@ -274,12 +217,14 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
       /*ignore_layouts=*/false);
   GpuLayoutAssignment layout_assignment(&computation_layout,
                                         backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+  Shape expected_shape = ShapeUtil::MakeShapeWithLayout(C64, {8, 32}, {1, 0});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(op::Transpose(
-                  AllOf(op::Fft(op::ShapeWithLayout("c64[8,32]{1,0}")),
-                        op::ShapeWithLayout("c64[8,32]{1,0}")))));
+              op::Copy(op::Transpose(op::ShapeWithLayout(expected_shape))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::Transpose(op::Fft(op::ShapeWithLayout(expected_shape)))));
 }
 
 }  // namespace
