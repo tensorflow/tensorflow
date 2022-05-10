@@ -1485,6 +1485,7 @@ xla_test(
     name = "dynamic_ops_test",
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
+    shard_count = 4,
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
