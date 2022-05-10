@@ -1225,6 +1225,10 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
 
+    // matmul_node is already the _FusedMatMul and we don't need to check its
+    // data type again.
+    if (!IsMKLEnabled() && !NodeIsOnGpu(matmul_node)) return false;
+
     // Check if _FusedMatMul contains only BiasAdd
     auto fused_ops = matmul_node->attr().at("fused_ops").list().s();
     if (fused_ops.size() == 1) {
