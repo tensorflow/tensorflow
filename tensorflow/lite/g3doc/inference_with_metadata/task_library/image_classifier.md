@@ -103,17 +103,17 @@ for more options to configure `ImageClassifier`.
 
 ### Step 1: Install the dependencies
 
-The task library supports installation using cocoapods. Make sure that cocoapods is installed on your system. 
-Please see the [cocoapods installation guide](https://guides.cocoapods.org/using/getting-started.html#getting-started) for instructions.
+The Task Library supports installation using CocoaPods. Make sure that CocoaPods is installed on your system. 
+Please see the [CocoaPods installation guide](https://guides.cocoapods.org/using/getting-started.html#getting-started) for instructions.
 
-Please see the [cocoapods guide](https://guides.cocoapods.org/using/using-cocoapods.html) for details on adding pods to an Xcode project. 
+Please see the [CocoaPods guide](https://guides.cocoapods.org/using/using-cocoapods.html) for details on adding pods to an Xcode project. 
 
-Add the TensorFlowLiteTaskVision pod in Podfile
+Add the TensorFlowLiteTaskVision pod in the Podfile.
 
 ```
 target 'MyAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskVision', '~>0.0.1-nightly.20220508'
+  pod 'TensorFlowLiteTaskVision'
 end
 ```
 
@@ -128,37 +128,24 @@ Make sure the `.tflite` you will be using for inference is present in your app b
 import TensorFlowLiteTaskVision
 
 // Initialization
-var imageClassifier: ImageClassifier
+guard let modelPath = Bundle.main.path(forResource: "mobilenetv3",
+                                            ofType: "tflite") else { return }
 
-guard let modelPath = Bundle.main.path(forResource: "your_model_file_name",
-                                            ofType: "tflite") else {
-    return
-}
-
-let imageClassifierOptions = ImageClassifierOptions(modelPath: modelPath)
+let options = ImageClassifierOptions(modelPath: modelPath)
 
 // Configure any additional options:
-// imageClassifierOptions.classificationOptions.maxResults = 3
+// options.classificationOptions.maxResults = 3
 
-do {
-    imageClassifier = try ImageClassifier.imageClassifier(options: imageClassifierOptions)
-}
-catch {
-    // Handle failure. Check error.localizedDescription to understand the reason for failure.
-}
+let classifier = try ImageClassifier.imageClassifier(options: options)
 
-// Run inference
+// Convert the input image to MLImage.
 // There are other sources for MLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
-guard let image = UIImage (named: "your_input_image_name"), let mlImage = MLImage(image: image) else {
-    return
-}
-do {
-    let classificationResults: ClassificationResult = try imageClassifier.classify(gmlImage: mlImage)
-}
-catch {
-    // Handle failure.
-}
+guard let image = UIImage (named: "burger.jpg"), let mlImage = MLImage(image: image) else { return } 
+  
+// Run inference
+let classificationResults = try classifier.classify(gmlImage: mlImage)
+
 ```
 
 #### Objective C
@@ -168,33 +155,33 @@ catch {
 #import <TensorFlowLiteTaskVision/TFLTaskVision.h>
 
 // Initialization
-NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"your_model_file_name"
-                                                      ofType:@"tflite"];
+NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mobilenetv3" ofType:@"tflite"];
 
-TFLImageClassifierOptions *imageClassifierOptions =
-[[TFLImageClassifierOptions alloc] initWithModelPath:modelPath];
+TFLImageClassifierOptions *options =
+    [[TFLImageClassifierOptions alloc] initWithModelPath:modelPath];
 
 // Configure any additional options:
-// imageClassifierOptions.classificationOptions.maxResults = 3
+// options.classificationOptions.maxResults = 3
 
 NSError *createError = nil;
-TFLImageClassifier *imageClassifier =
-[TFLImageClassifier imageClassifierWithOptions:imageClassifierOptions error:&createError];
+TFLImageClassifier *classifier = [TFLImageClassifier imageClassifierWithOptions:options
+                                                                          error:&createError];
 
-if (!imageClassifier) {
+if (!classifier) {
   // Handle failure. Check `createError` to understand the reason for failure.
 }
 
-// Run inference
-UIImage *inputImage = [UIImage imageNamed:@"your_input_image_name"];
+// Convert the input image to MLImage.
+UIImage *image = [UIImage imageNamed:@"burger.jpg"];
 
 // There are other sources for GMLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
-GMLImage *gmlImage = [[GMLImage alloc] initWithImage:inputImage];
+GMLImage *gmlImage = [[GMLImage alloc] initWithImage:image];
 
+// Run inference
 NSError *classifyError = nil;
 TFLClassificationResult *classificationResult =
-[imageClassifier classifyWithGMLImage:gmlImage error:&classifyError];
+    [classifier classifyWithGMLImage:gmlImage error:&classifyError];
 
 if (!classificationResult) {
   // Handle failure. Check `classifyError` to understand the reason for failure.
@@ -209,7 +196,7 @@ for more options to configure `TFLImageClassifier`.
 
 ### Step 1: Install the pip package
 ```
-pip install -q -U tflite-support-nightly
+pip install -q -U tflite-support
 ```
 
 ### Step 2: Using the model
@@ -220,6 +207,7 @@ from tflite_support.task import core
 from tflite_support.task import processor
 
 # Initialization
+model_path = "mobilenetv3.tflite"
 base_options = core.BaseOptions(file_name=model_path)
 classification_options = processor.ClassificationOptions(max_results=2)
 options = vision.ImageClassifierOptions(base_options=base_options, classification_options=classification_options)
@@ -229,6 +217,7 @@ classifier = vision.ImageClassifier.create_from_options(options)
 # classifier = vision.ImageClassifier.create_from_file(model_path)
 
 # Run Inference
+image_path = "burger.jpg"
 image = vision.TensorImage.create_from_file(image_path)
 image_result = classifier.classify(image)
 ```
