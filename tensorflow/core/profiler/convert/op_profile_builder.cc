@@ -319,9 +319,8 @@ OpProfileBuilder::OpProfileBuilder(
     const OpProfileOptions& options,
     tensorflow::profiler::op_profile::Node* root,
     const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map)
-    : options_(options),
-      root_(ABSL_DIE_IF_NULL(root)),
-      program_name_map_(program_name_map) {
+    : options_(options), root_(root), program_name_map_(program_name_map) {
+  CHECK(root != nullptr);
   DCHECK(!options_.group_by_program || program_name_map_ != nullptr);
   root->set_name(options_.group_by_program ? "by_program" : "by_category");
 }
