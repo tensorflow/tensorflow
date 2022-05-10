@@ -133,6 +133,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
 // op.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
 
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
+
 }  // namespace mhlo
 }  // namespace mlir
 

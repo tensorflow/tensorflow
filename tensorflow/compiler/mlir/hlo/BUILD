@@ -1330,6 +1330,24 @@ cc_library(
 )
 
 cc_library(
+    name = "convert_to_signless_pass",
+    srcs = ["lib/Dialect/mhlo/transforms/convert_to_signless_pass.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        ":type_conversion",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "legalize_trigonometric_to_approximation",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_trigonometric_to_approximation.cc"],
     hdrs = [
@@ -1611,6 +1629,7 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":collapse_elementwise_map",
         ":constraint_fusion_pass",
+        ":convert_to_signless_pass",
         ":copy_removal",
         ":expand_hlo_tuples",
         ":gml_st_passes_inc_gen",

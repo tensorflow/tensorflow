@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 // -------------------------------------------------------------------------- //
@@ -182,7 +181,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Now that all compute operations are converted to standard (as a side effect
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
-  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
+  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).

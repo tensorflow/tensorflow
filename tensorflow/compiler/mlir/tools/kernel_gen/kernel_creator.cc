@@ -268,7 +268,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 
   // Remove the remaining references to unsigned types after all HLO compute
   // operations were converted.
-  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
+  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());

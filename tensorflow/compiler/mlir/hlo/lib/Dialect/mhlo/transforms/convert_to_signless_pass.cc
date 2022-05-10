@@ -20,21 +20,21 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace kernel_gen {
-namespace transforms {
+namespace mhlo {
 namespace {
 
 // Generic pattern that rewrites any op by rewriting its operands and result
@@ -67,9 +67,6 @@ class ConvertToSignless : public ConversionPattern {
   }
 };
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
 struct ConvertToSignlessPass
     : public ConvertToSignlessPassBase<ConvertToSignlessPass> {
  public:
@@ -101,10 +98,9 @@ struct ConvertToSignlessPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass() {
   return std::make_unique<ConvertToSignlessPass>();
 }
 
-}  // namespace transforms
-}  // namespace kernel_gen
+}  // namespace mhlo
 }  // namespace mlir

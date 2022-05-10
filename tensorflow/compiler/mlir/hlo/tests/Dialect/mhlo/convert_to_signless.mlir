@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s --convert-to-signless --canonicalize | FileCheck %s
+// RUN: mlir-hlo-opt %s --convert-to-signless --canonicalize | FileCheck %s
 
 func.func @Uint16ToInt16(%arg0: memref<*xui16>) -> memref<ui16> {
   // CHECK-NOT: unrealized_conversion_cast

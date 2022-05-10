@@ -63,9 +63,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
 // using memref descriptors.
 std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
 
-// Pass to replace unsigned types with signless integers.
-std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
-
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelLoopsToSequential();
 
