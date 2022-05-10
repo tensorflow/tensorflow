@@ -142,10 +142,6 @@ class TRTEngineOp : public AsyncOpKernel {
                     AsyncOpKernel::DoneCallback done) override;
 
  private:
-  using CacheType =
-      LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
-               VectorTensorShapeHasher>;
-
   // Executes calibration asynchronously.
   void ExecuteCalibration(OpKernelContext* ctx,
                           TRTEngineCacheResource* cache_res,
