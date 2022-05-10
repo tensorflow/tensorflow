@@ -68,7 +68,6 @@ tf_py_test(
     srcs = ["gce_failure_handler_test.py"],
     shard_count = 4,
     tags = [
-        "no_oss",  # b/230855092
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test
     ],
