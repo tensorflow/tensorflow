@@ -1366,8 +1366,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
@@ -1760,8 +1760,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
