@@ -128,7 +128,7 @@ Make sure the `.tflite` you will be using for inference is present in your app b
 import TensorFlowLiteTaskVision
 
 // Initialization
-guard let modelPath = Bundle.main.path(forResource: "mobilenetv3",
+guard let modelPath = Bundle.main.path(forResource: "birds_V1",
                                             ofType: "tflite") else { return }
 
 let options = ImageClassifierOptions(modelPath: modelPath)
@@ -141,7 +141,7 @@ let classifier = try ImageClassifier.imageClassifier(options: options)
 // Convert the input image to MLImage.
 // There are other sources for MLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
-guard let image = UIImage (named: "burger.jpg"), let mlImage = MLImage(image: image) else { return } 
+guard let image = UIImage (named: "sparrow.jpg"), let mlImage = MLImage(image: image) else { return } 
   
 // Run inference
 let classificationResults = try classifier.classify(gmlImage: mlImage)
@@ -155,7 +155,7 @@ let classificationResults = try classifier.classify(gmlImage: mlImage)
 #import <TensorFlowLiteTaskVision/TFLTaskVision.h>
 
 // Initialization
-NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mobilenetv3" ofType:@"tflite"];
+NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"birds_V1" ofType:@"tflite"];
 
 TFLImageClassifierOptions *options =
     [[TFLImageClassifierOptions alloc] initWithModelPath:modelPath];
@@ -172,7 +172,7 @@ if (!classifier) {
 }
 
 // Convert the input image to MLImage.
-UIImage *image = [UIImage imageNamed:@"burger.jpg"];
+UIImage *image = [UIImage imageNamed:@"sparrow.jpg"];
 
 // There are other sources for GMLImage. For more details, please see:
 // https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
@@ -207,7 +207,6 @@ from tflite_support.task import core
 from tflite_support.task import processor
 
 # Initialization
-model_path = "mobilenetv3.tflite"
 base_options = core.BaseOptions(file_name=model_path)
 classification_options = processor.ClassificationOptions(max_results=2)
 options = vision.ImageClassifierOptions(base_options=base_options, classification_options=classification_options)
@@ -216,8 +215,7 @@ classifier = vision.ImageClassifier.create_from_options(options)
 # Alternatively, you can create a classifier in the following manner:
 # classifier = vision.ImageClassifier.create_from_file(model_path)
 
-# Run Inference
-image_path = "burger.jpg"
+# Run inference
 image = vision.TensorImage.create_from_file(image_path)
 image_result = classifier.classify(image)
 ```
