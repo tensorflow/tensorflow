@@ -212,13 +212,17 @@ detection_options = processor.DetectionOptions(max_results=2)
 options = vision.ObjectDetectorOptions(base_options=base_options, detection_options=detection_options)
 detector = vision.ObjectDetector.create_from_options(options)
 
-# Alternatively, you can create a detector in the following manner:
+# Alternatively, you can create an object detector in the following manner:
 # detector = vision.ObjectDetector.create_from_file(model_path)
 
 # Run inference
 image = vision.TensorImage.create_from_file(image_path)
-image_result = detector.detect(image)
+detection_result = detector.detect(image)
 ```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/vision/object_detector.py)
+for more options to configure `ObjectDetector`.
 
 ## Run inference in C++
 

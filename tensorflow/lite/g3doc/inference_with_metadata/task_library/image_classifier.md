@@ -117,7 +117,7 @@ target 'MyAppWithTaskAPI' do
 end
 ```
 
-Make sure the `.tflite` you will be using for inference is present in your app bundle.
+Make sure that the `.tflite` model you will be using for inference is present in your app bundle.
 
 ### Step 2: Using the model 
 
@@ -212,13 +212,17 @@ classification_options = processor.ClassificationOptions(max_results=2)
 options = vision.ImageClassifierOptions(base_options=base_options, classification_options=classification_options)
 classifier = vision.ImageClassifier.create_from_options(options)
 
-# Alternatively, you can create a classifier in the following manner:
+# Alternatively, you can create an image classifier in the following manner:
 # classifier = vision.ImageClassifier.create_from_file(model_path)
 
 # Run inference
 image = vision.TensorImage.create_from_file(image_path)
-image_result = classifier.classify(image)
+classification_result = classifier.classify(image)
 ```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/vision/image_classifier.py)
+for more options to configure `ImageClassifier`.
 
 ## Run inference in C++
 
