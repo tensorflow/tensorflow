@@ -3146,7 +3146,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     const auto& biasadd_fanin_0 = relu_fanin_0_node_view->GetRegularFanin(0);
     const auto* biasadd_fanin_0_node_def = biasadd_fanin_0.node_view()->node();
 
-    if (!IsConv2D(*biasadd_fanin_0_node_def) ||
+    if (!IsConv2D(*biasadd_fanin_0_node_def) &&
         !IsConv3D(*biasadd_fanin_0_node_def))
       return false;
     if (GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T") != DT_FLOAT)
