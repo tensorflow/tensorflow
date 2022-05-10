@@ -31,13 +31,21 @@ your mobile apps.
 
 Before using the `TextSearcher` API, an index needs to be built based on the
 custom corpus of text to search into. This can be achieved using
-[Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
+[Model Maker TextSearcher API](https://www.tensorflow.org/lite/tutorials/model_maker_text_searcher).
 
 For this you will need:
 
-*   a TFLite text embedder model such as the
-    [universal sentence encoder](https://tfhub.dev/google/lite-model/universal-sentence-encoder-qa-ondevice/1)
-    model,
+*   a TFLite text embedder model, such as the Universal Sentence Encoder. For
+    example,
+    *   the
+        [one](https://storage.googleapis.com/download.tensorflow.org/models/tflite_support/searcher/text_to_image_blogpost/text_embedder.tflite)
+        retrained in this
+        [Colab](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/examples/colab/on_device_text_to_image_search_tflite.ipynb),
+        which is optimized for on-device inference. It takes only 6ms to query a
+        text string on Pixel 6.
+    *   the
+        [quantized](https://tfhub.dev/google/lite-model/universal-sentence-encoder-qa-ondevice/1)
+        one, which is smaller than the above but takes 38ms for each embedding.
 *   your corpus of text.
 
 After this step, you should have a standalone TFLite searcher model (e.g.

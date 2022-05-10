@@ -30,12 +30,14 @@ into your mobile apps.
 
 Before using the `ImageSearcher` API, an index needs to be built based on the
 custom corpus of images to search into. This can be achieved using
-[Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
+[Model Maker ImageSearcher API](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker/searcher).
 
 For this you will need:
 
 *   a TFLite image embedder model such as
-    [mobilenet v3](https://tfhub.dev/google/lite-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/metadata/1),
+    [mobilenet v3](https://tfhub.dev/google/lite-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/metadata/1).
+    See more pretrained embedder models (a.k.a feature vector models) from the
+    [Google Image Modules collection on TensorFlow Hub](https://tfhub.dev/google/collections/image/1).
 *   your corpus of images.
 
 After this step, you should have a standalone TFLite searcher model (e.g.
