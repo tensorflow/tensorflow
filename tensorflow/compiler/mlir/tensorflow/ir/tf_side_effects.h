@@ -65,37 +65,29 @@ struct TPUEmbedding : ::mlir::SideEffects::Resource::Base<TPUEmbedding> {
 
 // Resource corresponding to GeneratorOp.
 struct GeneratorOp : public ::mlir::SideEffects::Resource::Base<GeneratorOp> {
-  StringRef getName() final { return "Generator"; }
+  StringRef getName() final { return "<Default Generator>"; }
 };
 
 struct Send : public ::mlir::SideEffects::Resource::Base<Send> {
-  StringRef getName() final { return "Send"; }
+  StringRef getName() final { return "<Send>"; }
 };
 
 struct Recv : public ::mlir::SideEffects::Resource::Base<Recv> {
-  StringRef getName() final { return "Recv"; }
+  StringRef getName() final { return "<Recv>"; }
 };
 
 struct RandomGenerator
     : public ::mlir::SideEffects::Resource::Base<RandomGenerator> {
-  StringRef getName() final { return "RandomGenerator"; }
+  StringRef getName() final { return "<RandomGenerator>"; }
 };
 
 struct TPUExecute : public ::mlir::SideEffects::Resource::Base<TPUExecute> {
-  StringRef getName() final { return "TPUExecute"; }
+  StringRef getName() final { return "<TPUExecute>"; }
 };
 
 struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {
-  StringRef getName() final { return "MustExecute"; }
+  StringRef getName() final { return "<MustExecute>"; }
 };
-
-// Returns true iff resource type with given ID is only self-dependent, i.e.,
-// there are no dependencies to other resource types (including unknown resource
-// type).
-inline bool IsOnlySelfDependent(TypeID resource_type_id) {
-  return resource_type_id == ResourceEffects::Send::getResourceID() ||
-         resource_type_id == ResourceEffects::Recv::getResourceID();
-}
 
 }  // namespace ResourceEffects
 }  // namespace TF
