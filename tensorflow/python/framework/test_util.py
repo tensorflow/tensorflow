@@ -2615,7 +2615,8 @@ class TensorFlowTestCase(googletest.TestCase):
           return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
-              dense_shape=tensor.dense_shape.numpy())
+              dense_shape=None
+              if tensor.dense_shape is None else tensor.dense_shape.numpy())
         # Convert tensors and composite tensors to numpy arrays.
         return nest.map_structure(lambda t: t.numpy(), tensor,
                                   expand_composites=True)
