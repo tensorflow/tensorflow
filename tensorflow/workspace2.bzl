@@ -612,12 +612,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "c0e64302a33d2fb79e0fc4e674260a22941e92ee2f11b894bf94d32b8f5531af",
-        strip_prefix = "curl-7.83.0",
+        sha256 = "93fb2cd4b880656b4e8589c912a9fd092750166d555166370247f09d18f5d0c0",
+        strip_prefix = "curl-7.83.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.83.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.83.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.83.1.tar.gz",
+            "https://curl.haxx.se/download/curl-7.83.1.tar.gz",
         ],
     )
 
