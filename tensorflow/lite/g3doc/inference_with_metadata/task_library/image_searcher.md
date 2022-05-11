@@ -30,7 +30,9 @@ into your mobile apps.
 
 Before using the `ImageSearcher` API, an index needs to be built based on the
 custom corpus of images to search into. This can be achieved using
-[Model Maker ImageSearcher API](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker/searcher).
+[Model Maker Searcher API](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker/searcher)
+by following and adapting the
+[tutorial](https://www.tensorflow.org/lite/tutorials/model_maker_text_searcher).
 
 For this you will need:
 

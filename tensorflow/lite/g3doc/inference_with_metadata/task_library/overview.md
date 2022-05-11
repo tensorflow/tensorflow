@@ -39,6 +39,7 @@ we continue enabling more and more use cases.
     *   [ObjectDetector](object_detector.md)
     *   [ImageSegmenter](image_segmenter.md)
     *   [ImageSearcher](image_searcher.md)
+    *   [ImageEmbedder](image_embedder.md)
 
 *   **Natural Language (NL) APIs**
 
@@ -46,6 +47,7 @@ we continue enabling more and more use cases.
     *   [BertNLClassifier](bert_nl_classifier.md)
     *   [BertQuestionAnswerer](bert_question_answerer.md)
     *   [TextSearcher](text_searcher.md)
+    *   [TextEmbedder](text_embedder.md)
 
 *   **Audio APIs**
 
