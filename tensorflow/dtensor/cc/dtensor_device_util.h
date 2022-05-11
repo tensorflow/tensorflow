@@ -544,6 +544,10 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph);
 // Add DTensor specific function attributes to be compatible with eager runtime.
 void AddDTensorFunctionAttr(FunctionDef& function_def);
 
+// Prepare inputs of embeddings for checkpoint functions.
+StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
+    const std::vector<TensorWithLayout*>& inputs);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

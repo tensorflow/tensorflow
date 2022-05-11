@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 
+#include <cstddef>
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
@@ -750,6 +753,39 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
   outputs_on_op_device.set_b(true);
   function_def.mutable_attr()->insert(
       {"_OutputsOnOpDevice", outputs_on_op_device});
+}
+
+StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
+    const std::vector<TensorWithLayout*>& inputs) {
+  absl::flat_hash_map<int64_t, int64_t> table_and_input_index;
+  for (int64_t i = 0; i < inputs.size(); ++i) {
+    if (inputs[i]->tensor_type() != kResource) continue;
+    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inputs[i]);
+    if (resource == nullptr) {
+      return errors::Internal("Failed to cast a resource handle");
+    }
+
+    const absl::optional<EmbeddingResourceAttrs>& resource_attrs =
+        resource->attrs();
+    if (resource_attrs.has_value()) {
+      table_and_input_index.insert({resource_attrs->table_id, i});
+    }
+  }
+
+  // Check if there is no embedding resource input found.
+  if (table_and_input_index.empty()) {
+    return errors::Internal("There are no TPU embedding resource input found.");
+  }
+  const size_t num_tables = table_and_input_index.size();
+  std::vector<parallel_device::ParallelTensor*> parallel_inputs;
+  parallel_inputs.reserve(num_tables);
+
+  // Assure parallel inputs has numeric order as table ids.
+  for (int64_t table_id = 0; table_id < num_tables; ++table_id) {
+    const int64_t input_index = table_and_input_index[table_id];
+    parallel_inputs.push_back(inputs[input_index]->tensor());
+  }
+  return parallel_inputs;
 }
 
 }  // namespace dtensor
