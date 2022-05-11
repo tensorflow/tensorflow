@@ -351,7 +351,7 @@ val predictions get() = (0 until OBJECT_COUNT).map {
 }
 ```
 
-![Object detection screenshot](../images/android/qs-obj-detect.jpeg){: .attempt-right width="250px"}
+![Object detection screenshot](../../images/lite/android/qs-obj-detect.jpeg){: .attempt-right width="250px"}
 For the model used in this example, each prediction includes a bounding box
 location for the object, a label for the object, and a prediction score between
 0 and 1 as a Float representing the confidence of the prediction, with 1 being
