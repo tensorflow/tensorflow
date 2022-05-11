@@ -389,5 +389,64 @@ bool Record::operator==(const TraceType& other) const {
   return true;
 }
 
+UserDefinedType::UserDefinedType(std::string name,
+                                 std::unique_ptr<TraceType> base)
+    : name_(name), base_(std::move(base)) {}
+
+std::unique_ptr<TraceType> UserDefinedType::clone() const {
+  return std::unique_ptr<TraceType>(new UserDefinedType(name_, base_->clone()));
+}
+
+const std::string& UserDefinedType::name() const { return name_; }
+
+const TraceType* UserDefinedType::base() const { return base_.get(); }
+
+bool UserDefinedType::is_subtype_of(const TraceType& other) const {
+  const UserDefinedType* casted_other =
+      dynamic_cast<const UserDefinedType*>(&other);
+  if (casted_other == nullptr || casted_other->name() != name_) {
+    return false;
+  }
+  return base_->is_subtype_of(*casted_other->base());
+}
+
+std::unique_ptr<TraceType> UserDefinedType::most_specific_common_supertype(
+    const std::vector<const TraceType*>& others) const {
+  std::vector<const TraceType*> base_others;
+  for (const auto& other : others) {
+    const UserDefinedType* casted_other =
+        dynamic_cast<const UserDefinedType*>(other);
+    if (casted_other == nullptr || casted_other->name() != name_) {
+      return nullptr;
+    }
+    base_others.push_back(casted_other->base());
+  }
+
+  std::unique_ptr<TraceType> result(
+      base_->most_specific_common_supertype(base_others));
+
+  if (result == nullptr) {
+    return nullptr;
+  } else {
+    return std::unique_ptr<TraceType>(
+        new UserDefinedType(name_, std::move(result)));
+  }
+}
+
+std::string UserDefinedType::to_string() const {
+  return name_ + "<" + base_->to_string() + ">";
+}
+
+std::size_t UserDefinedType::hash() const {
+  return absl::HashOf(name_, base_->hash());
+}
+
+bool UserDefinedType::operator==(const TraceType& other) const {
+  const UserDefinedType* casted_other =
+      dynamic_cast<const UserDefinedType*>(&other);
+  return casted_other != nullptr && casted_other->name() == name_ &&
+         *casted_other->base() == *base_;
+}
+
 }  // namespace trace_type
 }  // namespace tensorflow

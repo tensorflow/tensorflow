@@ -276,5 +276,28 @@ TEST(PrimitiveTypesTest, RecordTypeAnys) {
   EXPECT_EQ(*record_1.most_specific_common_supertype({&record_2}), supertype);
 }
 
+TEST(PrimitiveTypesTest, UserDefinedType) {
+  UserDefinedType def_1 =
+      UserDefinedType("MyType", std::make_unique<Literal<std::string>>("a"));
+  std::unique_ptr<TraceType> def_1_copy = def_1.clone();
+  UserDefinedType def_2 =
+      UserDefinedType("OtherType", std::make_unique<Literal<std::string>>("a"));
+
+  EXPECT_EQ(def_1.to_string(), "MyType<String<a>>");
+  EXPECT_EQ(def_1_copy->to_string(), "MyType<String<a>>");
+  EXPECT_EQ(def_2.to_string(), "OtherType<String<a>>");
+
+  EXPECT_EQ(def_1, *def_1_copy);
+  EXPECT_EQ(def_1.hash(), def_1_copy->hash());
+  EXPECT_NE(def_1, def_2);
+
+  EXPECT_TRUE(def_1.is_subtype_of(*def_1_copy));
+  EXPECT_FALSE(def_1.is_subtype_of(def_2));
+  EXPECT_FALSE(def_2.is_subtype_of(def_1));
+
+  EXPECT_EQ(*def_1.most_specific_common_supertype({&def_1}), def_1);
+  EXPECT_EQ(def_1.most_specific_common_supertype({&def_2}), nullptr);
+}
+
 }  // namespace trace_type
 }  // namespace tensorflow

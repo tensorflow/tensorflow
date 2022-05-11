@@ -180,6 +180,30 @@ class Record : public TraceType {
   RecordMap fields_;
 };
 
+// Represents a named type, placing the base type into a closed type hierarchy
+// with other UserDefinedType types sharing the same name.
+class UserDefinedType : public TraceType {
+ public:
+  explicit UserDefinedType(std::string name, std::unique_ptr<TraceType> base);
+  std::unique_ptr<TraceType> clone() const override;
+
+  const std::string& name() const;
+  const TraceType* base() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> most_specific_common_supertype(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  std::string name_;
+  std::unique_ptr<TraceType> base_;
+};
+
 }  // namespace trace_type
 }  // namespace tensorflow
 
