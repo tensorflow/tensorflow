@@ -3482,6 +3482,26 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 
 // -----
 
+func.func @gather_unsigned(%operand : tensor<1x4x8xui32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x8x8xui32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xui32>, tensor<1x8x2xi32>) -> tensor<1x8x8xui32>
+  func.return %res : tensor<1x8x8xui32>
+}
+
+// CHECK-LABEL:   func @gather_unsigned(
+// CHECK:           linalg.generic
+// CHECK-SAME:           outs(%{{.*}} : tensor<1x8x8xi32>)
+
+// -----
+
 func.func @gather_no_collapse(%operand : tensor<6x3xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x4x2xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<

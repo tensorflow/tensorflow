@@ -2639,8 +2639,8 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     Value startIndices = adaptor.start_indices();
     Value operand = adaptor.operand();
 
-    RankedTensorType resultType =
-        gatherOp.getResult().getType().dyn_cast<RankedTensorType>();
+    auto resultType = typeConverter->convertType(gatherOp.getType())
+                          .dyn_cast<RankedTensorType>();
     RankedTensorType startIndicesType =
         startIndices.getType().dyn_cast<RankedTensorType>();
     // We could actually deal with an unranked result by inferring the result
