@@ -2382,6 +2382,103 @@ TEST_F(VariableOpConverterTest, ConvertReadVariableOp) {
   // TestConvertReadVariableOp<DT_HALF, Eigen::half>(this);
 }
 
+template <DataType dtype, typename CType>
+void TestConvertResourceGather(VariableOpConverterTest* test) {
+  struct TestParam {
+    string container;
+    string name;
+    std::vector<int> dims;
+    std::vector<int> indices_dims;
+    std::vector<int> output_dims;
+    float epsilon;
+    Status conversion_status;
+  };
+
+  std::vector<TestParam> test_param = {
+      {"", "var0", {4}, {3}, {-1, 3}, 0.001, Status::OK()},
+      {"", "var0", {4, 2}, {3}, {-1, 3, 2}, 0.001, Status::OK()},
+      {"", "var0", {8, 4, 2}, {3}, {-1, 3, 4, 2}, 0.001, Status::OK()}};
+  for (auto p : test_param) {
+    // Create node definition.
+    NodeDefBuilder::NodeOut resource_input =
+        NodeDefBuilder::NodeOut("my_handle", 0, DT_RESOURCE);
+    NodeDefBuilder::NodeOut indices_input =
+        NodeDefBuilder::NodeOut("my_indices", 0, DT_INT32);
+    NodeDef node_def;
+    std::vector<int64_t> dims_64(p.dims.begin(), p.dims.end());
+    TensorShape shape = TensorShape(gtl::ArraySlice<int64_t>(dims_64));
+    TF_CHECK_OK(NodeDefBuilder("my_gather", "ResourceGather")
+                    .Attr("dtype", dtype)
+                    .Attr("_shape", shape)
+                    .Input(resource_input)
+                    .Input(indices_input)
+                    .Finalize(&node_def));
+
+    OpKernel* kernel;
+    OpKernelContext* context;
+    test->CreateContext(node_def, &kernel, &context);
+
+    test->Reset(TrtPrecisionMode::FP32, TrtTestMode::kDynamicShape);
+
+    // Set the value of the variable according to p.dims.
+    int var_size = std::accumulate(p.dims.begin(), p.dims.end(), 1,
+                                   std::multiplies<int>());
+    std::vector<CType> variable_value;
+    variable_value.reserve(var_size);
+    for (int i = 0; i < var_size; i++) {
+      // Set variable_value[i] = (cast)i.
+      variable_value.push_back((CType)i);
+    }
+
+    // Create a resource handle.
+    DtypeAndPartialTensorShape dtype_and_shape;
+    dtype_and_shape.dtype = dtype;
+    TF_CHECK_OK(PartialTensorShape::BuildPartialTensorShape(
+        gtl::ArraySlice<int64_t>(dims_64), &dtype_and_shape.shape));
+    ResourceHandle handle = MakeResourceHandle<Var>(
+        context, p.container, p.name,
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape});
+
+    // Create input resource with the handle.
+    test->AddTestResource("my_handle", handle);
+
+    // Create a resource with this handle.
+    /// TODO: resource destruction? Use smart pointer?
+    Var* resource = new Var(dtype);
+    CreateResource(context, handle, resource);
+
+    // Setup the tensor of the variable.
+    // We allocate the tensor in the temporary memory. Note that creating a
+    // tensor in this scope and sharing the underlying storage by copy would
+    // lead to double destruction.
+    AllocatorAttributes attr_value;
+    attr_value.set_gpu_compatible(true);
+    attr_value.set_nic_compatible(true);
+    context->allocate_temp(dtype, shape, resource->tensor(), attr_value);
+    // The tensor is allocated on GPU. We copy the values from the CPU.
+    auto tensor_flat = resource->tensor()->flat<CType>();
+    CHECK(tensor_flat.data());
+    auto ret = cudaMemcpy(tensor_flat.data(), variable_value.data(),
+                          variable_value.size() * sizeof(CType),
+                          cudaMemcpyHostToDevice);
+    CHECK(ret == 0);
+
+    test->AddTestTensor("my_indices", p.indices_dims, -1,
+                        nvinfer1::DataType::kINT32);
+
+    test->RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_gather", &output));
+    EXPECT_THAT(output.tensor()->getDimensions(),
+                DimsAreArray(p.output_dims));
+  }
+}
+
+TEST_F(VariableOpConverterTest, ConvertResourceGather) {
+  TestConvertResourceGather<DT_FLOAT, float>(this);
+  // TestConvertResourceGather<DT_HALF, Eigen::half>(this);
+}
+
 template <DataType dtype, typename InputCType, typename OutputCType>
 void TestConvertConst(OpConverterTest* test) {
   NodeDef node_def;
