@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -172,6 +173,32 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
   return MatrixLayout::For(batch_row_col_shape);
 }
 
+namespace {
+
+StatusOr<MatrixLayout> MatrixLayoutForOutput(const Shape& output_shape,
+                                             size_t lhs_num_batch_dims,
+                                             size_t lhs_num_row_dims,
+                                             size_t rhs_num_batch_dims,
+                                             size_t rhs_num_col_dims) {
+  size_t num_batch_dims = std::max(lhs_num_batch_dims, rhs_num_batch_dims);
+
+  TF_RET_CHECK(output_shape.rank() ==
+               num_batch_dims + lhs_num_row_dims + rhs_num_col_dims);
+
+  std::vector<int64_t> output_dims(output_shape.rank());
+  absl::c_iota(output_dims, 0);
+
+  auto batch_dims =
+      absl::Span<const int64_t>(output_dims).first(num_batch_dims);
+  auto row_dims = absl::Span<const int64_t>(output_dims)
+                      .subspan(num_batch_dims, lhs_num_row_dims);
+  auto col_dims = absl::Span<const int64_t>(output_dims).last(rhs_num_col_dims);
+
+  return MatrixLayout::For(output_shape, batch_dims, row_dims, col_dims);
+}
+
+}  // namespace
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
@@ -183,11 +210,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
 
   auto transposed = [&](const auto& dims) {
-    std::vector<int64_t> transposed_dims;
-    transposed_dims.reserve(dims.size());
-    for (int64_t dim : dims) {
-      transposed_dims.push_back(transpose.dimensions(dim));
-    }
+    std::vector<int64_t> transposed_dims(dims.begin(), dims.end());
+    TransposeDimsInplace(transposed_dims, transpose.dimensions());
     return transposed_dims;
   };
 
@@ -205,6 +229,40 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   return MatrixLayout::For(transpose.operand(0)->shape(),
                            transposed(batch_dims), transposed(contracting_dims),
                            transposed(non_contracting_dims))
+      .ok();
+}
+
+StatusOr<bool> CanFoldOutputTransposeIntoDot(const HloInstruction& transpose) {
+  TF_RET_CHECK(transpose.opcode() == HloOpcode::kTranspose);
+
+  const HloInstruction& dot = *transpose.operand(0);
+  TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
+
+  const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
+  size_t lhs_num_batch_dims = dot_dims.lhs_batch_dimensions().size();
+  size_t rhs_num_batch_dims = dot_dims.rhs_batch_dimensions().size();
+  size_t lhs_num_row_dims = dot.operand(0)->shape().rank() -
+                            lhs_num_batch_dims -
+                            dot_dims.lhs_contracting_dimensions().size();
+  size_t rhs_num_col_dims = dot.operand(1)->shape().rank() -
+                            rhs_num_batch_dims -
+                            dot_dims.rhs_contracting_dimensions().size();
+
+  Shape shape = dot.shape();
+  absl::Span<const int64_t> minor_to_major = shape.layout().minor_to_major();
+  std::vector<int64_t> major_to_minor(minor_to_major.rbegin(),
+                                      minor_to_major.rend());
+
+  TransposeDimsInplace(major_to_minor, transpose.dimensions());
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayoutFromMajorToMinor(major_to_minor);
+
+  // GPUs can support transposing operands within GeMM, provided that no batch
+  // dimension is in the most minor physical dimension.
+  // If we're able to construct a valid `MatrixLayout` for the transposed
+  // dimensions, then GeMM can support folding the transpose.
+  return MatrixLayoutForOutput(shape, lhs_num_batch_dims, lhs_num_row_dims,
+                               rhs_num_batch_dims, rhs_num_col_dims)
       .ok();
 }
 
@@ -250,25 +308,11 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
       MatrixLayout rhs_layout,
       MatrixLayout::For(rhs_shape, rhs_batch_dims, rhs_row_dims, rhs_col_dims));
 
-  int64_t num_batch_dims =
-      std::max(lhs_batch_dims.size(), rhs_batch_dims.size());
-
-  TF_RET_CHECK(output_shape.rank() ==
-               num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
-
-  std::vector<int64_t> output_dims(output_shape.rank());
-  absl::c_iota(output_dims, 0);
-
-  auto output_batch_dims =
-      absl::Span<const int64_t>(output_dims).first(num_batch_dims);
-  auto output_row_dims = absl::Span<const int64_t>(output_dims)
-                             .subspan(num_batch_dims, lhs_row_dims.size());
-  auto output_col_dims =
-      absl::Span<const int64_t>(output_dims).last(rhs_col_dims.size());
-
-  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
-                      MatrixLayout::For(output_shape, output_batch_dims,
-                                        output_row_dims, output_col_dims));
+  TF_ASSIGN_OR_RETURN(
+      MatrixLayout output_layout,
+      MatrixLayoutForOutput(output_shape, lhs_batch_dims.size(),
+                            lhs_row_dims.size(), rhs_batch_dims.size(),
+                            rhs_col_dims.size()));
 
   // TODO(cjfj): We should also check that the batch, contracting and
   // non-contracting dimensions match in size and relative physical location.

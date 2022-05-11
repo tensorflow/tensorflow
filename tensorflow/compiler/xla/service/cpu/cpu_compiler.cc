@@ -563,6 +563,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         }
         return false;
       },
+      TransposeFolding::NeverFoldOutputTranspose,
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 

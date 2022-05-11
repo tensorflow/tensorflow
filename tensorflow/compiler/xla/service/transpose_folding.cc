@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -68,13 +70,6 @@ bool IsNonIdentityTranspose(const HloInstruction* instruction) {
   return false;
 }
 
-void TransposeDims(tensorflow::protobuf::RepeatedField<int64_t>& dims,
-                   absl::Span<const int64_t> transpose_dims) {
-  for (auto& dim : dims) {
-    dim = transpose_dims[dim];
-  }
-}
-
 using InstructionOperandsPair =
     std::pair<HloInstruction*, TransposeFolding::OperandIndices>;
 
@@ -88,17 +83,17 @@ Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
 
   for (int64_t operand_index : pair.second) {
     if (operand_index == 0) {
-      TransposeDims(*new_dot_dims.mutable_lhs_contracting_dimensions(),
-                    lhs->dimensions());
-      TransposeDims(*new_dot_dims.mutable_lhs_batch_dimensions(),
-                    lhs->dimensions());
+      TransposeDimsInplace(*new_dot_dims.mutable_lhs_contracting_dimensions(),
+                           lhs->dimensions());
+      TransposeDimsInplace(*new_dot_dims.mutable_lhs_batch_dimensions(),
+                           lhs->dimensions());
       lhs = lhs->mutable_operand(0);
     } else {
       CHECK_EQ(operand_index, 1);
-      TransposeDims(*new_dot_dims.mutable_rhs_contracting_dimensions(),
-                    rhs->dimensions());
-      TransposeDims(*new_dot_dims.mutable_rhs_batch_dimensions(),
-                    rhs->dimensions());
+      TransposeDimsInplace(*new_dot_dims.mutable_rhs_contracting_dimensions(),
+                           rhs->dimensions());
+      TransposeDimsInplace(*new_dot_dims.mutable_rhs_batch_dimensions(),
+                           rhs->dimensions());
       rhs = rhs->mutable_operand(0);
     }
   }
@@ -106,6 +101,25 @@ Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
   return dot->parent()->ReplaceWithNewInstruction(
       dot, HloInstruction::CreateDot(dot->shape(), lhs, rhs, new_dot_dims,
                                      dot->precision_config()));
+}
+
+// Folds the transpose of a dot output, by modifying the layout of the dot, then
+// instead bitcasting the dot output back to the expected logical shape.
+Status FoldOutputTranspose(HloInstruction* transpose) {
+  Shape shape = LayoutUtil::GetWithDefaultLayout(transpose->shape());
+
+  absl::Span<const int64_t> minor_to_major = shape.layout().minor_to_major();
+  std::vector<int64_t> major_to_minor(minor_to_major.rbegin(),
+                                      minor_to_major.rend());
+
+  TransposeDimsInplace(major_to_minor, transpose->dimensions());
+
+  HloInstruction* dot = transpose->mutable_operand(0);
+  *dot->mutable_shape()->mutable_layout() =
+      LayoutUtil::MakeLayoutFromMajorToMinor(major_to_minor);
+
+  return transpose->parent()->ReplaceWithNewInstruction(
+      transpose, HloInstruction::CreateBitcast(shape, dot));
 }
 
 // Folds the operands of `convolution` that are foldable transposes.
@@ -184,19 +198,20 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair& pair) {
 
 TransposeFolding::TransposeFolding(
     CanFoldTransposeOperand dot_can_fold_transpose_operand,
+    CanFoldOutputTranspose dot_can_fold_output_transpose,
     TransposableConvOperandsFn transposable_conv_operands)
     : dot_can_fold_transpose_operand_(
           std::move(dot_can_fold_transpose_operand)),
+      dot_can_fold_output_transpose_(std::move(dot_can_fold_output_transpose)),
       transposable_conv_operands_(std::move(transposable_conv_operands)) {}
 
 StatusOr<bool> TransposeFolding::Run(HloModule* module) {
   // Modifying the graph while traversing is dangerous, so we find all folding
   // opportunities before actually folding them.
-  std::vector<InstructionOperandsPair> foldable_dots;
+  std::vector<InstructionOperandsPair> foldable_dot_operands;
   std::vector<InstructionOperandsPair> foldable_convolutions;
 
-  FunctionVisitor visit_fn([this, &foldable_dots, &foldable_convolutions](
-                               HloInstruction* instruction) {
+  FunctionVisitor transpose_operand_visit_fn([&](HloInstruction* instruction) {
     if (instruction->opcode() == HloOpcode::kDot) {
       // Don't fold dots with a 1D operand.
       if ((instruction->operand(0)->shape().rank() < 2) ||
@@ -210,16 +225,15 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
           continue;
         }
 
-        TF_ASSIGN_OR_RETURN(bool can_fold_operand,
+        TF_ASSIGN_OR_RETURN(bool can_fold,
                             dot_can_fold_transpose_operand_(*instruction, i));
-
-        if (can_fold_operand) {
+        if (can_fold) {
           operand_indices.push_back(i);
         }
       }
 
       if (!operand_indices.empty()) {
-        foldable_dots.emplace_back(instruction, operand_indices);
+        foldable_dot_operands.emplace_back(instruction, operand_indices);
       }
     }
 
@@ -234,17 +248,43 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
   });
 
   for (auto* comp : module->MakeNonfusionComputations()) {
-    TF_RETURN_IF_ERROR(comp->Accept(&visit_fn));
+    TF_RETURN_IF_ERROR(comp->Accept(&transpose_operand_visit_fn));
   }
 
   bool changed = false;
-  for (InstructionOperandsPair& pair : foldable_dots) {
+  for (InstructionOperandsPair& pair : foldable_dot_operands) {
     TF_RETURN_IF_ERROR(FoldTransposeIntoDot(pair));
     changed = true;
   }
   for (InstructionOperandsPair& pair : foldable_convolutions) {
     changed |= FoldTransposeIntoConvolution(pair);
   }
+
+  // Fold output transpose separately, in case we are also folding in a
+  // transpose operand into the same dot.
+  std::vector<HloInstruction*> foldable_output_transposes;
+  FunctionVisitor output_transpose_visit_fn([&](HloInstruction* instruction) {
+    if (IsNonIdentityTranspose(instruction) &&
+        (instruction->operand(0)->opcode() == HloOpcode::kDot) &&
+        (instruction->operand(0)->user_count() == 1)) {
+      TF_ASSIGN_OR_RETURN(bool can_fold,
+                          dot_can_fold_output_transpose_(*instruction));
+      if (can_fold) {
+        foldable_output_transposes.push_back(instruction);
+      }
+    }
+    return Status::OK();
+  });
+
+  for (auto* comp : module->MakeNonfusionComputations()) {
+    TF_RETURN_IF_ERROR(comp->Accept(&output_transpose_visit_fn));
+  }
+
+  for (HloInstruction* transpose : foldable_output_transposes) {
+    TF_RETURN_IF_ERROR(FoldOutputTranspose(transpose));
+    changed = true;
+  }
+
   return changed;
 }
 

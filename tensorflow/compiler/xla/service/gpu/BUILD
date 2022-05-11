@@ -965,6 +965,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",

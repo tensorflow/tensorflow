@@ -64,9 +64,10 @@ struct MatrixLayout {
   int64_t batch_stride;  // `batch_stride` is set to `0` when `batch_size == 1`.
 };
 
-// GPU folding rule for the `TransposeFolding` pass.
+// GPU folding rules for the `TransposeFolding` pass.
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx);
+StatusOr<bool> CanFoldOutputTransposeIntoDot(const HloInstruction& transpose);
 
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
