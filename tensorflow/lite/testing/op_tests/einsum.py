@@ -29,6 +29,9 @@ def make_einsum_tests(options):
       {
           "dtype": [tf.float32],
           "shapes": [
+              ((None, None, 8, 64), (4, None, 8, 64), "BQNH,BTNH->BQNT"),
+              ((1, None, 8, None), (1, None, 8, 64), "BQNT,BTNH->BQNH"),
+              ((None, None, 8, 64), (8, 8, 64), "ABNH,NDH->ABD"),
               ((3, 4, 5), (3, 5, 6), "ijk,ikm->ijm"),
               ((3, 4, 5), (5, 6), "ijk,km->ijm"),
               ((2, 5, 7), (5, 2), "LBH,BL->BH"),
@@ -50,6 +53,10 @@ def make_einsum_tests(options):
       },
   ]
 
+  def set_dynamic_shape(shape):
+    """Convert dynamic shapes to static shapes."""
+    return [4 if x is None else x for x in shape]
+
   def build_graph(parameters):
     """Build a simple graph with einsum Op."""
     input0_shape = parameters["shapes"][0]
@@ -65,14 +72,16 @@ def make_einsum_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     """Feed inputs, assign variables, and freeze graph."""
-    input0_shape = parameters["shapes"][0]
-    input1_shape = parameters["shapes"][1]
+    input0_shape = set_dynamic_shape(parameters["shapes"][0])
+    input1_shape = set_dynamic_shape(parameters["shapes"][1])
     input0_value = create_tensor_data(parameters["dtype"], input0_shape)
     input1_value = create_tensor_data(parameters["dtype"], input1_shape)
     output_values = sess.run(
         outputs, feed_dict=dict(zip(inputs, [input0_value, input1_value])))
     return [input0_value, input1_value], output_values
 
+  # TODO(b/185825380): Remove this workaround with UnsortedSegmentProd support.
+  options.run_with_flex = True
   make_zip_of_tests(
       options,
       test_parameters,
