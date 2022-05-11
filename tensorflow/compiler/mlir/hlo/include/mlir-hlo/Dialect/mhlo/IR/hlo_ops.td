@@ -1414,7 +1414,7 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
 // directly.
 
 def HLO_CholeskyOp : HLO_Op<"cholesky",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Cholesky operator";
   let description = [{
   Computes the Cholesky decomposition of a batch of symmetric (Hermitian)
@@ -1442,7 +1442,6 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
     DefaultValuedAttr<BoolAttr, "false">:$lower
   );
 
-  let hasVerifier = 1;
   let results = (outs HLO_FpOrComplexTensor);
 }
 

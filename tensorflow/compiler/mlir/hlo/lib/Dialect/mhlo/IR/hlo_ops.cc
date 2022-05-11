@@ -843,27 +843,35 @@ void CustomCallOp::getEffects(
 // We intend to verify the following properties
 //   P1. The 'a' argument to Cholesky must have rank >= 2, got shape %s
 //   P2. The two minor dimensions of 'a' must have equal size, got %s.
-LogicalResult CholeskyOp::verify() {
-  auto a_type = a().getType().dyn_cast<RankedTensorType>();
-  if (!a_type) return success();  // Nothing to check for unranked tensors
-
-  auto a_shape = a_type.getShape();
-  if (a_shape.size() < 2) {
-    return emitOpError() << "argument 'a' must have rank >= 2, got shape "
-                         << a_shape << ".";
-  }
-
-  auto last_dim = a_shape[a_shape.size() - 1];
-  auto penultimate_dim = a_shape[a_shape.size() - 2];
-  if (isDynamicDimSize(last_dim) || isDynamicDimSize(penultimate_dim)) {
+LogicalResult CholeskyOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  CholeskyOp::Adaptor adaptor(operands, attributes, regions);
+  Type a_type = adaptor.a().getType();
+  RankedTensorType a_ranked_type = a_type.dyn_cast<RankedTensorType>();
+  if (!a_ranked_type) {
+    inferredReturnShapes.emplace_back(
+        a_type.cast<TensorType>().getElementType());
     return success();
   }
-  if (last_dim != penultimate_dim) {
-    return emitOpError()
-           << "minor dimensions of 'a' must have equal size, got shape "
-           << a_shape << ".";
+
+  ArrayRef<int64_t> a_shape = a_ranked_type.getShape();
+  if (a_shape.size() < 2) {
+    return emitOptionalError(
+        location, "argument 'a' must have rank >= 2, got shape ", a_shape, ".");
   }
 
+  int64_t last_dim = a_shape[a_shape.size() - 1];
+  int64_t penultimate_dim = a_shape[a_shape.size() - 2];
+  if (!isDynamicDimSize(last_dim) && !isDynamicDimSize(penultimate_dim) &&
+      last_dim != penultimate_dim) {
+    return emitOptionalError(
+        location, "minor dimensions of 'a' must have equal size, got shape ",
+        a_shape, ".");
+  }
+  inferredReturnShapes.emplace_back(a_ranked_type.getShape(),
+                                    a_ranked_type.getElementType());
   return success();
 }
 

@@ -97,3 +97,13 @@ func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16
 // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 4, 7], element_type0 = f16} : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
   func.return %0 : tensor<2x4x7xf16>
 }
+
+// -----
+
+// CHECK-LABEL: @cholesky
+func.func @cholesky(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2xindex> {
+  %0 = "mhlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xf32>) -> tensor<1x2x2xf32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
+  func.return %1: tensor<1x2x2xindex>
+}
