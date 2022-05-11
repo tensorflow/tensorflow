@@ -81,6 +81,33 @@ func.func @sparse_abs_eltwise4(%arg0: tensor<10x20xf32>) -> tensor<10x20xf32, #C
   func.return %0 : tensor<10x20xf32, #CSR>
 }
 
+// CHECK-LABEL: func @sparse_conv_eltwise1(
+//  CHECK-SAME: %[[A:.*]]: tensor<2x3xf32, #{{.*}}>)
+//       CHECK: %[[T:.*]] = mhlo.convert(%[[A]]) : (tensor<2x3xf32, #{{.*}}>) -> tensor<2x3xi32>
+//       CHECK: return %[[T]] : tensor<2x3xi32>
+func.func @sparse_conv_eltwise1(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32> {
+  %0 = mhlo.convert(%arg0) : (tensor<2x3xf32, #CSR>) -> tensor<2x3xi32>
+  return %0 : tensor<2x3xi32>
+}
+
+// CHECK-LABEL: func @sparse_conv_eltwise2(
+//  CHECK-SAME: %[[A:.*]]: tensor<2x3xf32>)
+//       CHECK: %[[T:.*]] = mhlo.convert(%[[A]]) : (tensor<2x3xf32>) -> tensor<2x3xi32, #{{.*}}>
+//       CHECK: return %[[T]] : tensor<2x3xi32, #{{.*}}>
+func.func @sparse_conv_eltwise2(%arg0: tensor<2x3xf32>) -> tensor<2x3xi32, #CSR> {
+  %0 = mhlo.convert(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xi32, #CSR>
+  return %0 : tensor<2x3xi32, #CSR>
+}
+
+// CHECK-LABEL: func @sparse_conv_eltwise3(
+//  CHECK-SAME: %[[A:.*]]: tensor<2x3xf32, #{{.*}}>)
+//       CHECK: %[[T:.*]] = mhlo.convert(%[[A]]) : (tensor<2x3xf32, #{{.*}}>) -> tensor<2x3xi32, #{{.*}}>
+//       CHECK: return %[[T]] : tensor<2x3xi32, #{{.*}}>
+func.func @sparse_conv_eltwise3(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #CSR> {
+  %0 = mhlo.convert(%arg0) : (tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #CSR>
+  return %0 : tensor<2x3xi32, #CSR>
+}
+
 //
 // Sparse binary eltwise.
 //

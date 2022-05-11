@@ -186,3 +186,20 @@ func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
      : (tensor<100x200xf64, #CSR>) -> tensor<200x100xf64, #DCSR>
   func.return %0 : tensor<200x100xf64, #DCSR>
 }
+
+// CHECK-LABEL: func @sparse_conv_eltwise(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<2x3xf32, #{{.*}}>) -> tensor<2x3xi32, #{{.*}}> {
+// CHECK-DAG:     %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:     %[[C3:.*]] = arith.constant 3 : index
+// CHECK:         %[[OUT:.*]] = sparse_tensor.init{{\[}}%[[C2]], %[[C3]]] : tensor<2x3xi32, #{{.*}}>
+// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<2x3xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) outs(%[[OUT]] : tensor<2x3xi32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>)
+//
+// CHECK:           arith.fptosi
+// CHECK:         }
+// CHECK:         return %[[VAL]] : tensor<2x3xi32, #{{.*}}>
+// CHECK:       }
+func.func @sparse_conv_eltwise(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR> {
+  %0 = mhlo.convert(%arg0) : (tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR>
+  return %0 : tensor<2x3xi32, #DCSR>
+}
+
