@@ -18,7 +18,6 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -30,7 +29,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -2126,21 +2124,6 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
   def testFlatTensorSpecs(self, rt_spec):
     self.assertEqual(rt_spec._flat_tensor_specs,
                      [tensor_spec.TensorSpec(None, dtypes.variant)])
-
-  @parameterized.parameters([
-      (dtypes.float32, full_type_pb2.TFT_FLOAT),
-      (dtypes.string, full_type_pb2.TFT_STRING),
-  ])
-  def testFullTypesForFlatTensors(self, dt, ft):
-    rt_spec = RaggedTensorSpec(ragged_rank=2, dtype=dt)
-    full_type_list = fulltypes_for_flat_tensors(rt_spec)
-    expect = [
-        full_type_pb2.FullTypeDef(
-            type_id=full_type_pb2.TFT_RAGGED,
-            args=[full_type_pb2.FullTypeDef(type_id=ft)])
-    ]
-    self.assertEqual(len(rt_spec._flat_tensor_specs), len(full_type_list))
-    self.assertEqual(expect, full_type_list)
 
   @parameterized.named_parameters([
       {

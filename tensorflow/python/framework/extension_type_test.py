@@ -23,7 +23,6 @@ import typing
 from absl.testing import parameterized
 import typing_extensions
 
-from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
@@ -38,7 +37,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
-from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import save as keras_save
@@ -1479,26 +1477,6 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     self.assertIsInstance(v4, MaskedTensorV1)
     self.assertAllEqual(v4.values, [11, 22, 33])
     self.assertAllEqual(v4.mask, [True, True, False])
-
-  def testFlatTensorSpecs(self):
-    x = MaskedTensorV2([4, 5], [True, False])
-    spec = type_spec.type_spec_from_value(x)
-    flat_specs = spec._flat_tensor_specs
-    self.assertEqual(flat_specs, [
-        tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.int32, name=None),
-        tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.bool, name=None)
-    ])
-
-  def testFullTypesForFlatTensors(self):
-    x = MaskedTensorV2([4, 5], [True, False])
-    spec = type_spec.type_spec_from_value(x)
-    full_type_list = fulltypes_for_flat_tensors(spec)
-    expect = [
-        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
-        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET)
-    ]
-    self.assertEqual(len(spec._flat_tensor_specs), len(full_type_list))
-    self.assertEqual(expect, full_type_list)
 
 
 def replace_tensors_with_placeholders(value):
