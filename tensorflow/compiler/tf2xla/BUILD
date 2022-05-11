@@ -906,6 +906,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_ops_for_light_outside_compilation",
+        "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
     ] + if_google([":light_outside_compilation_kernels_for_test"]),
 )
 
