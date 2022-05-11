@@ -356,7 +356,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;
