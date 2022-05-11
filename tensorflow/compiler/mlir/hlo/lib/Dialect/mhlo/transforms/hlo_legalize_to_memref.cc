@@ -209,10 +209,10 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   }
   for (int i = 0; i < result_rank; ++i) {
     Value i_val = rewriter.create<arith::ConstantIndexOp>(loc, i);
-    Value result_dim_size = rewriter.createOrFold<memref::LoadOp>(
-        loc,
-        bufferization::lookupBuffer(rewriter, op.output_dimensions(), options),
-        i_val);
+    Value output_dims_buffer =
+        bufferization::lookupBuffer(rewriter, op.output_dimensions(), options);
+    Value result_dim_size =
+        rewriter.create<memref::LoadOp>(loc, output_dims_buffer, i_val);
     if (!result_dim_size.getType().isIndex()) {
       result_dim_size = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getIndexType(), result_dim_size);

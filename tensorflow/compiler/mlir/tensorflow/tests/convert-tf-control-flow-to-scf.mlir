@@ -18,12 +18,12 @@ func.func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: te
 
   // CHECK-NEXT: %[[COND:.*]] = tensor.extract %[[ARG0]][] : tensor<i1>
   // CHECK-NEXT: %[[RES:.*]]:2 = scf.if %[[COND]] -> (tensor<*xf32>, tensor<4xf32>) {
-  // CHECK-NEXT:   %[[CALL:.*]] = call @test_if_then1(%[[ARG1]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-NEXT:   %[[CALL:.*]] = func.call @test_if_then1(%[[ARG1]]) : (tensor<4xf32>) -> tensor<4xf32>
   // CHECK-NEXT:   %[[ADD:.*]] = "tf.AddV2"(%[[CALL]], %[[CALL]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // CHECK-NEXT:   %[[CAST:.*]] = "tf.Cast"(%[[CALL]]) {Truncate = false} : (tensor<4xf32>) -> tensor<*xf32>
   // CHECK-NEXT:   scf.yield %[[CAST]], %[[ADD]] : tensor<*xf32>, tensor<4xf32>
   // CHECK-NEXT: } else {
-  // CHECK-NEXT:   %[[CALL_0:.*]] = call @test_if_else1(%[[ARG1]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-NEXT:   %[[CALL_0:.*]] = func.call @test_if_else1(%[[ARG1]]) : (tensor<4xf32>) -> tensor<4xf32>
   // CHECK-NEXT:   %[[CAST_0:.*]] = "tf.Cast"(%[[CALL_0]]) {Truncate = false} : (tensor<4xf32>) -> tensor<*xf32>
   // CHECK-NEXT:   scf.yield %[[CAST_0]], %[[CALL_0]] : tensor<*xf32>, tensor<4xf32>
   // CHECK-NEXT: }
@@ -47,9 +47,9 @@ func.func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: te
 
   // CHECK-NEXT: %[[COND:.*]] = tensor.extract %[[ARG0]][] : tensor<i1>
   // CHECK-NEXT: scf.if %[[COND]] {
-  // CHECK-NEXT:   call @test_if_then2(%[[ARG1]]) : (tensor<4xf32>) -> ()
+  // CHECK-NEXT:   func.call @test_if_then2(%[[ARG1]]) : (tensor<4xf32>) -> ()
   // CHECK-NEXT: } else {
-  // CHECK-NEXT:   call @test_if_else2(%[[ARG1]]) : (tensor<4xf32>) -> ()
+  // CHECK-NEXT:   func.call @test_if_else2(%[[ARG1]]) : (tensor<4xf32>) -> ()
   // CHECK-NEXT: }
   // CHECK-NEXT: return
 }
