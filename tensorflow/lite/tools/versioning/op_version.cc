@@ -54,6 +54,9 @@ int GetInputMaxDims(const OpSignature& op_sig) {
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
+      if (op_sig.ext_options.conv_2d.is_grouped_convolution) {
+        return 6;
+      }
       // If the op has signed int16 op_sig.inputs and op_sig.outputs, its
       // version 4.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
@@ -773,6 +776,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_SELECT: {
+      if (op_sig.inputs.at(0).dims.size() == 5 ||
+          op_sig.inputs.at(1).dims.size() == 5 ||
+          op_sig.inputs.at(2).dims.size() == 5)
+        return 3;
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
@@ -782,7 +795,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
-    case BuiltinOperator_SELECT:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
@@ -810,8 +822,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
-          op_sig.outputs.at(0).type == kTfLiteInt8) {
+      if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt16) {
+        return 4;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+                 op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       } else if (op_sig.inputs.at(0).type == kTfLiteUInt32 ||
                  op_sig.outputs.at(0).type == kTfLiteUInt32) {

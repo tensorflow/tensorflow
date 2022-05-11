@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_LHLO_ELEMENTAL_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_LHLO_ELEMENTAL_UTILS_H_
+#ifndef MLIR_HLO_DIALECT_LHLO_TRANSFORMS_LHLO_ELEMENTAL_UTILS_H
+#define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_LHLO_ELEMENTAL_UTILS_H
 
 #include "mlir/IR/Builders.h"
 
 namespace mlir {
-
+namespace func {
+class FuncOp;
+}
 class Value;
 class Location;
 class Operation;
 class ValueRange;
 class Region;
-class FuncOp;
 enum class AtomicRMWKind : uint64_t;
 
 namespace scf {
@@ -70,4 +71,4 @@ memref::LoadOp createOffsetLoad(OpBuilder& b, Location loc, Value memref,
 }  // namespace lmhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_LHLO_ELEMENTAL_UTILS_H_
+#endif  // MLIR_HLO_DIALECT_LHLO_TRANSFORMS_LHLO_ELEMENTAL_UTILS_H

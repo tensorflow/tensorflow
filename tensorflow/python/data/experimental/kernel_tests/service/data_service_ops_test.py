@@ -23,7 +23,6 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
-from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -459,7 +458,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.apply(
         data_service_ops._distribute(
-            processing_mode=ShardingPolicy.OFF,
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=dispatcher.target,
             task_refresh_interval_hint_ms=10000))
     get_next = self.getNext(dataset)
@@ -487,7 +486,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.range(num_elements)
     dataset = dataset.apply(
         data_service_ops._distribute(
-            processing_mode=ShardingPolicy.OFF,
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=dispatcher.target,
             task_refresh_interval_hint_ms=100))
     get_next = self.getNext(dataset)
@@ -791,6 +790,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertNotEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testDoubleDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = self.make_distributed_range_dataset(num_elements=10, cluster=cluster)
+    ds = self.make_distributed_dataset(dataset=ds, cluster=cluster)
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3
     cluster_1 = data_service_test_base.TestCluster(num_workers=cluster_1_size)
@@ -834,6 +840,27 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(ds, [tensor])
 
   @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBatchDropsAllElements(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=2, fault_tolerant_mode=False)
+    dataset = dataset_ops.Dataset.range(10).batch(1000, drop_remainder=True)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster, processing_mode=data_service_ops.ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBatchDoesNotDropRemainder(self):
+    num_workers = 2
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers, fault_tolerant_mode=False)
+    dataset = dataset_ops.Dataset.range(10).batch(1000, drop_remainder=False)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster, processing_mode=data_service_ops.ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, [list(range(10))] * num_workers)
+
+  @combinations.generate(
       combinations.times(test_base.graph_only_combinations(),
                          combinations.combine(use_resource=False)) +
       combinations.times(test_base.default_test_combinations(),
@@ -858,7 +885,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.OFF)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.OFF)
     self.assertDatasetProduces(dataset, list(range(20)))
 
 

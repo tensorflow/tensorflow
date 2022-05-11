@@ -98,7 +98,6 @@ void ShapeLayout::ResetLayout(const Layout& layout) {
 
 void ShapeLayout::ResetLayout(const Layout& layout,
                               ShapeIndexView shape_index) {
-  CHECK(shape_.IsTuple());
   *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
       layout;
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));

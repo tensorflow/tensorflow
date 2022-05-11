@@ -99,7 +99,8 @@ class FakeEagerClient : public EagerClient {
     impl_->RunComponentFunction(call_opts, request, response, std::move(done));
   }
 
-  void StreamingEnqueueAsync(CallOptions* call_opts,
+  void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                             CallOptions* call_opts,
                              const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
@@ -958,7 +959,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_small_function_optimizations=*/false,
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
-      /*int_args_and_retvals_on_device=*/false, ctx->RendezvousCreator(),
+      /*int_args_and_retvals_on_device=*/false,
+      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1011,7 +1013,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_small_function_optimizations=*/false,
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
-      /*int_args_and_retvals_on_device=*/false, ctx->RendezvousCreator(),
+      /*int_args_and_retvals_on_device=*/false,
+      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.

@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -197,7 +198,7 @@ void BroadcastFoldPass::runOnOperation() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBroadcastFoldPass() {
   return absl::make_unique<BroadcastFoldPass>();
 }
 }  // namespace TF

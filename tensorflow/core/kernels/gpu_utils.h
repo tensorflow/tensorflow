@@ -400,6 +400,12 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners);
 
+// Get the Dnn workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                             int64_t default_value_in_bytes);
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

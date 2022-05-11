@@ -460,9 +460,8 @@ class LiteralBase {
     void set_buffer(char* buffer) { buffer_ = buffer; }
 
     // Gets/sets the buffer holding dynamic sizes.
-    int32_t* dynamic_size_buffer() const { return dynamic_size_buffer_; }
-    void set_dynamic_size_buffer(int32_t* dynamic_size_buffer) {
-      dynamic_size_buffer_ = dynamic_size_buffer;
+    int32_t* dynamic_size_buffer() const {
+      return reinterpret_cast<int32_t*>(buffer_ + size_bytes());
     }
 
     int64_t dynamic_size_buffer_bytes() const {
@@ -476,6 +475,15 @@ class LiteralBase {
 
     // Returns the size in bytes of the buffer holding the array data.
     int64_t size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
+
+    // Total size in bytes, including the dynamic size addition.
+    //
+    // The shape can become dynamic after this literal is allocated, so we
+    // over-allocate the margin for the dynamic shape description in case we
+    // need it.
+    int64_t total_bytes() const {
+      return size_bytes() + dynamic_size_buffer_bytes();
+    }
 
     // Returns the number of elements in this piece's array.
     int64_t element_count() const { return ShapeUtil::ElementsIn(subshape()); }
@@ -635,8 +643,6 @@ class LiteralBase {
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
 
-    int32_t* dynamic_size_buffer_ = nullptr;
-
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
     const Shape* subshape_ = nullptr;
@@ -784,7 +790,7 @@ class MutableLiteralBase : public LiteralBase {
   // in this literal object.
   //
   // generator must be a callable of the type
-  // NativeT(absl::Span<int64_t> indexes) or compatible.
+  // NativeT(absl::Span<const int64_t> indexes) or compatible.
   //
   // This literal must have a dense layout.
   template <typename NativeT, typename FnType>
@@ -899,10 +905,16 @@ class Literal : public MutableLiteralBase {
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
   // this Literal is set to a nil shape (empty tuple)
+  //
+  // TODO(jlebar): Because this function invalidates `this`, it should be
+  // ref-qualified with &&.
   std::vector<Literal> DecomposeTuple();
 
   // Returns a subliteral specified by given shape_index. No data is copied, the
   // current literal becomes invalid after this function call.
+  //
+  // TODO(jlebar): Because this function invalidates `this`, it should be
+  // ref-qualified with &&.
   Literal SubLiteral(ShapeIndexView shape_index);
 
  private:
@@ -1193,14 +1205,14 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](absl::Span<const int64_t> indexes) {
+    auto init_function = [&](absl::Span<const int64_t> indexes, int thread_id) {
       DimensionVector minor_scan_indexes(rank, 0);
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64_t i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;
-        literal_data.at(index + i) = generator(minor_scan_indexes);
+        literal_data.at(index + i) = generator(minor_scan_indexes, thread_id);
       }
     };
     if (parallel) {
@@ -1212,24 +1224,32 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
           [&init_function](absl::Span<const int64_t> indexes) {
-            init_function(indexes);
+            init_function(indexes, /*thread_id=*/-1);
             return true;
           });
     }
   } else {
     // For scalars.
-    literal_data.at(0) = generator({});
+    literal_data.at(0) = generator({}, /*thread_id=*/-1);
   }
   return Status::OK();
 }
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::Populate(const FnType& generator) {
-  return PopulateInternal<NativeT>(generator, /*parallel=*/false);
+  return PopulateInternal<NativeT>(
+      [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
+        return generator(indexes);
+      },
+      /*parallel=*/false);
 }
 
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
-  return PopulateInternal<NativeT>(generator, /*parallel=*/true);
+  return PopulateInternal<NativeT>(
+      [&](absl::Span<const int64_t> indexes, int thread_id) {
+        return generator(indexes, thread_id);
+      },
+      /*parallel=*/true);
 }
 
 template <typename NativeT>

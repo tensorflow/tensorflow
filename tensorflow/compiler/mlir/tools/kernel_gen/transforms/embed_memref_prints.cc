@@ -13,38 +13,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Analysis/Liveness.h"  // from @llvm-project
+#include <memory>
+#include <string>
+
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/utils.h"
 
 namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
 
+constexpr StringRef kPrintStringFuncName = "printCString";
+
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-using tf_framework::TFFrameworkDialect;
-
-Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
+Operation* EmitMemRefPrint(Location loc, Type element_type, Value arg,
                            OpBuilder* b) {
+  StringRef func_name;
+  if (element_type.isF32()) {
+    func_name = "printMemrefF32";
+  }
+  if (element_type.isF64()) {
+    func_name = "printMemrefF64";
+  }
+  if (element_type.isInteger(32)) {
+    func_name = "printMemrefI32";
+  }
+  if (element_type.isInteger(64) || element_type.isIndex()) {
+    func_name = "printMemrefI64";
+  }
+  assert(!func_name.empty() &&
+         "Did not find a print function for the element type");
+
   auto caller_func =
-      b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
+      b->getInsertionBlock()->getParent()->getParentOfType<func::FuncOp>();
   auto func_name_attr = b->getStringAttr(func_name);
-  auto callee_func =
-      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name_attr);
+
+  auto callee_func = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+      caller_func, func_name_attr);
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
@@ -52,77 +66,128 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
     b->setInsertionPointToStart(module.getBody());
     auto func_type = FunctionType::get(b->getContext(), arg.getType(),
                                        /*results=*/llvm::None);
-    callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
+    callee_func =
+        b->create<func::FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
-  return b->create<CallOp>(loc, callee_func, arg);
+  return b->create<func::CallOp>(loc, callee_func, arg);
 }
 
-void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
+bool IsElementTypePrintalble(Type element_type) {
+  return element_type.isF32() || element_type.isF64() ||
+         element_type.isInteger(32) || element_type.isInteger(64) ||
+         element_type.isIndex();
+}
+
+void EmitMemRefPrint(Location loc, Value memref, OpBuilder* b) {
+  auto memref_type = memref.getType();
+  if (auto unranked_type = memref_type.dyn_cast<UnrankedMemRefType>()) {
+    Type element_type = unranked_type.getElementType();
+    if (!IsElementTypePrintalble(element_type)) return;
+
+    EmitMemRefPrint(loc, element_type, memref, b);
+  }
+  if (auto ranked_type = memref_type.dyn_cast<MemRefType>()) {
+    Type element_type = ranked_type.getElementType();
+    if (!IsElementTypePrintalble(element_type)) return;
+
+    if (element_type.isIndex()) {
+      element_type = b->getI64Type();
+      ranked_type = MemRefType::get(ranked_type.getShape(), element_type,
+                                    ranked_type.getLayout(),
+                                    ranked_type.getMemorySpace());
+      memref = b->create<arith::IndexCastOp>(loc, ranked_type, memref);
+    }
+
+    auto unranked_type = UnrankedMemRefType::get(
+        element_type, ranked_type.getMemorySpaceAsInt());
+    Value unranked_memref =
+        b->create<memref::CastOp>(loc, unranked_type, memref);
+    EmitMemRefPrint(loc, element_type, unranked_memref, b);
+  }
+}
+
+SmallVector<Value> ExtractValuesToPrint(Operation* op) {
+  if (isa<memref::ReinterpretCastOp>(op) || isa<memref::ReshapeOp>(op) ||
+      isa<memref::ExpandShapeOp>(op) || isa<memref::CollapseShapeOp>(op)) {
+    return {op->getResult(0)};
+  }
+  if (auto linalg = dyn_cast<linalg::LinalgOp>(op)) {
+    return linalg.getOutputBufferOperands();
+  }
+  if (auto loop = dyn_cast<gml_st::LoopOp>(op)) {
+    return loop.outputs();
+  }
+  if (auto loop = dyn_cast<scf::ForOp>(op)) {
+    return loop.getIterOperands();
+  }
+  if (auto copy = dyn_cast<memref::CopyOp>(op)) {
+    return {copy.target()};
+  }
+  return {};
+}
+
+void EmitOperationPrint(Operation* op, OpBuilder* b) {
+  std::string debug_str = "\n\nPrint memref content after the following op\n";
+  llvm::raw_string_ostream output_stream(debug_str);
+
+  mlir::OpPrintingFlags flags;
+  op->print(output_stream, flags);
+  output_stream << "\n\n";
+
   Location loc = op->getLoc();
-  Value memref = op->getResult(0);
-  auto memref_type = memref.getType().cast<MemRefType>();
-  Type element_type = memref_type.getElementType();
-  if (!element_type.isF32() && !element_type.isF64() &&
-      !element_type.isIntOrIndex())
-    return;
+  Value message_constant = CreateOrFindGlobalStringConstant(
+      loc, GetGlobalName("debug_op", debug_str), debug_str, b);
 
-  Operation* end_op =
-      liveness.getLiveness(op->getBlock())->getEndOperation(memref, op);
-  b->setInsertionPoint(end_op);
-
-  if (element_type.isIndex()) {
-    element_type = b->getI64Type();
-    memref_type =
-        MemRefType::get(memref_type.getShape(), element_type,
-                        memref_type.getLayout(), memref_type.getMemorySpace());
-    memref = b->create<arith::IndexCastOp>(loc, memref_type, memref);
-  }
-
-  auto unranked_type =
-      UnrankedMemRefType::get(element_type, memref_type.getMemorySpaceAsInt());
-  Value unranked_memref = b->create<memref::CastOp>(loc, unranked_type, memref);
-
-  if (element_type.isF32()) {
-    emitCallToPrint(loc, "print_memref_f32", unranked_memref, b);
-    return;
-  }
-  if (element_type.isF64()) {
-    emitCallToPrint(loc, "print_memref_f64", unranked_memref, b);
-    return;
-  }
-  if (element_type.isInteger(32)) {
-    emitCallToPrint(loc, "print_memref_i32", unranked_memref, b);
-    return;
-  }
-  if (element_type.isInteger(64) || element_type.isIndex()) {
-    emitCallToPrint(loc, "print_memref_i64", unranked_memref, b);
-    return;
-  }
+  // Insert function call.
+  MLIRContext* ctx = op->getContext();
+  auto func_type = LLVM::LLVMFunctionType::get(
+      LLVM::LLVMVoidType::get(op->getContext()),
+      {LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8))});
+  FlatSymbolRefAttr tf_func_ref =
+      GetOrInsertLLVMFunction(kPrintStringFuncName, func_type, op, b);
+  b->create<LLVM::CallOp>(loc, llvm::None, tf_func_ref,
+                          llvm::makeArrayRef({message_constant}));
 }
 
-// The pass the memrefs allocated in a `tf-entry` function and inserts printing
-// at the end of their lifetime. Printing for buffers allocated with TFAllocOp
-// is currently not supported because the data is not located on host.
+// The pass inserts printing on every mutation of memrefs.
 struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
   void runOnOperation() override {
-    FuncOp func = getOperation();
-    if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
-      return;
+    ModuleOp module = getOperation();
+    module.walk([&](func::FuncOp func) {
+      if (func.isDeclaration()) return;
+      Block* body = &func.getBody().front();
 
-    Liveness liveness(func);
-    OpBuilder b(&getContext());
-    func.walk([&](memref::AllocOp op) { EmitPrint(op, liveness, &b); });
-    func.walk([&](memref::AllocaOp op) { EmitPrint(op, liveness, &b); });
-    func.walk(
-        [&](memref::ReinterpretCastOp op) { EmitPrint(op, liveness, &b); });
+      // Print arguments.
+      OpBuilder b(&getContext());
+      b.setInsertionPointToStart(body);
+      Location loc = func.getLoc();
+      auto args = func.getArguments();
+      if (!args.empty()) {
+        EmitOperationPrint(func, &b);
+      }
+      for (auto arg : args) {
+        EmitMemRefPrint(loc, arg, &b);
+      }
+      // Print buffers after every change.
+      for (auto& op : func.getBody().front().getOperations()) {
+        b.setInsertionPointAfter(&op);
+        auto memrefs = ExtractValuesToPrint(&op);
+        if (!memrefs.empty()) {
+          EmitOperationPrint(&op, &b);
+        }
+        for (auto memref : memrefs) {
+          EmitMemRefPrint(op.getLoc(), memref, &b);
+        }
+      }
+    });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateEmbedMemRefPrintsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedMemRefPrintsPass() {
   return std::make_unique<EmbedMemRefPrintsPass>();
 }
 

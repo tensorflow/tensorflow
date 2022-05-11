@@ -504,13 +504,11 @@ uint2 Get2dResourceSize(const WeightsDescription& weight_desc,
 
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
-    const WeightsDescription& dst_weight_desc, DataType dst_type,
-    absl::Span<uint8_t> dst);
+    const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst);
 
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWDI, DataType::FLOAT32>& weights,
-    const WeightsDescription& dst_weight_desc, DataType dst_type,
-    absl::Span<uint8_t> dst);
+    const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst);
 
 }  // namespace gpu
 }  // namespace tflite

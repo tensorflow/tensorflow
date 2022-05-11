@@ -23,13 +23,15 @@ TARGET="$2"
 case "${VERSION}" in
 devtoolset-7)
   LIBSTDCXX_VERSION="6.0.24"
+  LIBSTDCXX_ABI="gcc4-compatible"
   ;;
-devtoolset-8)
-  LIBSTDCXX_VERSION="6.0.25"
+devtoolset-9)
+  LIBSTDCXX_VERSION="6.0.28"
+  LIBSTDCXX_ABI="new"
   ;;
 *)
-  echo "Usage: $0 {devtoolset-7|devtoolset-8} <target-directory>"
-  echo "Use 'devtoolset-7' to build a manylinux2010 compatible toolchain or 'devtoolset-8' to build a manylinux2014 compatible toolchain"
+  echo "Usage: $0 {devtoolset-7|devtoolset-9} <target-directory>"
+  echo "Use 'devtoolset-7' to build a manylinux2010 compatible toolchain or 'devtoolset-9' to build a manylinux2014 compatible toolchain"
   exit 1
   ;;
 esac
@@ -54,7 +56,7 @@ devtoolset-7)
       tar -C "${TARGET}" -xvzf "libc6-dev_2.12.1-0ubuntu6_amd64/data.tar.gz" && \
       rm -rf "libc6-dev_2.12.1-0ubuntu6_amd64.deb" "libc6-dev_2.12.1-0ubuntu6_amd64"
   ;;
-devtoolset-8)
+devtoolset-9)
   # Download binary glibc 2.17 shared library release.
   wget "http://old-releases.ubuntu.com/ubuntu/pool/main/e/eglibc/libc6_2.17-0ubuntu5.1_amd64.deb" && \
       unar "libc6_2.17-0ubuntu5.1_amd64.deb" && \
@@ -92,7 +94,7 @@ devtoolset-7)
       tar -C "/${TARGET}" -xvzf "libstdc++6_4.4.3-4ubuntu5_amd64/data.tar.gz" "./usr/lib/libstdc++.so.6.0.13" && \
       rm -rf "libstdc++6_4.4.3-4ubuntu5_amd64.deb" "libstdc++6_4.4.3-4ubuntu5_amd64"
   ;;
-devtoolset-8)
+devtoolset-9)
   # Download binary libstdc++ 4.8 shared library release
   wget "http://old-releases.ubuntu.com/ubuntu/pool/main/g/gcc-4.8/libstdc++6_4.8.1-10ubuntu8_amd64.deb" && \
       unar "libstdc++6_4.8.1-10ubuntu8_amd64.deb" && \
@@ -111,10 +113,10 @@ devtoolset-7)
   rpm2cpio "devtoolset-7-gcc-7.3.1-5.15.el6.src.rpm" |cpio -idmv
   tar -xvjf "gcc-7.3.1-20180303.tar.bz2" --strip 1
   ;;
-devtoolset-8)
-  wget "http://vault.centos.org/centos/6/sclo/Source/rh/devtoolset-8/devtoolset-8-gcc-8.2.1-3.el6.src.rpm"
-  rpm2cpio "devtoolset-8-gcc-8.2.1-3.el6.src.rpm" |cpio -idmv
-  tar -xvf "gcc-8.2.1-20180905.tar.xz" --strip 1
+devtoolset-9)
+  wget "https://vault.centos.org/centos/7/sclo/Source/rh/devtoolset-9-gcc-9.3.1-2.2.el7.src.rpm"
+  rpm2cpio "devtoolset-9-gcc-9.3.1-2.2.el7.src.rpm" |cpio -idmv
+  tar -xvf "gcc-9.3.1-20200408.tar.xz" --strip 1
   ;;
 esac
 
@@ -145,7 +147,7 @@ cd "${TARGET}-build"
       --enable-plugin \
       --enable-shared \
       --enable-threads=posix \
-      --with-default-libstdcxx-abi="gcc4-compatible" \
+      --with-default-libstdcxx-abi=${LIBSTDCXX_ABI} \
       --with-gcc-major-version-only \
       --with-linker-hash-style="gnu" \
       --with-tune="generic" \
@@ -165,28 +167,17 @@ echo -e "OUTPUT_FORMAT(elf64-x86-64)\nINPUT ( libstdc++.so.6.0.13 -lstdc++_nonsh
 cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44.a" \
    "/${TARGET}/usr/lib"
   ;;
-devtoolset-8)
+devtoolset-9)
 # Note that the installation path for libstdc++ here is /${TARGET}/usr/lib64/
 mv "/${TARGET}/usr/lib64/libstdc++.so.${LIBSTDCXX_VERSION}" \
    "/${TARGET}/usr/lib64/libstdc++.so.${LIBSTDCXX_VERSION}.backup"
-# Move the shared library to /${TARGET}/usr/lib/
-mv "/${TARGET}/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.18" \
-   "/${TARGET}/usr/lib/"
-echo -e "OUTPUT_FORMAT(elf64-x86-64)\nINPUT ( libstdc++.so.6.0.18 -lstdc++_nonshared48 )" \
-   > "/${TARGET}/usr/lib/libstdc++.so.${LIBSTDCXX_VERSION}"
-cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared48.a" \
-   "/${TARGET}/usr/lib"
-cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared48.a" \
+echo -e "OUTPUT_FORMAT(elf64-x86-64)\nINPUT ( libstdc++.so.6.0.18 -lstdc++_nonshared44 )" \
+   > "/${TARGET}/usr/lib64/libstdc++.so.${LIBSTDCXX_VERSION}"
+cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44.a" \
    "/${TARGET}/usr/lib64"
-
-# Fix the libstdc++ symlink by pointing to the correct location. By default, these point to
-# /${TARGET}/usr/lib64/ but the library actually exists in /${TARGET}/usr/lib (b/214411967)
-rm "/${TARGET}/usr/lib64/libstdc++.so"
-ln -s "/${TARGET}/usr/lib/libstdc++.so.${LIBSTDCXX_VERSION}" "/${TARGET}/usr/lib64/libstdc++.so"
-rm "/${TARGET}/usr/lib64/libstdc++.so.6"
-ln -s "/${TARGET}/usr/lib/libstdc++.so.${LIBSTDCXX_VERSION}" "/${TARGET}/usr/lib64/libstdc++.so.6"
-  ;;
+;;
 esac
+
 
 # Link in architecture specific includes from the system; note that we cannot
 # link in the whole x86_64-linux-gnu folder, as otherwise we're overlaying
@@ -198,4 +189,3 @@ PYTHON_VERSIONS=("python3.7m" "python3.8" "python3.9" "python3.10")
 for v in "${PYTHON_VERSIONS[@]}"; do
   ln -s "/usr/local/include/${v}" "/${TARGET}/usr/include/x86_64-linux-gnu/${v}"
 done
-

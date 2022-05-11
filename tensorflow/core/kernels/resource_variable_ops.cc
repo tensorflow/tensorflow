@@ -253,7 +253,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
     ResourceMgr* mgr = ctx->resource_manager();
     ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
         resource, ctx->device()->name(),
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        ctx->stack_trace());
     // TODO(b/203901837): See if we can abolish all code paths that lookup
     // anonymous variables and then stop publishing them to the manager.
     OP_REQUIRES_OK(ctx, mgr->CreateUnowned<Var>(handle.container(),
@@ -357,6 +358,31 @@ REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(
     Name("DestroyResourceOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
     DestroyResourceOp);
+
+void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
+  core::RefCountPtr<Var> variable;
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
+  const auto status = LookupResource(ctx, handle, &variable);
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Could not find variable ", handle.name(), ". ",
+                  "This could mean that the variable has been deleted. ",
+                  "In TF1, it can also mean the variable is uninitialized. ",
+                  "Debug info: container=", handle.container(),
+                  ", status error message=", status.error_message()));
+  // If the variable is currently in copy-on-read mode, its refcount is 1
+  if (variable->copy_on_read_mode.load()) {
+    // Obtain an exclusive lock on the variable and change the access mode
+    mutex_lock ml(*variable->mu());
+    variable->copy_on_read_mode.store(false);
+  }
+}
+
+REGISTER_KERNEL_BUILDER(Name("DisableCopyOnRead").Device(DEVICE_CPU),
+                        DisableCopyOnReadOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DisableCopyOnRead").Device(DEVICE_DEFAULT).HostMemory("resource"),
+    DisableCopyOnReadOp);
 
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
@@ -540,10 +566,15 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
-TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<Variant>("dtype")
+                            .HostMemory("resource"),
+                        AssignVariableOp<CPUDevice, Variant>);
 
 template <typename Device, typename T, DenseUpdateType Op>
 class AssignUpdateVariableOp : public OpKernel {
@@ -793,19 +824,19 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
 REGISTER_KERNEL_BUILDER(Name("ResourceGather")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int32>("Tindices"),
-                        ResourceGatherOp<GPUDevice, Variant, int32>)
+                        ResourceGatherOp<CPUDevice, Variant, int32>)
 REGISTER_KERNEL_BUILDER(Name("ResourceGather")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
-                        ResourceGatherOp<GPUDevice, Variant, int64>)
+                        ResourceGatherOp<CPUDevice, Variant, int64>)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -884,9 +915,8 @@ bool isCPUDevice<CPUDevice>() {
 template <typename T>
 bool ValidateInput(const Tensor& updates) {
   const auto updates_flat = updates.flat<T>();
-  const T zero(0);
-  for (int i = 0; i < updates.NumElements(); i++) {
-    if (updates_flat(i) == zero) return false;
+  for (int i = 0; i < updates.NumElements(); ++i) {
+    if (updates_flat(i) == T{}) return false;
   }
   return true;
 }
@@ -953,7 +983,7 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // Deallocate host_params' buffer once the host-to-device copy is complete.
   // host_params is captured by value in the lambda so that its buffer is only
   // destructed once the lambda is destructed.
-  c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+  c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
       stream, [host_params] {});
   return Status::OK();
 }
@@ -1150,12 +1180,12 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int32>("Tindices"),
-                        ResourceScatterUpdateOp<GPUDevice, Variant, int32,
+                        ResourceScatterUpdateOp<CPUDevice, Variant, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)
@@ -1165,12 +1195,12 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                         ResourceScatterUpdateOp<GPUDevice, bool, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
-                        ResourceScatterUpdateOp<GPUDevice, Variant, int64,
+                        ResourceScatterUpdateOp<CPUDevice, Variant, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)

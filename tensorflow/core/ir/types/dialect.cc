@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -38,6 +39,7 @@ limitations under the License.
 
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/core/ir/types/attributes.cc.inc"
+#include "tensorflow/core/ir/types/attributes_enum.cc.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/core/ir/types/types.cc.inc"
@@ -219,6 +221,73 @@ void VersionAttr::print(AsmPrinter &printer) const {
   os << ">";
 }
 
+FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
+  ::llvm::SmallVector<FullTypeAttr> args;
+
+  // Parse variable 'type_id'
+  llvm::StringRef type_id_str;
+  if (failed(parser.parseKeyword(&type_id_str))) {
+    parser.emitError(
+        parser.getCurrentLocation(),
+        "failed to parse TFType_FullTypeAttr parameter keyword for "
+        "'type_id'");
+    return failure();
+  }
+  Optional<FullTypeId> type_id = symbolizeFullTypeId(type_id_str);
+  if (!type_id) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "failed to parse TFType_FullTypeAttr parameter "
+                     "'type_id'");
+    return failure();
+  }
+
+  // Parse variable 'args'
+  parser.parseCommaSeparatedList(
+      AsmParser::Delimiter::OptionalLessGreater, [&]() {
+        FailureOr<tf_type::FullTypeAttr> arg = RawFullTypeAttrParser(parser);
+        if (failed(arg)) return failure();
+        args.push_back(*arg);
+        return success();
+      });
+
+  // Parse variable 'attr'
+  Attribute attr;
+  parser.parseOptionalAttribute(attr);
+  return FullTypeAttr::get(parser.getContext(), static_cast<int32_t>(*type_id),
+                           args, attr);
+}
+
+Attribute FullTypeAttr::parse(AsmParser &parser, Type odsType) {
+  if (failed(parser.parseLess())) return {};
+  FailureOr<tf_type::FullTypeAttr> ret = RawFullTypeAttrParser(parser);
+  if (succeeded(ret) && failed(parser.parseGreater())) return {};
+  return ret.getValueOr(FullTypeAttr());
+}
+
+static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
+  printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getType_id()));
+  if (!tfattr.getArgs().empty()) {
+    printer << "<";
+    llvm::interleaveComma(tfattr.getArgs(), printer, [&](Attribute arg) {
+      if (auto t = arg.dyn_cast<FullTypeAttr>())
+        RawFullTypeAttrPrint(t, printer);
+      else
+        printer << "<<INVALID ARG>>";
+    });
+    printer << ">";
+  }
+  if (tfattr.getAttr()) {
+    printer << ' ';
+    printer.printStrippedAttrOrType(tfattr.getAttr());
+  }
+}
+
+void FullTypeAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  RawFullTypeAttrPrint(*this, printer);
+  printer << ">";
+}
+
 // Print a #tf.func attribute of the following format:
 //
 //   #tf.func<@symbol, {attr = "value"}>
@@ -319,7 +388,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim > -1)
+      if (dim != -1)
         os << dim;
       else
         os << "?";
@@ -351,10 +420,9 @@ Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
       llvm::SMLoc loc = parser.getCurrentLocation();
       if (succeeded(parser.parseOptionalQuestion())) {
         shape.back() = ShapedType::kDynamicSize;
-      } else if (failed(parser.parseInteger(shape.back())) ||
-                 shape.back() < 0) {
-        parser.emitError(loc) << "expected a positive integer or `?` when "
-                                 "parsing a tf.shape attribute";
+      } else if (failed(parser.parseInteger(shape.back()))) {
+        parser.emitError(loc)
+            << "expected an integer or `?` when parsing a tf.shape attribute";
         return failure();
       }
       return success();
@@ -696,12 +764,14 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
     // can be more constrained and check subtypes for cast compatibility as
     // well.
     if (a.isa<VariantType>()) return a;
+    if (b.isa<VariantType>()) return b;
 
     // For Resource types, we recursively check the subtypes for cast
     // compatibility, if possible. Otherwise treat them as compatible.
     auto a_wst_st = a_wst.GetSubtypes();
     auto b_wst_st = b_wst.GetSubtypes();
-    if (a_wst_st.empty() || b_wst_st.empty()) return a;
+    if (a_wst_st.empty()) return b;
+    if (b_wst_st.empty()) return a;
     if (a_wst_st.size() != b_wst_st.size()) return nullptr;
     llvm::SmallVector<TensorType, 4> refined_subtypes;
     for (auto subtypes : llvm::zip(a_wst_st, b_wst_st)) {

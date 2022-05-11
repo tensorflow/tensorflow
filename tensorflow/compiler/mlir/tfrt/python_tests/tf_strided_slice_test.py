@@ -26,7 +26,7 @@ class TfStridedSliceTest(test.TestCase):
 
   def test_strided_slice_1d_to_0d(self):
     mlir_function = """
-      func @test(%arg0: tensor<3xi32>) -> tensor<i32> {
+      func.func @test(%arg0: tensor<3xi32>) -> tensor<i32> {
         %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>}
                  : () -> tensor<1xi32>
         %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>}
@@ -40,7 +40,7 @@ class TfStridedSliceTest(test.TestCase):
                shrink_axis_mask = 1 : i64
              } : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
               -> tensor<i32>
-        return %0 : tensor<i32>
+        func.return %0 : tensor<i32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')

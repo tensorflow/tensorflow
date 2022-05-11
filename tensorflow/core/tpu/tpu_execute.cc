@@ -68,11 +68,11 @@ class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
 
-  using HostCommmandHandler = TpuOpExecutable::HostCommandHandler;
+  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
-  xla::StatusOr<HostCommmandHandler> Initialize(
+  xla::StatusOr<HostCommandHandler> Initialize(
       const TPUHostTransferInfoProto& program,
       const std::string& rendezvous_key_base, OpKernelContext* ctx);
 
@@ -80,11 +80,11 @@ class HostTransferManager {
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
-xla::StatusOr<HostTransferManager::HostCommmandHandler>
+xla::StatusOr<HostTransferManager::HostCommandHandler>
 HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
                                 const string& rendezvous_key_base,
                                 OpKernelContext* ctx) {
-  return HostCommmandHandler([](uint32, int64_t) {
+  return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
 }
@@ -434,7 +434,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommmandHandler handler,
+  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 

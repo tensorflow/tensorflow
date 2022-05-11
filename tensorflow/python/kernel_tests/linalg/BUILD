@@ -375,6 +375,7 @@ cuda_py_test(
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
     tags = [
+        "no_rocm",
         "noasan",
         "optonly",
     ],
@@ -745,6 +746,22 @@ cuda_py_test(
     ],
     # TODO(b/127344411): This test passes because XLA does not actually cluster
     # the self_adjoint_eig op.
+)
+
+cuda_py_test(
+    name = "slicing_test",
+    size = "small",
+    srcs = ["slicing_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/ops/linalg",
+        "//third_party/py/numpy",
+    ],
 )
 
 cuda_py_test(

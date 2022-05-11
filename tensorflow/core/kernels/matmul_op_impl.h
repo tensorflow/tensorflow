@@ -285,6 +285,8 @@ se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
   return typed;
 }
 
+}  // namespace
+
 class BlasScratchAllocator : public se::ScratchAllocator {
  public:
   using Stream = se::Stream;
@@ -317,7 +319,6 @@ class BlasScratchAllocator : public se::ScratchAllocator {
   OpKernelContext* context_;
   std::vector<Tensor> allocated_tensors_;
 };
-}  // namespace
 
 template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {

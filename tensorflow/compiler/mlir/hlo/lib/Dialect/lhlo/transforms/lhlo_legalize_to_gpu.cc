@@ -23,11 +23,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
@@ -183,7 +183,7 @@ struct LhloLegalizeToGpuPass
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
+                           memref::MemRefDialect, func::FuncDialect,
                            gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getOperation();
@@ -196,7 +196,7 @@ struct LhloLegalizeToGpuPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToGpuPass() {
   return std::make_unique<LhloLegalizeToGpuPass>();
 }
 

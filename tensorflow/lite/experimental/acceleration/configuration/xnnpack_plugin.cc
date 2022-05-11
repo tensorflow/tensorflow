@@ -37,6 +37,7 @@ class XNNPackPlugin : public DelegatePluginInterface {
     const auto* xnnpack_settings = tflite_settings.xnnpack_settings();
     if (xnnpack_settings) {
       options_.num_threads = xnnpack_settings->num_threads();
+      options_.flags = xnnpack_settings->flags();
     }
   }
 

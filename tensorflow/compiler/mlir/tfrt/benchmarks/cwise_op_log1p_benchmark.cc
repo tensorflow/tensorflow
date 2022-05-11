@@ -20,9 +20,9 @@ namespace tensorflow {
 using f32 = float;
 
 static const char* mlir_input = R"(
-func @log1p_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @log1p_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "tf.Log1p"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 )";
 

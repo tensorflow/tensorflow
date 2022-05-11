@@ -61,6 +61,8 @@ class OpConverterRegistry {
 
   StatusOr<OpConverter> LookUp(const string& name);
 
+  std::vector<std::string> ListRegisteredOps() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

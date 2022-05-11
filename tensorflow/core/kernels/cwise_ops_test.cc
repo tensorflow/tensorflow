@@ -56,6 +56,9 @@ int ColsFromArg(int arg) { return (arg % kRows); }
       ->UseRealTime()                                                      \
       ->Range(4 << 10, 1 << 20);
 
+BM_UNARY(cpu, LeakyRelu, float, DT_FLOAT);
+BM_UNARY(cpu, LeakyRelu, bfloat16, DT_BFLOAT16);
+
 BM_UNARY(cpu, Floor, float, DT_FLOAT);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_UNARY(gpu, Floor, float, DT_FLOAT);

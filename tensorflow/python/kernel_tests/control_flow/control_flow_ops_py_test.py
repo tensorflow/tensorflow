@@ -2309,8 +2309,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       ]
     _, r = control_flow_ops.while_loop(c, b, [i, x])
     self.assertEqual(r.row_splits.shape.as_list(), [3])
-    self.assertTrue(r.values.row_splits.shape.as_list() in ([6], [None]))
-    self.assertTrue(r.values.values.shape.as_list() in ([49], [None]))
+    self.assertIn(r.values.row_splits.shape.as_list(), ([6], [None]))
+    self.assertIn(r.values.values.shape.as_list(), ([49], [None]))
 
   def testWhileShapeInvariantTensorSpec(self):
     i = constant_op.constant(0)

@@ -18,6 +18,8 @@ limitations under the License.
 #include <time.h>
 
 #include <iostream>
+#include <string>
+#include <utility>
 
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -153,6 +155,11 @@ MinibenchmarkStatus Validator::CheckModel(bool load_only) {
     return kMinibenchmarkSuccess;
   }
 
+  if (compute_settings_->tflite_settings() &&
+      compute_settings_->tflite_settings()->disable_default_delegates()) {
+    resolver_ =
+        ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
+  }
   resolver_.AddCustom("validation/call",
                       ::tflite::acceleration::ops::Register_CALL(), 1);
   resolver_.AddCustom(

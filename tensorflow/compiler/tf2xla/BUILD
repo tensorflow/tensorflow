@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -47,6 +48,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
+        "//waymo/ml/deploy/benchmark/...",
     ],
 )
 
@@ -180,9 +182,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -643,6 +645,7 @@ cc_library(
     hdrs = ["frontend_attributes_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tf2xla_defs",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
@@ -686,12 +689,23 @@ tf_cc_test(
 # Internal targets below this point.
 
 cc_library(
+    name = "tf2xla_defs",
+    srcs = ["tf2xla_defs.cc"],
+    hdrs = ["tf2xla_defs.h"],
+    visibility = [":friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
     visibility = [":friends"],
     deps = [
         ":sharding_util",
+        ":tf2xla_defs",
         ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -856,6 +870,46 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "light_outside_compilation_kernels_for_test",
+    testonly = True,
+    srcs = ["light_outside_compilation_kernels_for_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/tf2xla/kernels:gpu_tf_kernel_custom_call",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+tf_gen_op_wrapper_py(
+    name = "test_ops_for_light_outside_compilation",
+    testonly = True,
+    out = "test_ops_for_light_outside_compilation.py",
+    deps = [
+        ":light_outside_compilation_kernels_for_test",
+    ],
+)
+
+cuda_py_test(
+    name = "light_outside_compilation_test",
+    srcs = ["light_outside_compilation_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        ":test_ops_for_light_outside_compilation",
+    ] + if_google([":light_outside_compilation_kernels_for_test"]),
+)
+
+cc_library(
     name = "functionalize_control_flow_util",
     srcs = [
         "functionalize_control_flow_util.cc",
@@ -933,6 +987,7 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        ":tf2xla_defs",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
@@ -943,6 +998,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
@@ -950,25 +1006,19 @@ cc_library(
 
 cc_library(
     name = "mlir_bridge_pass_registration",
-    srcs = if_libtpu(
-        if_false = [
-            "mlir_bridge_pass_registration.cc",
-        ],
-        if_true = [],
-    ),
+    srcs = [
+        "mlir_bridge_pass_registration.cc",
+    ],
     visibility = [
         # We define a new TPU device in TFRT to enable TFRT TPU Runtime.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
         ":internal",
     ],
-    deps = if_libtpu(
-        if_false = [
-            ":mlir_bridge_pass",
-            "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
-            "//tensorflow/core:core_cpu",
-        ],
-        if_true = [],
-    ),
+    deps = [
+        ":mlir_bridge_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
+        "//tensorflow/core:core_cpu",
+    ],
     alwayslink = 1,
 )
 
@@ -1039,6 +1089,7 @@ tf_cc_test(
     deps = [
         ":functionalize_control_flow",
         ":test_util",
+        ":tf2xla_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

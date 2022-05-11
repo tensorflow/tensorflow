@@ -983,8 +983,9 @@ struct Ceil {
 };
 struct CopySign {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    return bfloat16(
-        std::copysign(static_cast<float>(a), static_cast<float>(b)));
+    // LLVM is smart enough to turn this into (a & 0x7fff) | (b & 0x8000).
+    bfloat16 abs_a = Eigen::numext::abs(a);
+    return std::signbit(static_cast<float>(b)) ? -abs_a : abs_a;
   }
 };
 struct Exp {

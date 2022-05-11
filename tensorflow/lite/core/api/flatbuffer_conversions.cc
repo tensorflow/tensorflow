@@ -208,6 +208,14 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseBatchToSpaceNd(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_BROADCAST_ARGS: {
+      return ParseBroadcastArgs(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_BROADCAST_TO: {
+      return ParseBroadcastTo(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_CALL_ONCE: {
       return ParseCallOnce(op, error_reporter, allocator, builtin_data);
     }
@@ -334,6 +342,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
 
     case BuiltinOperator_LOG_SOFTMAX: {
       return ParseLogSoftmax(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LSTM: {
+      return ParseLSTM(op, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_MAXIMUM: {
@@ -605,37 +617,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_LSTM: {
-      auto params = safe_allocator.Allocate<TfLiteLSTMParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
-        params->activation =
-            ConvertActivation(lstm_params->fused_activation_function());
-        params->cell_clip = lstm_params->cell_clip();
-        params->proj_clip = lstm_params->proj_clip();
-        switch (lstm_params->kernel_type()) {
-          case LSTMKernelType_FULL:
-            params->kernel_type = kTfLiteLSTMFullKernel;
-            break;
-          case LSTMKernelType_BASIC:
-            params->kernel_type = kTfLiteLSTMBasicKernel;
-            break;
-          default:
-            TF_LITE_REPORT_ERROR(error_reporter,
-                                 "Unhandled LSTM kernel type: %d",
-                                 lstm_params->kernel_type());
-            return kTfLiteError;
-        }
-        params->asymmetric_quantize_inputs =
-            lstm_params->asymmetric_quantize_inputs();
-      } else {
-        TF_LITE_REPORT_ERROR(error_reporter,
-                             "No valid LSTM builtin options exist");
-        return kTfLiteError;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
       return ParseUnidirectionalSequenceLSTM(op, error_reporter, allocator,
                                              builtin_data);
@@ -867,6 +848,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_MATRIX_DIAG:
     case BuiltinOperator_MATRIX_SET_DIAG:
     case BuiltinOperator_RELU_N1_TO_1:
+    case BuiltinOperator_RELU_0_TO_1:
     case BuiltinOperator_SELECT:
     case BuiltinOperator_SELECT_V2:
     case BuiltinOperator_SLICE:
@@ -883,7 +865,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
-    case BuiltinOperator_BROADCAST_TO:
     case BuiltinOperator_RFFT2D:
     case BuiltinOperator_IMAG:
     case BuiltinOperator_REAL:
@@ -891,7 +872,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_FIND:
     case BuiltinOperator_HASHTABLE_IMPORT:
     case BuiltinOperator_HASHTABLE_SIZE:
-    case BuiltinOperator_BROADCAST_ARGS:
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
@@ -1086,6 +1066,22 @@ TfLiteStatus ParseBatchMatMul(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseBatchToSpaceNd(const Operator*, ErrorReporter*,
                                  BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBroadcastArgs(const Operator*, ErrorReporter*,
+                                BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBroadcastTo(const Operator*, ErrorReporter*,
+                              BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 
@@ -1606,6 +1602,40 @@ TfLiteStatus ParseLogistic(const Operator*, ErrorReporter*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseLogSoftmax(const Operator*, ErrorReporter*,
                              BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseLSTM(const Operator* op, ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteLSTMParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
+    params->activation =
+        ConvertActivation(lstm_params->fused_activation_function());
+    params->cell_clip = lstm_params->cell_clip();
+    params->proj_clip = lstm_params->proj_clip();
+    switch (lstm_params->kernel_type()) {
+      case LSTMKernelType_FULL:
+        params->kernel_type = kTfLiteLSTMFullKernel;
+        break;
+      case LSTMKernelType_BASIC:
+        params->kernel_type = kTfLiteLSTMBasicKernel;
+        break;
+      default:
+        TF_LITE_REPORT_ERROR(error_reporter, "Unhandled LSTM kernel type: %d",
+                             lstm_params->kernel_type());
+        return kTfLiteError;
+    }
+    params->asymmetric_quantize_inputs =
+        lstm_params->asymmetric_quantize_inputs();
+  } else {
+    TF_LITE_REPORT_ERROR(error_reporter, "No valid LSTM builtin options exist");
+    return kTfLiteError;
+  }
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
@@ -2331,6 +2361,31 @@ TfLiteStatus ParseVarHandle(const Operator* op, ErrorReporter* error_reporter,
     if (schema_params->shared_name()) {
       params->shared_name = schema_params->shared_name()->c_str();
     }
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteWhileParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteWhileParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const WhileOptions* schema_params = op->builtin_options_as_WhileOptions();
+
+  if (schema_params != nullptr) {
+    params->cond_subgraph_index = schema_params->cond_subgraph_index();
+    params->body_subgraph_index = schema_params->body_subgraph_index();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

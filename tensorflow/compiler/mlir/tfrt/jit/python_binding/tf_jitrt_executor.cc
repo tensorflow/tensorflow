@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/python_binding/conversion_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -45,7 +46,6 @@ using ::tfrt::AsyncValuePtr;
 using ::tfrt::CreateMallocAllocator;
 using ::tfrt::CreateMultiThreadedWorkQueue;
 using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::GetDType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
@@ -78,6 +78,7 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
                                                  const std::string& entrypoint,
                                                  Specialization specialization,
                                                  bool vectorize,
+                                                 bool codegen_transpose,
                                                  bool legalize_i1_tensors) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
   CompilationPipelineOptions copts;
@@ -95,11 +96,14 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
   opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
+    opts.codegen_transpose = codegen_transpose;
     opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfJitRtPipeline(pm, opts);
     CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
-  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  if (specialization != Specialization::kDisabled) {
+    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  }
   opts.specialization = specialization;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
@@ -114,108 +118,6 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
   Handle hdl = jit_executables_.size();
   jit_executables_.insert({hdl, std::move(*jit_executable)});
   return hdl;
-}
-
-// Returns Python buffer protocol's type string from TFRT's dtype.
-static const char* ToPythonStructFormat(DType dtype_kind) {
-  // Reference: https://docs.python.org/3/library/struct.html
-
-  switch (dtype_kind) {
-    case DType::Invalid:
-      throw std::runtime_error("Invalid dtype.");
-    case DType::Unsupported:
-      throw std::runtime_error("Unsupported dtype.");
-    case DType::UI8:
-      return "B";
-    case DType::UI16:
-      return "H";
-    case DType::UI32:
-      return "I";
-    case DType::UI64:
-      return "Q";
-    case DType::I1:
-      return "?";
-    case DType::I8:
-      return "b";
-    case DType::I16:
-      return "h";
-    case DType::I32:
-      return "i";
-    case DType::I64:
-      return "q";
-    case DType::F32:
-      return "f";
-    case DType::F64:
-      return "d";
-    case DType::Complex64:
-      throw std::runtime_error("Unimplemented.");
-    case DType::Complex128:
-      throw std::runtime_error("Unimplemented.");
-    case DType::F16:
-      throw std::runtime_error("Unimplemented.");
-    case DType::BF16:
-      throw std::runtime_error("Unimplemented.");
-    case DType::String:
-      throw std::runtime_error("Unimplemented.");
-    default:
-      throw std::runtime_error("Unimplemented.");
-  }
-}
-
-// Returns TFRT's dtype for the Python buffer protocol's type string.
-static DType FromPythonStructFormat(char dtype) {
-  // Reference: https://docs.python.org/3/library/struct.html
-  switch (dtype) {
-    case 'B':
-      return DType::UI8;
-    case 'H':
-      return DType::UI16;
-    case 'I':
-      return DType::UI32;
-    case 'Q':
-      return DType::UI64;
-    case '?':
-      return DType::I1;
-    case 'b':
-      return DType::I8;
-    case 'h':
-      return DType::I16;
-    case 'i':
-      return DType::I32;
-    case 'q':
-      return DType::I64;
-    case 'f':
-      return DType::F32;
-    case 'd':
-      return DType::F64;
-    default:
-      throw std::runtime_error("Unsupported python dtype.");
-  }
-}
-
-// Converts Python array to the Memref Descriptor.
-static void ConvertPyArrayMemrefDesc(const py::array& array,
-                                     MemrefDesc* memref) {
-  auto py_dtype = [](pybind11::dtype dtype) -> char {
-    // np.int64 array for some reason has `i` dtype, however according to the
-    // documentation it must be `q`.
-    if (dtype.kind() == 'i' && dtype.itemsize() == 8) return 'q';
-
-    return dtype.char_();
-  };
-
-  memref->dtype = DType(FromPythonStructFormat(py_dtype(array.dtype())));
-  memref->data = const_cast<void*>(array.data());
-  memref->offset = 0;
-
-  int rank = array.ndim();
-  memref->sizes.resize(rank);
-  memref->strides.resize(rank);
-
-  for (ssize_t d = 0; d < rank; ++d) {
-    memref->sizes[d] = array.shape(d);
-    memref->strides[d] = array.strides(d) / array.itemsize();
-  }
 }
 
 template <typename T, int rank>
@@ -289,7 +191,7 @@ struct MemrefToPyArray {
 
 std::vector<py::array> TfJitRtExecutor::Execute(
     Handle handle, const std::vector<py::array>& arguments) {
-  // Verify that we have a compilatio result for the handle.
+  // Verify that we have a compilation result for the handle.
   auto it = jit_executables_.find(handle);
   if (it == jit_executables_.end())
     throw std::runtime_error(StrCat("Unknown jit executable handle: ", handle));
@@ -303,9 +205,10 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
 
   // Convert arguments to memrefs.
-  std::vector<MemrefDesc> memrefs(arguments.size());
+  std::vector<MemrefDesc> memrefs;
+  memrefs.reserve(arguments.size());
   for (int i = 0; i < arguments.size(); ++i)
-    ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
+    memrefs.emplace_back(ConvertPyArrayMemrefDesc(arguments[i]));
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
@@ -333,7 +236,8 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   opts.async_task_runner = &async_task_runner;
 
   // Convert returned memrefs to python arrays.
-  PyBindingReturnValueConverter converter(results);
+  PyBindingConversionContext results_ctx;
+  PyBindingReturnValueConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto err = (*executable)->Execute(memrefs, converter, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
@@ -378,7 +282,8 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
-           py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
+           py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
+           py::arg("legalize_i1_tensors") = false)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));

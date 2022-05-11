@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H
+#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H
 
 #include <functional>
 #include <memory>
@@ -28,8 +28,6 @@ namespace bufferization {
 class BufferizeTypeConverter;
 }  // namespace bufferization
 namespace mhlo {
-
-class RemoveSignTypeConverter;
 
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(RewritePatternSet *patterns,
@@ -64,16 +62,8 @@ void populateHLOToLHLOConversionPattern(
     MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
-// Collection of rewrite patterns for lowering of HLO to memref dialect.
-// These patterns generally assume that the HLO operation are aliasing their
-// input memrefs. If enforce_identity_map returns true for an op, copies will be
-// inserted when the lowering would otherwise lead to a memref with a
-// non-identity map.
-void populateHLOToMemrefConversionPattern(
-    bufferization::BufferizeTypeConverter *converter,
-    RemoveSignTypeConverter *sign_converter, RewritePatternSet *patterns,
-    const std::function<bool(Operation *)> &enforce_identity_map =
-        [](Operation *) { return true; });
+// Collection of rewrite patterns for lowering of HLO to arithmetic dialect.
+void populateHLOToArithmeticConversionPatterns(RewritePatternSet *patterns);
 
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.
@@ -112,7 +102,6 @@ void PopulateDynamicShapeFusionPatterns(MLIRContext *context,
 
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
-// TODO(laurenzo): Implement un-fusing of batch_norm_training.
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      RewritePatternSet *patterns);
 
@@ -126,6 +115,9 @@ void PopulateTrigonometricToApproximationPatterns(MLIRContext *context,
 // eventually allow for larger fusions.
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns);
+
+// Populate patterns for iterative shape reification.
+void PopulateShapeReificationPatterns(MLIRContext *, RewritePatternSet *);
 
 // Populate patterns to group reduction and parallel dimensions of reduction
 // operations and realize them through equivalent 1D or 2D reductions.
@@ -160,4 +152,4 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H

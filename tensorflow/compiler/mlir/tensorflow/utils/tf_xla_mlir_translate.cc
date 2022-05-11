@@ -27,13 +27,13 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -261,7 +261,7 @@ Status CompileMlirToXlaHloViaBuilder(
   // have the proper shapes.
   TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
 
-  mlir::FuncOp main = module_op.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module_op.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 
@@ -299,9 +299,11 @@ Status CompileMlirToXlaHloViaBuilder(
 
   XlaHelpers::ShapeRepresentationFn shape_representation_fn =
       IdentityShapeRepresentationFn();
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   return PopulateResultIOInfo(module_op, arg_shapes, /*use_tuple_args=*/false,
                               /*use_resource_updates_for_aliases=*/false,
-                              shape_representation_fn, compilation_result);
+                              shape_determination_fns, compilation_result);
 }
 
 static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
@@ -328,7 +330,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
                         module_op, arg_shapes, device_type, emit_use_tuple_arg,
                         /*analyse_graph=*/false, emit_return_tuple,
                         /*use_resource_updates_for_aliases=*/true,
-                        IdentityShapeRepresentationFn(), &compilation_result,
+                        /*shape_determination_fns=*/{}, &compilation_result,
                         custom_legalization_passes);
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
@@ -357,7 +359,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       CompileGraphToXlaHlo(module_op, xla_arguments,
                            /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
                            /*analyse_graph=*/false, emit_return_tuple,
-                           IdentityShapeRepresentationFn(), &compilation_result,
+                           /*shape_determination_fns=*/{}, &compilation_result,
                            /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
@@ -369,7 +371,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                   mlir::TF::TensorFlowDialect>();
 }
 

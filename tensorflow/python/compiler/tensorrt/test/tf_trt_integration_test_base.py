@@ -474,14 +474,36 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
-    int8_gdef = converter.convert()
-    self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
-                         GraphState.CALIBRATE)
+    if run_params.is_v2:
 
-    converter.calibrate(
-        fetch_names=self._GetFetchNames(),
-        num_runs=5,
-        feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
+      def CalibrationInputFn():
+        for data_tensors in inputs_data:
+          yield data_tensors
+
+      converter.convert(calibration_input_fn=CalibrationInputFn)
+    else:
+      int8_gdef = converter.convert()
+      self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
+                           GraphState.CALIBRATE)
+
+      converter.calibrate(
+          fetch_names=self._GetFetchNames(),
+          num_runs=5,
+          feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
+
+    if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
+      logging.info("Using build mode")
+
+      def _BuildInputFn():
+        for shapes in self._GetParamsCached().input_dims:
+          yield [
+              array_ops.zeros(x, dtype=spec.dtype)
+              for (x, spec) in zip(shapes,
+                                   self._GetParamsCached().input_specs)
+          ]
+
+      converter.build(input_fn=_BuildInputFn)
+
     trt_saved_model_dir = self._GetSavedModelDir(run_params,
                                                  GraphState.CALIBRATE)
     converter.save(trt_saved_model_dir)
@@ -498,6 +520,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
     converter.convert()
+
+    if run_params.is_v2:
+      try:
+        line_length = max(160, os.get_terminal_size().columns)
+      except OSError:
+        line_length = 160
+      converter.summary(line_length=line_length, detailed=True)
 
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
@@ -1047,6 +1076,7 @@ def _GetTestConfigsV2():
   dynamic_engine = True
   # TODO(laigd): add support for calibration.
   no_calibration = False
+  use_calibration = True
 
   # Add all possible test cases and let the derived test class to decide
   # whether to run specific ones with ShouldRunTest().
@@ -1058,11 +1088,11 @@ def _GetTestConfigsV2():
   #   Grappler config in default eager context.
   # - INT8 without calibration behaves like FP32/FP16.
   opts = list(
-      itertools.product([FP32, FP16, INT8], [convert_offline], [dynamic_engine],
+      itertools.product([FP32, FP16], [convert_offline], [dynamic_engine],
                         [no_calibration], [False, True]))
   # We always run calibration with offline tool.
-  # TODO(aaroey): INT8+calibration is not supported yet in V2.
-  # opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, False))
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, True))
   return opts
 
 

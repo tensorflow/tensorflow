@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -57,7 +57,7 @@ class ConvertControlToDataOutputsPass
 
 // Returns a vector of all tf.WhileOp(s) which use func as while body. If any of
 // the uses is as a while condition, an empty vector is returned.
-SmallVector<TF::WhileOp> GetWhileCallers(FuncOp func,
+SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
                                          SymbolUserMap& symbol_map) {
   SmallVector<TF::WhileOp> while_callers;
   for (auto user : symbol_map.getUsers(func)) {
@@ -77,7 +77,7 @@ SmallVector<TF::WhileOp> GetWhileCallers(FuncOp func,
 // `resource_equivalence_classes`. Resources are equivalent if they are accessed
 // by a common op, and equivalent resources will be assigned to the same chain.
 void CollectChainResources(
-    FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
+    func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   auto graph_op = cast<GraphOp>(func.front().front());
@@ -145,7 +145,7 @@ bool IsNoOpControlBarrier(Value control) {
 // Remove all control outputs of the function. Traverses NoOp control barrier
 // chains from FetchOp to all NoOp control barriers. Returns true
 // iff at least one control output is deleted.
-bool RemoveAllControlOutputs(FuncOp func) {
+bool RemoveAllControlOutputs(func::FuncOp func) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   FetchOp fetch = graph_op.GetFetch();
@@ -187,7 +187,7 @@ bool RemoveAllControlOutputs(FuncOp func) {
 
 // Appends function arguments with `num_resources` number of arguments of
 // requested type.
-void AppendFunctionArguments(FuncOp func, int num_resources,
+void AppendFunctionArguments(func::FuncOp func, int num_resources,
                              ShapedType chaining_data_type) {
   for (int i = 0; i < num_resources; ++i) {
     func.getRegion().addArgument(chaining_data_type, func.getLoc());
@@ -195,13 +195,13 @@ void AppendFunctionArguments(FuncOp func, int num_resources,
 
   FunctionType ftype =
       FunctionType::get(func.getContext(), func.getBody().getArgumentTypes(),
-                        func.getType().getResults());
+                        func.getFunctionType().getResults());
   func.setType(ftype);
 }
 
 // Appends function results with `num_resources` number of results of requested
 // type.
-void AppendFunctionResults(FuncOp func, int num_resources,
+void AppendFunctionResults(func::FuncOp func, int num_resources,
                            ShapedType chaining_data_type) {
   Block& block = func.front();
   auto graph_op = cast<GraphOp>(block.front());
@@ -210,7 +210,8 @@ void AppendFunctionResults(FuncOp func, int num_resources,
   assert(std::equal(func->getResultTypes().begin(),
                     func->getResultTypes().end(),
                     graph_op->getResultTypes().begin()));
-  auto new_result_types = llvm::to_vector<4>(func.getType().getResults());
+  auto new_result_types =
+      llvm::to_vector<4>(func.getFunctionType().getResults());
   for (int i = 0; i < num_resources; ++i) {
     new_result_types.push_back(chaining_data_type);
   }
@@ -227,7 +228,7 @@ void AppendFunctionResults(FuncOp func, int num_resources,
   graph_op->replaceAllUsesWith(
       new_graph_op->getResults().drop_back(num_resources));
   graph_op.erase();
-  ReturnOp return_op = cast<ReturnOp>(block.getTerminator());
+  func::ReturnOp return_op = cast<func::ReturnOp>(block.getTerminator());
   int num_old_arguments = return_op.getNumOperands();
   for (int i = 0; i < num_resources; ++i) {
     return_op.operandsMutable().append(
@@ -259,7 +260,7 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
 // equivalence class, and (2) a control dependency from all the operations that
 // read/write to a resource of the class to the chain_sink operation.
 void ChainResourceOps(
-    FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
+    func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
     int num_old_outputs) {
   assert(num_old_outputs + resource_equivalence_classes.getNumClasses() ==
@@ -372,7 +373,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
 // Converts the control outputs of the while body to data outputs, thus
 // removing control barrier at the end of while loop body.
 void ConvertControlToDataOutputs(
-    FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
+    func::FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
     OperationSetTy& recompute_analysis_for_funcs,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   if (while_callers.empty()) return;
@@ -430,8 +431,9 @@ void ConvertControlToDataOutputs(
     // If the while callers are modified as part of the optimization, then the
     // side effect analysis of their parent functions are invalidated. They
     // need to be recomputed.
-    recompute_analysis_for_funcs.insert(while_op->getParentOfType<FuncOp>());
-    FuncOp while_cond = while_op.cond_function();
+    recompute_analysis_for_funcs.insert(
+        while_op->getParentOfType<func::FuncOp>());
+    func::FuncOp while_cond = while_op.cond_function();
     // Rewrite while op with extra chaining arguments and results.
     while_op = RewriteWhileOp(while_op, num_chains, chaining_data_type);
     bool first_visit = visited.insert(while_cond).second;
@@ -454,13 +456,13 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
 
   SymbolTableCollection table;
   SymbolUserMap symbol_map(table, module);
-  llvm::SmallDenseMap<FuncOp, SmallVector<TF::WhileOp>>
+  llvm::SmallDenseMap<func::FuncOp, SmallVector<TF::WhileOp>>
       while_body_func_to_while_ops;
 
   // Get all the while body functions and the corresponding while ops first
   // because the symbol user map is invalidated once we start deleting while
   // ops.
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (func.isExternal()) continue;
     SmallVector<TF::WhileOp> while_callers = GetWhileCallers(func, symbol_map);
     if (while_callers.empty()) continue;
@@ -471,7 +473,7 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
   OperationSetTy recompute_analysis_for_funcs;
 
   for (auto& entry : while_body_func_to_while_ops) {
-    FuncOp while_body = entry.getFirst();
+    func::FuncOp while_body = entry.getFirst();
     SmallVector<TF::WhileOp>& while_callers = entry.getSecond();
     if (recompute_analysis_for_funcs.contains(while_body)) {
       // TODO(b/202540801): Recomputing side effect analysis for the entire

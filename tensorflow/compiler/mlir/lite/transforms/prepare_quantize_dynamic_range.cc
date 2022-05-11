@@ -77,13 +77,15 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // applicable.
 class PrepareDynamicRangeQuantizePass
     : public PassWrapper<PrepareDynamicRangeQuantizePass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareDynamicRangeQuantizePass)
+
   // Constructor used by the PassRegistration. This is only used by test.
   explicit PrepareDynamicRangeQuantizePass() {
     quant_specs_.inference_type = enable_float16_quantization
@@ -95,12 +97,13 @@ class PrepareDynamicRangeQuantizePass
         !enable_dynamic_range_per_channel_quantization;
     quant_specs_.minimum_elements_for_weights = min_elements_for_weights;
     ParseCustomOpSpecs(enable_custom_op_quantization,
-                       CustomOpUpdateOptions::kINputIndices,
+                       quant::CustomOpUpdateOptions::kINputIndices,
                        quant_specs_.custom_map);
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs)
+  explicit PrepareDynamicRangeQuantizePass(
+      const quant::QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
   StringRef getArgument() const final {
@@ -114,12 +117,12 @@ class PrepareDynamicRangeQuantizePass
   // dynamic range quantization. And stats ops may cause conflict while
   // processing the function for dynamic range quantization. Therefore, this
   // method preprocess the function to remove all stats ops.
-  void removeAllStatsOp(FuncOp func);
+  void removeAllStatsOp(func::FuncOp func);
 
   void runOnOperation() override;
 
  private:
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
@@ -130,7 +133,7 @@ class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDynamicRangeQuantizableOp(
-      MLIRContext* context, const QuantizationSpecs& quant_specs)
+      MLIRContext* context, const quant::QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs) {}
 
@@ -202,7 +205,7 @@ class PrepareDynamicRangeQuantizableOp
     int quantize_operand_num = quant_op.second;
 
     // If the constant is an output tensor, do nothing.
-    if (llvm::dyn_cast_or_null<ReturnOp>(quantize_op)) {
+    if (llvm::dyn_cast_or_null<func::ReturnOp>(quantize_op)) {
       return;
     }
 
@@ -424,11 +427,11 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  protected:
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
-void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
+void PrepareDynamicRangeQuantizePass::removeAllStatsOp(func::FuncOp func) {
   func.walk([&](quant::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.arg());
     stats_op.erase();
@@ -436,7 +439,7 @@ void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
 }
 
 void PrepareDynamicRangeQuantizePass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
@@ -453,8 +456,9 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
-    const QuantizationSpecs& quant_specs) {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreatePrepareDynamicRangeQuantizePass(
+    const quant::QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareDynamicRangeQuantizePass>(quant_specs);
 }
 

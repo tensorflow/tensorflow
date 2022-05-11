@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -159,25 +158,28 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   absl::string_view DisplayName() const { return metadata_->display_name(); }
 
-  double OffsetNs() const { return PicosToNanos(event_->offset_ps()); }
+  double OffsetNs() const { return PicoToNano(event_->offset_ps()); }
 
   int64_t OffsetPs() const { return event_->offset_ps(); }
 
   int64_t LineTimestampNs() const { return line_->timestamp_ns(); }
 
-  double TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
 
   int64_t TimestampPs() const {
-    return NanosToPicos(line_->timestamp_ns()) + event_->offset_ps();
+    return NanoToPico(line_->timestamp_ns()) + event_->offset_ps();
   }
 
-  double DurationNs() const { return PicosToNanos(event_->duration_ps()); }
+  double DurationNs() const { return PicoToNano(event_->duration_ps()); }
 
   int64_t DurationPs() const { return event_->duration_ps(); }
 
   int64_t EndOffsetPs() const {
     return event_->offset_ps() + event_->duration_ps();
   }
+
+  int64_t EndTimestampNs() const { return TimestampNs() + DurationNs(); }
+
   int64_t EndTimestampPs() const { return TimestampPs() + DurationPs(); }
 
   int64_t NumOccurrences() const { return event_->num_occurrences(); }
@@ -221,7 +223,7 @@ class XLineVisitor {
                                           : line_->name();
   }
 
-  double TimestampNs() const { return line_->timestamp_ns(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns(); }
 
   int64_t DurationPs() const { return line_->duration_ps(); }
 
@@ -261,6 +263,16 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
     for (const XLine& line : plane_->lines()) {
       for_each_line(XLineVisitor(this, &line));
     }
+  }
+  template <typename ThreadBundle, typename ForEachLineFunc>
+  void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
+    ThreadBundle bundle;
+    for (const XLine& line : plane_->lines()) {
+      bundle.Add([this, line = &line, &for_each_line] {
+        for_each_line(XLineVisitor(this, line));
+      });
+    }
+    bundle.JoinAll();
   }
 
   // Returns event metadata given its id. Returns a default value if not found.

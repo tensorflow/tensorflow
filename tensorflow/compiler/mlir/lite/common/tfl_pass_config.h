@@ -30,21 +30,22 @@ namespace TFL {
 
 // A config that controls which passes get run as part TFLite converter.
 struct PassConfig {
-  explicit PassConfig(QuantizationSpecs specs)
+  explicit PassConfig(quant::QuantizationSpecs specs)
       : emit_builtin_tflite_ops(true),
         lower_tensor_list_ops(false),
         trim_functions_allowlist({}),
         quant_specs(std::move(specs)),
         form_clusters(false),
         unfold_batch_matmul(true),
-        legalize_tf_while(true),
         shape_inference(true),
         runtime_verification(true),
         enable_tflite_variables(false),
         disable_variable_freezing(false),
         unfold_large_splat_constant(false),
         guarantee_all_funcs_one_use(false),
-        enable_hlo_to_tf_conversion(false) {}
+        enable_hlo_to_tf_conversion(false),
+        enable_dynamic_update_slice(false),
+        preserve_assert_op(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -55,17 +56,13 @@ struct PassConfig {
   // The allowlist of functions that would be preserved after trimming.
   llvm::ArrayRef<std::string> trim_functions_allowlist;
   // All information about quantization.
-  QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs;
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;
   // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.
   bool unfold_batch_matmul;
-  // Whether to legalize TF While to TFL While.
-  // Note: This is staging step and will be removed.
-  // TODO(b/137395003): Remove post switching legalization.
-  bool legalize_tf_while;
   // Whether to outline WhileOp at the end of the pipeline.
   bool outline_tf_while = false;
   // Whether to do shape inference.
@@ -87,6 +84,10 @@ struct PassConfig {
   bool guarantee_all_funcs_one_use;
   // Whether to enable the hlo to tf conversion.
   bool enable_hlo_to_tf_conversion;
+  // Whether to enable to use DynamicUpdateSlice op.
+  bool enable_dynamic_update_slice;
+  // Whether to preserve AssertOp during legalization.
+  bool preserve_assert_op;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -98,7 +99,6 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << absl::StrJoin(pass_config.trim_functions_allowlist.vec(), ",")
             << "\nform_clusters: " << pass_config.form_clusters
             << "\nunfold_batch_matmul: " << pass_config.unfold_batch_matmul
-            << "\nlegalize_tf_while: " << pass_config.legalize_tf_while
             << "\noutline_tf_while: " << pass_config.outline_tf_while
             << "\nshape_inference: " << pass_config.shape_inference
             << "\nruntime_verification: " << pass_config.runtime_verification

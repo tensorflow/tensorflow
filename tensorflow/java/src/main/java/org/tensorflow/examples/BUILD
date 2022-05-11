@@ -26,5 +26,5 @@ filegroup(
             "**/*.class",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )

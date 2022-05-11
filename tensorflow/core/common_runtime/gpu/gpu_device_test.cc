@@ -144,7 +144,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(devices.size(), 1);
     Device* device = devices[0].get();
-    auto* device_info = device->tensorflow_gpu_device_info();
+    auto* device_info = device->tensorflow_accelerator_device_info();
     EXPECT_NE(device_info, nullptr);
 
     AllocatorAttributes allocator_attributes = AllocatorAttributes();
@@ -173,7 +173,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(devices.size(), 1);
     Device* device = devices[0].get();
-    auto* device_info = device->tensorflow_gpu_device_info();
+    auto* device_info = device->tensorflow_accelerator_device_info();
     CHECK(device_info);
 
     AllocatorAttributes allocator_attributes = AllocatorAttributes();
@@ -484,7 +484,7 @@ TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   Device* device = devices[0].get();
-  auto* device_info = device->tensorflow_gpu_device_info();
+  auto* device_info = device->tensorflow_accelerator_device_info();
   CHECK(device_info);
   DeviceContext* device_context = device_info->default_context;
   Allocator* allocator = device->GetAllocator(AllocatorAttributes());

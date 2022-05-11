@@ -26,67 +26,16 @@ from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import trackable_utils
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
-
-_ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.
-
-# Keyword for identifying that the next bit of a checkpoint variable name is a
-# slot name. Checkpoint names for slot variables look like:
-#
-#   <path to variable>/<_OPTIMIZER_SLOTS_NAME>/<path to optimizer>/<slot name>
-#
-# Where <path to variable> is a full path from the checkpoint root to the
-# variable being slotted for.
-_OPTIMIZER_SLOTS_NAME = _ESCAPE_CHAR + "OPTIMIZER_SLOT"
-# Keyword for separating the path to an object from the name of an
-# attribute in checkpoint names. Used like:
-#   <path to variable>/<_OBJECT_ATTRIBUTES_NAME>/<name of attribute>
-_OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
 
 # Factory and related info used to build a SaveableObject that saves a Trackable
 # to checkpoint.
 _CheckpointFactoryData = collections.namedtuple(
     "_CheckpointFactoryData", ["factory", "name", "checkpoint_key"])
-
-
-def _escape_local_name(name):
-  # We need to support slashes in local names for compatibility, since this
-  # naming scheme is being patched in to things like Layer.add_variable where
-  # slashes were previously accepted. We also want to use slashes to indicate
-  # edges traversed to reach the variable, so we escape forward slashes in
-  # names.
-  return (name.replace(_ESCAPE_CHAR, _ESCAPE_CHAR + _ESCAPE_CHAR)
-          .replace(r"/", _ESCAPE_CHAR + "S"))
-
-
-def _object_prefix_from_path(node_paths):
-  return "/".join(
-      (_escape_local_name(trackable.name)
-       for trackable in node_paths))
-
-
-def _slot_variable_naming_for_optimizer(optimizer_path):
-  """Make a function for naming slot variables in an optimizer."""
-  # Name slot variables:
-  #
-  #   <variable name>/<_OPTIMIZER_SLOTS_NAME>/<optimizer path>/<slot name>
-  #
-  # where <variable name> is exactly the checkpoint name used for the original
-  # variable, including the path from the checkpoint root and the local name in
-  # the object which owns it. Note that we only save slot variables if the
-  # variable it's slotting for is also being saved.
-
-  optimizer_identifier = "/%s/%s/" % (_OPTIMIZER_SLOTS_NAME, optimizer_path)
-
-  def _name_slot_variable(variable_path, slot_name):
-    """With an optimizer specified, name a slot variable."""
-    return (variable_path
-            + optimizer_identifier
-            + _escape_local_name(slot_name))
-
-  return _name_slot_variable
 
 
 def _serialize_slot_variables(trackable_objects, node_ids, object_names):
@@ -99,8 +48,6 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
         # Note: dir() is used rather than hasattr() here to avoid triggering
         # custom __getattr__ code, see b/152031870 for context.
         or "_create_or_restore_slot_variable" in dir(trackable)):
-      naming_scheme = _slot_variable_naming_for_optimizer(
-          optimizer_path=object_names[trackable])
       slot_names = trackable.get_slot_names()
       for slot_name in slot_names:
         for original_variable_node_id, original_variable in enumerate(
@@ -124,8 +71,9 @@ def _serialize_slot_variables(trackable_objects, node_ids, object_names):
                 "A slot variable was re-used as a dependency of a Trackable "
                 f"object: {slot_variable}. This is not currently allowed. "
                 "File a feature request if this limitation bothers you.")
-          checkpoint_name = naming_scheme(
+          checkpoint_name = trackable_utils.slot_variable_key(
               variable_path=object_names[original_variable],
+              optimizer_path=object_names[trackable],
               slot_name=slot_name)
           object_names[slot_variable] = checkpoint_name
           slot_variable_node_id = len(trackable_objects)
@@ -178,9 +126,9 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
     else:
       checkpoint_factory_map[trackable] = []
       for name, saveable_factory in (
-          object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
-        checkpoint_key = "%s/%s/%s" % (
-            object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
+          saveable_object_util.saveable_objects_from_trackable(object_to_save)
+          .items()):  # pylint: disable=protected-access
+        checkpoint_key = trackable_utils.checkpoint_key(object_name, name)
         checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
             factory=saveable_factory,
             name=name,
@@ -252,8 +200,10 @@ class ObjectGraphView(object):
     """
     # pylint: disable=protected-access
     obj._maybe_initialize_trackable()
-    children = [base.TrackableReference(name, ref) for name, ref
-                in obj._trackable_children(save_type, **kwargs).items()]
+    children = []
+    for name, ref in obj._trackable_children(save_type, **kwargs).items():
+      ref = tracking.convert_to_trackable(ref, parent=obj)
+      children.append(base.TrackableReference(name, ref))
     # pylint: enable=protected-access
 
     # GraphView objects may define children of the root object that are not
@@ -496,7 +446,7 @@ class ObjectGraphView(object):
     """Create SaveableObjects and protos for gathered objects."""
     object_names = object_identity.ObjectIdentityDictionary()
     for obj, path in node_paths.items():
-      object_names[obj] = _object_prefix_from_path(path)
+      object_names[obj] = trackable_utils.object_path_to_string(path)
     node_ids = object_identity.ObjectIdentityDictionary()
     for node_id, node in enumerate(trackable_objects):
       node_ids[node] = node_id
@@ -597,7 +547,7 @@ class ObjectGraphView(object):
     trackable_objects, node_paths = self._breadth_first_traversal()
     object_names = object_identity.ObjectIdentityDictionary()
     for obj, path in node_paths.items():
-      object_names[obj] = _object_prefix_from_path(path)
+      object_names[obj] = trackable_utils.object_path_to_string(path)
     node_ids = object_identity.ObjectIdentityDictionary()
     for node_id, node in enumerate(trackable_objects):
       node_ids[node] = node_id

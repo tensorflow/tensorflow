@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RiscDiv"
   input_arg {
     name: "x"

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 
 namespace tensorflow {
 
@@ -77,8 +78,15 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   auto result_values = std::array<RCReference<AsyncValue>, 2>{{}};
   RemainingResults results(result_values);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
+  for (auto& operand : operands) {
+    input_ptrs.push_back(operand.data());
+  }
+
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  ResultConversionCtx result_ctx(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Execute async tasks in the HostContext work queue.

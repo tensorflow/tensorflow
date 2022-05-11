@@ -460,7 +460,11 @@ class MiniBenchmarkImpl : public MiniBenchmark {
     *nnapi_sl = nullptr;
     const auto& settings_to_test = *settings_->settings_to_test();
     for (const auto* setting_to_test : settings_to_test) {
-      if (setting_to_test->nnapi_settings()) {
+      // Check that there are not two different NNAPI-with-SL configurations
+      // with different support library instances.
+      if (setting_to_test->delegate() == Delegate_NNAPI &&
+          setting_to_test->nnapi_settings() &&
+          setting_to_test->nnapi_settings()->support_library_handle()) {
         const NnApiSLDriverImplFL5* curr_nnapi_sl_handle =
             reinterpret_cast<const NnApiSLDriverImplFL5*>(
                 setting_to_test->nnapi_settings()->support_library_handle());

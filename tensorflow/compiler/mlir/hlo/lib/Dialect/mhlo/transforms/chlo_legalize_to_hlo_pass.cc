@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 
@@ -47,13 +47,13 @@ struct ChloLegalizeToHloPass
   void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
     RewritePatternSet conversionPatterns(&getContext());
-    conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
+    conversionTarget.addIllegalDialect<chlo::ChloDialect>();
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget
         .addLegalDialect<MhloDialect, mlir::arith::ArithmeticDialect,
-                         mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
+                         mlir::func::FuncDialect, mlir::tensor::TensorDialect,
                          mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
@@ -78,7 +78,7 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createChloLegalizeToHloPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalize_broadcasts, bool expand_compositions) {
   return std::make_unique<ChloLegalizeToHloPass>(legalize_broadcasts,
                                                  expand_compositions);

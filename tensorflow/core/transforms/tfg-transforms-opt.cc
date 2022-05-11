@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 
@@ -23,8 +24,14 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerCanonicalizerPass();
   mlir::registerPrintOpStatsPass();
+  mlir::registerViewOpGraphPass();
   mlir::tfg::registerTFGraphPasses();
   registry.insert<mlir::tfg::TFGraphDialect, mlir::tf_type::TFTypeDialect>();
+  // Inject the op registry.
+  registry.addExtension(
+      +[](mlir::MLIRContext *ctx, mlir::tfg::TFGraphDialect *dialect) {
+        dialect->addInterfaces<mlir::tfg::TensorFlowOpRegistryInterface>();
+      });
   return failed(
       mlir::MlirOptMain(argc, argv, "TFGraph Transforms Driver", registry));
 }

@@ -450,6 +450,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                  Item* item, DoneCallback done);
 
+  // TODO(fishx): Avoid using std::unique_ptr for PrivateIntraProcessRendezvous,
+  // since it will allocate the object on heap.
   Status PrepareRunSync(
       Handle handle, Options* run_opts, Item** out_item,
       std::unique_ptr<PrivateIntraProcessRendezvous>* out_rendezvous);
@@ -541,18 +543,13 @@ class CallOp : public AsyncOpKernel {
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.collective_executor = ctx->collective_executor();
+    opts.stack_trace = ctx->stack_trace();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    profiler::TraceMe trace_me(
-        [&] {
-          return absl::StrCat("CallOp #parent_step_id=", ctx->step_id(),
-                              ",function_step_id=", opts.step_id, "#");
-        },
-        /*level=*/2);
     lib->Run(opts, handle_, args, rets,
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
@@ -1029,6 +1026,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   exec_args->run_all_kernels_inline = run_opts.run_all_kernels_inline;
   exec_args->user_intra_op_threadpool = run_opts.user_intra_op_threadpool;
   exec_args->coordination_service_agent = run_opts.coordination_service_agent;
+  exec_args->stack_trace = run_opts.stack_trace;
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
@@ -1136,11 +1134,11 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   Options run_opts = opts;
   if (opts.create_rendezvous) {
-    auto* rendezvous = new PrivateIntraProcessRendezvous(device_mgr_);
+    auto* rendezvous = new RefCountedIntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
     done = [done = std::move(done), rendezvous](const Status& status) mutable {
-      delete rendezvous;
+      rendezvous->Unref();
       done(status);
     };
   }
@@ -1216,11 +1214,11 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
   Options run_opts = opts;
   if (opts.create_rendezvous) {
-    auto* rendezvous = new PrivateIntraProcessRendezvous(device_mgr_);
+    auto* rendezvous = new RefCountedIntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
     done = [done = std::move(done), rendezvous](const Status& status) mutable {
-      delete rendezvous;
+      rendezvous->Unref();
       done(status);
     };
   }
@@ -1380,16 +1378,16 @@ namespace {
 
 struct CustomCreatorSingleton {
   mutex mu;
-  CustomKernelCreator* custom_creator = nullptr;
+  std::unique_ptr<CustomKernelCreator> custom_creator = nullptr;
 
   void Set(CustomKernelCreator* cb) {
     mutex_lock l(mu);
-    custom_creator = cb;
+    custom_creator.reset(cb);
   }
 
   CustomKernelCreator* Get() {
     mutex_lock l(mu);
-    return custom_creator;
+    return custom_creator.get();
   }
 };
 

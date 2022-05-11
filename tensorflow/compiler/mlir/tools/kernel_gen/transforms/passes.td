@@ -38,15 +38,14 @@ def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
   let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
-def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::FuncOp"> {
+def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::func::FuncOp"> {
   let summary = "Pass to rewrite all TF operations to JIT invocations";
   let constructor = "transforms::CreateTFToJITInvocationPass()";
   let options = [
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
-                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+                 "llvm::cl::ZeroOrMore">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
-                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
-                 "llvm::cl::MiscFlags::CommaSeparated">,
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore">,
       Option<"max_supported_rank_", "max-supported-rank", "int64_t",
              /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
@@ -62,7 +61,7 @@ def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::FuncOp"> {
   ];
 }
 
-def BufferReusePass : Pass<"buffer-reuse", "mlir::FuncOp"> {
+def BufferReusePass : Pass<"buffer-reuse", "mlir::func::FuncOp"> {
   let summary = "Pass to find and annotate candidates for buffer reuse.";
   let constructor = "transforms::CreateBufferReusePass()";
 }
@@ -72,26 +71,10 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform compute operations (hlo and linalg) on "
-                "values to buffer based ones.";
-  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
-}
-
-def TiledLoopBufferizePass : Pass<"tiled-loop-bufferize", "mlir::FuncOp"> {
-  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
-  let constructor = "transforms::CreateTiledLoopBufferizePass()";
-}
-
-def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+def KernelgenFinalBufferizePass : Pass<"kernelgen-final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
-  let constructor = "transforms::CreateFinalBufferizePass()";
-}
-
-def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
-  let summary = "Pass to transform the IR to be on signless integers.";
-  let constructor = "transforms::CreateConvertToSignlessPass()";
+  let constructor = "transforms::CreateKernelgenFinalBufferizePass()";
 }
 
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
@@ -121,30 +104,31 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
 
-def ParallelLoopsToSequential : Pass<"parallel-loops-to-sequential", "mlir::FuncOp"> {
+def ParallelLoopsToSequential : Pass<"parallel-loops-to-sequential", "mlir::func::FuncOp"> {
   let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
   let constructor = "transforms::CreateParallelLoopsToSequential()";
 }
 
 def PropagateTfAbiKnowledgeToKernels
-    : Pass<"propagate-tf-abi-knowledge-to-kernels", "mlir::FuncOp"> {
+    : Pass<"propagate-tf-abi-knowledge-to-kernels", "mlir::func::FuncOp"> {
   let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
   let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
 }
 
 def PropagateShapeKnowledgeToKernels
-    : Pass<"propagate-shape-knowledge-to-kernels", "mlir::FuncOp"> {
+    : Pass<"propagate-shape-knowledge-to-kernels", "mlir::func::FuncOp"> {
   let summary = "Pass to propagate shape information into kernels";
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
-def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::FuncOp"> {
+def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
+  let dependentDialects = ["LLVM::LLVMDialect"];
 }
 
 def MapParallelLoopsPass
-    : Pass<"map-parallel-loops-to-gpu", "mlir::FuncOp"> {
+    : Pass<"map-parallel-loops-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Greedily maps loops to GPU hardware dimensions.";
   let constructor = "transforms::CreateMapParallelLoopsPass()";
   let description = [{
@@ -153,7 +137,7 @@ def MapParallelLoopsPass
 }
 
 def FuseInnerParallelLoopsPass
-    : Pass<"fuse-inner-parallel-loops", "mlir::FuncOp"> {
+    : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
   let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
   let description = [{
@@ -163,19 +147,7 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
-def LowerIndexCastPass
-    : Pass<"kernelgen-lower-index-cast", "mlir::FuncOp"> {
-  let summary = "Lower index cast on tensors to tensor dialect";
-  let constructor = "transforms::CreateLowerIndexCastPass()";
-}
-
-def ShapeSimplification
-    : Pass<"kernelgen-shape-simplification", "mlir::FuncOp"> {
-  let summary = "Simplify shape ops";
-  let constructor = "transforms::CreateShapeSimplification()";
-}
-
-def VectorizationPass : Pass<"vectorization", "mlir::FuncOp"> {
+def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
   let summary = "Pass to create vectorized operations for CPU.";
   let constructor = "transforms::CreateVectorizationPass()";
   let description = [{
@@ -184,7 +156,7 @@ def VectorizationPass : Pass<"vectorization", "mlir::FuncOp"> {
   }];
 }
 
-def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::FuncOp"> {
+def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::func::FuncOp"> {
   let summary = "Pass to remove dead code in VectorizationPass.";
   let constructor = "transforms::CreateVectorizationCleanupPass()";
   let description = [{
@@ -194,7 +166,7 @@ def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::FuncOp"> {
   }];
 }
 
-def CopyCleanupPass : Pass<"copy-cleanup", "mlir::FuncOp"> {
+def CopyCleanupPass : Pass<"copy-cleanup", "mlir::func::FuncOp"> {
   let summary = "Pass to remove copies which are consumed by a GenericOp.";
   let constructor = "transforms::CreateCopyCleanupPass()";
   let description = [{

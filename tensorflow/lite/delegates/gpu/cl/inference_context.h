@@ -61,11 +61,18 @@ struct CLNode {
   CLNode& operator=(const CLNode&) = delete;
 };
 
+enum class TensorType { kVariable, kConst, kExternal, kRuntime };
+
 class InferenceContext {
  public:
   absl::Status InitFromGraph(const CreateGpuModelInfo& create_info,
                              const GraphFloat32& graph, Environment* env,
                              std::vector<uint8_t>* serialized_model = nullptr);
+
+  absl::Status InitFromGpuModel(
+      const CreateGpuModelInfo& create_info, GpuModel* gpu_model,
+      Environment* env, std::vector<uint8_t>* serialized_model = nullptr,
+      Buffer* shared_buffer = nullptr);
 
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
@@ -102,22 +109,17 @@ class InferenceContext {
   absl::Status SetTensor(const ValueId& tensor_id, Tensor* tensor_ptr);
 
  private:
-  enum class TensorMemoryType {
-    kStrongShape,
-    kBuffer,
-    kVariable,
-    kConst,
-    kExternal
-  };
-
   flatbuffers::Offset<data::InferenceContext> Encode(
       const CLDevice& device, const ProgramCache& program_cache,
       flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
       flatbuffers::FlatBufferBuilder* builder);
 
-  void CopyFromGpuModel(GpuModel* gpu_model);
+  void InitFromGpuModel(GpuModel* gpu_model);
 
-  absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
+  absl::Status AllocateMemory(const GpuModel& gpu_model,
+                              const GpuInfo& gpu_info,
+                              const CreateGpuModelInfo* create_info,
+                              CLContext* context);
 
   absl::Status AllocateConstTensors(const GpuModel& gpu_model,
                                     CLContext* context);
@@ -125,17 +127,14 @@ class InferenceContext {
   absl::Status AllocateVariableTensors(const GpuModel& gpu_model,
                                        CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(const GpuInfo& gpu_info,
-                                        CLContext* context);
+  absl::Status AllocateBufferBasedTensors(const GpuModel& gpu_model,
+                                          const GpuInfo& gpu_info,
+                                          const CreateGpuModelInfo* create_info,
+                                          CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(const GpuInfo& gpu_info,
-                                             CLContext* context);
-
-  // utility function
-  void GetUsages(const std::function<bool(ValueId)>& functor,
-                 std::map<ValueId, int2>* usages);
-
-  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
+  absl::Status AllocateStrongShapesTensors(
+      const GpuModel& gpu_model, const GpuInfo& gpu_info,
+      const CreateGpuModelInfo* create_info, CLContext* context);
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
@@ -175,14 +174,14 @@ class InferenceContext {
   absl::flat_hash_map<ValueId, Tensor*> external_immutable_tensors_;
   absl::flat_hash_map<ValueId, Tensor*> external_mutable_tensors_;
   absl::flat_hash_map<ValueId, std::vector<int>> external_tensor_to_nodes_;
-  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
 
   std::map<ValueId, Tensor> const_tensors_;
 
   std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::map<ValueId, Tensor> variable_tensors_;
 
-  Buffer shared_buffers_parent_;
+  std::unique_ptr<Buffer> shared_buffers_parent_;
+  Buffer* shared_buffers_parent_ptr_ = nullptr;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
       shared_buffer_tensors_;  // use references to memory from shared_buffers_
@@ -202,6 +201,11 @@ class InferenceContext {
 absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
                           std::vector<int64_t>* in_refs,
                           std::vector<int64_t>* out_refs);
+
+absl::Status GetTotalBufferSizeForTensors(const GpuModel& gpu_model,
+                                          const CreateGpuModelInfo& create_info,
+                                          const GpuInfo& gpu_info,
+                                          uint64_t* result);
 
 }  // namespace cl
 }  // namespace gpu

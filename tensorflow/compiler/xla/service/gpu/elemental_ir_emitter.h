@@ -95,7 +95,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view) override {
+      absl::string_view, bool /*is_reducer*/) override {
     return compute_nested_(callee, parameters);
   }
 

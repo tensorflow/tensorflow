@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H_
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -26,11 +27,15 @@ namespace gml_st {
 /// The greedy tiling pass walks the function body and tries to tile every
 /// producer of a `gml_st.materialize` operation by calling the
 /// TilingInterface on it.
-std::unique_ptr<OperationPass<FuncOp>> createGreedyTilingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingPass();
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
-std::unique_ptr<OperationPass<FuncOp>> createGmlStToScfPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
+
+// Pass to bufferize `linalg.tiled_loop` including the operations contained in
+// its body.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
@@ -38,4 +43,4 @@ std::unique_ptr<OperationPass<FuncOp>> createGmlStToScfPass();
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H_
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H

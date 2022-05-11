@@ -28,6 +28,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -95,6 +96,7 @@ parsing_ops = lazy_loader.LazyLoader(
     "parsing_ops", globals(),
     "tensorflow.python.ops.parsing_ops")
 
+
 ops.NotDifferentiable("ReduceDataset")
 
 # A constant that can be used to enable auto-tuning.
@@ -106,6 +108,9 @@ tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 # Constants representing infinite and unknown cardinalities.
 INFINITE = -1
 UNKNOWN = -2
+COMPRESSION_GZIP = "GZIP"
+COMPRESSION_SNAPPY = "NONE"
+DATASET_SPEC_FILENAME = "dataset_spec.pb"
 tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
 tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
@@ -469,6 +474,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       # parallelism or asynchrony.
       options = options_lib.Options()
       options.autotune.enabled = False
+      options.experimental_optimization.filter_parallelization = False
       options.experimental_optimization.map_and_batch_fusion = False
       options.experimental_optimization.map_parallelization = False
       dataset = _OptionsDataset(self, options)
@@ -1446,8 +1452,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
 
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return Dataset.zip((Dataset.range(start, max_value, name=name), self),
-                       name=name)
+    range_dataset = Dataset.range(start, max_value, name=name)
+    # Replicate the range component so that each split is enumerated
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
+    return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(self,
               buffer_size,
@@ -1528,9 +1538,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     either in the specified file or in memory. Subsequent iterations will
     use the cached data.
 
-    Note: For the cache to be finalized, the input dataset must be iterated
-    through in its entirety. Otherwise, subsequent iterations will not use
-    cached data.
+    Note: To guarantee that the cache gets finalized, the input dataset must be
+    iterated through in its entirety, until it raises StopIteration. Otherwise,
+    subsequent iterations may not use cached data.
 
     >>> dataset = tf.data.Dataset.range(5)
     >>> dataset = dataset.map(lambda x: x**2)
@@ -1682,6 +1692,157 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         in an error during a session.run call.)
     """
     return ShardDataset(self, num_shards, index, name=name)
+
+  def save(self,
+           path,
+           compression=None,
+           shard_func=None,
+           checkpoint_args=None):
+    """Saves the content of the given dataset.
+
+      Example usage:
+
+      >>> import tempfile
+      >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
+      >>> # Save a dataset
+      >>> dataset = tf.data.Dataset.range(2)
+      >>> dataset.save(path)
+      >>> new_dataset = tf.data.Dataset.load(path)
+      >>> for elem in new_dataset:
+      ...   print(elem)
+      tf.Tensor(0, shape=(), dtype=int64)
+      tf.Tensor(1, shape=(), dtype=int64)
+
+      The saved dataset is saved in multiple file "shards". By default, the
+      dataset output is divided to shards in a round-robin fashion but custom
+      sharding can be specified via the `shard_func` function. For example, you
+      can save the dataset to using a single shard as follows:
+
+      ```python
+      dataset = make_dataset()
+      def custom_shard_func(element):
+        return 0
+      dataset.save(
+          path="/path/to/data", ..., shard_func=custom_shard_func)
+      ```
+
+      To enable checkpointing, pass in `checkpoint_args` to the `save` method
+      as follows:
+
+      ```python
+      dataset = tf.data.Dataset.range(100)
+      save_dir = "..."
+      checkpoint_prefix = "..."
+      step_counter = tf.Variable(0, trainable=False)
+      checkpoint_args = {
+        "checkpoint_interval": 50,
+        "step_counter": step_counter,
+        "directory": checkpoint_prefix,
+        "max_to_keep": 20,
+      }
+      dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
+      ```
+
+      NOTE: The directory layout and file format used for saving the dataset is
+      considered an implementation detail and may change. For this reason,
+      datasets saved through `tf.data.Dataset.save` should only be consumed
+      through `tf.data.Dataset.load`, which is guaranteed to be
+      backwards compatible.
+
+    Args:
+     path: Required. A directory to use for saving the dataset.
+     compression: Optional. The algorithm to use to compress data when writing
+          it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
+     shard_func: Optional. A function to control the mapping of dataset
+          elements to file shards. The function is expected to map elements of
+          the input dataset to int64 shard IDs. If present, the function will be
+          traced and executed as graph computation.
+     checkpoint_args: Optional args for checkpointing which will be passed into
+          the `tf.train.CheckpointManager`. If `checkpoint_args` are not
+          specified, then checkpointing will not be performed. The `save()`
+          implementation creates a `tf.train.Checkpoint` object internally, so
+          users should not set the `checkpoint` argument in `checkpoint_args`.
+
+    Raises:
+      ValueError if `checkpoint` is passed into `checkpoint_args`.
+    """
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->save_ops->dataset_ops
+    from tensorflow.python.data.ops import save_op  # pylint: disable=g-import-not-at-top
+    save_op.save(self, path, compression, shard_func, checkpoint_args)
+
+  @staticmethod
+  def load(path, element_spec=None, compression=None, reader_func=None):
+    """Loads a previously saved dataset.
+
+    Example usage:
+
+    >>> import tempfile
+    >>> path = os.path.join(tempfile.gettempdir(), "saved_data")
+    >>> # Save a dataset
+    >>> dataset = tf.data.Dataset.range(2)
+    >>> tf.data.Dataset.save(dataset, path)
+    >>> new_dataset = tf.data.Dataset.load(path)
+    >>> for elem in new_dataset:
+    ...   print(elem)
+    tf.Tensor(0, shape=(), dtype=int64)
+    tf.Tensor(1, shape=(), dtype=int64)
+
+
+    Note that to load a previously saved dataset, you need to specify
+    `element_spec` -- a type signature of the elements of the saved dataset,
+    which can be obtained via `tf.data.Dataset.element_spec`. This requirement
+    exists so that shape inference of the loaded dataset does not need to
+    perform I/O.
+
+    If the default option of sharding the saved dataset was used, the element
+    order of the saved dataset will be preserved when loading it.
+
+    The `reader_func` argument can be used to specify a custom order in which
+    elements should be loaded from the individual shards. The `reader_func` is
+    expected to take a single argument -- a dataset of datasets, each containing
+    elements of one of the shards -- and return a dataset of elements. For
+    example, the order of shards can be shuffled when loading them as follows:
+
+    ```python
+    def custom_reader_func(datasets):
+      datasets = datasets.shuffle(NUM_SHARDS)
+      return datasets.interleave(lambda x: x, num_parallel_calls=AUTOTUNE)
+
+    dataset = tf.data.Dataset.load(
+        path="/path/to/data", ..., reader_func=custom_reader_func)
+    ```
+
+    Args:
+      path: Required. A path pointing to a previously saved dataset.
+      element_spec: Optional. A nested structure of `tf.TypeSpec` objects
+        matching the structure of an element of the saved dataset and specifying
+        the type of individual element components. If not provided, the nested
+        structure of `tf.TypeSpec` saved with the saved dataset is used. This
+        argument needs to be provided if the method is executed in graph mode.
+      compression: Optional. The algorithm to use to decompress the data when
+        reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
+      reader_func: Optional. A function to control how to read data from shards.
+        If present, the function will be traced and executed as graph
+        computation.
+
+    Returns:
+      A `tf.data.Dataset` instance.
+
+    Raises:
+      FileNotFoundError: If `element_spec` is not specified and the saved nested
+        structure of `tf.TypeSpec` can not be located with the saved dataset.
+      ValueError: If `element_spec` is not specified and the method is executed
+        in graph mode.
+    """
+    # Loaded lazily due to a circular dependency
+    # dataset_ops->load_ops->dataset_ops
+    from tensorflow.python.data.ops import load_op  # pylint: disable=g-import-not-at-top
+    return load_op.load(
+        path=path,
+        element_spec=element_spec,
+        compression=compression,
+        reader_func=reader_func)
 
   def batch(self,
             batch_size,
@@ -3183,32 +3344,26 @@ name=None))
     distribution of `init_dist` needs to be resampled into a dataset with
     `target_dist` distribution.
 
-    >>> import collections
-    >>> initial_dist = [0.5, 0.5]
-    >>> target_dist = [0.6, 0.4]
+    >>> initial_dist = [0.6, 0.4]
     >>> num_classes = len(initial_dist)
-    >>> num_samples = 100000
+    >>> num_samples = 1000
     >>> data_np = np.random.choice(num_classes, num_samples, p=initial_dist)
     >>> dataset = tf.data.Dataset.from_tensor_slices(data_np)
-    >>> x = collections.defaultdict(int)
-    >>> for i in dataset:
-    ...   x[i.numpy()] += 1
 
     The value of `x` will be close to `{0: 50000, 1: 50000}` as per the
     `initial_dist` distribution.
 
-    >>> dataset = dataset.rejection_resample(
-    ...    class_func=lambda x: x % 2,
+    >>> target_dist = [0.5, 0.5]
+    >>> resampled_dataset = dataset.rejection_resample(
+    ...    class_func=lambda x: x,
     ...    target_dist=target_dist,
     ...    initial_dist=initial_dist)
+    >>> resampled_dataset = resampled_dataset.map(
+    ...     lambda class_func_result, data: data)
 
-    >>> y = collections.defaultdict(int)
-    >>> for i in dataset:
-    ...   cls, _ = i
-    ...   y[cls.numpy()] += 1
 
-    The value of `y` will be now be close to `{0: 75000, 1: 50000}` thus
-    satisfying the `target_dist` distribution.
+    The value distribution of classes in the resampled_distribution will be now
+    be close to the target distribution.
 
     Args:
       class_func: A function mapping an element of the input dataset to a scalar
@@ -3471,6 +3626,10 @@ name=None))
       raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
                       f"must be scalar `tf.int64` tensors but are "
                       f"{choice_dataset.element_spec}.")
+    # Replicate the `choice_dataset` component so that each split makes choices
+    # independently. This avoids the need for prohibitively expensive
+    # cross-split coordination.
+    choice_dataset = _apply_rewrite(choice_dataset, "replicate_on_split")
     # pylint: disable=protected-access
     return _DirectedInterleaveDataset(choice_dataset, datasets,
                                       stop_on_empty_dataset)
@@ -4301,35 +4460,6 @@ def to_variant(dataset):
   return dataset._variant_tensor  # pylint: disable=protected-access
 
 
-# TODO(b/202447704): Merge into DatasetSpec.
-class DatasetSpecTraceType(trace.TraceType):
-  """Defines the Tracing Protocol for Dataset objects.
-
-  The default TraceType supplied by TypeSpec does not take into account
-  `element_spec` and therefore reuses concrete functions for cases where
-  the `element_spec` is different.
-  """
-
-  def __init__(self, element_spec, dataset_shape):
-    self._components = (element_spec, tuple(dataset_shape.as_list()))
-
-  def is_subtype_of(self, other):
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    return None
-
-  def __hash__(self):
-    return hash(DatasetSpecTraceType)
-
-  def __eq__(self, other):
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    return isinstance(
-        other, DatasetSpecTraceType) and self._components == other._components
-
-
 @tf_export(
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
@@ -4358,6 +4488,74 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
     """The inner element spec."""
     return self._element_spec
 
+  def is_subtype_of(self, other):
+    """See base class."""
+    if type(self) is not type(other):
+      return False
+
+    # TODO(b/220385675): _element_spec should always be a TypeSpec.
+    try:
+      tf_nest.assert_same_structure(self.element_spec, other.element_spec)
+    except (TypeError, ValueError):
+      return False
+
+    self_elements = tf_nest.flatten(self.element_spec)
+    other_elements = tf_nest.flatten(other.element_spec)
+
+    def is_subtype_or_equal(a, b):
+      if isinstance(a, trace.TraceType):
+        return a.is_subtype_of(b)
+      else:
+        return a == b
+
+    for self_element, other_element in zip(self_elements, other_elements):
+      if not is_subtype_or_equal(self_element, other_element):
+        return False
+
+    return self._dataset_shape.is_subtype_of(other._dataset_shape)  # pylint: disable=protected-access
+
+  def most_specific_common_supertype(self, others):
+    """See base class."""
+    if not all(type(self) is type(other) for other in others):
+      return None
+
+    try:
+      for other in others:
+        tf_nest.assert_same_structure(self.element_spec, other.element_spec)
+    except (TypeError, ValueError):
+      return None
+
+    self_components = tf_nest.flatten(self.element_spec)
+    others_components = [
+        tf_nest.flatten(other.element_spec) for other in others
+    ]
+    common_components = [None] * len(self_components)
+
+    def common_supertype_or_equal(a, bs):
+      if isinstance(a, trace.TraceType):
+        return a.most_specific_common_supertype(bs)
+      else:
+        return a if all(a == b for b in bs) else None
+
+    for i, self_component in enumerate(self_components):
+      common_components[i] = common_supertype_or_equal(
+          self_component,
+          [other_components[i] for other_components in others_components])
+      if self_component is not None and common_components[i] is None:
+        return None
+    common_element_spec = tf_nest.pack_sequence_as(self._element_spec,
+                                                   common_components)
+
+    common_dataset_shape = self._dataset_shape.most_specific_common_supertype(
+        [other._dataset_shape for other in others])  # pylint: disable=protected-access
+    if common_dataset_shape is None:
+      return None
+
+    return DatasetSpec(common_element_spec, common_dataset_shape)
+
+  # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
+  # following functions do not need to be overloaded: is_subtype_of,
+  # most_specific_common_supertype, __hash__ and __eq__
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
 
@@ -4410,8 +4608,14 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
   def _to_legacy_output_classes(self):
     return self
 
-  def __tf_tracing_type__(self, _):
-    return DatasetSpecTraceType(self._element_spec, self._dataset_shape)
+  def __hash__(self):
+    # TODO(b/220385675): attributes can be dicts and hence unhashable.
+    return hash(DatasetSpec)
+
+  def __eq__(self, other):
+    return (isinstance(other, DatasetSpec) and
+            self._element_spec == other._element_spec and
+            self._dataset_shape == other._dataset_shape)
 
 
 class _NumpyIterator(object):
@@ -4675,10 +4879,16 @@ class ConcatenateDataset(DatasetV2):
     self._input_dataset = input_dataset
     self._dataset_to_concatenate = dataset_to_concatenate
 
+    def common_supertype(a, b):
+      result = a.most_specific_common_supertype([b])
+      if result is None:
+        raise TypeError(f"No common supertype of {a} and {b}.")
+      return result
+
     try:
       self._structure = tf_nest.map_structure(
-          lambda ts1, ts2: ts1.most_specific_compatible_type(ts2),
-          input_dataset.element_spec, dataset_to_concatenate.element_spec)
+          common_supertype, input_dataset.element_spec,
+          dataset_to_concatenate.element_spec)
     except (TypeError, ValueError) as e:
       raise TypeError(
           f"Incompatible dataset elements:\n"
@@ -6185,26 +6395,23 @@ class _DirectedInterleaveDataset(DatasetV2):
     self._data_inputs = list(data_inputs)
     self._stop_on_empty_dataset = stop_on_empty_dataset
 
-    first_output_types = get_legacy_output_types(data_inputs[0])
-    first_output_classes = get_legacy_output_classes(data_inputs[0])
-
-    for i, data_input in enumerate(data_inputs[1:]):
-      if (get_legacy_output_types(data_input) != first_output_types or
-          get_legacy_output_classes(data_input) != first_output_classes):
-        raise TypeError(f"Invalid `datasets`. `datasets` must have the same "
-                        f"type and class.\n Dataset 0 "
-                        f"types={first_output_types}; "
-                        f"classes={first_output_classes}.\n"
-                        f"Dataset {i+1} "
-                        f"types={get_legacy_output_types(data_input)}; "
-                        f"classes={get_legacy_output_classes(data_input)}.")
-
     spec = self._data_inputs[0].element_spec
-    for data_input in self._data_inputs[1:]:
-      spec = nest.pack_sequence_as(spec, [
-          x.most_specific_compatible_type(y) for (x, y) in zip(
-              nest.flatten(spec), nest.flatten(data_input.element_spec))
-      ])
+    for i, data_input in enumerate(self._data_inputs[1:]):
+      def common_supertype(a, b):
+        result = a.most_specific_common_supertype([b])
+        if result is None:
+          raise TypeError(f"No common supertype of {a} and {b}.")
+        return result
+
+      try:
+        spec = nest.map_structure(common_supertype, spec,
+                                  data_input.element_spec)
+      except (TypeError, ValueError) as e:
+        raise TypeError(f"Invalid `datasets`. `datasets` must have compatible "
+                        f"element specs.\n Dataset 0 "
+                        f"element_spec={data_inputs[0].element_spec}.\n"
+                        f"Dataset {i+1} "
+                        f"element_spec={data_input.element_spec}.") from e
     self._element_spec = spec
 
     # pylint: disable=protected-access
@@ -6223,6 +6430,24 @@ class _DirectedInterleaveDataset(DatasetV2):
   @property
   def element_spec(self):
     return self._element_spec
+
+
+def _apply_rewrite(dataset, rewrite):
+  # pylint: disable=protected-access
+  if not compat.forward_compatible(2022, 6, 6):
+    return dataset
+
+  try:
+    return _VariantDataset(
+        gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                        **dataset._flat_structure),
+        dataset.element_spec)
+  except AttributeError as e:
+    if "has no attribute 'rewrite_dataset'" in str(e):
+      # The TF server may be outdated. This try/except can be removed after 6/4
+      # when the forward compatibility window elapses.
+      return dataset
+    raise e
 
 
 def _collect_resource_inputs(op):

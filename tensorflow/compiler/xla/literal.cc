@@ -417,7 +417,7 @@ Literal Literal::SubLiteral(ShapeIndexView shape_index) {
   if (!shape_index.empty()) {
     auto decomposed = this->DecomposeTuple();
     return decomposed.at(shape_index.front())
-        .SubLiteral(shape_index.ConsumeFront());
+        .SubLiteral(shape_index.subspan(1));
   } else {
     return std::move(*this);
   }
@@ -442,9 +442,7 @@ std::vector<Literal> Literal::DecomposeTuple() {
 
           // Move the respective buffer over to the element Literal.
           dest_piece->set_buffer(src_piece.buffer());
-          dest_piece->set_dynamic_size_buffer(src_piece.dynamic_size_buffer());
           src_piece.set_buffer(nullptr);
-          src_piece.set_dynamic_size_buffer(nullptr);
         });
   }
   // Set this literal to be nil-shaped.
@@ -478,46 +476,25 @@ int32_t LiteralBase::Piece::GetDynamicSize(int64_t dim_index) const {
     // This is a static dimension, return size.
     return subshape_->dimensions(dim_index);
   }
-  CHECK_NE(dynamic_size_buffer(), nullptr);
-  return dynamic_size_buffer_[dim_index];
+  return dynamic_size_buffer()[dim_index];
 }
 
 void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   CHECK(subshape_->is_dynamic_dimension(dim_index));
-  if (dynamic_size_buffer() == nullptr) {
-    // Lazily initialize the dynamic size buffer.
-    set_dynamic_size_buffer(
-        static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
-            dynamic_size_buffer_bytes(), kMinimumAlignment)));
-    /*for (int64_t i = 0; i < subshape().rank(); ++i) {
-      // Initialized to -1 to help debug.
-      dynamic_size_buffer_[i] = -1;
-    }*/
-  }
-  dynamic_size_buffer_[dim_index] = size;
+  dynamic_size_buffer()[dim_index] = size;
 }
 
 void LiteralBase::Piece::AllocateBuffers() {
   CHECK_EQ(buffer(), nullptr);
   set_buffer(static_cast<char*>(
-      tensorflow::port::AlignedMalloc(size_bytes(), kMinimumAlignment)));
-  if (subshape().is_dynamic()) {
-    CHECK_EQ(dynamic_size_buffer(), nullptr);
-    set_dynamic_size_buffer(
-        static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
-            dynamic_size_buffer_bytes(), kMinimumAlignment)));
-  }
+      tensorflow::port::AlignedMalloc(total_bytes(), kMinimumAlignment)));
 }
 
 void LiteralBase::Piece::DeallocateBuffers() {
   if (buffer_ != nullptr) {
     tensorflow::port::AlignedFree(buffer_);
     buffer_ = nullptr;
-  }
-  if (dynamic_size_buffer_ != nullptr) {
-    tensorflow::port::AlignedFree(dynamic_size_buffer_);
-    dynamic_size_buffer_ = nullptr;
   }
 }
 
@@ -580,8 +557,6 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
   }
   DCHECK_EQ(dynamic_size_buffer_bytes(), src.dynamic_size_buffer_bytes());
   if (subshape().is_dynamic() && src.subshape().is_dynamic()) {
-    CHECK_NE(dynamic_size_buffer_, nullptr);
-    CHECK_NE(src.dynamic_size_buffer_, nullptr);
     memcpy(dynamic_size_buffer(), src.dynamic_size_buffer(),
            src.dynamic_size_buffer_bytes());
   }
@@ -681,9 +656,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
         }
         Piece& dest_piece = piece(dest_index);
         tensorflow::port::AlignedFree(dest_piece.buffer());
-        tensorflow::port::AlignedFree(dest_piece.dynamic_size_buffer());
         dest_piece.set_buffer(src_piece.buffer());
-        dest_piece.set_dynamic_size_buffer(src_piece.dynamic_size_buffer());
       });
 
   src_literal.shape_ = absl::make_unique<Shape>(ShapeUtil::MakeNil());
@@ -1669,12 +1642,12 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
 
 /* static */ Literal MutableLiteralBase::MoveIntoTuple(
     absl::Span<Literal> elements) {
-  std::vector<Shape> element_shapes;
+  std::vector<const Shape*> element_shapes;
   element_shapes.reserve(elements.size());
   for (const Literal& element : elements) {
-    element_shapes.push_back(element.shape());
+    element_shapes.push_back(&element.shape());
   }
-  Literal literal(ShapeUtil::MakeTupleShape(element_shapes),
+  Literal literal(ShapeUtil::MakeTupleShapeWithPtrs(element_shapes),
                   /*allocate_arrays=*/false);
   for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(
@@ -2496,7 +2469,6 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
     }
   } else if (shape.IsArray()) {
     dest_piece->set_buffer(src_piece->buffer());
-    dest_piece->set_dynamic_size_buffer(src_piece->dynamic_size_buffer());
   } else {
     // If the shape is neither an array nor tuple, then it must be
     // zero-sized. Otherwise, some memory needs to be allocated for it.

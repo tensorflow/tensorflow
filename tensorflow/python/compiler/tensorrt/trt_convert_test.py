@@ -18,6 +18,7 @@ import gc
 import os
 import re
 import tempfile
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -46,6 +47,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
@@ -286,7 +288,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             {
                 "input1": "Placeholder",
                 "input2": "Placeholder",
-                "TRTEngineOp_0": "TRTEngineOp",
+                "TRTEngineOp_000": "TRTEngineOp",
                 "output": "Identity"
             }, node_name_to_op)
 
@@ -941,6 +943,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     saved_model_loaded = load.load(
         output_saved_model_dir, tags=[tag_constants.SERVING])
     graph_func = saved_model_loaded.signatures[_SAVED_MODEL_SIGNATURE_KEY]
+
     # Checks the TrtEngineOp(s) have the correct attribute(s).
     def _CheckFn(node):
       self.assertEqual(node.attr["_allow_build_at_runtime"].b,
@@ -1035,6 +1038,34 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     del converter
     gc.collect()  # Force GC to destroy the TRT engine cache.
+
+  @test_util.run_v2_only
+  def testTrtGraphConverterV2_SaveWithOptions(self):
+    """Test to make sure that save method respects options kwarg."""
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    # Run TRT conversion.
+    converter = self._CreateConverterV2(input_saved_model_dir)
+    converter.convert()
+
+    # Patch save function with mock.
+    with mock.patch.object(trt_convert, "save") as mock_save:
+      mock_save.save = mock.MagicMock()
+      # Save converted model with options.
+      output_saved_model_dir = self.mkdtemp()
+      options = save_options.SaveOptions(save_debug_info=True)
+      converter.save(output_saved_model_dir, options=options)
+
+      # Assert that the saved_model.save function was called with the given
+      # save_options by TrtGraphConverterV2.save method.
+      mock_save.save.assert_called_once_with(
+          mock.ANY, mock.ANY, mock.ANY, options=options)
+
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()

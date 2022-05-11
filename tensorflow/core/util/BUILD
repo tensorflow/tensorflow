@@ -17,10 +17,6 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -173,6 +169,7 @@ filegroup(
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -303,6 +300,7 @@ filegroup(
     srcs = [
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -404,17 +402,16 @@ cc_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_util",
-    srcs = ["mkl_util.cc"],
-    hdrs = ["mkl_util.h"],
+    name = "onednn_env_vars",
+    srcs = ["onednn_env_vars.cc"],
+    hdrs = ["onednn_env_vars.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:ops_util",
-    ] + mkl_deps(),
+    ],
 )
 
 cc_library(
@@ -536,6 +533,9 @@ tf_cuda_library(
 cc_library(
     name = "overflow",
     hdrs = ["overflow.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -590,6 +590,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )

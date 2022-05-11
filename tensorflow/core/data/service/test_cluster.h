@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -78,6 +79,9 @@ class TestCluster {
   // Stops all workers.
   void StopWorkers();
 
+  // Returns the dispatcher state export.
+  ServerStateExport ExportDispatcherState() const;
+
  private:
   bool initialized_ = false;
   int num_workers_;
@@ -117,7 +121,7 @@ class DatasetClient {
       ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
   // Creates a job and returns the job client ID.
-  StatusOr<int64_t> CreateJob();
+  StatusOr<int64_t> CreateJob(const DatasetDef& dataset);
   // Gets the tasks for job `job_client_id`. The job has one task processed by
   // every worker.
   StatusOr<std::vector<TaskInfo>> GetTasks(int64 job_client_id);
@@ -189,10 +193,8 @@ StatusOr<int64_t> DatasetClient<T>::CreateJob(
 }
 
 template <class T>
-StatusOr<int64_t> DatasetClient<T>::CreateJob() {
-  TF_ASSIGN_OR_RETURN(
-      const int64 dataset_id,
-      RegisterDataset(tensorflow::data::testing::RangeDataset(10)));
+StatusOr<int64_t> DatasetClient<T>::CreateJob(const DatasetDef& dataset) {
+  TF_ASSIGN_OR_RETURN(const int64 dataset_id, RegisterDataset(dataset));
   return CreateJob(dataset_id, ProcessingModeDef::OFF, TARGET_WORKERS_ANY);
 }
 

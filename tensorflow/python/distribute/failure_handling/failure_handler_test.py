@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for CoordinatedCheckpointManager."""
+"""Tests for WorkerPreemptionHandler."""
 import os
 import random
 import re
@@ -32,6 +31,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
+from tensorflow.python.distribute.failure_handling import gce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -44,8 +44,11 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import util as tracking_util
 
 
+mock = test.mock
+
+
 CLUSTER_SIZE = 4
-EPOCHS_TO_RUN = 15
+EPOCHS_TO_RUN = 8
 STEPS_PER_EPOCH = 15
 
 
@@ -67,7 +70,7 @@ def _enable_coordination_service(cluster_spec):
 
 
 class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
-  """Integration test for CoordinatedCheckpointManager."""
+  """Integration test for WorkerPreemptionHandler."""
 
   def _mwms_write_checkpoint_dir(self, checkpoint_dir, cluster_spec, task_type,
                                  task_id):
@@ -89,6 +92,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     ]
     if clear_events:
       if trigger_it:
+        logging.info('Set preemption signal')
         clear_events[0].set()
       elif random.randrange(0, 9) > 6:
         clear_events[0].set()
@@ -97,7 +101,10 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
                 checkpoint_dir,
                 cluster_spec,
                 training_started_event=None,
-                raise_app_error_on_worker=None):
+                raise_app_error_on_worker=None,
+                training_restarted=None,
+                training_finished=None,
+                termination_config=failure_handling.TerminationConfig()):
 
     _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
@@ -114,54 +121,86 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       def __call__(self):
         return self.v.read_value()
 
-    with strategy.scope():
-      model = Model()
-      # Named it fh_ckpt because it'd be better that the user have their regular
-      # checkpoint separate from the checkpoint for
-      # CoordinatedCheckpointManager, since we will create CheckpointManager to
-      # manage the checkpoint and only one CheckpointManager should be active in
-      # a particular directory at a time..
-      fh_ckpt = tracking_util.Checkpoint(model=model)
+    with mock.patch.object(gce_util, 'on_gcp', lambda: False):
 
-      failure_handler = failure_handling.CoordinatedCheckpointManager(
-          strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
+      with strategy.scope():
+        model = Model()
+        # Named it fh_ckpt because it'd be better that the user have their
+        # regular checkpoint separate from the checkpoint for
+        # WorkerPreemptionHandler, since we will create CheckpointManager
+        # to manage the checkpoint and only one CheckpointManager should be
+        # active in a particular directory at a time.
+        fh_ckpt = tracking_util.Checkpoint(model=model)
 
-    def distributed_train_step(current_epoch, current_step):
+        worker_preemption_watcher = failure_handling.WorkerPreemptionHandler(
+            strategy.cluster_resolver, fh_ckpt, checkpoint_dir,
+            termination_config)
 
-      @def_function.function
-      def train_step():
-        if distribution_strategy_context.get_distribution_strategy(
-        ).cluster_resolver.task_id == raise_app_error_on_worker:
-          raise errors_impl.ResourceExhaustedError(
-              node_def=None, op=None, message='Running out of resources')
+      def distributed_train_step(current_epoch, current_step):
 
-        model.v.assign_add(constant_op.constant(1.))
+        @def_function.function
+        def train_step():
+          if distribution_strategy_context.get_distribution_strategy(
+          ).cluster_resolver.task_id == raise_app_error_on_worker:
+            raise errors_impl.ResourceExhaustedError(
+                node_def=None, op=None, message='Running out of resources')
 
-      strategy.run(train_step)
+          model.v.assign_add(constant_op.constant(1.))
 
-      if current_step == STEPS_PER_EPOCH - 1:
-        logging.info('epoch %d finished', current_epoch)
+        strategy.run(train_step)
 
-    logging.info('Restored training at %d', failure_handler.total_runs)
-    for epoch in range(failure_handler.total_runs // STEPS_PER_EPOCH,
-                       EPOCHS_TO_RUN):
+        if current_step == STEPS_PER_EPOCH - 1:
+          logging.info('epoch %d finished', current_epoch)
 
-      for step in range(failure_handler.total_runs % STEPS_PER_EPOCH,
-                        STEPS_PER_EPOCH):
-        failure_handler.run(distributed_train_step, epoch, step)
-      # Add some randomness to when preemption actually happens. We should
-      # trigger it for sure if the training is coming to an end and it hasn't
-      # been triggered yet.
-      if epoch >= EPOCHS_TO_RUN - 2:
-        trigger_it = True
-      else:
-        trigger_it = False
+      logging.info('Start training at %d',
+                   worker_preemption_watcher.total_runs)
 
-      self._maybe_trigger_a_preemption(training_started_event, trigger_it)
+      # If the training process has been restarted, verify that the expected
+      # number of checkpoints have been written.
+      # we also want to check training_finished, because there's a corner case
+      # where the signal is sent quite late and training finishes before the
+      # grace period ends.
+      if training_restarted and training_restarted.is_set(
+      ) and not training_finished.is_set():
+        logging.info('training restarted')
+        match_group = [
+            re.search(r'.*ckpt-(\d+).index', a_file)
+            for a_file in gfile.ListDirectory(checkpoint_dir)
+        ]
+        checkpoint_index = [
+            a_match.group(1) for a_match in match_group if a_match
+        ]
+        if getattr(termination_config, 'time_till_termination', 0):
+          # Two checkpoints were saved for the extended grace period.
+          self.assertEqual(int(checkpoint_index[0]), 2)
+        else:
+          self.assertEqual(int(checkpoint_index[0]), 1)
 
-    self.assertEqual(
-        model.v.numpy(),
-        strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
+      for epoch in range(
+          worker_preemption_watcher.total_runs // STEPS_PER_EPOCH,
+          EPOCHS_TO_RUN):
+
+        for step in range(
+            worker_preemption_watcher.total_runs % STEPS_PER_EPOCH,
+            STEPS_PER_EPOCH):
+          worker_preemption_watcher.run(distributed_train_step, epoch, step)
+        # Add some randomness to when preemption actually happens. We should
+        # trigger it for sure if the training is coming to an end and it hasn't
+        # been triggered yet.
+        if epoch >= EPOCHS_TO_RUN - 2:
+          trigger_it = True
+        else:
+          trigger_it = False
+
+        self._maybe_trigger_a_preemption(training_started_event, trigger_it)
+
+      training_finished.set()
+
+      logging.info('Training finished.')
+
+      self.assertEqual(
+          model.v.numpy(),
+          strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
 
   def test_preemption_checkpointing(self):
     has_chief = False
@@ -169,6 +208,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         has_chief=has_chief,
         num_workers=CLUSTER_SIZE)
     training_started_event = multi_process_runner.manager().Event()
+    training_restarted = multi_process_runner.manager().Event()
+    training_finished = multi_process_runner.manager().Event()
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
@@ -180,7 +221,8 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         self.worker_fn,
         cluster_spec,
-        args=(checkpoint_dir, cluster_spec, [training_started_event]),
+        args=(checkpoint_dir, cluster_spec, [training_started_event], None,
+              training_restarted, training_finished),
         rpc_layer=rpc_layer,
         return_output=True,
         dependence_on_chief=has_chief)
@@ -198,23 +240,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     time.sleep(5)
 
     logging.info('restarting workers')
+    training_restarted.set()
     for worker_id in range(CLUSTER_SIZE):
       mpr.start_single_process('worker', worker_id, cluster_spec)
     logging.info('workers restarted')
 
-    stdout = mpr.join().stdout
-    all_start_point = []
-    for msg in stdout:
-      matched_group = re.search(r'.*Restored training at (\d+)', msg)
-
-      if matched_group:
-        all_start_point.append(int(matched_group.group(1)))
-
-    # remove duplicate logs created due to presence of multiple workers
-    start_points = all_start_point[::CLUSTER_SIZE]
-
-    # assert that after restarting, we don't repeat previous training steps
-    self.assertNotEqual(start_points[-1], 0)
+    mpr.join(timeout=270)
 
   def test_error_propagation(self):
     error_worker = random.randint(0, CLUSTER_SIZE)
@@ -246,7 +277,67 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
     logging.info('Cluster starting.')
     mpr.start()
-    mpr.join()
+    mpr.join(timeout=250)
+
+  def test_grace_period_continue_training(self):
+    grace_period = 5
+    has_chief = False
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=has_chief,
+        num_workers=CLUSTER_SIZE)
+    training_started_event = multi_process_runner.manager().Event()
+    training_restarted = multi_process_runner.manager().Event()
+    training_finished = multi_process_runner.manager().Event()
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
+
+    if _is_oss():
+      rpc_layer = 'grpc'
+    else:
+      rpc_layer = 'grpc+loas'
+
+    termination_config = failure_handling.TerminationConfig(
+        time_till_termination=grace_period)
+    mpr = multi_process_runner.MultiProcessRunner(
+        self.worker_fn,
+        cluster_spec,
+        args=(checkpoint_dir, cluster_spec, [training_started_event], None,
+              training_restarted, training_finished, termination_config),
+        rpc_layer=rpc_layer,
+        return_output=True,
+        dependence_on_chief=has_chief)
+
+    logging.info('Cluster starting.')
+    mpr.start()
+    while not training_started_event.is_set():
+      time.sleep(1)
+
+    killed_worker = random.randrange(0, CLUSTER_SIZE)
+    logging.info('sending SIGTERM')
+    os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
+    logging.info('SIGTERM sent')
+
+    # wait for all cluster within the given grace period (plus a buffer since
+    # our per-step time here is too small)
+    waiting_time = 0
+    exit_process_count = 0
+    while exit_process_count != CLUSTER_SIZE and waiting_time < grace_period + 10:
+      exit_process_count = 0
+      for worker_id in range(CLUSTER_SIZE):
+        if not mpr.process_exists('worker', worker_id):
+          exit_process_count += 1
+      waiting_time += 1
+      time.sleep(1)
+
+    if waiting_time == grace_period + 10:
+      raise RuntimeError('Waited exceeding grace period. ')
+
+    logging.info('restarting workers')
+    training_restarted.set()
+    for worker_id in range(CLUSTER_SIZE):
+      mpr.start_single_process('worker', worker_id, cluster_spec)
+    logging.info('workers restarted')
+
+    mpr.join(timeout=250)
 
 
 if __name__ == '__main__':

@@ -103,11 +103,13 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr), b_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr),
+        llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr), b_);
+      EmitGetTupleElement(gte->operand(0), base_ptr),
+      llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
 }
 
 // Returns true if `value` has a name that should not be changed.
@@ -172,11 +174,12 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
       << "IrEmitterUnnested should instead use LMHLO to get the IrArray";
 
   llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
+  Shape new_shape = ShapeUtil::GetSubshape(hlo.shape(), shape_index);
+  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(new_shape, module_);
   CHECK_NE(base_ptr, nullptr)
       << "Buffer not assigned for shape_index " << shape_index.ToString()
       << " of " << hlo.ToString();
-  llvm_ir::IrArray ir_array(base_ptr,
-                            ShapeUtil::GetSubshape(hlo.shape(), shape_index));
+  llvm_ir::IrArray ir_array(base_ptr, pointee_type, new_shape);
 
   return ir_array;
 }

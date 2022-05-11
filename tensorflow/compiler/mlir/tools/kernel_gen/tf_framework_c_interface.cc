@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/compile_cache_item.pb.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
@@ -132,13 +132,17 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
-  // Register all the symbols.
+  // Register TF framework symbols.
   bind("_mlir_ciface_tf_alloc", &_mlir_ciface_tf_alloc);
   bind("_mlir_ciface_tf_dealloc", &_mlir_ciface_tf_dealloc);
   bind("_mlir_ciface_tf_report_error", &_mlir_ciface_tf_report_error);
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   bind("_mlir_ciface_tf_launch_kernel", &_mlir_ciface_tf_launch_kernel);
 #endif
+
+  // Register malloc/free to avoid unexpected implementations from shared libs.
+  bind("malloc", &malloc);
+  bind("free", &free);
 
   return symbol_map;
 }
@@ -182,7 +186,8 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit, cpu_codegen,
             /*jit_compile=*/false,
-            /*jit_i64_indexed_for_large_tensors=*/false);
+            /*jit_i64_indexed_for_large_tensors=*/false,
+            /*apply_cl_options=*/false);
     if (!status_or_module.ok()) return nullptr;
     module = std::move(status_or_module.ValueOrDie());
 
@@ -210,9 +215,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   // Create execution engine with an inner optimization pipeline.
   auto opt_pipeline = mlir::makeOptimizingTransformer(
       /*optLevel=*/2, /*sizeLevel=*/0, /*targetMachine=*/nullptr);
+  mlir::ExecutionEngineOptions engine_options;
+  engine_options.transformer = opt_pipeline;
   llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
-      mlir::ExecutionEngine::create(module.get(), /*llvmModuleBuilder=*/nullptr,
-                                    opt_pipeline);
+      mlir::ExecutionEngine::create(module.get(), engine_options);
   if (!engine) return nullptr;
 
   // Finally, register the missing symbols.
@@ -263,11 +269,9 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
       ctx->op_device_context()->stream()->GetCudaComputeCapability();
   architectures.push_back(absl::StrCat("sm_", cc.major, cc.minor));
 #elif defined(TENSORFLOW_USE_ROCM)
-  architectures.push_back(ctx->op_device_context()
-                              ->stream()
-                              ->parent()
-                              ->GetDeviceDescription()
-                              .rocm_amdgpu_gcn_arch_name());
+  stream_executor::RocmComputeCapability cc =
+      ctx->op_device_context()->stream()->GetRocmComputeCapability();
+  architectures.push_back(cc.gcn_arch_name());
 #endif
 
   // Construct `SmallVector`s from arguments.

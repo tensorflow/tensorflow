@@ -26,23 +26,27 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
@@ -61,7 +65,7 @@ namespace {
 
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                             OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
   Type type;
   // If the operand list is in-between parentheses, then we have a generic form.
   // (see the fallback in `printOneResultOp`).
@@ -400,11 +404,14 @@ struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
   }
 };
 
-TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
-    : Dialect(/*name=*/"tfl", context, TypeID::get<TensorFlowLiteDialect>()) {
+void TFLDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
@@ -1833,6 +1840,39 @@ mlir::LogicalResult ReshapeOp::verify() {
            << " to be cast compatible with expected type " << expected_ty;
 
   return success();
+}
+
+LogicalResult ReshapeOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  ReshapeOpAdaptor op(operands, attr);
+  const Value input = op.input();
+  const Value shape = op.shape();
+
+  auto error_handler = [&](const llvm::Twine &message) -> LogicalResult {
+    // A dummy error handler.
+    // Errors when computing the output shape will be raised in
+    // ReshapeOp::verify call.
+    return failure();
+  };
+  TensorType output_type;
+  if (GetReshapeOutputType(input, shape, error_handler, output_type)
+          .succeeded()) {
+    inferredReturnTypes.assign({output_type});
+    return success();
+  }
+  Type result_type;
+  result_type = UnrankedTensorType::get(
+      input.getType().cast<ShapedType>().getElementType());
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool ReshapeOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3602,16 +3642,6 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   return false;
 }
 
-LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
-  if (ops.empty()) return success();
-
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // LogisticOp
 //===----------------------------------------------------------------------===//
@@ -3778,6 +3808,10 @@ bool NoValueOp::isBuildableWith(Attribute value, Type type) {
 }  // namespace TFL
 }  // namespace mlir
 
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.cc.inc"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
 
@@ -3786,9 +3820,8 @@ namespace TFL {
 
 #include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
-Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
-                                                      Attribute value,
-                                                      Type type, Location loc) {
+Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
   // If this is an opaque elements attribute or the result type doesn't match
   // the attribute type, then generate a tfl.pseudo_const.
   if (value.isa<OpaqueElementsAttr>() ||

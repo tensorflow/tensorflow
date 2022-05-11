@@ -19,10 +19,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -30,24 +35,27 @@ limitations under the License.
 namespace tensorflow {
 
 // Pass for trivial buffer forwarding for the linalg.generic operations.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialBufferForwardingPass();
 
 // Pass for trivial copy removal of memref.copy operations.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialCopyRemovalPass();
 
 // Pass to optimize padding in tiled loops by peeling the final loop iteration.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreatePeelTiledLoopsPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreatePeelTiledLoopsPass();
 
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass();
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass(
-    int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
-    llvm::ArrayRef<int64_t> reduction_2d_tile_sizes);
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileReductionPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileReductionPass(int64_t reduction_vector_size,
+                        int64_t reduction_1d_tile_size,
+                        llvm::ArrayRef<int64_t> reduction_2d_tile_sizes);
 
 // Pass to fuse `linalg.fill` into a tiled reduction.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseFillIntoTiledReductionPass();
 
 // Pass to replace 'i1' tensor types with 'i8' tensor types. This pass is a
@@ -57,42 +65,54 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateJitRtLegalizeI1TypesPass();
 
 // Pass to vectorize linalg ops.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVectorizeTiledOpsPass();
 
 // Rewrite `vector.multi_reduction` into a sequence of `vector.reduction` ops.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createRewriteVectorMultiReductionPass();
 
-// Pass to tile elementwise ops on tensors.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass();
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
+// Code generation passes targeting transpose operations.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileTransposePass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateLowerVectorTransposePass();
+
+// Pass to tile elementwise linalg.generic on tensors.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass(
+    int64_t cwise_tile_size);
+
+// Pass to tile linalg.fill on tensors.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass(
     int64_t cwise_tile_size);
 
 // Pass to split _Fused Tensorflow kernels into primitives.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFissionPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFissionPass();
 
 // Pass to fuse Linalg generic operations on Tensors.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFusionPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass();
 
 // Pass to optimize broadcasts based on the symbolic shape constraints.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateSymbolicShapeOptimizationPass(bool constraints_only = false);
 
 // Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDetensorizeLinalgPass();
 
 // Creates `tf_device.cluster` operations according to the TF JitRt clustering
 // policy.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfJitRtClusteringPass();
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTfJitRtClusteringPass(
-    llvm::ArrayRef<std::string> oplist, int min_cluster_size);
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfJitRtClusteringPass(llvm::ArrayRef<std::string> oplist,
+                            int min_cluster_size);
 
 // Pass to replace math ops with approximations.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateMathApproximationPass(
-    llvm::ArrayRef<std::string> oplist = {});
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateMathApproximationPass(llvm::ArrayRef<std::string> oplist = {});
 
 // Returns true if the `value` type is a memref that is contiguous in memory.
 bool IsContiguousMemref(mlir::Value value);

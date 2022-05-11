@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 // clang-format off
@@ -53,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -147,7 +150,7 @@ EagerContext::EagerContext(
     DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr,
     CollectiveExecutorMgrInterface* collective_executor_mgr,
-    bool run_eager_op_as_function)
+    bool run_eager_op_as_function, bool jit_compile_rewrite)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
@@ -161,14 +164,15 @@ EagerContext::EagerContext(
       num_active_steps_(0),
       step_container_(std::make_unique<ScopedStepContainer>(
           0, [this](const string& name) { ClearResourceContainer(name); })),
-      default_executor_(async),
+      default_executor_(async, /*enable_streaming_enqueue=*/true),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       collective_executor_mgr_(collective_executor_mgr, /*owned=*/false),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
-      run_eager_op_as_function_(run_eager_op_as_function) {
+      run_eager_op_as_function_(run_eager_op_as_function),
+      jit_compile_rewrite_(jit_compile_rewrite) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
@@ -486,6 +490,10 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
     entry.second->cached_kernel_keys->clear();
   }
   {
+    mutex_lock dl(device_cache_mu_);
+    device_cache_.clear();
+  }
+  {
     mutex_lock ml(metadata_mu_);
     step_container_.reset(new ScopedStepContainer(
         0, [this](const string& name) { ClearResourceContainer(name); }));
@@ -649,6 +657,15 @@ EagerContext::~EagerContext() {
     // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
+    // TODO(hanyangtay): Remove this teardown logic once gRPC server clean
+    // shutdown is supported.
+    if (server_->worker_env()->session_mgr != nullptr) {
+      // Tear down coordination service.
+      Status s = server_->StopCoordinationService();
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to stop coordination service: " << s;
+      }
+    }
     server_.release();
   }
 
@@ -715,6 +732,15 @@ bool EagerContext::RunEagerOpAsFunction() const {
 
 void EagerContext::SetRunEagerOpAsFunction(bool enable) {
   run_eager_op_as_function_ = enable;
+}
+
+bool EagerContext::JitCompileRewrite() const {
+  VLOG(3) << "JitCompileRewrite: " << jit_compile_rewrite_;
+  return jit_compile_rewrite_;
+}
+
+void EagerContext::SetJitCompileRewrite(bool enable) {
+  jit_compile_rewrite_ = enable;
 }
 
 void EagerContext::ListDevices(
@@ -828,6 +854,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, request.get(), response,
         [request, response](const Status& status) {
           if (!status.ok()) {
@@ -872,6 +899,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     for (int i = 0; i < requests.size(); i++) {
       auto response = std::make_shared<eager::EnqueueResponse>();
       eager_client->StreamingEnqueueAsync(
+          this->Executor().StreamingEnqueue(),
           /*call_opts=*/nullptr, requests[i].get(), response.get(),
           [request = requests[i], response](const Status& s) {
             if (!s.ok()) {
@@ -933,13 +961,13 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
-  }
-  if (is_first_ref) {
-    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
-    TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
-    if (!add_to_local_only) {
-      return MaybeRegisterFunctionRemotely(fdef);
+    if (is_first_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
+      TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     }
+  }
+  if (is_first_ref && !add_to_local_only) {
+    return MaybeRegisterFunctionRemotely(fdef);
   }
   return Status::OK();
 }
@@ -953,23 +981,21 @@ std::vector<string> EagerContext::ListFunctionNames() {
 }
 
 Status EagerContext::RemoveFunction(const string& func) {
-  bool is_last_ref = false;
-  {
-    mutex_lock l(cache_mu_);
-    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
-    if (registered_function == nullptr) {
-      return errors::InvalidArgument("Tried to remove non-existent function '",
-                                     func, "'.");
-    }
-    is_last_ref = registered_function->RefCountIsOne();
-    if (is_last_ref) {
-      for (auto& key : *registered_function->cached_kernel_keys) {
-        kernel_cache_.erase(key);
-      }
-      registered_functions_.erase(func);
-    }
-    registered_function->Unref();
+  // TODO(mdan): The context owns these functions. Why check refcount then?
+  mutex_lock l(cache_mu_);
+  auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+  if (registered_function == nullptr) {
+    return errors::InvalidArgument("Tried to remove non-existent function '",
+                                   func, "'.");
   }
+  bool is_last_ref = registered_function->RefCountIsOne();
+  if (is_last_ref) {
+    for (auto& key : *registered_function->cached_kernel_keys) {
+      kernel_cache_.erase(key);
+    }
+    registered_functions_.erase(func);
+  }
+  registered_function->Unref();
   if (is_last_ref) {
     // TODO(fishx): Remove remote function as well.
     return func_lib_def_.RemoveFunction(func);
@@ -1011,6 +1037,7 @@ Status EagerContext::SyncExecutors() {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, &request, response,
         [response, target, &counter, &s = statuses[i]](const Status& status) {
           s = status;
@@ -1042,6 +1069,13 @@ core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
   return new_ref;
 }
 
+Device* EagerContext::GetCachedDevice(Fprint128 device_cache_key) {
+  tf_shared_lock l(device_cache_mu_);
+  auto iter = device_cache_.find(device_cache_key);
+  if (iter == device_cache_.end()) return nullptr;
+  return iter->second;
+}
+
 void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
@@ -1054,6 +1088,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
   }
+}
+
+void EagerContext::AddDeviceToCache(Fprint128 device_cache_key,
+                                    Device* device) {
+  mutex_lock l(device_cache_mu_);
+  device_cache_[device_cache_key] = device;
 }
 
 bool EagerContext::ShouldStoreGraphs() { return should_store_graphs_.load(); }

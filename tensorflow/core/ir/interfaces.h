@@ -16,10 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_INTERFACES_H_
 #define TENSORFLOW_CORE_IR_INTERFACES_H_
 
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/DialectInterface.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 
 // Include generated declarations.
 #include "tensorflow/core/ir/interfaces.h.inc"
+
+namespace mlir {
+namespace tfg {
+// The dialect fallback model for the TensorFlow registry interface.
+class TensorFlowRegistryInterfaceBase
+    : public TensorFlowRegistryInterface::FallbackModel<
+          TensorFlowRegistryInterfaceBase>,
+      public DialectInterface::Base<TensorFlowRegistryInterfaceBase> {
+ public:
+  explicit TensorFlowRegistryInterfaceBase(Dialect *dialect)
+      : DialectInterface::Base<TensorFlowRegistryInterfaceBase>(dialect) {}
+
+  // Returns whether the operation is stateful.
+  virtual bool isStateful(Operation *op) const = 0;
+};
+}  // namespace tfg
+}  // namespace mlir
 
 #endif  // TENSORFLOW_CORE_IR_INTERFACES_H_

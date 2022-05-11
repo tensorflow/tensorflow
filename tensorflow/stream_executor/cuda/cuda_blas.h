@@ -24,6 +24,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
@@ -131,7 +132,6 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
-#if CUDA_VERSION >= 11000
   // Helper function for implementing DoBlasLtMatmul.
   bool DoBlasLtMatmulInternal(Stream *stream, bool err_on_failure,
                               const blas::IBlasLtMatmulPlan *plan,
@@ -149,7 +149,6 @@ class CUDABlas : public blas::BlasSupport {
                                     size_t max_workspace_size,
                                     int max_algorithm_count,
                                     bool for_remainder_batch = false);
-#endif
 
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
@@ -161,10 +160,8 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ TF_GUARDED_BY(mu_);
 
-#if CUDA_VERSION >= 11000
   // cuBLASLt library handle on the device.
   cublasLtHandle_t blasLt_ TF_GUARDED_BY(mu_);
-#endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };

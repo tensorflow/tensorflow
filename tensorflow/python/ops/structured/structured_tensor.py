@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,8 +31,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition as row_partition_lib
 from tensorflow.python.ops.ragged.row_partition import RowPartition
@@ -485,7 +484,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -1301,8 +1300,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):
@@ -1380,7 +1380,7 @@ def _merge_row_partitions(row_partitions, value, rank, dtype, validate):
     return tuple(value_row_partitions)
   else:
     return tuple([
-        p1.merge_precomputed_encodings(p2, validate)
+        p1._merge_precomputed_encodings(p2, validate)  # pylint: disable=protected-access
         for (p1, p2) in zip(row_partitions, value_row_partitions)
     ])
 
@@ -1728,8 +1728,8 @@ def _merge_dims_generic(source, outer, inner):
 
 
 # pylint:disable=protected-access
-def _ragged_shape_init(fields, shape, nrows, row_partitions):
-  """Produce a RaggedShape for StructuredTensor."""
+def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
+  """Produce a DynamicRaggedShape for StructuredTensor."""
   assert isinstance(fields, dict), fields
   assert isinstance(shape, tensor_shape.TensorShape), shape
   assert nrows is None or isinstance(nrows, ops.Tensor), nrows
@@ -1742,7 +1742,7 @@ def _ragged_shape_init(fields, shape, nrows, row_partitions):
   # TODO(martinz): figure out whether to validate.
   dtype = _find_shape_dtype(fields, nrows, row_partitions)
   if rank == 0:
-    return ragged_shape.RaggedShape._from_inner_shape(
+    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
         array_ops.zeros((0,), dtype=dtype))
 
   if rank == 1:
@@ -1751,9 +1751,8 @@ def _ragged_shape_init(fields, shape, nrows, row_partitions):
       alt_value = alt_value.value
     if alt_value is not None:
       nrows = alt_value
-    return ragged_shape.RaggedShape._from_inner_shape([nrows], dtype=dtype)
+    return dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
+        [nrows], dtype=dtype)
 
-  return ragged_shape.RaggedShape.from_row_partitions(row_partitions,
-                                                      dtype=dtype)
-
-
+  return dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
+      row_partitions, dtype=dtype)

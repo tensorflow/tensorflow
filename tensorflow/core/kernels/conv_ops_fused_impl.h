@@ -597,8 +597,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       auto& runner =
           *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
       cudnn_launch_status = runner(
-          stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr,
-          std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
+          stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
+          input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
     } else {
       cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
           input_desc, input_ptr,            // input

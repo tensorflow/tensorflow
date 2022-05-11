@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -109,28 +110,22 @@ void DispatcherState::RegisterWorker(
 
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   int64_t job_id = create_job.job_id();
-  absl::optional<NamedJobKey> named_job_key;
-  if (create_job.has_named_job_key()) {
-    named_job_key.emplace(create_job.named_job_key().name(),
-                          create_job.named_job_key().index());
-  }
+  JobKey job_key(create_job.job_key().name(), create_job.job_key().iteration());
   absl::optional<int64_t> num_consumers;
   if (create_job.optional_num_consumers_case() ==
       CreateJobUpdate::kNumConsumers) {
     num_consumers = create_job.num_consumers();
   }
-  auto job = std::make_shared<Job>(
-      job_id, create_job.dataset_id(), create_job.processing_mode_def(),
-      create_job.num_split_providers(), named_job_key, num_consumers,
-      create_job.target_workers());
+  auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
+                                   create_job.processing_mode_def(),
+                                   create_job.num_split_providers(), job_key,
+                                   num_consumers, create_job.target_workers());
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
-  if (named_job_key.has_value()) {
-    DCHECK(!named_jobs_.contains(named_job_key.value()) ||
-           named_jobs_[named_job_key.value()]->garbage_collected);
-    named_jobs_[named_job_key.value()] = job;
-  }
+  DCHECK(!jobs_by_key_.contains(job_key) ||
+         jobs_by_key_[job_key]->garbage_collected);
+  jobs_by_key_[job_key] = job;
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
 }
 
@@ -139,9 +134,9 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
   DCHECK(job->distributed_epoch_state.has_value());
   DistributedEpochState& state = job->distributed_epoch_state.value();
   int64_t provider_index = produce_split.split_provider_index();
-  DCHECK_EQ(produce_split.repetition(), state.repetitions[provider_index]);
+  DCHECK_EQ(produce_split.iteration(), state.iterations[provider_index]);
   if (produce_split.finished()) {
-    state.repetitions[provider_index]++;
+    state.iterations[provider_index]++;
     state.indices[provider_index] = 0;
     return;
   }
@@ -309,7 +304,7 @@ DispatcherState::ListWorkers() const {
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
-DispatcherState::ListJobs() {
+DispatcherState::ListJobs() const {
   std::vector<std::shared_ptr<const DispatcherState::Job>> jobs;
   jobs.reserve(jobs_.size());
   for (const auto& it : jobs_) {
@@ -328,12 +323,12 @@ Status DispatcherState::JobFromId(int64_t id,
   return Status::OK();
 }
 
-Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
-                                      std::shared_ptr<const Job>& job) const {
-  auto it = named_jobs_.find(named_job_key);
-  if (it == named_jobs_.end()) {
-    return errors::NotFound("Named job key (", named_job_key.name, ", ",
-                            named_job_key.index, ") not found");
+Status DispatcherState::JobByKey(JobKey job_key,
+                                 std::shared_ptr<const Job>& job) const {
+  auto it = jobs_by_key_.find(job_key);
+  if (it == jobs_by_key_.end()) {
+    return errors::NotFound("Job key (", job_key.name, ", ", job_key.iteration,
+                            ") not found");
   }
   job = it->second;
   return Status::OK();

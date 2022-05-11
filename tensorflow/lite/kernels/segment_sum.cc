@@ -114,9 +114,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_SEGMENT_SUM(float);
       break;
     default:
-      context->ReportError(context,
-                           "Currently SegmentSum doesn't support type: %s",
-                           TfLiteTypeGetName(data->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Currently SegmentSum doesn't support type: %s",
+                         TfLiteTypeGetName(data->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SEGMENT_SUM

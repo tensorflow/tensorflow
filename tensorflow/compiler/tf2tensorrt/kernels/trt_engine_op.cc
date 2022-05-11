@@ -142,10 +142,6 @@ class TRTEngineOp : public AsyncOpKernel {
                     AsyncOpKernel::DoneCallback done) override;
 
  private:
-  using CacheType =
-      LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
-               VectorTensorShapeHasher>;
-
   // Executes calibration asynchronously.
   void ExecuteCalibration(OpKernelContext* ctx,
                           TRTEngineCacheResource* cache_res,
@@ -434,12 +430,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_explicit_precision_ = false;
   }
 
-  if (use_explicit_precision_) {
-    LOG(INFO) << "TRTEngineOp using explicit QDQ";
-  } else {
-    LOG(INFO) << "TRTEngineOp not using explicit QDQ";
-  }
-
   native_execution_func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     OP_REQUIRES_OK(context, ImportSegmentGraphDef(context->function_library(),
@@ -516,12 +506,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
-
-  if (has_dynamic_shape_input_ && !use_implicit_batch_) {
-    OP_REQUIRES(context, !calibration_mode_,
-                errors::InvalidArgument(
-                    "Dynamic shape mode does not support calibration"));
-  }
 }
 
 // Copies input tensor ctx->input(i) (which is in device memory) to the host,
@@ -792,38 +776,6 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                        dummy_async_helper);
   core::ScopedUnref unref_cache_res(cache_res);
 
-  // Run calibration if in int8+calibration mode.
-  // * Logic in TF 1.x:
-  //   - During conversion: calibration_mode_ is true and cache size is 0, so it
-  //     will run calibration.
-  //   - During inference: calibration_data will be set, so calibration_mode_ is
-  //     false and it won't trigger calibration.
-  // * Logic in TF 2.0:
-  //   - During conversion: similar to 1.x.
-  //   - During inference: calibration_data will still be empty, but cache will
-  //     contain the the calibrated engine, so it won't trigger calibration.
-  //
-  // TODO(laigd): consider the following alternatives:
-  // 1. Serialize the state (calibration or inference) using
-  //    TRTEngineInstance proto (or a new proto), so we know which mode we're
-  //    in and don't run calibration during inference (which is invalid).
-  // 2. Reuse the calibration_data attribute or use a new attribute in the
-  //    NodeDef to indicate whether it's in calibration mode.
-  if (calibration_mode_ && cache_res->cache_.size() == 0) {
-    if (!cache_res->calib_ctx_) {
-      // TODO(laigd): better encapsulation.
-      mutex_lock lock(engine_mutex_);
-      if (!cache_res->calib_ctx_) {
-        OP_REQUIRES_OK_ASYNC(ctx, AllocateCalibrationResources(ctx, cache_res),
-                             dummy_async_helper);
-      }
-    }
-    // TODO(laigd): check that the input shapes match the shapes of the
-    // persistent tensor in the calibration resource.
-    ExecuteCalibration(ctx, cache_res, async_helper);
-    return;
-  }
-
   // Get shapes of inputs to engine.
   std::vector<TensorShape> input_concrete_shapes;
   input_concrete_shapes.reserve(ctx->num_inputs());
@@ -870,6 +822,44 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                         profile_strategy_);
     }
   }
+
+  // Run calibration if in int8+calibration mode.
+  // * Logic in TF 1.x:
+  //   - During conversion: calibration_mode_ is true and cache size is 0, so it
+  //     will run calibration.
+  //   - During inference: calibration_data will be set, so calibration_mode_
+  //     is false and it won't trigger calibration.
+  // * Logic in TF 2.0:
+  //   - During conversion: similar to 1.x.
+  //   - During inference: calibration_data will still be empty, but cache will
+  //     contain the calibrated engine, so it won't trigger calibration.
+  //
+  // TODO(laigd): consider the following alternatives:
+  // 1. Serialize the state (calibration or inference) using
+  //    TRTEngineInstance proto (or a new proto), so we know which mode we're
+  //    in and don't run calibration during inference (which is invalid).
+  // 2. Reuse the calibration_data attribute or use a new attribute in the
+  //    NodeDef to indicate whether it's in calibration mode.
+  if (calibration_mode_ && cache_res->cache_.size() == 0) {
+    if (!cache_res->calib_ctx_) {
+      // TODO(laigd): better encapsulation.
+      mutex_lock lock(engine_mutex_);
+      if (!cache_res->calib_ctx_) {
+        // Add profiles if we are in dynamic shape mode.
+        if (!use_implicit_batch_ && (has_dynamic_shape_input_ ||
+                                     cache_res->profiles_.HasShapeTensor())) {
+          cache_res->profiles_.InitCalibProfile(input_concrete_shapes);
+        }
+        OP_REQUIRES_OK_ASYNC(ctx, AllocateCalibrationResources(ctx, cache_res),
+                             dummy_async_helper);
+      }
+    }
+    // TODO(laigd): check that the input shapes match the shapes of the
+    // persistent tensor in the calibration resource.
+    ExecuteCalibration(ctx, cache_res, async_helper);
+    return;
+  }
+
   StatusOr<std::pair<EngineContext*, int>> status =
       GetEngine(input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), dummy_async_helper);
@@ -1268,17 +1258,25 @@ Status TRTEngineOp::AllocateCalibrationResources(
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
   const int platform_device_id =
-      ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+      ctx->device()->tensorflow_accelerator_device_info()->gpu_id;
   if (platform_device_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
 
+  bool use_concrete_shapes =
+      use_implicit_batch_ || cache_res->profiles_.IsStaticCompatible();
+  const std::vector<PartialTensorShape>& conversion_input_shapes =
+      use_concrete_shapes
+          ? std::vector<PartialTensorShape>(shapes.begin(), shapes.end())
+          : input_partial_shapes_;
+
   cache_res->Ref();
   string platform_device_name = ctx->device()->name();
-  cres->thr_.reset(new std::thread([this, cres, shapes, platform_device_id,
-                                    platform_device_name, cache_res]() {
+  cres->thr_.reset(new std::thread([this, cres, shapes, conversion_input_shapes,
+                                    platform_device_id, platform_device_name,
+                                    cache_res]() {
     core::ScopedUnref sc(cache_res);
 
     VLOG(1) << "Starting calibration thread on device " << platform_device_id
@@ -1289,8 +1287,6 @@ Status TRTEngineOp::AllocateCalibrationResources(
       LOG(ERROR) << "Couldn't set cuda device to " << platform_device_id
                  << " in calibration thread";
     }
-    std::vector<PartialTensorShape> partial_shapes(shapes.begin(),
-                                                   shapes.end());
 
     std::unordered_map<string, tensorflow::DeviceProperties> device_map;
     DeviceNameUtils::ParsedName full_parsed_name;
@@ -1310,10 +1306,11 @@ Status TRTEngineOp::AllocateCalibrationResources(
     auto s = convert::ConvertGraphDefToEngine(
         this->segment_graph_def_, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
-        partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
-        cres->calibrator_.get(), &cres->engine_, /*use_calibration=*/true,
-        this->use_implicit_batch_, /*convert_successfully=*/nullptr,
-        /*profiles=*/nullptr, name(),
+        conversion_input_shapes, &cache_res->GetLogger(),
+        cache_res->allocator_.get(), cres->calibrator_.get(), &cres->engine_,
+        /*use_calibration=*/true, this->use_implicit_batch_,
+        /*convert_successfully=*/nullptr,
+        /*profiles=*/&cache_res->profiles_, name(),
         /*use_explicit_precision=*/use_explicit_precision_,
         /*cluster=*/&cluster);
     if (!s.ok()) {
@@ -1324,10 +1321,21 @@ Status TRTEngineOp::AllocateCalibrationResources(
       // dump it out during conversion for TF 2.0.
       mutex_lock lock(this->engine_mutex_);
       this->calibrator_ = std::move(cres->calibrator_);
-      ExecutionContext context = ExecutionContext::Create(cres->engine_.get());
-      cache_res->cache_.emplace(
-          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
-                                                   std::move(context)));
+      if (!use_implicit_batch_ &&
+          (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
+        std::vector<ExecutionContext> exec_contexts;
+        auto calib_result = cache_res->profiles_.CreateExecutionContexts(
+            cres->engine_.get(), &exec_contexts);
+        cache_res->cache_.emplace(
+            shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                     std::move(exec_contexts)));
+      } else {
+        ExecutionContext context =
+            ExecutionContext::Create(cres->engine_.get());
+        cache_res->cache_.emplace(
+            shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                     std::move(context)));
+      }
     }
 
     VLOG(1) << "Calibration loop terminated " << this->name();

@@ -42,6 +42,7 @@ cc_library(
     hdrs = ["gpu_info.h"],
     deps = [
         ":data_type",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -91,6 +92,18 @@ cc_library(
     name = "data_type",
     srcs = ["data_type.cc"],
     hdrs = ["data_type.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "data_type_test",
+    srcs = ["data_type_test.cc"],
+    deps = [
+        ":data_type",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -237,6 +250,7 @@ cc_test(
         "//tensorflow/lite/c:common",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

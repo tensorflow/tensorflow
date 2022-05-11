@@ -19,6 +19,7 @@ py_library(
     srcs = ["base.py"],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -65,6 +66,12 @@ py_library(
     deps = [
         "//tensorflow/python/util:tf_export",
     ],
+)
+
+py_library(
+    name = "checkpoint_util",
+    srcs = ["checkpoint_util.py"],
+    srcs_version = "PY3",
 )
 
 tf_py_test(
@@ -141,6 +148,7 @@ py_library(
         ":autotrackable",
         ":data_structures",
         ":resource",
+        "//tensorflow/python/eager:function_saved_model_utils",
     ],
 )
 
@@ -186,6 +194,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        ":trackable_utils",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",

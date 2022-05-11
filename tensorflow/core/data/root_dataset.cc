@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -364,8 +365,11 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   auto config_factory = [&optimizations, &optimization_configs]() {
     return CreateRewriterConfig(optimizations, optimization_configs);
   };
+  core::RefCountPtr<DatasetBase> rewritten_output;
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, output);
+                            /*record_fingerprint=*/true, &rewritten_output);
+
+  *output = rewritten_output.get();
   bool rewritten = (*output != input);
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
@@ -377,10 +381,7 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   if (!rewritten) {
     return RootDataset::FromOptions(input, output);
   } else {
-    input = *output;
-    core::RefCountPtr<DatasetBase> dataset_ref_ptr(
-        const_cast<DatasetBase*>(input));
-    return RootDataset::FromOptions(std::move(dataset_ref_ptr), output);
+    return RootDataset::FromOptions(std::move(rewritten_output), output);
   }
   return Status::OK();
 }

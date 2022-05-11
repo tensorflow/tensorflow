@@ -136,8 +136,7 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 
   Status s = Heartbeat();
   while (!s.ok()) {
-    if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
-        !errors::IsCancelled(s)) {
+    if (!IsPreemptedError(s)) {
       return s;
     }
     LOG(WARNING) << "Failed to register with dispatcher at "
@@ -229,7 +228,6 @@ Status DataServiceWorkerImpl::GetElementResult(
       return errors::Unavailable("Task ", request->task_id(), " not found");
     }
     task = it->second.get();
-    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
     task->outstanding_requests++;
   }
   auto cleanup = gtl::MakeCleanup([&] {
@@ -237,6 +235,7 @@ Status DataServiceWorkerImpl::GetElementResult(
     task->outstanding_requests--;
     cv_.notify_all();
   });
+  TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
 
   if (result->end_of_sequence) {

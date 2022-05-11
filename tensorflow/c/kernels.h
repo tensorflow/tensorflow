@@ -127,6 +127,17 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilder(const char* kernel_name,
                                                     TF_KernelBuilder* builder,
                                                     TF_Status* status);
 
+// Register the given kernel builder with the TensorFlow runtime. If
+// registration fails, the given status will be populated.
+//
+// This method is the same as TF_RegisterKernelBuilder except it takes in a
+// serialized KernelDef, and uses it for registration, instead of building a new
+// one. Users can choose to not provide a serialized KernelDef and in that case
+// it's identical to TF_RegisterKernelBuilder.
+TF_CAPI_EXPORT extern void TF_RegisterKernelBuilderWithKernelDef(
+    const char* serialized_kernel_def, const char* name,
+    TF_KernelBuilder* builder, TF_Status* status);
+
 // Deletes the given TF_KernelBuilder. This should be called only if the kernel
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
@@ -370,7 +381,7 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
 // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
 // -1.
 TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
-    TF_OpKernelContext* context, int* candidate_input_indices,
+    TF_OpKernelContext* context, const int* candidate_input_indices,
     int num_candidate_input_indices, int output_index,
     const int64_t* output_dims, int output_num_dims, int* forwarded_input,
     TF_Status* status);

@@ -182,90 +182,6 @@ void Node::ClearTypeInfo() {
   }
 }
 
-void Node::RunForwardTypeInference() {
-  VLOG(4) << "Forward type inference: " << props_->node_def.DebugString();
-
-  if (props_->fwd_type_fn == nullptr) {
-    return;
-  }
-
-  std::vector<Node*> input_nodes(props_->input_types.size(), nullptr);
-  std::vector<int> input_idx(props_->input_types.size(), 0);
-  for (const auto& edge : in_edges_) {
-    if (edge->IsControlEdge()) {
-      continue;
-    }
-    DCHECK(edge->dst_input() < input_nodes.size()) << DebugString();
-    int i = edge->dst_input();
-    input_nodes.at(i) = edge->src();
-    input_idx.at(i) = edge->src_output();
-  }
-
-  // Note: technically, we could use a very generic type when some of the inputs
-  // are unknown. But there is an expectation that a node will have complete
-  // inputs soon, so updating intermediate types is largely unnecessary.
-
-  for (const auto* node : input_nodes) {
-    if (node == nullptr) {
-      // Incomplete inputs, bail.
-      ClearTypeInfo();
-      return;
-    }
-  }
-
-  static FullTypeDef* no_type = new FullTypeDef();
-
-  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
-  for (int i = 0; i < input_nodes.size(); i++) {
-    const auto* node = input_nodes[i];
-    if (node->def().has_experimental_type()) {
-      const auto& node_t = node->def().experimental_type();
-      if (node_t.type_id() != TFT_UNSET) {
-        int ix = input_idx[i];
-        if (ix >= node_t.args_size()) {
-          LOG(WARNING) << name() << " has bad type information: input " << i
-                       << " should have an output " << ix
-                       << " but instead only has " << node_t.args_size()
-                       << " outputs: " << node_t.DebugString()
-                       << "\nThis indicates either "
-                          "a bug in op registration or a corrupted graph.";
-          ClearTypeInfo();
-          return;
-        }
-        input_types.emplace_back(node_t.args(ix));
-      } else {
-        input_types.emplace_back(*no_type);
-      }
-    } else {
-      // Incomplete inputs, bail.
-      ClearTypeInfo();
-      return;
-    }
-  }
-
-  const auto infer_type = props_->fwd_type_fn(input_types);
-  if (!infer_type.ok()) {
-    // TODO(mdan): Turn this into an error, once all offenders are clean.
-    LOG(WARNING) << name()
-                 << " failed type inference; this is likely caused by"
-                    " a graph in which inconsistent types went "
-                    "undetected. This will become an error in the "
-                    "future.\nNode information:\n"
-                 << props_->node_def.DebugString()
-                 << "\nType inference error:\n"
-                 << infer_type.status().ToString();
-    props_->node_def.clear_experimental_type();
-    return;
-  }
-  const FullTypeDef infer_typedef = infer_type.ValueOrDie();
-  if (infer_typedef.type_id() != TFT_UNSET) {
-    MaybeCopyOnWrite();
-    *(props_->node_def.mutable_experimental_type()) = infer_typedef;
-  } else {
-    props_->node_def.clear_experimental_type();
-  }
-}
-
 const std::string& Node::name() const { return props_->node_def.name(); }
 const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
@@ -594,25 +510,30 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
 
-  if (op_reg_data->type_ctor != nullptr) {
-    VLOG(3) << "AddNode: found type constructor for " << node_def.name();
-    Status s =
-        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
-                                  *(node_def.mutable_experimental_type()));
-    if (!s.ok()) {
-      *status = errors::InvalidArgument("type error: ", s.ToString());
-      VLOG(3) << "AddNode: type inference failed for " << node_def.name()
-              << ": " << s;
-      return nullptr;
-    }
+  if (node_def.has_experimental_type()) {
+    VLOG(3) << "AddNode: node has type set, skipping type constructor "
+            << node_def.name();
   } else {
-    VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+    if (op_reg_data->type_ctor != nullptr) {
+      VLOG(3) << "AddNode: found type constructor for " << node_def.name();
+      Status s =
+          full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                    *(node_def.mutable_experimental_type()));
+      if (!s.ok()) {
+        *status = errors::InvalidArgument("type error: ", s.ToString());
+        VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+                << ": " << s;
+        return nullptr;
+      }
+    } else {
+      VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+    }
   }
 
-  Node* node = AllocateNode(std::make_shared<NodeProperties>(
-                                &op_reg_data->op_def, std::move(node_def),
-                                inputs, outputs, op_reg_data->fwd_type_fn),
-                            nullptr, node_class);
+  Node* node = AllocateNode(
+      std::make_shared<NodeProperties>(&op_reg_data->op_def,
+                                       std::move(node_def), inputs, outputs),
+      nullptr, node_class);
   return node;
 }
 
@@ -688,20 +609,6 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   edges_.push_back(e);
   ++num_edges_;
 
-  if (!e->IsControlEdge()) {
-    if (dest->in_edges_.size() >= dest->props_->input_types.size()) {
-      // Note: this only produces consistent results at graph construction,
-      // and only when all incoming edges are up-to-date.
-      // If the graph is subsequently modified, or if the node is added before
-      // any of its upstream nodes, this type information would change as well.
-      // In general, graph transformations should run shole-graph type inference
-      // when done, and should not rely on types being fully up to date
-      // after each AddNode.
-      // TODO(mdan): Should we even run type inference here any more?
-      dest->RunForwardTypeInference();
-    }
-  }
-
   return e;
 }
 
@@ -716,11 +623,6 @@ void Graph::RemoveEdge(const Edge* e) {
   edges_[e->id_] = nullptr;
   RecycleEdge(e);
   --num_edges_;
-
-  if (!e->IsControlEdge()) {
-    // This may clear the node type if enough edges are removed.
-    e->dst_->RunForwardTypeInference();
-  }
 }
 
 void Graph::RecycleEdge(const Edge* e) {

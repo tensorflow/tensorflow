@@ -1735,6 +1735,68 @@ ENTRY main {
   VLOG(2) << "module:\n" << module->ToString();
 }
 
+// Do not move converts that have differently shaped operands from inside
+// conditional branches.
+TEST_F(ConditionalCodeMotionTest, NestedConditionalDisableMoveConvert) {
+  absl::string_view hlo_string =
+      R"(
+HloModule xla_computation_unknown.45
+
+%branch_0_comp.11 (parameter.12: (u32[])) -> (s8[]) {
+  %parameter.12 = (u32[]) parameter(0)
+  %get-tuple-element.13 = u32[] get-tuple-element((u32[]) %parameter.12), index=0
+  %convert.15 = s8[] convert(u32[] %get-tuple-element.13)
+  ROOT %tuple.18 = (s8[]) tuple(s8[] %convert.15)
+}
+
+%branch_0_comp__1.19 (parameter.20: (pred[])) -> (s8[]) {
+  %parameter.20 = (pred[]) parameter(0)
+  %get-tuple-element.21 = pred[] get-tuple-element((pred[]) %parameter.20), index=0
+  %convert.23 = s8[] convert(pred[] %get-tuple-element.21)
+  ROOT %tuple.24 = (s8[]) tuple(s8[] %convert.23)
+}
+
+%branch_1_comp__1.25 (parameter.26: (pred[])) -> (s8[]) {
+  %parameter.26 = (pred[]) parameter(0)
+  %get-tuple-element.27 = pred[] get-tuple-element((pred[]) %parameter.26), index=0
+  %convert.29 = s8[] convert(pred[] %get-tuple-element.27)
+  ROOT %tuple.30 = (s8[]) tuple(s8[] %convert.29)
+}
+
+%branch_1_comp.31 (parameter.32: (u32[])) -> (s8[]) {
+  %parameter.32 = (u32[]) parameter(0)
+  %get-tuple-element.33 = u32[] get-tuple-element((u32[]) %parameter.32), index=0
+  %convert.35 = pred[] convert(u32[] %get-tuple-element.33)
+  %convert.36 = s32[] convert(pred[] %convert.35)
+  %constant.37 = pred[] constant(true)
+  %tuple.38 = (pred[]) tuple(pred[] %constant.37)
+  ROOT %conditional.39 = (s8[]) conditional(s32[] %convert.36, (pred[]) %tuple.38, (pred[]) %tuple.38), branch_computations={%branch_0_comp__1.19, %branch_1_comp__1.25}
+}
+%scalar_add_computation.1 (scalar_lhs.1: u32[], scalar_rhs.1: u32[]) -> u32[] {
+  %scalar_lhs.1 = u32[] parameter(0)
+  %scalar_rhs.1 = u32[] parameter(1)
+  ROOT %add.1 = u32[] add(u32[] %scalar_lhs.1, u32[] %scalar_rhs.1)
+}
+
+ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], parameter.5: u32[15,14]) -> (s8[]) {
+  %parameter.3 = u8[] parameter(0)
+  %parameter.4 = u8[] parameter(1)
+  %compare.7 = pred[] compare(u8[] %parameter.3, u8[] %parameter.4), direction=LT
+  %convert.9 = s32[] convert(pred[] %compare.7)
+  %parameter.5 = u32[15,14]{1,0} parameter(2)
+  %constant.2 = u32[] constant(0)
+  %reduce.1 = u32[] reduce(u32[15,14]{1,0} %parameter.5, u32[] %constant.2), dimensions={1,0}, to_apply=%scalar_add_computation.1
+  %tuple.10 = (u32[]) tuple(u32[] %reduce.1)
+  ROOT %conditional.42 = (s8[]) conditional(s32[] %convert.9, (u32[]) %tuple.10, (u32[]) %tuple.10), branch_computations={%branch_0_comp.11, %branch_1_comp.31}
+}
+
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  pass.Run(&*module).ValueOrDie();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Conditional());
+}
 }  // namespace conditional_opt
 
 }  // namespace xla

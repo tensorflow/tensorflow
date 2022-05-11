@@ -35,12 +35,16 @@ namespace llvm_ir {
 // llvm::Value*.
 using ElementGenerator =
     std::function<StatusOr<llvm::Value*>(const IrArray::Index& index)>;
+using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
+
+// Creates the body emitter from target arrays.
+BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
+                            absl::Span<IrArray const> target_arrays,
+                            llvm::IRBuilder<>* b, bool is_tuple);
 
 // Emits a loop for every element in the given shape.
 class LoopEmitter {
  public:
-  using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
-
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
               llvm::IRBuilder<>* b);
 

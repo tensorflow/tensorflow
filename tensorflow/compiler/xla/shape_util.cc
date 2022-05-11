@@ -80,34 +80,12 @@ constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
 
 std::string ShapeIndex::ToString() const {
-  return ShapeIndexView(*this).ToString();
-}
-
-std::string ShapeIndexView::ToString() const {
-  return StrCat("{", absl::StrJoin(indices_, ","), "}");
-}
-
-bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
-  return indices_ == other.indices_;
-}
-
-bool ShapeIndexView::operator!=(const ShapeIndexView& other) const {
-  return !(*this == other);
+  return StrCat("{", absl::StrJoin(*this, ","), "}");
 }
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   out << shape_index.ToString();
   return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index) {
-  out << shape_index.ToString();
-  return out;
-}
-
-bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
-  return size() >= prefix.size() &&
-         indices_.subspan(0, prefix.size()) == prefix.indices_;
 }
 
 /* static */ bool ShapeUtil::IsArrayPrimitiveType(
@@ -145,6 +123,30 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
+
+template <typename T>
+const T& Deref(const T* ptr) {
+  DCHECK(ptr != nullptr);
+  return *ptr;
+}
+
+template <typename T>
+const T& Deref(const T& ref) {
+  return ref;
+}
+
+template <typename ShapePtrOrRef>
+Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
+  Shape result;
+  result.set_element_type(TUPLE);
+  result.mutable_tuple_shapes()->reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    ShapeUtil::AppendShapeToTuple(Deref(shape), &result);
+  }
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  return result;
+}
+
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
@@ -390,14 +392,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
-  Shape result;
-  result.set_element_type(TUPLE);
-  result.mutable_tuple_shapes()->reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    AppendShapeToTuple(shape, &result);
-  }
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(result));
-  return result;
+  return MakeTupleShapeImpl(shapes);
+}
+
+/* static */ Shape ShapeUtil::MakeTupleShapeWithPtrs(
+    absl::Span<const Shape* const> shapes) {
+  return MakeTupleShapeImpl(shapes);
 }
 
 /* static */ Shape ShapeUtil::MakeMaybeTupleShape(
@@ -445,7 +445,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   UpdateDynamicDimension(shape->mutable_tuple_shapes(index.front()),
-                         index.ConsumeFront(), dim, is_dynamic);
+                         index.subspan(1), dim, is_dynamic);
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
@@ -976,7 +976,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   const Shape* return_shape = &shape;
   for (auto i : index) {
     CHECK(return_shape->IsTuple())
-        << "Invalid index " << index << " for shape " << shape;
+        << "Invalid index " << ShapeIndex(index) << " for shape " << shape;
     return_shape = &return_shape->tuple_shapes(i);
   }
   return *return_shape;
@@ -990,7 +990,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
         i >= return_shape->tuple_shapes_size()) {
       return InvalidArgument(
           "Shape index %s not a valid subshape index for tuple with shape %s",
-          index.ToString(), shape.DebugString());
+          ShapeIndex(index).ToString(), shape.DebugString());
     }
     return_shape = &return_shape->tuple_shapes(i);
   }
@@ -1268,7 +1268,9 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     const Shape& from_shape, const Shape& to_shape,
     absl::Span<const int64_t> input_dim_indices) {
-  CHECK(std::is_sorted(input_dim_indices.begin(), input_dim_indices.end()));
+  if (!std::is_sorted(input_dim_indices.begin(), input_dim_indices.end())) {
+    return absl::nullopt;
+  }
 
   std::vector<int64_t> output_dim_indices;
   std::vector<std::pair<int64_t, int64_t>> unmodified_dims =

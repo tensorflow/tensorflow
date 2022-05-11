@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -49,6 +50,7 @@ struct MlirBenchmark {
   std::unique_ptr<HostContext> host;
   const Executable* executable;
   tfrt::ExecutionContext exec_ctx;
+  std::unique_ptr<ResultConversionCtx> conversion_ctx;
   ReturnValueConverter<ResultConversionCtx> converter;
 };
 
@@ -75,8 +77,15 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   auto result_values = std::array<RCReference<AsyncValue>, 1>{{}};
   RemainingResults results(result_values);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
+  for (auto& operand : operands) {
+    input_ptrs.push_back(operand.data());
+  }
+
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  auto ctx = std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, *ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
@@ -92,7 +101,8 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
       << "Failed to get executable: " << StrCat(executable->GetError());
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
-  return {std::move(host), &executable->get(), exec_ctx, std::move(converter)};
+  return {std::move(host), &executable->get(), exec_ctx, std::move(ctx),
+          std::move(converter)};
 }
 
 template <typename T, int rank>

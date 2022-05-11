@@ -41,6 +41,8 @@ OpView::OpView(OpSpec op)
     all_arguments_.push_back(OpArgumentView(attr));
   }
   all_arguments_.push_back(OpArgumentView("const char*", "name", "nullptr"));
+  all_arguments_.push_back(
+      OpArgumentView("const char*", "raw_device_name", "nullptr"));
 }
 
 const std::vector<ArgView>& OpView::Inputs() const { return input_args_; }

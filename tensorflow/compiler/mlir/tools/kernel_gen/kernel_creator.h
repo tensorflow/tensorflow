@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/platform/statusor.h"
@@ -45,7 +46,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
     bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen,
-    bool jit_compile, bool jit_i64_indexed_for_large_tensors);
+    bool jit_compile, bool jit_i64_indexed_for_large_tensors,
+    bool apply_cl_options);
 
 }  // namespace kernel_gen
 }  // namespace tensorflow

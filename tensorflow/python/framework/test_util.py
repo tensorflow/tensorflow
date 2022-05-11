@@ -37,6 +37,7 @@ import six
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_sanitizers
@@ -1217,14 +1218,14 @@ def enable_graph_building_optimization(fn):
 
   def wrapper(*args, **kwargs):
     # If `graph_building_optimization` is already enabled do nothing.
-    if context.graph_building_optimization_enabled():
+    if flags.config().graph_building_optimization.value():
       return fn(*args, **kwargs)
 
-    context.enable_graph_building_optimization()
+    flags.config().graph_building_optimization.reset(True)
     try:
       return fn(*args, **kwargs)
     finally:
-      context.disable_graph_building_optimization()
+      flags.config().graph_building_optimization.reset(False)
 
   return wrapper
 
@@ -1259,7 +1260,7 @@ def add_graph_building_optimization_tests(cls=None):
   """
 
   def decorator(cls):
-    if context.graph_building_optimization_enabled():
+    if flags.config().graph_building_optimization.value():
       return cls
 
     for name, value in cls.__dict__.copy().items():
@@ -1393,7 +1394,7 @@ def build_as_function_and_v1_graph(func=None):
           function_in_eager()
         ops.dismantle_graph(graph_for_eager_test)
       else:
-        return ValueError("Unknown run mode %s" % run_mode)
+        raise ValueError("Unknown run mode %s" % run_mode)
 
     return decorated
 

@@ -41,11 +41,11 @@ message CoordinationServiceDeviceInfo {
   }
 }
 
-// Request and response messages for registering a worker to the cluster leader.
-// Use `job` and `task` to represent the role of the worker, and use
-// `incarnation` to uniquely identify a worker process. Leader responds with its
-// `incarnation` to identify a leader process.
-message RegisterWorkerRequest {
+// Request and response messages for registering a task to the cluster leader.
+// A task is uniquely represented by its `job_name`, `task_id` and
+// `incarnation`. Leader responds with its `incarnation` to identify a leader
+// process.
+message RegisterTaskRequest {
   // Removed fields which used to specify the task.
   reserved 1, 2;
   fixed64 incarnation = 3;
@@ -55,7 +55,7 @@ message RegisterWorkerRequest {
   CoordinatedTask source_task = 5;
 }
 
-message RegisterWorkerResponse {
+message RegisterTaskResponse {
   fixed64 leader_incarnation = 1;
 }
 
@@ -70,7 +70,7 @@ message HeartbeatRequest {
 message HeartbeatResponse {
   fixed64 leader_incarnation = 1;
   // If there are failures in cluster, use additional metadata in response to
-  // broadcast error code and message to other workers.
+  // broadcast error code and message to other tasks.
 }
 
 // Request and response messages for waiting for all tasks.
@@ -92,8 +92,22 @@ message WaitForAllTasksResponse {
   CoordinationServiceDeviceInfo cluster_device_info = 3;
 }
 
+// Request and response messages for disconnecting a task from the service.
+message ShutdownTaskRequest {
+  CoordinatedTask source_task = 1;
+}
+
+message ShutdownTaskResponse {}
+
+// Request and response messages for resetting a task state in the service.
+message ResetTaskRequest {
+  CoordinatedTask source_task = 1;
+}
+
+message ResetTaskResponse {}
+
 // Request and response messages for reporting errors to task.
-message ReportErrorToAgentRequest {
+message ReportErrorToTaskRequest {
   int32 error_code = 1;
   string error_message = 2;
   // Removed fields that are embedded in payload.
@@ -101,7 +115,7 @@ message ReportErrorToAgentRequest {
   CoordinationServiceError error_payload = 5;
 }
 
-message ReportErrorToAgentResponse {}
+message ReportErrorToTaskResponse {}
 
 // Request and response messages for reporting errors to service instance.
 message ReportErrorToServiceRequest {
@@ -138,6 +152,15 @@ message GetKeyValueResponse {
   KeyValueEntry kv = 1;
 }
 
+message GetKeyValueDirRequest {
+  string directory_key = 1;
+}
+
+message GetKeyValueDirResponse {
+  string directory_key = 1;
+  repeated KeyValueEntry kv = 2;
+}
+
 // Request and response messages for deleting configuration key-value data.
 // When is_directory is true, delete key-values recursively under `key`.
 message DeleteKeyValueRequest {
@@ -170,18 +193,18 @@ message CancelBarrierRequest {
 message CancelBarrierResponse {}
 
 // Coordination Service defines a TensorFlow service that controls and
-// coordinates distributed execution in a cluster of multiple workers.
+// coordinates distributed execution in a cluster of multiple tasks.
 //
 // The service keeps track of the cluster configuration and the state of cluster
-// members or the leader depending on the role of the current worker. The
+// members or the leader depending on the role of the current task. The
 // distributed runtime leverages this service to coordinate and perform cluster
-// initialization, check the healthiness of workers, and propagate error
+// initialization, check the healthiness of tasks, and propagate error
 // messages to the cluster.
 service CoordinationService {
   // Register task to coordination service so that the service starts to track
   // liveness of the task. RPC blocks and returns only when it registers to
   // the service successfully, or error happens in the registering process.
-  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  rpc RegisterTask(RegisterTaskRequest) returns (RegisterTaskResponse);
 
   // Heartbeat message from task to coordination service. Heartbeat is sent from
   // a task to refresh its timestamp on leader to avoid it becoming stale.
@@ -189,14 +212,25 @@ service CoordinationService {
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 
   // Wait for all tasks in the cluster to be up and running. The RPC request
-  // only gets responded when all workers are registered, or some error occurs.
+  // only gets responded when all tasks have registered, or some error occurs.
   rpc WaitForAllTasks(WaitForAllTasksRequest) returns (WaitForAllTasksResponse);
+
+  // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
+  // specified in the config, blocks until all tasks reach the barrier before
+  // disconnecting together. If the barrier times out, tasks at the barrier will
+  // still disconnect, while an error is reported to tasks that did not reach
+  // the barrier on time.
+  rpc ShutdownTask(ShutdownTaskRequest) returns (ShutdownTaskResponse);
+
+  // Disconnects task from the service if it is in an ERROR state, thereby
+  // allowing it to reconnect via RegisterTask() in the future.
+  rpc ResetTask(ResetTaskRequest) returns (ResetTaskResponse);
 
   // Report error to the task. RPC sets the receiving instance of coordination
   // service agent to error state permanently.
   // TODO(b/195990880): Consider splitting this into a different RPC service.
-  rpc ReportErrorToAgent(ReportErrorToAgentRequest)
-      returns (ReportErrorToAgentResponse);
+  rpc ReportErrorToTask(ReportErrorToTaskRequest)
+      returns (ReportErrorToTaskResponse);
 
   // Report task error to coordination service. RPC sets the service-side task
   // state to error, and propagate the error to other tasks in the cluster.
@@ -204,14 +238,17 @@ service CoordinationService {
       returns (ReportErrorToServiceResponse);
 
   // Insert configuration key-value that will be accessible to all cluster
-  // workers. The key can be formatted as Unix file path with hierarchy. The
+  // tasks. The key can be formatted as Unix file path with hierarchy. The
   // coordination service key-value store should only be used for cluster
   // configuration data.
   rpc InsertKeyValue(InsertKeyValueRequest) returns (InsertKeyValueResponse);
 
   // Get configuration key-value. The request blocks until the key-value data
-  // becomes available (i.e., set by a worker in the cluster).
+  // becomes available (i.e., set by a task in the cluster).
   rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse);
+  // Same as GetKeyValue, but returns all values that have keys which are
+  // prefixed with the directory key.
+  rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse);
 
   // Delete configuration key-value. If is_directory is set in request,
   // recursively clean up all key-values under the path specified by `key`.
@@ -238,13 +275,19 @@ service CoordinationService {
   //      Deadline is determined by the server timestamp when it receives the
   //      first WaitAtBarrier() + timeout duration.
   //   - Cancelled: One of the tasks called CancelBarrier().
+  //   - Aborted: Service is shutting down.
   //   - Internal: Any participating task is in ERROR state.
-  //   - InvalidArgument: Conflicting tasks specified by different agents for
-  //       the same barrier.
+  //   - InvalidArgument: (1) Conflicting tasks specified by different agents
+  //       for the same barrier, (2) one of the participating tasks is not in
+  //       the cluster, or (3) task making the request is not included in the
+  //       list of participating tasks.
   rpc Barrier(BarrierRequest) returns (BarrierResponse);
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
   // CANCELLED error status.
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
   rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
 }

@@ -16,11 +16,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
@@ -47,16 +50,16 @@ using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
 using mlir::ValueRange;
+using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::InitTensorOp;
 using mlir::linalg::LinalgOp;
-using mlir::linalg::TiledLoopOp;
 using mlir::linalg::YieldOp;
 using mlir::tensor::ExtractSliceOp;
 using mlir::tensor::InsertSliceOp;
 
-SmallVector<OpFoldResult> GetParallelDimStep(TiledLoopOp tiled_loop) {
+SmallVector<OpFoldResult> GetParallelDimStep(LoopOp tiled_loop) {
   assert(tiled_loop.getNumLoops() == 2 && "Expected a 2D loop");
   Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.step().front()
                                                  : tiled_loop.step().back();
@@ -81,7 +84,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     // Get immediate parent.
     auto tiled_loop_op =
-        dyn_cast<TiledLoopOp>(linalg_op->getParentRegion()->getParentOp());
+        dyn_cast<LoopOp>(linalg_op->getParentRegion()->getParentOp());
     if (!tiled_loop_op) return failure();
     if (tiled_loop_op.getNumLoops() != 2) return failure();
 
@@ -104,8 +107,9 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
   //** %init_tile = linalg.init_tensor [%stride]
   //   %fill = linalg.fill(%cst, %init)
   //** linalg.tiled_loop outs(%fill, %init_tile)
-  BlockArgument CloneAndAppendInitTensorToTiledLoop(
-      PatternRewriter &rewriter, FillOp fill, TiledLoopOp tiled_loop) const {
+  BlockArgument CloneAndAppendInitTensorToTiledLoop(PatternRewriter &rewriter,
+                                                    FillOp fill,
+                                                    LoopOp tiled_loop) const {
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(fill);
 
@@ -257,11 +261,11 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
   // Unfortunaly, there is no way to modify the results of the loop inplace. So
   // we have to replace it with a clone.
-  TiledLoopOp CreateLoopWithUpdatedResults(PatternRewriter &rewriter,
-                                           TiledLoopOp tiled_loop) const {
+  LoopOp CreateLoopWithUpdatedResults(PatternRewriter &rewriter,
+                                      LoopOp tiled_loop) const {
     auto loc = tiled_loop.getLoc();
     rewriter.setInsertionPoint(tiled_loop);
-    auto new_loop = rewriter.create<TiledLoopOp>(
+    auto new_loop = rewriter.create<LoopOp>(
         loc, mlir::TypeRange(tiled_loop.outputs()), tiled_loop.getOperands(),
         tiled_loop->getAttrs());
     rewriter.inlineRegionBefore(tiled_loop.region(), new_loop.region(),
@@ -271,11 +275,11 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     return new_loop;
   }
 
-  // Fuses FillOp producer of the output argument of the TiledLoopOp and inserts
+  // Fuses FillOp producer of the output argument of the LoopOp and inserts
   // an operation that accumulates the partial result, i.e. reduced tile, and
   // the current value of the output tile.
   LogicalResult RewriteTiledReduction(PatternRewriter &rewriter,
-                                      TiledLoopOp tiled_loop,
+                                      LoopOp tiled_loop,
                                       LinalgOp tiled_op) const {
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointAfter(tiled_op);
@@ -328,7 +332,7 @@ struct FuseFillIntoTiledReductionPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseFillIntoTiledReductionPass() {
   return std::make_unique<FuseFillIntoTiledReductionPass>();
 }

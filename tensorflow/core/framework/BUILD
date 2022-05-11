@@ -74,6 +74,7 @@ exports_files(
         "queue_interface.h",
         "reader_interface.h",
         "reader_op_kernel.h",
+        "ref_var.h",
         "register_types_traits.h",
         "rendezvous.h",
         "resource_mgr.h",
@@ -218,6 +219,7 @@ filegroup(
         "queue_interface.h",
         "reader_interface.h",
         "reader_op_kernel.h",
+        "ref_var.h",
         "register_types.h",
         "register_types_traits.h",
         "rendezvous.h",
@@ -281,6 +283,7 @@ filegroup(
         "op_kernel.cc",
         "op_segment.cc",
         "ops_util.cc",
+        "ref_var.cc",
         "rendezvous.cc",
         "resource_mgr.cc",
         "resource_var.cc",
@@ -413,6 +416,8 @@ filegroup(
         "reader_base.h",
         "reader_interface.h",
         "reader_op_kernel.h",
+        "ref_var.cc",
+        "ref_var.h",
         "register_types_traits.h",
         "rendezvous.cc",
         "rendezvous.h",
@@ -701,6 +706,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
@@ -753,6 +759,8 @@ tf_cc_test(
     srcs = ["resource_handle_test.cc"],
     deps = [
         ":resource_handle",
+        ":resource_handle_proto_cc",
+        ":tensor_shape_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -874,7 +882,6 @@ cc_library(
         ":node_def_proto_cc",
         ":node_def_util",
         ":op_def_proto_cc",
-        ":tensor",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
         "//tensorflow/core/lib/core:errors",
@@ -884,6 +891,7 @@ cc_library(
         "//tensorflow/core/lib/strings:scanner",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1057,7 +1065,7 @@ cc_library(
         "//tensorflow/security/fuzzing:__subpackages__",
         # Necessary for calling REGISTER_OP with SetTypeConstructor
         # http://yaqs/4779722181477138432
-        "//intelligence/brella/sql/tensorflow:__pkg__",
+        "//intelligence/brella/analytics/sql/tensorflow:__pkg__",
     ],
     deps = [
         ":attr_value_proto_cc",
@@ -1069,9 +1077,11 @@ cc_library(
         ":tensor",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1364,6 +1374,7 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/profiler/lib:profiler_session",
@@ -1744,6 +1755,17 @@ tf_proto_library(
         ":types_proto",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "function_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [
+#         ":function_proto",
+#     ],
+# )
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "summary_proto",

@@ -15,7 +15,7 @@ limitations under the License.
 
 // Converts TF While to TFL While with single call in body and cond.
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -33,6 +33,8 @@ namespace {
 // cond and body regions.
 struct LegalizeWhile
     : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeWhile)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
@@ -47,23 +49,23 @@ struct LegalizeWhile
     return "Legalize from TensorFlow While to TensorFlow Lite While";
   }
 
-  void RunOnFunction(FuncOp func);
+  void RunOnFunction(func::FuncOp func);
 
   void runOnOperation() override {
-    for (auto op : getOperation().getOps<FuncOp>()) RunOnFunction(op);
+    for (auto op : getOperation().getOps<func::FuncOp>()) RunOnFunction(op);
   }
 };
 
 }  // namespace
 
 // Inserts call to the given function into the 'region'.
-void CreateRegionWithCall(FuncOp func, Region& region, Location loc) {
+void CreateRegionWithCall(func::FuncOp func, Region& region, Location loc) {
   OpBuilder builder(region);
   auto block = builder.createBlock(&region);
   SmallVector<Value, 4> new_operands;
-  for (Type t : func.getType().getInputs())
+  for (Type t : func.getFunctionType().getInputs())
     new_operands.push_back(block->addArgument(t, loc));
-  auto call = builder.create<CallOp>(loc, func, new_operands);
+  auto call = builder.create<func::CallOp>(loc, func, new_operands);
   builder.create<YieldOp>(loc, call.getResults());
   // Mark old function as private so that it can be DCE'd if not called.
   func.setPrivate();
@@ -83,7 +85,7 @@ void RunOnWhile(TF::WhileOp while_op) {
   op->erase();
 }
 
-void LegalizeWhile::RunOnFunction(FuncOp func) {
+void LegalizeWhile::RunOnFunction(func::FuncOp func) {
   // Convert all TF WhileOps inside the function body to TFL While ops.
   func.getBody().walk([](TF::WhileOp while_op) { RunOnWhile(while_op); });
 }

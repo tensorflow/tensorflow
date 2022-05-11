@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -84,12 +84,16 @@ namespace {
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
     : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerStaticTensorListPass)
+
   LowerStaticTensorListPass() = default;
   LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
   explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through,
-                                     bool default_to_single_batch) {
+                                     bool default_to_single_batch,
+                                     bool enable_dynamic_update_slice) {
     this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
     this->default_to_single_batch = default_to_single_batch;
+    this->enable_dynamic_update_slice = enable_dynamic_update_slice;
   }
 
   StringRef getArgument() const final {
@@ -118,6 +122,12 @@ struct LowerStaticTensorListPass
           "When specified to true, if the tensorlist ops has unspecified batch "
           "size, this pass will assume that the batch size is one to proceed "
           "tensorlist op lowering (default true)"),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_dynamic_update_slice{
+      *this, "enable-dynamic-update-slice",
+      llvm::cl::desc("When specified to true, lower TensorListSetItem with "
+                     "DynamicUpdateSlice op (default false)"),
       llvm::cl::init(false)};
 };
 
@@ -174,7 +184,7 @@ Type GetTensorTypeForTensorList(Type element_type, TF::VariantType handle_dtype,
 // Gets the index of tensorlist arguments which size might get changed by the
 // function.
 llvm::SmallSet<int, 4> GetResizedTensorListIndexes(
-    FuncOp func, const llvm::SmallSet<int, 4> &tensor_list_args) {
+    func::FuncOp func, const llvm::SmallSet<int, 4> &tensor_list_args) {
   // `indexes` stores the argument index of tensorlists which size may get
   // updated in the function.
   llvm::SmallSet<int, 4> indexes;
@@ -331,7 +341,20 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
 
 struct ConvertTensorListSetItem
     : public OpConversionPattern<TF::TensorListSetItemOp> {
-  using OpConversionPattern::OpConversionPattern;
+  explicit ConvertTensorListSetItem(MLIRContext *context,
+                                    bool enable_dynamic_update_slice = false)
+      : OpConversionPattern<TF::TensorListSetItemOp>(context),
+        enable_dynamic_update_slice(enable_dynamic_update_slice) {}
+
+  LogicalResult matchAndRewrite(
+      TF::TensorListSetItemOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    if (enable_dynamic_update_slice) {
+      return matchAndRewriteImplWithDynamicUpdateSlice(op, adaptor, rewriter);
+    } else {
+      return matchAndRewriteImplWithSliceAndConcat(op, adaptor, rewriter);
+    }
+  }
 
   // This function rewrites the original op into a series of slice and concat op
   // to produce the same result. It first slices the first `$index` rows. Then
@@ -345,9 +368,9 @@ struct ConvertTensorListSetItem
   //        (Slice $input, [0, 0, ...], (Concat (ExpandDims $index, expand_dim =
   //        0), [-1, -1, ...])), (ExpandDims $item, expand_dim = 0), (Slice
   //        $input, [$index + 1, 0, 0, ...], [-1, -1, ...]))>;
-  LogicalResult matchAndRewrite(
+  LogicalResult matchAndRewriteImplWithSliceAndConcat(
       TF::TensorListSetItemOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
+      ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
     Value input = adaptor.getOperands()[0];
     Value index = adaptor.getOperands()[1];
@@ -394,6 +417,55 @@ struct ConvertTensorListSetItem
         ArrayRef<Value>({slice1, expanded_item, slice2}));
     return success();
   }
+
+  // This function rewrites the original op into a XLA DynamicUpdateSlice op.
+  // |item| is expanded to have the same dimension as input_handle and
+  // |index| is expanded to [index, 0, 0, ...] as the indices to input_handle.
+  // On a high level, it's doing something like:
+  // def : Pat<(TensorListSetItem($input_handle, $index, $item)),
+  //           (XlaDynamicUpdateSlice($input_handle, ExpandDims($item, 0),
+  //              Concat(ExpandDims($index, 0), [0, 0, 0, ...])))>
+  LogicalResult matchAndRewriteImplWithDynamicUpdateSlice(
+      TF::TensorListSetItemOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    Value input = adaptor.getOperands()[0];
+    Value index = adaptor.getOperands()[1];
+    Value item = adaptor.getOperands()[2];
+
+    IntegerType shape_dtype = rewriter.getIntegerType(32);
+    auto item_rank = rewriter.create<TF::RankOp>(
+        loc, RankedTensorType::get({}, shape_dtype), item);
+    Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
+
+    // Concat(ExpandDims(index, 0), [0, 0, 0, ...])
+    RankedTensorType position_type = RankedTensorType::get({-1}, shape_dtype);
+    auto item_position_shape = rewriter.create<TF::ExpandDimsOp>(
+        loc, RankedTensorType::get({1}, shape_dtype), item_rank, scalar_zero);
+    Value partial_index =
+        CreateI32SplatTensor(loc, &rewriter, item_position_shape, 0);
+    RankedTensorType vector_type = RankedTensorType::get({1}, shape_dtype);
+    auto expanded_index =
+        rewriter.create<TF::ExpandDimsOp>(loc, vector_type, index, scalar_zero);
+    auto start_position = rewriter.create<TF::ConcatOp>(
+        loc, position_type, scalar_zero,
+        ArrayRef<Value>({expanded_index, partial_index}));
+
+    // Expand the dimension of item so that it will have the same rank with
+    // input.
+    // ExpandDims(item, 0)
+    Type element_type = input.getType().cast<TensorType>().getElementType();
+    UnrankedTensorType unranked_tensor = UnrankedTensorType::get(element_type);
+    auto expanded_item = rewriter.create<TF::ExpandDimsOp>(
+        op.getLoc(), unranked_tensor, item, scalar_zero);
+
+    // Update the element with XlaDynamicUpdateSliceOp.
+    rewriter.replaceOpWithNewOp<TF::XlaDynamicUpdateSliceOp>(
+        op, input.getType(), input, expanded_item, start_position);
+    return success();
+  }
+
+  bool enable_dynamic_update_slice;
 };
 
 // Rewrites op of the template type initializing a TensorList with a list of ops
@@ -714,22 +786,24 @@ struct ConvertTensorListResize
     // Create functions in a higher scope before restoring the insertion point.
     // Additionally, create the SymbolTable before further modifying the module.
     auto original_point = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());
+    rewriter.setInsertionPointAfter(op->getParentOfType<func::FuncOp>());
     SymbolTable manager(op->getParentOfType<ModuleOp>());
 
     // Constructs `then_branch`, which is executed when `if_cond` evaluates to
     // true.
-    auto then_branch_op = rewriter.create<FuncOp>(loc, "cond_true", func_type);
+    auto then_branch_op =
+        rewriter.create<func::FuncOp>(loc, "cond_true", func_type);
     CreateCondTrueBranch(op, shape_dtype, result_type, then_branch_op,
                          &rewriter);
-    then_branch_op.setVisibility(FuncOp::Visibility::Private);
+    then_branch_op.setVisibility(func::FuncOp::Visibility::Private);
 
     // Constructs `else_branch`, which is executed when `if_cond` evaluates to
     // false.
-    auto else_branch_op = rewriter.create<FuncOp>(loc, "cond_false", func_type);
+    auto else_branch_op =
+        rewriter.create<func::FuncOp>(loc, "cond_false", func_type);
     CreateCondFalseBranch(loc, shape_dtype, result_type, else_branch_op,
                           &rewriter);
-    else_branch_op.setVisibility(FuncOp::Visibility::Private);
+    else_branch_op.setVisibility(func::FuncOp::Visibility::Private);
 
     // Inserts the two blocks' names into the symbol table held by the module.
     // Using SymbolTable will ensure that the inserted symbol names are
@@ -756,10 +830,10 @@ struct ConvertTensorListResize
   // Create a new tensorlist of size 'size - input_size' and concat it
   // with the input tensorlist.
   void CreateCondTrueBranch(TF::TensorListResizeOp resize_op, Type shape_dtype,
-                            Type result_type, FuncOp branch_func,
+                            Type result_type, func::FuncOp branch_func,
                             ConversionPatternRewriter *rewriter) const {
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    auto inputs = branch_func.getType().getInputs();
+    auto inputs = branch_func.getFunctionType().getInputs();
     Block *block = rewriter->createBlock(
         &branch_func.getBody(), branch_func.begin(), inputs,
         SmallVector<Location>(inputs.size(), branch_func.getLoc()));
@@ -790,17 +864,17 @@ struct ConvertTensorListResize
     auto concat_op = rewriter->create<TF::ConcatOp>(
         loc, result_type, scalar_zero,
         ArrayRef<Value>({input, stacked_extended_part}));
-    rewriter->create<ReturnOp>(loc, ArrayRef<Value>({concat_op}));
+    rewriter->create<func::ReturnOp>(loc, ArrayRef<Value>({concat_op}));
   }
 
   void CreateCondFalseBranch(Location loc, Type shape_dtype, Type result_type,
-                             FuncOp branch_func,
+                             func::FuncOp branch_func,
                              ConversionPatternRewriter *rewriter) const {
     // When the input tensorlist's size is larger or equal than the requested
     // size, the else branch is executed.
     // Slice the first 'size' rows from the input tensorlist.
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    auto inputs = branch_func.getType().getInputs();
+    auto inputs = branch_func.getFunctionType().getInputs();
     Block *block = rewriter->createBlock(
         &branch_func.getBody(), branch_func.begin(), inputs,
         SmallVector<Location>(inputs.size(), branch_func.getLoc()));
@@ -821,7 +895,7 @@ struct ConvertTensorListResize
                                    /*start_index=*/scalar_zero, /*size=*/size,
                                    /*item_rank=*/partial_position_shape,
                                    /*result_type=*/result_type, rewriter);
-    rewriter->create<ReturnOp>(loc, ArrayRef<Value>({slice_op}));
+    rewriter->create<func::ReturnOp>(loc, ArrayRef<Value>({slice_op}));
   }
 };
 
@@ -983,11 +1057,11 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   }
 };
 
-struct ConvertReturn : public OpConversionPattern<ReturnOp> {
+struct ConvertReturn : public OpConversionPattern<func::ReturnOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ReturnOp op, OpAdaptor adaptor,
+      func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.updateRootInPlace(op,
                                [&] { op->setOperands(adaptor.getOperands()); });
@@ -1066,7 +1140,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
 
 // Returns a set of integers that correspond to the tensorlist arguments in
 // the function.
-llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(FuncOp func) {
+llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(func::FuncOp func) {
   llvm::SmallSet<int, 4> set;
   for (const auto &arg_and_idx : llvm::enumerate(func.getArguments())) {
     if (IsTensorListType(arg_and_idx.value().getType(), arg_and_idx.value())) {
@@ -1078,11 +1152,11 @@ llvm::SmallSet<int, 4> GetTensorListArgumentsIndex(FuncOp func) {
 
 // Returns a set of integers that correspond to the tensorlist results in the
 // function.
-llvm::SmallSet<int, 4> GetTensorListResultsIndex(FuncOp func) {
+llvm::SmallSet<int, 4> GetTensorListResultsIndex(func::FuncOp func) {
   llvm::SmallSet<int, 4> set;
 
   for (const auto &result_and_idx :
-       llvm::enumerate(func.getType().getResults())) {
+       llvm::enumerate(func.getFunctionType().getResults())) {
     if (IsTensorListType(result_and_idx.value(), llvm::None)) {
       set.insert(result_and_idx.index());
     }
@@ -1138,7 +1212,7 @@ void ChangeVariantToUnrankedTensorType(
 
 // Updates the specified function's type and region signature.
 void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
-                                 FuncOp func,
+                                 func::FuncOp func,
                                  llvm::ArrayRef<Type> updated_argument_types,
                                  llvm::ArrayRef<Type> updated_result_types) {
   // Change `func`'s argument type to `unranked_argument_types`. If its
@@ -1165,11 +1239,11 @@ LogicalResult UpdateFunctionTypesForWhileOp(
     const llvm::SmallSet<int, 4> &tensor_list_args,
     const llvm::SmallSet<int, 4> &resized_tensor_lists) {
   int func_index = 0;
-  for (FuncOp func : {op.cond_function(), op.body_function()}) {
+  for (func::FuncOp func : {op.cond_function(), op.body_function()}) {
     ++func_index;
     if (!func) continue;
 
-    FunctionType func_type = func.getType();
+    FunctionType func_type = func.getFunctionType();
     int num_inputs = func_type.getNumInputs();
     int num_results = func_type.getNumResults();
 
@@ -1210,10 +1284,10 @@ LogicalResult UpdateFunctionTypesForIfOp(
     const llvm::SmallSet<int, 4> &tensor_list_args,
     const llvm::SmallSet<int, 4> &resized_tensor_lists,
     llvm::ArrayRef<Type> updated_result_types) {
-  for (FuncOp func : {op.else_function(), op.then_function()}) {
+  for (func::FuncOp func : {op.else_function(), op.then_function()}) {
     if (!func) continue;
 
-    FunctionType func_type = func.getType();
+    FunctionType func_type = func.getFunctionType();
     int num_inputs = func_type.getNumInputs();
 
     // Update the argument types of the function. If it's a tensorlist and
@@ -1238,7 +1312,7 @@ LogicalResult UpdateFunctionTypesForIfOp(
 // will let us konw which tensorlist result maps to which tensorlist in the
 // arguments. Once we know this info it will help us decide the types of the
 // result tensorlist based on the operand's of the `If` op.
-llvm::DenseMap<int, int> MapTensorListResultToArgument(FuncOp func) {
+llvm::DenseMap<int, int> MapTensorListResultToArgument(func::FuncOp func) {
   // `map_fn` will trace upwards along the use-def chain of the ssa value. It
   // starts from the last ssa value (returned by the function), and check its
   // parent op iteratively. If the root ssa value appears in the function's
@@ -1460,8 +1534,8 @@ void LowerStaticTensorListPass::runOnOperation() {
                       TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<arith::ConstantOp>();
-  target.addLegalOp<FuncOp>();
-  target.addDynamicallyLegalOp<ReturnOp>(is_legal);
+  target.addLegalOp<func::FuncOp>();
+  target.addDynamicallyLegalOp<func::ReturnOp>(is_legal);
   target.addDynamicallyLegalOp<TF::YieldOp>(is_legal);
   target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
@@ -1474,9 +1548,10 @@ void LowerStaticTensorListPass::runOnOperation() {
   populateWithGenerated(patterns);
   patterns.add<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
                ConvertTensorListLength, ConvertTensorListPushBack,
-               ConvertTensorListSetItem, ConvertTensorListStack,
-               ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
-               ConvertIf, ConvertReturn, ConvertYield>(context);
+               ConvertTensorListStack, ConvertTensorListResize, ConvertWhile,
+               ConvertWhileRegion, ConvertIf, ConvertReturn, ConvertYield>(
+      context);
+  patterns.add<ConvertTensorListSetItem>(context, enable_dynamic_update_slice);
   patterns.add<ConvertEmptyTensorList, ConvertTensorListConcatV2,
                ConvertTensorListReserve>(context, allow_tensorlist_pass_through,
                                          default_to_single_batch);
@@ -1509,9 +1584,11 @@ void LowerStaticTensorListPass::runOnOperation() {
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
 std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
-    bool allow_tensorlist_pass_through, bool default_to_single_batch) {
+    bool allow_tensorlist_pass_through, bool default_to_single_batch,
+    bool enable_dynamic_update_slice) {
   return std::make_unique<LowerStaticTensorListPass>(
-      allow_tensorlist_pass_through, default_to_single_batch);
+      allow_tensorlist_pass_through, default_to_single_batch,
+      enable_dynamic_update_slice);
 }
 
 static PassRegistration<LowerStaticTensorListPass> pass;

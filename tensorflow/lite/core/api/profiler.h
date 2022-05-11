@@ -76,20 +76,20 @@ class Profiler {
   virtual void EndEvent(uint32_t event_handle) = 0;
 
   // Appends an event of type 'event_type' with 'tag' and 'event_metadata'
-  // which started at 'start' and ended at 'end'
+  // which ran for elapsed_time.
   // Note:
-  // In cases were ProfileSimmarizer and tensorflow::StatsCalculator are used
+  // In cases were ProfileSummarizer and tensorflow::StatsCalculator are used
   // they assume the value is in "usec", if in any case subclasses
   // didn't put usec, then the values are not meaningful.
   // TODO karimnosseir: Revisit and make the function more clear.
-  void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                uint64_t end, int64_t event_metadata) {
-    AddEvent(tag, event_type, start, end, event_metadata,
+  void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                int64_t event_metadata) {
+    AddEvent(tag, event_type, elapsed_time, event_metadata,
              /*event_metadata2*/ 0);
   }
 
-  virtual void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                        uint64_t end, int64_t event_metadata1,
+  virtual void AddEvent(const char* tag, EventType event_type,
+                        uint64_t elapsed_time, int64_t event_metadata1,
                         int64_t event_metadata2) {}
 
  protected:

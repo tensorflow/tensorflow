@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -45,8 +45,10 @@ namespace TFL {
 
 namespace {
 class DefaultQuantParamsPass
-    : public PassWrapper<DefaultQuantParamsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<DefaultQuantParamsPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DefaultQuantParamsPass)
+
   explicit DefaultQuantParamsPass(double default_min, double default_max,
                                   bool is_signed)
       : default_min_(default_min),
@@ -102,7 +104,7 @@ class DefaultQuantParamsPass
 }  // namespace
 
 void DefaultQuantParamsPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   OpBuilder builder(func);
 
   std::vector<Value> activation_values;
@@ -234,7 +236,7 @@ quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(
 }
 
 // Creates an instance of the default quant parameters pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max, bool is_signed) {
   return absl::make_unique<DefaultQuantParamsPass>(default_min, default_max,
                                                    is_signed);

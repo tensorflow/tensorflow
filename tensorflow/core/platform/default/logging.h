@@ -85,7 +85,7 @@ class LogMessage : public std::basic_ostringstream<char> {
 // that the ternary VLOG() implementation is balanced, type wise.
 struct Voidifier {
   template <typename T>
-  void operator&(const T&)const {}
+  void operator&(const T&) const {}
 };
 
 // LogMessageFatal ensures the process will exit in failure after
@@ -348,11 +348,13 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 }
 
 // Helper functions for CHECK_OP macro.
-// The (int, int) specialization works around the issue that the compiler
+// We use the full name Check_EQ, Check_NE, etc. in case the file including
+// base/logging.h provides its own #defines for the simpler names EQ, NE, etc.
+// This happens if, for example, those are used as token names in a
+// yacc grammar.
+// The (int, int) overload works around the issue that the compiler
 // will not instantiate the template version of the function on values of
 // unnamed enum type - see comment below.
-// The (size_t, int) and (int, size_t) specialization are to handle unsigned
-// comparison errors while still being thorough with the comparison.
 #define TF_DEFINE_CHECK_OP_IMPL(name, op)                                 \
   template <typename T1, typename T2>                                     \
   inline string* name##Impl(const T1& v1, const T2& v2,                   \
@@ -364,34 +366,77 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
   }                                                                       \
   inline string* name##Impl(int v1, int v2, const char* exprtext) {       \
     return name##Impl<int, int>(v1, v2, exprtext);                        \
-  }                                                                       \
-  inline string* name##Impl(const size_t v1, const int v2,                \
-                            const char* exprtext) {                       \
-    if (TF_PREDICT_FALSE(v2 < 0)) {                                       \
-      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
-    }                                                                     \
-    return name##Impl<size_t, size_t>(v1, v2, exprtext);                  \
-  }                                                                       \
-  inline string* name##Impl(const int v1, const size_t v2,                \
-                            const char* exprtext) {                       \
-    if (TF_PREDICT_FALSE(v2 >= std::numeric_limits<int>::max())) {        \
-      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
-    }                                                                     \
-    const size_t uval = (size_t)((unsigned)v2);                           \
-    return name##Impl<size_t, size_t>(v1, uval, exprtext);                \
   }
 
-// We use the full name Check_EQ, Check_NE, etc. in case the file including
-// base/logging.h provides its own #defines for the simpler names EQ, NE, etc.
-// This happens if, for example, those are used as token names in a
-// yacc grammar.
-TF_DEFINE_CHECK_OP_IMPL(Check_EQ,
-                        ==)  // Compilation error with CHECK_EQ(NULL, x)?
-TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)  // Use CHECK(x == NULL) instead.
+// The (size_t, int) and (int, size_t) specialization are to handle unsigned
+// comparison errors while still being thorough with the comparison.
+
+TF_DEFINE_CHECK_OP_IMPL(Check_EQ, ==)
+// Compilation error with CHECK_EQ(NULL, x)?
+// Use CHECK(x == NULL) instead.
+
+inline string* Check_EQImpl(int v1, size_t v2, const char* exprtext) {
+  if (TF_PREDICT_FALSE(v1 < 0))
+    ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
+
+  return Check_EQImpl(size_t(v1), v2, exprtext);
+}
+
+inline string* Check_EQImpl(size_t v1, int v2, const char* exprtext) {
+  return Check_EQImpl(v2, v1, exprtext);
+}
+
+TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)
+
+inline string* Check_NEImpl(int v1, size_t v2, const char* exprtext) {
+  if (v1 < 0) return NULL;
+
+  return Check_NEImpl(size_t(v1), v2, exprtext);
+}
+
+inline string* Check_NEImpl(size_t v1, int v2, const char* exprtext) {
+  return Check_NEImpl(v2, v1, exprtext);
+}
+
 TF_DEFINE_CHECK_OP_IMPL(Check_LE, <=)
+
+inline string* Check_LEImpl(int v1, size_t v2, const char* exprtext) {
+  if (v1 <= 0) return NULL;
+
+  return Check_LEImpl(size_t(v1), v2, exprtext);
+}
+
+inline string* Check_LEImpl(size_t v1, int v2, const char* exprtext) {
+  if (TF_PREDICT_FALSE(v2 < 0))
+    return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
+  return Check_LEImpl(v1, size_t(v2), exprtext);
+}
+
 TF_DEFINE_CHECK_OP_IMPL(Check_LT, <)
-TF_DEFINE_CHECK_OP_IMPL(Check_GE, >=)
-TF_DEFINE_CHECK_OP_IMPL(Check_GT, >)
+
+inline string* Check_LTImpl(int v1, size_t v2, const char* exprtext) {
+  if (v1 < 0) return NULL;
+
+  return Check_LTImpl(size_t(v1), v2, exprtext);
+}
+
+inline string* Check_LTImpl(size_t v1, int v2, const char* exprtext) {
+  if (v2 < 0)
+    return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
+  return Check_LTImpl(v1, size_t(v2), exprtext);
+}
+
+// Implement GE,GT in terms of LE,LT
+template <typename T1, typename T2>
+inline string* Check_GEImpl(const T1& v1, const T2& v2, const char* exprtext) {
+  return Check_LEImpl(v2, v1, exprtext);
+}
+
+template <typename T1, typename T2>
+inline string* Check_GTImpl(const T1& v1, const T2& v2, const char* exprtext) {
+  return Check_LTImpl(v2, v1, exprtext);
+}
+
 #undef TF_DEFINE_CHECK_OP_IMPL
 
 // In optimized mode, use CheckOpString to hint to compiler that
@@ -548,6 +593,10 @@ void TFRemoveLogSink(TFLogSink* sink);
 
 // Get all the log sinks.  Thread-safe.
 std::vector<TFLogSink*> TFGetLogSinks();
+
+// Change verbose level of pre-defined files if envorionment
+// variable `env_var` is defined. This is currently a no op.
+void UpdateLogVerbosityIfDefined(const char* env_var);
 
 }  // namespace tensorflow
 

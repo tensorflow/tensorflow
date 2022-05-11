@@ -19,8 +19,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -38,12 +36,10 @@ constexpr const char HloCostAnalysis::kTranscendentalsKey[];
 constexpr const char HloCostAnalysis::kBytesAccessedKey[];
 constexpr const char HloCostAnalysis::kOptimalSecondsKey[];
 
-HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
-    : HloCostAnalysis(shape_size, {}) {}
-
-HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size,
+HloCostAnalysis::HloCostAnalysis(const Options& options) : options_(options) {}
+HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
                                  const Properties& per_second_rates)
-    : shape_size_(shape_size), per_second_rates_(per_second_rates) {}
+    : HloCostAnalysis(Options{shape_size, per_second_rates}) {}
 
 Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
@@ -76,8 +72,8 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
       if (property.first != kOptimalSecondsKey) {
         optimal_seconds = std::max(
             optimal_seconds,
-            property.second /
-                GetProperty(property.first, per_second_rates_, INFINITY));
+            property.second / GetProperty(property.first,
+                                          options_.per_second_rates, INFINITY));
       }
     }
     current_properties_[kOptimalSecondsKey] = optimal_seconds;
@@ -118,7 +114,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
   return Status::OK();
 }
 
-/*static*/ float HloCostAnalysis::GetProperty(const std::string& key,
+/*static*/ float HloCostAnalysis::GetProperty(absl::string_view key,
                                               const Properties& properties,
                                               const float default_value) {
   auto key_value = properties.find(key);
@@ -140,7 +136,7 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   if (!LayoutUtil::HasLayout(shape)) {
     return 0;
   }
-  return shape_size_(shape);
+  return options_.shape_size(shape);
 }
 
 int64_t HloCostAnalysis::FusionParameterReadBytes(
@@ -240,10 +236,6 @@ Status HloCostAnalysis::HandleGetTupleElement(
 
 Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
-}
-
-Status HloCostAnalysis::HandleTupleSelect(const HloInstruction*) {
-  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
@@ -490,6 +482,21 @@ Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAsyncStart(const HloInstruction* async_start) {
+  TF_ASSIGN_OR_RETURN(
+      current_properties_,
+      ProcessSubcomputation(async_start->called_computations()[0]));
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAsyncUpdate(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAsyncDone(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleCopyStart(const HloInstruction*) {
   return Status::OK();
 }
@@ -571,26 +578,24 @@ Status HloCostAnalysis::HandleAddDependency(
   return Status::OK();
 }
 
-/* static */
 int64_t HloCostAnalysis::GetConvolutionFlops(
     const HloInstruction* convolution) {
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);
-  Window window = convolution->window();
   const Shape& lhs_shape = lhs->shape();
   const Shape& rhs_shape = rhs->shape();
-  const Shape& result_shape = [&]() -> const Shape& {
-    // convolution custom-calls return a tuple of (actual_result, temp_buffer).
-    const Shape& shape = convolution->shape();
-    if (gpu::IsCustomCallToDnnConvolution(*convolution) &&
-        convolution->shape().IsTuple()) {
-      return shape.tuple_shapes(0);
-    }
-    return shape;
-  }();
+  const Shape& result_shape = convolution->shape();
 
+  return GetConvolutionFlops(convolution, lhs_shape, rhs_shape, result_shape);
+}
+
+/* static */
+int64_t HloCostAnalysis::GetConvolutionFlops(const HloInstruction* convolution,
+                                             const Shape& lhs_shape,
+                                             const Shape& rhs_shape,
+                                             const Shape& result_shape) {
+  Window window = convolution->window();
   const auto& dnums = convolution->convolution_dimension_numbers();
-
   const int64_t input_batch_dim = dnums.input_batch_dimension();
   const int64_t input_feature_dim = dnums.input_feature_dimension();
   const int64_t output_feature_dim = dnums.output_feature_dimension();
@@ -941,8 +946,11 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
       SetOutputBytesAccessed(shape_index, bytes_accessed);
       return bytes_accessed;
     };
-    current_properties_.erase(
-        current_properties_.find(GetOutputBytesAccessedKey()));
+    auto output_bytes_it =
+        current_properties_.find(GetOutputBytesAccessedKey());
+    if (output_bytes_it != current_properties_.end()) {
+      current_properties_.erase(output_bytes_it);
+    }
     propagate_output_size_to_parent(fusion->shape(), {});
   }
 
@@ -986,61 +994,6 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
-  if (custom_call->custom_call_target() == gpu::kGemmCallTarget) {
-    // The naming conventions and meanings of gemm parameters are documented
-    // here:
-    // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
-    TF_ASSIGN_OR_RETURN(auto gemm_config,
-                        custom_call->backend_config<gpu::GemmBackendConfig>());
-
-    // Technically, in addition to the dot product (A * B), cuBLAS gemm also
-    // performs additional scaling (by factor 'alpha') and addition with a
-    // scaled third matrix (beta * C), which will introduce additional
-    // multiplications and additions. But total FLOPS will be dominated by the
-    // dot product, so we don't include these extra multiplications and
-    // additions in the FLOPS calculation.
-
-    // Also, this calculation assumes that the strides for the gemm are
-    // properly set such that none of the inputs in a batch overlap with any
-    // other batches. If they do, this will undercount the FLOPS, because it
-    // assumes that the strides are implicit in the sizes of the batch
-    // dimensions.
-
-    // Finally, this is technically incorrect if the element type of this
-    // gemm is an integer type, because in that case no floating point
-    // operations are involved at all! But we still calculate FLOPS because the
-    // number is sometimes required for ad-hoc calculations.
-    current_properties_[kFlopsKey] =
-        GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
-                    gemm_config.dot_dimension_numbers());
-    return Status::OK();
-  }
-
-  if (gpu::IsCustomCallToDnnConvolution(*custom_call)) {
-    // As with dots, this flops calculation has the following inaccuracies.
-    //
-    //  - We may have a fused conv which does additional ops (multiplying by a
-    //    scalar `alpha`, adding a bias or side-input, doing a relu, etc).  But
-    //    we can safely ignore this because the overall computation is dominated
-    //    by the convolution itself.
-    //
-    //  - cudnn may use complex conv algorithms that do fewer (or more!) flops
-    //    than we calculate.
-    //
-    //  - for int8_t convs, these aren't *fl*ops, but we fudge it.
-    current_properties_[kFlopsKey] = GetConvolutionFlops(custom_call);
-
-    // conv custom-calls return a tuple (real_output, temp_bytes).  Count just
-    // the real_output in output bytes accessed.  The main purpose of
-    // hlo_cost_analysis is to figure out if ops are running "as fast as
-    // possible", and if we were to include temp memory in here, we'd
-    // essentially be *rewarding* convs that use additional temp memory!
-    if (custom_call->shape().IsTuple()) {
-      SetOutputBytesAccessed(shape_size_(custom_call->shape().tuple_shapes(0)));
-    }
-    return Status::OK();
-  }
-
   // Mark applicable fields as "unknown", since we don't know what this
   // CustomCall does.  This is better than returning an error, which would stop
   // iteration, and therefore would prevent us from getting *any* stats for a
@@ -1244,7 +1197,7 @@ int64_t HloCostAnalysis::GetBytesWritten(
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
     HloComputation* computation) {
-  auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
+  auto visitor = CreateNestedCostAnalysis();
   visitor->ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
   hlo_properties_.insert(visitor->hlo_properties_.begin(),
@@ -1252,9 +1205,8 @@ StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
   return visitor->properties();
 }
 
-std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis(
-    const ShapeSizeFunction& shape_size, const Properties& per_second_rates) {
-  return absl::WrapUnique(new HloCostAnalysis(shape_size, per_second_rates));
+std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis() {
+  return std::make_unique<HloCostAnalysis>(options_);
 }
 
 void HloCostAnalysis::SetOperandBytesAccessed(int64_t operand_num,

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Snapshot"
   input_arg {
     name: "input"

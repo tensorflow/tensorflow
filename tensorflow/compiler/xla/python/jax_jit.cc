@@ -48,6 +48,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -325,10 +326,6 @@ struct CacheEntry {
   std::vector<py::object> out_avals;
   std::vector<bool> out_weak_types;
 
-  // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
-  // `py::none()`.
-  std::vector<py::object> out_lazy_exprs;
-
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
   absl::optional<std::vector<bool>> kept_var_bitvec;
@@ -362,12 +359,10 @@ class CompiledFunctionCache {
   // might be evicted before we finish tracing/compiling.
   typedef xla::LRUCache<CallSignature, std::shared_ptr<CacheEntry>> Cache;
 
-  // The lifetime of the returned cache lasts at least as long as the lifetime
-  // of `function`, so if the caller holds a strong reference to `function`, the
-  // `Cache` remains valid.
   // We include as part of the cache key `donate_argnums` (and any other fields
   // that aren't subsumed by the CallSignature we compute for each call).
-  Cache* Lookup(py::handle function, absl::Span<const int> donate_argnums);
+  std::shared_ptr<Cache> Lookup(py::handle function,
+                                absl::Span<const int> donate_argnums);
 
   int Size() const { return lru_list_.Size(); }
   int Capacity() const { return lru_list_.Capacity(); }
@@ -395,8 +390,8 @@ class CompiledFunctionCache {
   }
 
   struct Value {
-    explicit Value(Cache::LRUList* lru_list) : cache(lru_list) {}
-    Cache cache;
+    explicit Value(std::shared_ptr<Cache> cache) : cache(std::move(cache)) {}
+    std::shared_ptr<Cache> cache;
 
     // A weak reference to the key function. We use the weak reference to
     // register a callback that is triggered when the key function is destroyed.
@@ -413,23 +408,32 @@ class CompiledFunctionCache {
 CompiledFunctionCache::CompiledFunctionCache(int capacity)
     : lru_list_(capacity) {}
 
-CompiledFunctionCache::Cache* CompiledFunctionCache::Lookup(
+std::shared_ptr<CompiledFunctionCache::Cache> CompiledFunctionCache::Lookup(
     py::handle function, absl::Span<const int> donate_argnums) {
   Key key;
   key.function = function;
   key.donate_argnums =
       std::vector<int>(donate_argnums.begin(), donate_argnums.end());
   auto insert = functions_.emplace(key, nullptr);
-  std::unique_ptr<Value>& entry = insert.first->second;
+  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&lru_list_);
   if (insert.second) {
-    entry = std::make_unique<Value>(&lru_list_);
-    entry->weakref = py::weakref(
-        function,
-        py::cpp_function([this, key{std::move(key)}](py::handle weakref) {
-          functions_.erase(key);
-        }));
+    py::cpp_function callback([this, key{std::move(key)}](py::handle weakref) {
+      functions_.erase(key);
+    });
+    PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
+    if (weakref) {
+      std::unique_ptr<Value>& entry = insert.first->second;
+      entry = std::make_unique<Value>(cache);
+      entry->weakref = py::reinterpret_steal<py::weakref>(weakref);
+    } else {
+      PyErr_Clear();
+      // `function` is not weak-referenceable. Don't bother adding it to the
+      // shared cache in that case; the `jit` object will hold the only shared
+      // reference to the cache entry.
+      functions_.erase(insert.first);
+    }
   }
-  return &entry->cache;
+  return cache;
 }
 
 // A `CompiledFunction` is associated to a `jax.jit(f)` and takes care of the
@@ -543,7 +547,7 @@ class CompiledFunction {
   std::shared_ptr<CompiledFunctionCache> cache_;
 
   // The part of cache_ specific to this CompiledFunction.
-  CompiledFunctionCache::Cache* executables_;
+  std::shared_ptr<CompiledFunctionCache::Cache> executables_;
 
   // The logic if the following:
   // - if `device` or `backend` are not specified to `jax.jit`, we will use
@@ -694,8 +698,6 @@ xla::Status CopyBuffersToDevice(
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   xla::DevicePutOptions options;
   options.squash_64bit_types = !jax_enable_x64;
-  // TODO(phawkins): consider allowing forces here.
-  options.force_lazy_arrays = false;
   options.allow_zero_copy = true;
   arg_buffers.reserve(num_flat_dynamic_args);
   bool input_pruning_enabled = kept_args.has_value();
@@ -731,47 +733,31 @@ void CompiledFunction::PopulateCacheEntry(
 
   py::tuple executable_handlers_out_tree =
       py::cast<py::tuple>(out_and_fastpath_data[1]);
-  // TODO(zhangqiaorjc): Lookup NamedTuple by name after min jax version bump.
-  size_t arity = executable_handlers_out_tree.size();
-  if (arity != 5 && !py::hasattr(executable_handlers_out_tree, "_fields")) {
-    throw std::runtime_error(absl::StrCat(
-        "The versions of jaxlib and Jax are incompatible (jaxlib is too recent "
-        "compared to Jax. Upgrade Jax is advised. The C++ code expects "
-        "5 or 6 arguments but ",
-        arity, " were provided: ",
-        py::cast<std::string>(
-            py::str(py::repr(executable_handlers_out_tree)))));
-  }
-  // (xla_executable, out_pytree_def, sticky_device, avals, lazy_exprs)
   auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
-      executable_handlers_out_tree[0]);
+      executable_handlers_out_tree.attr("xla_executable"));
   cache_entry->executable = std::move(executable);
   int num_devices =
       cache_entry->executable->pjrt_executable().addressable_devices().size();
   // The presence of jit(pmap) is detected from Python.
   CHECK_EQ(num_devices, 1);
 
-  auto out_tree = py::cast<xla::PyTreeDef>(executable_handlers_out_tree[1]);
+  auto out_tree = py::cast<xla::PyTreeDef>(
+      executable_handlers_out_tree.attr("out_pytree_def"));
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->sticky_device =
       py::cast<absl::optional<xla::ClientAndPtr<xla::PjRtDevice>>>(
-          executable_handlers_out_tree[2]);
-  auto avals = py::cast<py::list>(executable_handlers_out_tree[3]);
-  auto lazy_exprs = py::cast<py::list>(executable_handlers_out_tree[4]);
-  CHECK_EQ(avals.size(), lazy_exprs.size());
+          executable_handlers_out_tree.attr("sticky_device"));
+  auto avals = py::cast<py::list>(executable_handlers_out_tree.attr("avals"));
 
   cache_entry->out_avals.reserve(avals.size());
   cache_entry->out_weak_types.reserve(avals.size());
-  cache_entry->out_lazy_exprs.reserve(avals.size());
   for (int i = 0; i < avals.size(); ++i) {
     py::object shaped_array = py::reinterpret_borrow<py::object>(avals[i]);
-    py::object lazy_expr = py::reinterpret_borrow<py::object>(lazy_exprs[i]);
 
     cache_entry->out_avals.push_back(shaped_array);
     cache_entry->out_weak_types.push_back(
         py::cast<bool>(shaped_array.attr("weak_type")));
-    cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
   auto kept_var_bitvec_attr =
       py::getattr(executable_handlers_out_tree, "kept_var_bitvec", py::none());
@@ -979,23 +965,13 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     xla::PyBuffer::object buffer = xla::PyBuffer::Make(
         cache_entry->executable->client(), std::move(output_buffers[0][i]),
         last ? std::move(traceback) : traceback);
-    if (cache_entry->out_lazy_exprs[i].is_none()) {  // No LazyExpr.
-      buffer.buf()->SetAval(cache_entry->out_avals[i]);
-      buffer.buf()->set_weak_type(cache_entry->out_weak_types[i]);
-      if (cache_entry->sticky_device.has_value()) {
-        TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(
-            (*cache_entry->sticky_device).get()));
-      }
-      flat_device_arrays.push_back(std::move(buffer));
-    } else {
-      static const auto* xla_module =
-          new py::module(py::module::import("jax.interpreters.xla"));
-      static const auto* device_array =
-          new py::handle(xla_module->attr("_DeviceArray"));
-      flat_device_arrays.push_back(
-          (*device_array)(cache_entry->out_avals[i], cache_entry->sticky_device,
-                          cache_entry->out_lazy_exprs[i], std::move(buffer)));
+    buffer.buf()->SetAval(cache_entry->out_avals[i]);
+    buffer.buf()->set_weak_type(cache_entry->out_weak_types[i]);
+    if (cache_entry->sticky_device.has_value()) {
+      TF_RETURN_IF_ERROR(
+          buffer.buf()->set_sticky_device((*cache_entry->sticky_device).get()));
     }
+    flat_device_arrays.push_back(std::move(buffer));
   }
   py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
 
@@ -1222,13 +1198,8 @@ const int kCompiledFunctionPickleVersion = 1;
 void BuildJaxjitSubmodule(py::module& m) {
   py::module jitlib = m.def_submodule("jax_jit", "Jax C++ jit library");
 
-  // We define CompiledFunctionCache in the xla_extension module to work
-  // around https://github.com/cloudpipe/cloudpickle/issues/354, which
-  // means classes defined in submodules aren't pickleable.
-  // TODO(phawkins): remove this workaround once Google is using a newer
-  // cloudpickle. Opensource users can just pip install a newer version already.
   py::class_<CompiledFunctionCache, std::shared_ptr<CompiledFunctionCache>>
-      cache(m, "CompiledFunctionCache");
+      cache(jitlib, "CompiledFunctionCache");
   cache.def(py::init<int>(),
             py::arg("capacity") = CompiledFunctionCache::kDefaultCapacity);
   cache.def("size", &CompiledFunctionCache::Size);
@@ -1254,10 +1225,6 @@ void BuildJaxjitSubmodule(py::module& m) {
         int capacity = py::cast<int>(pickle["capacity"]);
         return std::make_shared<CompiledFunctionCache>(capacity);
       }));
-
-  // Alias CompiledFunctionCache in the submodule where we actually wanted to
-  // define it.
-  jitlib.attr("CompiledFunctionCache") = cache;
 
   // We need to use heap-allocated type objects because we want to add
   // additional methods dynamically.
@@ -1374,38 +1341,6 @@ void BuildJaxjitSubmodule(py::module& m) {
   jitlib.def("jit_is_disabled", &GetDisableJit);
   jitlib.def("get_enable_x64", &GetEnableX64);
 
-  // TODO(phawkins): delete the following methods after dropping compatibility
-  // with JAX python versions older than 0.2.10.
-  jitlib.def("set_disable_jit_cpp_flag",
-             [&](bool disable_jit) { global_state.disable_jit = disable_jit; });
-  jitlib.def("get_disable_jit_cpp_flag",
-             [&]() { return global_state.disable_jit; });
-  jitlib.def("set_disable_jit_thread_local",
-             [&](absl::optional<bool> disable_jit) {
-               thread_local_state.disable_jit = disable_jit;
-             });
-  jitlib.def("get_disable_jit_thread_local",
-             [&]() { return thread_local_state.disable_jit; });
-  // TODO(jblespiau): Remove from the Python code and remove this
-  jitlib.def("set_disable_jit", [&](bool disable_jit) {
-    thread_local_state.disable_jit = disable_jit;
-  });
-  jitlib.def("get_disable_jit",
-             [&]() { return thread_local_state.disable_jit; });
-
-  jitlib.def("set_enable_x64_cpp_flag",
-             [&](bool enable_x64) { global_state.enable_x64 = enable_x64; });
-  jitlib.def("get_enable_x64_cpp_flag",
-             [&]() { return global_state.enable_x64; });
-  jitlib.def("set_enable_x64_thread_local",
-             [&](absl::optional<bool> enable_x64) {
-               thread_local_state.enable_x64 = enable_x64;
-             });
-  jitlib.def("get_enable_x64_thread_local", [&](bool enable_x64) {
-    thread_local_state.enable_x64 = enable_x64;
-  });
-  // TODO(phawkins): delete up to here.
-
   jitlib.def(
       "jit",
       [](py::function fun, py::function cache_miss, py::function get_device,
@@ -1439,12 +1374,11 @@ void BuildJaxjitSubmodule(py::module& m) {
                std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
                xla::DevicePutOptions options;
                options.squash_64bit_types = !jax_enable_x64;
-               options.force_lazy_arrays = true;
                options.allow_zero_copy = true;
                xla::StatusOr<xla::DevicePutResult> results =
                    DevicePut(obj, to_device.contents, options);
                if (!results.ok()) {
-                 throw std::runtime_error(results.status().error_message());
+                 throw xla::XlaRuntimeError(results.status().error_message());
                }
                if (results->owned_buffer) {
                  auto buffer = xla::PyBuffer::Make(

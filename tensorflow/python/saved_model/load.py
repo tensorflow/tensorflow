@@ -16,6 +16,7 @@
 
 import collections
 import functools
+import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
@@ -30,7 +31,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
@@ -62,8 +62,10 @@ _LOAD_V2_LABEL = "load_v2"
 # instead of "registered_name" field. The "kind" field has almost the same
 # functionality as the registered_name, but only contains built-in TensorFlow
 # types (like variable, functions, assets).
-_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset,
-                           "resource": resource.RestoredResource}
+_BUILT_IN_REGISTRATIONS = {
+    "asset": tracking.Asset,
+    "resource": resource.RestoredResource,
+    "constant": function_saved_model_utils.TrackableConstant}
 
 
 def _unused_handle():
@@ -75,9 +77,9 @@ def _unused_handle():
       "It seems that you are trying to save a "
       "tf.types.experimental.ConcreteFunction that involves a distributed "
       "model, and the model contains parts that are loaded form a SavedModel. "
-      "It's supported to save such tf.types.experimental.ConcreteFunction. Try"
-      " save a tf.function with input_signature instead, and file a bug there "
-      "are still issues.")
+      "It's not supported to save such tf.types.experimental.ConcreteFunction. "
+      "Try saving a tf.function with input_signature instead, and file a bug if"
+      " there are still issues.")
 
   assert_op = control_flow_ops.Assert(
       array_ops.placeholder_with_default(False, shape=()), [error_message])
@@ -339,6 +341,8 @@ class Loader(object):
 
   def _setup_function_captures(self, concrete_function_name, nodes):
     """Setup captures and variables in a restored function."""
+    if concrete_function_name in self._restored_concrete_functions:
+      return
     self._restored_concrete_functions.add(concrete_function_name)
     concrete_function = self._concrete_functions[concrete_function_name]
     proto = self._proto.concrete_functions[concrete_function_name]
@@ -582,8 +586,14 @@ class Loader(object):
           object_proto=proto,
           dependencies=dependencies,
           export_dir=self._export_dir,
-          asset_file_def=self._asset_file_def)
-      return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
+          asset_file_def=self._asset_file_def,
+          operation_attributes=self._operation_attributes)
+      if isinstance(obj, base.Trackable):
+        setter = type(obj)._add_trackable_child  # pylint: disable=protected-access
+      else:
+        # Returned object may be non-Trackable (e.g. when restoring captures).
+        setter = setattr
+      return obj, setter
     else:
       return self._recreate_default(proto, node_id, dependencies)
 
@@ -597,7 +607,6 @@ class Loader(object):
             self._recreate_bare_concrete_function,
             proto=proto.bare_concrete_function, dependencies=deps),
         "variable": lambda: self._recreate_variable(proto.variable),
-        "constant": lambda: self._recreate_constant(proto.constant),
         "captured_tensor": functools.partial(
             self._get_tensor_from_fn, proto.captured_tensor),
     }
@@ -685,16 +694,6 @@ class Loader(object):
             synchronization=synchronization,
             aggregation=aggregation), setattr
 
-  def _recreate_constant(self, proto):
-    tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
-    ndarray = tensor_util.MakeNdarray(tensor_proto)
-    if dtypes.as_dtype(tensor_proto.dtype) == dtypes.string:
-      with ops.device("CPU"):
-        imported_constant = constant_op.constant(ndarray)
-    else:
-      imported_constant = constant_op.constant(ndarray)
-    return imported_constant, setattr
-
   def _get_tensor_from_fn(self, proto):
     outer_graph = self._concrete_functions[proto.concrete_function].graph
     captured_tensor = outer_graph.get_tensor_by_name(proto.name)
@@ -703,6 +702,103 @@ class Loader(object):
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
+
+
+@tf_export("saved_model.load", v1=["saved_model.load_v2"])
+def load(export_dir, tags=None, options=None):
+  """Load a SavedModel from `export_dir`.
+
+  Signatures associated with the SavedModel are available as functions:
+
+  ```python
+  imported = tf.saved_model.load(path)
+  f = imported.signatures["serving_default"]
+  print(f(x=tf.constant([[1.]])))
+  ```
+
+  Objects exported with `tf.saved_model.save` additionally have trackable
+  objects and functions assigned to attributes:
+
+  ```python
+  exported = tf.train.Checkpoint(v=tf.Variable(3.))
+  exported.f = tf.function(
+      lambda x: exported.v * x,
+      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  tf.saved_model.save(exported, path)
+  imported = tf.saved_model.load(path)
+  assert 3. == imported.v.numpy()
+  assert 6. == imported.f(x=tf.constant(2.)).numpy()
+  ```
+
+  _Loading Keras models_
+
+  Keras models are trackable, so they can be saved to SavedModel. The object
+  returned by `tf.saved_model.load` is not a Keras object (i.e. doesn't have
+  `.fit`, `.predict`, etc. methods). A few attributes and functions are still
+  available: `.variables`, `.trainable_variables` and `.__call__`.
+
+  ```python
+  model = tf.keras.Model(...)
+  tf.saved_model.save(model, path)
+  imported = tf.saved_model.load(path)
+  outputs = imported(inputs)
+  ```
+
+  Use `tf.keras.models.load_model` to restore the Keras model.
+
+  _Importing SavedModels from TensorFlow 1.x_
+
+  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
+  graph instead of `tf.function` objects. These SavedModels will be loaded with
+  the following attributes:
+
+  * `.signatures`: A dictionary mapping signature names to functions.
+  * `.prune(feeds, fetches) `: A method which allows you to extract
+    functions for new subgraphs. This is equivalent to importing the SavedModel
+    and naming feeds and fetches in a Session from TensorFlow 1.x.
+
+    ```python
+    imported = tf.saved_model.load(path_to_v1_saved_model)
+    pruned = imported.prune("x:0", "out:0")
+    pruned(tf.ones([]))
+    ```
+
+    See `tf.compat.v1.wrap_function` for details.
+  * `.variables`: A list of imported variables.
+  * `.graph`: The whole imported graph.
+  * `.restore(save_path)`: A function that restores variables from a checkpoint
+    saved from `tf.compat.v1.Saver`.
+
+  _Consuming SavedModels asynchronously_
+
+  When consuming SavedModels asynchronously (the producer is a separate
+  process), the SavedModel directory will appear before all files have been
+  written, and `tf.saved_model.load` will fail if pointed at an incomplete
+  SavedModel. Rather than checking for the directory, check for
+  "saved_model_dir/saved_model.pb". This file is written atomically as the last
+  `tf.saved_model.save` file operation.
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
+      if the SavedModel contains a single MetaGraph, as for those exported from
+      `tf.saved_model.save`.
+    options: `tf.saved_model.LoadOptions` object that specifies options for
+      loading.
+
+  Returns:
+    A trackable object with a `signatures` attribute mapping from signature
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
+    it also points to trackable objects, functions, debug info which it has been
+    saved.
+
+  Raises:
+    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
+  """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
+  result = load_partial(export_dir, None, tags, options)["root"]
+  return result
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])
@@ -800,107 +896,6 @@ def load_partial(export_dir, filters, tags=None, options=None):
   Returns:
     A dictionary mapping node paths from the filter to loaded objects.
   """
-  return load_internal(export_dir, tags, options, filters=filters)
-
-
-@tf_export("saved_model.load", v1=["saved_model.load_v2"])
-def load(export_dir, tags=None, options=None):
-  """Load a SavedModel from `export_dir`.
-
-  Signatures associated with the SavedModel are available as functions:
-
-  ```python
-  imported = tf.saved_model.load(path)
-  f = imported.signatures["serving_default"]
-  print(f(x=tf.constant([[1.]])))
-  ```
-
-  Objects exported with `tf.saved_model.save` additionally have trackable
-  objects and functions assigned to attributes:
-
-  ```python
-  exported = tf.train.Checkpoint(v=tf.Variable(3.))
-  exported.f = tf.function(
-      lambda x: exported.v * x,
-      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
-  tf.saved_model.save(exported, path)
-  imported = tf.saved_model.load(path)
-  assert 3. == imported.v.numpy()
-  assert 6. == imported.f(x=tf.constant(2.)).numpy()
-  ```
-
-  _Loading Keras models_
-
-  Keras models are trackable, so they can be saved to SavedModel. The object
-  returned by `tf.saved_model.load` is not a Keras object (i.e. doesn't have
-  `.fit`, `.predict`, etc. methods). A few attributes and functions are still
-  available: `.variables`, `.trainable_variables` and `.__call__`.
-
-  ```python
-  model = tf.keras.Model(...)
-  tf.saved_model.save(model, path)
-  imported = tf.saved_model.load(path)
-  outputs = imported(inputs)
-  ```
-
-  Use `tf.keras.models.load_model` to restore the Keras model.
-
-  _Importing SavedModels from TensorFlow 1.x_
-
-  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
-  graph instead of `tf.function` objects. These SavedModels will be loaded with
-  the following attributes:
-
-  * `.signatures`: A dictionary mapping signature names to functions.
-  * `.prune(feeds, fetches) `: A method which allows you to extract
-    functions for new subgraphs. This is equivalent to importing the SavedModel
-    and naming feeds and fetches in a Session from TensorFlow 1.x.
-
-    ```python
-    imported = tf.saved_model.load(path_to_v1_saved_model)
-    pruned = imported.prune("x:0", "out:0")
-    pruned(tf.ones([]))
-    ```
-
-    See `tf.compat.v1.wrap_function` for details.
-  * `.variables`: A list of imported variables.
-  * `.graph`: The whole imported graph.
-  * `.restore(save_path)`: A function that restores variables from a checkpoint
-    saved from `tf.compat.v1.Saver`.
-
-  _Consuming SavedModels asynchronously_
-
-  When consuming SavedModels asynchronously (the producer is a separate
-  process), the SavedModel directory will appear before all files have been
-  written, and `tf.saved_model.load` will fail if pointed at an incomplete
-  SavedModel. Rather than checking for the directory, check for
-  "saved_model_dir/saved_model.pb". This file is written atomically as the last
-  `tf.saved_model.save` file operation.
-
-  Args:
-    export_dir: The SavedModel directory to load from.
-    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
-      if the SavedModel contains a single MetaGraph, as for those exported from
-      `tf.saved_model.save`.
-    options: `tf.saved_model.LoadOptions` object that specifies options for
-      loading.
-
-  Returns:
-    A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
-    it also points to trackable objects, functions, debug info which it has been
-    saved.
-
-  Raises:
-    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
-  """
-  result = load_internal(export_dir, tags, options)["root"]
-  return result
-
-
-def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
-                  filters=None):
-  """Loader implementation."""
   options = options or load_options.LoadOptions()
   if tags is not None and not isinstance(tags, set):
     # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
@@ -922,7 +917,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
-          "Got an incompatible argument to `tags`: {tags}. The SavedModel at "
+          f"Got an incompatible argument to `tags`: {tags}. The SavedModel at "
           f"{export_dir} has one MetaGraph with tags "
           f"{meta_graph_def.meta_info_def.tags}. You may omit the argument, "
           "pass 'None', or pass matching tags.")
@@ -932,8 +927,8 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
         experimental_io_device=options.experimental_io_device)
     with ops.init_scope():
       try:
-        loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
-                            ckpt_options, options, filters)
+        loader = Loader(object_graph_proto, saved_model_proto, export_dir,
+                        ckpt_options, options, filters)
       except errors.NotFoundError as err:
         raise FileNotFoundError(
             str(err) + "\n You may be trying to load on a different device "
@@ -941,8 +936,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
             "`experimental_io_device` option in `tf.saved_model.LoadOptions` "
             "to the io_device such as '/job:localhost'.")
       root = loader.get(0)
-      if isinstance(loader, Loader):
-        root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
+      root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)

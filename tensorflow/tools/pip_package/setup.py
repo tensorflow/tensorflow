@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +45,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.9.0'
+_VERSION = '2.10.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -76,7 +75,9 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 1.12',
+    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
+    # issue is resolved.
+    'flatbuffers >= 1.12, <2',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
@@ -104,11 +105,11 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.8, < 2.9', 'tb-nightly ~= 2.9.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.8.0rc0, < 2.9',
-                        'tf-estimator-nightly ~= 2.9.0.dev'),
-    standard_or_nightly('keras >= 2.8.0rc0, < 2.9',
-                        'keras-nightly ~= 2.9.0.dev'),
+    standard_or_nightly('tensorboard >= 2.9, < 2.10', 'tb-nightly ~= 2.10.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.9.0rc0, < 2.10',
+                        'tf-estimator-nightly ~= 2.10.0.dev'),
+    standard_or_nightly('keras >= 2.9.0rc0, < 2.10',
+                        'keras-nightly ~= 2.10.0.dev'),
 ]
 REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 

@@ -30,8 +30,8 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '10'
-_DEFAULT_CUDNN_VERSION = '7'
+_DEFAULT_CUDA_VERSION = '11'
+_DEFAULT_CUDNN_VERSION = '2'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
@@ -45,8 +45,6 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '4.2.2'
-_TF_MAX_BAZEL_VERSION = '5.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -116,21 +114,6 @@ def symlink_force(target, link_name):
       os.symlink(target, link_name)
     else:
       raise e
-
-
-def sed_in_place(filename, old, new):
-  """Replace old string with new string in file.
-
-  Args:
-    filename: string for filename.
-    old: string to replace.
-    new: new string to replace to.
-  """
-  with open(filename, 'r') as f:
-    filedata = f.read()
-  newdata = filedata.replace(old, new)
-  with open(filename, 'w') as f:
-    f.write(newdata)
 
 
 def write_to_bazelrc(line):
@@ -371,40 +354,6 @@ def get_var(environ_cp,
   return var
 
 
-def set_build_var(environ_cp,
-                  var_name,
-                  query_item,
-                  option_name,
-                  enabled_by_default,
-                  bazel_config_name=None):
-  """Set if query_item will be enabled for the build.
-
-  Ask user if query_item will be enabled. Default is used if no input is given.
-  Set subprocess environment variable and write to .bazelrc if enabled.
-
-  Args:
-    environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
-    query_item: string for feature related to the variable, e.g. "CUDA for
-      Nvidia GPUs".
-    option_name: string for option to define in .bazelrc.
-    enabled_by_default: boolean for default behavior.
-    bazel_config_name: Name for Bazel --config argument to enable build feature.
-  """
-
-  var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
-  environ_cp[var_name] = var
-  if var == '1':
-    write_to_bazelrc('build:%s --define %s=true' %
-                     (bazel_config_name, option_name))
-    write_to_bazelrc('build --config=%s' % bazel_config_name)
-  elif bazel_config_name is not None:
-    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
-    # options and not to set build configs through environment variables.
-    write_to_bazelrc('build:%s --define %s=true' %
-                     (bazel_config_name, option_name))
-
-
 def set_action_env_var(environ_cp,
                        var_name,
                        query_item,
@@ -465,20 +414,18 @@ def convert_version_to_int(version):
   return int(version_str)
 
 
-def check_bazel_version(min_version, max_version):
-  """Check installed bazel version is between min_version and max_version.
-
-  Args:
-    min_version: string for minimum bazel version (must exist!).
-    max_version: string for maximum bazel version (must exist!).
+def retrieve_bazel_version():
+  """Retrieve installed bazel version (or bazelisk).
 
   Returns:
     The bazel version detected.
   """
   bazel_executable = which('bazel')
   if bazel_executable is None:
-    print('Cannot find bazel. Please install bazel.')
-    sys.exit(1)
+    bazel_executable = which('bazelisk')
+    if bazel_executable is None:
+      print('Cannot find bazel. Please install bazel/bazelisk.')
+      sys.exit(1)
 
   stderr = open(os.devnull, 'wb')
   curr_version = run_shell([bazel_executable, '--version'],
@@ -487,29 +434,14 @@ def check_bazel_version(min_version, max_version):
   if curr_version.startswith('bazel '):
     curr_version = curr_version.split('bazel ')[1]
 
-  min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
-  max_version_int = convert_version_to_int(max_version)
 
   # Check if current bazel version can be detected properly.
   if not curr_version_int:
     print('WARNING: current bazel installation is not a release version.')
-    print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
 
   print('You have bazel %s installed.' % curr_version)
-
-  if curr_version_int < min_version_int:
-    print('Please upgrade your bazel installation to version %s or higher to '
-          'build TensorFlow!' % min_version)
-    sys.exit(1)
-  if (curr_version_int > max_version_int and
-      'TF_IGNORE_MAX_BAZEL_VERSION' not in os.environ):
-    print('Please downgrade your bazel installation to version %s or lower to '
-          'build TensorFlow! To downgrade: download the installer for the old '
-          'version (from https://github.com/bazelbuild/bazel/releases) then '
-          'run the installer.' % max_version)
-    sys.exit(1)
   return curr_version
 
 
@@ -945,7 +877,7 @@ def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
 
 def set_tf_tensorrt_version(environ_cp):
   """Set TF_TENSORRT_VERSION."""
-  if not is_linux():
+  if not (is_linux() or is_windows()):
     raise ValueError('Currently TensorRT is only supported on Linux platform.')
 
   if not int(environ_cp.get('TF_NEED_TENSORRT', False)):
@@ -1238,6 +1170,10 @@ def validate_cuda_config(environ_cp):
       cuda_libraries.append('tensorrt')
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
+  if is_windows():
+    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
+      cuda_libraries.append('tensorrt')
+      print('WARNING: TensorRT support on Windows is experimental\n')
 
   paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
   if not paths:
@@ -1301,10 +1237,9 @@ def main():
   environ_cp = dict(os.environ)
 
   try:
-    current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
-                                                _TF_MAX_BAZEL_VERSION)
+    current_bazel_version = retrieve_bazel_version()
   except subprocess.CalledProcessError as e:
-    print('Error checking bazel version: ', e.output.decode('UTF-8').strip())
+    print('Error retrieving bazel version: ', e.output.decode('UTF-8').strip())
     raise e
 
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
@@ -1317,7 +1252,6 @@ def main():
   if is_windows():
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
-    environ_cp['TF_NEED_TENSORRT'] = '0'
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
@@ -1389,6 +1323,8 @@ def main():
 
       set_tf_cuda_version(environ_cp)
       set_tf_cudnn_version(environ_cp)
+      if is_windows():
+        set_tf_tensorrt_version(environ_cp)
       if is_linux():
         set_tf_tensorrt_version(environ_cp)
         set_tf_nccl_version(environ_cp)

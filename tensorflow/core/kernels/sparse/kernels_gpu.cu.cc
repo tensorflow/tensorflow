@@ -487,7 +487,7 @@ EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void CalculateRowSoftmaxGrad(
   //  grad_softmax_col_ind[grad_softmax_begin] to
   //  grad_softmax_col_ind[grad_softmax_end]
   //
-  // looking for for matching indices.  In the softmax indices only, perform:
+  // looking for matching indices.  In the softmax indices only, perform:
   //
   //   gradient = (grad_softmax - sum(grad_softmax * softmax)) * softmax
   //

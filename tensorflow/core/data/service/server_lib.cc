@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/server_lib.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
@@ -28,12 +36,14 @@ namespace {
 constexpr char kPortPlaceholder[] = "%port%";
 }
 
-GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol,
-                                       const std::string server_type)
+GrpcDataServerBase::GrpcDataServerBase(
+    int port, const std::string& protocol, const std::string server_type,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
     : requested_port_(port),
       protocol_(protocol),
       server_type_(server_type),
-      bound_port_(port) {}
+      bound_port_(port),
+      server_options_(std::move(options)) {}
 
 Status GrpcDataServerBase::Start() {
   if (stopped_) {
@@ -44,6 +54,11 @@ Status GrpcDataServerBase::Start() {
     return Status::OK();
   }
   ::grpc::ServerBuilder builder;
+  for (std::unique_ptr<::grpc::ServerBuilderOption>& option : server_options_) {
+    builder.SetOption(std::move(option));
+  }
+  server_options_.clear();
+
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateServerCredentials(protocol_, &credentials));
@@ -90,8 +105,10 @@ void GrpcDataServerBase::AddProfilerServiceToBuilder(
 }
 
 DispatchGrpcDataServer::DispatchGrpcDataServer(
-    const experimental::DispatcherConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer"),
+    const experimental::DispatcherConfig& config,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
+    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer",
+                         std::move(options)),
       config_(config) {}
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
@@ -121,9 +138,18 @@ size_t DispatchGrpcDataServer::NumActiveJobs() {
   return service_->NumActiveJobs();
 }
 
+ServerStateExport DispatchGrpcDataServer::ExportState() const {
+  ServerStateExport server_state_export;
+  *server_state_export.mutable_dispatcher_state_export() =
+      service_->ExportState();
+  return server_state_export;
+}
+
 WorkerGrpcDataServer::WorkerGrpcDataServer(
-    const experimental::WorkerConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer"),
+    const experimental::WorkerConfig& config,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
+    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer",
+                         std::move(options)),
       config_(config) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
@@ -170,6 +196,10 @@ Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
   }
   *num_tasks = resp.tasks_size();
   return Status::OK();
+}
+
+ServerStateExport WorkerGrpcDataServer::ExportState() const {
+  return ServerStateExport();
 }
 
 Status NewDispatchServer(const experimental::DispatcherConfig& config,

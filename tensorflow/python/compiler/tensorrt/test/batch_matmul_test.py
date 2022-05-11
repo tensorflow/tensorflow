@@ -65,7 +65,7 @@ class BatchMatMulTwoTensorTest(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "relu"]}
+    return {"TRTEngineOp_000": ["matmul", "relu"]}
 
 
 class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
@@ -84,7 +84,7 @@ class BatchMatMulWeightBroadcastTest(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+    return {"TRTEngineOp_000": ["matmul", "kernel"]}
 
 
 class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
@@ -102,7 +102,7 @@ class BatchMatMulWeightBroadcastDims2Test(BatchMatMultTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+    return {"TRTEngineOp_000": ["matmul", "kernel"]}
 
 
 if __name__ == "__main__":

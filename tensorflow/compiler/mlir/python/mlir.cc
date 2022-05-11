@@ -25,9 +25,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
@@ -394,7 +395,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-    module = mlir::parseSourceString(mlir_txt, &context);
+    module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
     if (!module) {
       Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
       return "// error";

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -330,7 +331,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
                       f"Received {validate}.")
     values, row_partition = cls._convert_values_and_partition(
         values, row_partition, "partition")
-    if row_partition.has_precomputed_value_rowids():
+    if row_partition._has_precomputed_value_rowids():  # pylint: disable=protected-access
       value_rowids_shape = row_partition.value_rowids().shape
       values.shape[:1].assert_is_compatible_with(value_rowids_shape)
     if validate:
@@ -344,7 +345,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       ]
       if not isinstance(values, RaggedTensor):
         checks.append(check_ops.assert_rank_at_least(values, 1))
-      row_partition = row_partition.with_dependencies(checks)
+      row_partition = row_partition._with_dependencies(checks)  # pylint: disable=protected-access
     return cls(values=values, internal=True, row_partition=row_partition)
 
   @classmethod
@@ -1452,12 +1453,12 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if isinstance(current_values, RaggedTensor):
       return RaggedTensor(
           values=current_values.with_row_splits_dtype(dtype),
-          row_partition=self._row_partition.with_row_splits_dtype(dtype),
+          row_partition=self._row_partition.with_dtype(dtype),
           internal=True)
     else:
       return RaggedTensor(
           values=current_values,
-          row_partition=self._row_partition.with_row_splits_dtype(dtype),
+          row_partition=self._row_partition.with_dtype(dtype),
           internal=True)
 
   def merge_dims(self, outer_axis, inner_axis):
@@ -1556,11 +1557,14 @@ class RaggedTensor(composite_tensor.CompositeTensor,
                                f"{old_row_length} vs. {size}.")
         partition._uniform_row_length = ops.convert_to_tensor(size, dtype)
         if partition._nrows is None:
-          partition._nrows = array_ops.size(partition._row_splits) - 1
+          partition._nrows = array_ops.size(
+              partition._row_splits, out_type=dtype) - 1
 
-    # Inner dimensions
-    flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])
-    self.flat_values.set_shape(flat_shape)
+    # self.flat_values could be a CompositeTensor and doesn't have set_shape.
+    if hasattr(self.flat_values, "set_shape"):
+      # Inner dimensions
+      flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])
+      self.flat_values.set_shape(flat_shape)
 
   #=============================================================================
   # Tensor Type Conversions
@@ -1626,8 +1630,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     Returns:
       A `RaggedTensor` with the specified `ragged_rank`.  The shape of the
       returned ragged tensor is compatible with the shape of `tensor`.
+
     Raises:
       ValueError: If both `lengths` and `padding` are specified.
+      ValueError: If the rank of `tensor` is 0 or 1.
     """
     row_splits_dtype = dtypes.as_dtype(row_splits_dtype)
     if lengths is not None and padding is not None:
@@ -1641,6 +1647,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
     with ops.name_scope(name, "RaggedFromTensor", [tensor, lengths, padding]):
       tensor = ops.convert_to_tensor(tensor, name="tensor")
+      if tensor.shape.rank is not None and tensor.shape.rank < 2:
+        raise ValueError(f"The rank of a RaggedTensor must be greater than 1, "
+                         f"i.e., a list of scalars won't have ragged "
+                         f"dimensions. Received argument `tensor` with rank "
+                         f"{tensor.shape.rank}.")
       tensor.shape.with_rank_at_least(ragged_rank + 1)
       input_shape = array_ops.shape(tensor, out_type=row_splits_dtype)
       ncols = input_shape[1]
@@ -2233,6 +2244,9 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   def consumers(self):
     return self._consumers()
 
+  __composite_gradient__ = (
+      composite_tensor_gradient.WithValuesCompositeTensorGradient())
+
 
 def is_ragged(value):
   """Returns true if `value` is a ragged tensor or ragged tensor value."""
@@ -2501,6 +2515,15 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
             result,
             RowPartition.from_row_splits(row_splits, validate=False),
             internal=True)
+    if self._shape.ndims is not None:
+      if isinstance(result, RaggedTensor):
+        result._set_shape(self._shape)  # pylint: disable=protected-access
+        # TODO(xjun): MaskedTensor doesn't implement set_shape.
+        if self.flat_values_spec is not None and hasattr(result.flat_values,
+                                                         "set_shape"):
+          result.flat_values.set_shape(self.flat_values_spec.shape)
+      elif isinstance(result, ops.Tensor):
+        result.set_shape(self._shape)
     return result
 
   # The RaggedTensorSpec tensor_list encoding uses to/from_variant ops
@@ -2558,10 +2581,11 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
         output_ragged_rank=self._ragged_rank)
     if self._shape.ndims is not None:
       if isinstance(result, RaggedTensor):
-        outer_dim = tensor_shape.dimension_value(self._shape[0])
-        if outer_dim is not None:
-          result.row_splits.set_shape([outer_dim + 1])
         result._set_shape(self._shape)  # pylint: disable=protected-access
+        # TODO(xjun): MaskedTensor doesn't implement set_shape.
+        if self.flat_values_spec is not None and hasattr(self.flat_values,
+                                                         "set_shape"):
+          result.flat_values.set_shape(self.flat_values_spec.shape)
       else:
         result.set_shape(self._shape)
     return result
@@ -2602,12 +2626,15 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
           ragged_rank=value.ragged_rank,
           row_splits_dtype=value.row_splits.dtype)
     else:
+      flat_values_spec = type_spec.type_spec_from_value(value.flat_values)
+      # Relax shape[0] to None, as it is connected to dynamic ragged shapes.
+      flat_values_spec = flat_values_spec._unbatch()._batch(None)  # pylint: disable=protected-access
       return cls(
           shape=value.shape,
           dtype=value.values.dtype,
           ragged_rank=value.ragged_rank,
           row_splits_dtype=value.row_splits.dtype,
-          flat_values_spec=type_spec.type_spec_from_value(value.flat_values))
+          flat_values_spec=flat_values_spec)
 
 
 type_spec.register_type_spec_from_value_converter(
@@ -2910,7 +2937,7 @@ def _get_row_partition_type_tensor_pairs_tail(partition):
   Returns:
     A list of (row_partition_type, row_partition_tensor) pairs.
   """
-  if partition.has_precomputed_value_rowids():
+  if partition._has_precomputed_value_rowids():  # pylint: disable=protected-access
     return ("VALUE_ROWIDS", partition.value_rowids())
   else:
     return ("ROW_SPLITS", partition.row_splits())
@@ -3007,11 +3034,14 @@ def _add_supported_value_type(cls):
   """Register the `cls` as supported value type of RaggedTenosr.
 
   The cls must be a subclass of CompositeTensor, and must support:
+   - Spec:
+     The Spec must be a `BatchableTypeSpec`
    - Properties:
      - x.shape
      - x.dtype
    - Methods:
      - x.__getitem__(idx) (method: returns a supported value type)
+     - x.set_shape(shape)
    - Ops:
      - tf.shape(x) -- tf.shape(x)[0] must be a tf.Tensor.
      - tf.tile(x)
@@ -3063,7 +3093,12 @@ def _assert_is_supported_ragged_values_type(value):
 def _formatter(x):
   """Separate Numpy array elements with comma."""
   if isinstance(x, np.ndarray):
-    return np.array2string(x, separator=", ")
+    if x.size != 0:
+      return np.array2string(x, separator=", ")
+    else:
+      # When x.size==0, np.array2string always returns `[]`.  This isn't always
+      # what we want.  E.g., if `x.shape=[0, 3]`, then we want `[[], [], []]`.
+      return repr(x.tolist())
   else:
     return str(x)
 

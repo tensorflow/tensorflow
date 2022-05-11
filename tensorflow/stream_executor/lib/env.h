@@ -35,6 +35,10 @@ inline Status FileExists(const absl::string_view& filename) {
   return Env::Default()->FileExists(std::string(filename));
 }
 
+inline std::string GetExecutablePath() {
+  return Env::Default()->GetExecutablePath();
+}
+
 }  // namespace port
 }  // namespace stream_executor
 

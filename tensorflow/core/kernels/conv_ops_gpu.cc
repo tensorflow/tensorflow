@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
@@ -98,6 +100,28 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
 }  // namespace
 #endif  // GOOGLE_CUDA
 
+bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
+                          bool is_conv2d) {
+#if GOOGLE_CUDA
+  // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
+  // GPUs and tf32 for Ampere+ GPUs in NHWC data layout. In all other
+  // configurations it's more efficient to run computation in NCHW data format.
+  bool use_nhwc_tf32 = data_type == DT_FLOAT &&
+                       stream->GetCudaComputeCapability().IsAtLeast(
+                           se::CudaComputeCapability::AMPERE) &&
+                       tensorflow::tensor_float_32_execution_enabled();
+  bool use_nhwc_fp16 =
+      data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
+                                  se::CudaComputeCapability::VOLTA);
+  if (is_conv2d) {
+    return use_nhwc_fp16 || use_nhwc_tf32;
+  }
+  return CUDNN_VERSION >= 8000 && (use_nhwc_fp16 || use_nhwc_tf32);
+#else
+  return false;
+#endif  // GOOGLE_CUDA
+}
+
 // Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
@@ -145,8 +169,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
             se::dnn::ProfileResult* profile_result) -> Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
-      return (*runner)(stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr,
-                       output_ptr_rz, scratch, profile_result);
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       side_input_ptr, bias_ptr, output_ptr_rz);
     };
 
     SE_ASSIGN_OR_RETURN(
@@ -304,8 +328,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
             se::dnn::ProfileResult* profile_result) -> Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
-      return (*runner)(stream, input_ptr, filter_ptr, output_ptr, scratch,
-                       profile_result);
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       output_ptr);
     };
     SE_ASSIGN_OR_RETURN(
         auto results,

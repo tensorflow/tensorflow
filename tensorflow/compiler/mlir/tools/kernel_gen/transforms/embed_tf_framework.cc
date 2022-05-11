@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -29,15 +29,15 @@ namespace tf_framework {
 namespace {
 
 // Prepends argument type list of the function with an OpKernelContextType arg.
-class FuncOpConverter : public OpConversionPattern<FuncOp> {
+class FuncOpConverter : public OpConversionPattern<func::FuncOp> {
  public:
-  using OpConversionPattern<FuncOp>::OpConversionPattern;
+  using OpConversionPattern<func::FuncOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FuncOp func, OpAdaptor /*adaptor*/,
+      func::FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
     TypeConverter::SignatureConversion conversion(func_type.getNumInputs());
 
     conversion.addInputs(OpKernelContextType::get(rewriter.getContext()));
@@ -57,7 +57,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
 };
 
 llvm::Optional<Value> FindOpKernelContext(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   if (func.getNumArguments() == 0) {
     return llvm::None;
   }

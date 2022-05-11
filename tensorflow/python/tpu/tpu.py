@@ -326,6 +326,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def get_replicated_var_handle(self,
                                 name: Text,
+                                handle_id: Text,
                                 vars_: Union[List[core_types.Tensor],
                                              List[variables.Variable]],
                                 is_mirrored: bool = False,
@@ -337,6 +338,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     Args:
       name: The common name of the variable.
+      handle_id: Unique ID of the variable handle, used as the cache key.
       vars_: The replicated TPU variables or handles.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
@@ -348,7 +350,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     device_assignment = _enclosing_tpu_device_assignment()
     # We don't need to put device assignment as part of the replicated_vars key
     # because each TPUReplicateContext will only have one device assignment.
-    handle = self._replicated_vars.get(name)
+    handle = self._replicated_vars.get(handle_id)
     if handle is not None:
       return handle
 
@@ -397,7 +399,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
                                             is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
-    self._replicated_vars[name] = handle
+    self._replicated_vars[handle_id] = handle
     return handle
 
   def report_unsupported_operations(self) -> None:
@@ -1353,7 +1355,7 @@ def split_compile_and_replicate(
       raise TypeError(
           "Supplied computation cannot be called with the specified inputs. "
           f"You specified {input_arity} inputs: {[i.name for i in inputs[0]]}, "
-          f"but the computation needs{arg_error}")
+          f"but the computation needs {arg_error}")
     else:
       raise TypeError(
           "Supplied computation cannot be called with the specified inputs. "

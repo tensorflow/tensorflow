@@ -66,9 +66,6 @@ using BrokenTestMap =
 // TODO(ahentz): make sure we clean this list up frequently.
 const BrokenTestMap& GetKnownBrokenTests() {
   static const BrokenTestMap* const kBrokenTests = new BrokenTestMap({
-      // Select kernel doesn't support broadcasting yet.
-      {R"(^\/where.*1,2,3,1)", {"134692786", false}},
-
       // TODO(b/194364155): TF and TFLite have different behaviors when output
       // nan values in LocalResponseNorm ops.
       {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},

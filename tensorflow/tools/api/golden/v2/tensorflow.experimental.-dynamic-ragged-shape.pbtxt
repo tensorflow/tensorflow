@@ -1,0 +1,63 @@
+path: "tensorflow.experimental.DynamicRaggedShape"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.ragged.dynamic_ragged_shape.DynamicRaggedShape\'>"
+  is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionType\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "Spec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inner_rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inner_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_row_partitions"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "row_partitions"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'row_partitions\', \'inner_shape\', \'dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "from_lengths"
+    argspec: "args=[\'cls\', \'lengths\', \'num_row_partitions\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "from_row_partitions"
+    argspec: "args=[\'cls\', \'row_partitions\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_tensor"
+    argspec: "args=[\'cls\', \'t\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "is_uniform"
+    argspec: "args=[\'self\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "static_lengths"
+    argspec: "args=[\'self\', \'ragged_lengths\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "with_dtype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+}

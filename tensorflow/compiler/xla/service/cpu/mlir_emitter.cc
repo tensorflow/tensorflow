@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -58,9 +59,11 @@ void BuildViewForBuffer(llvm::SmallVectorImpl<llvm::Value *> *args,
                         llvm::IRBuilder<> *b, const Shape &opShape,
                         llvm::Value *op_val) {
   llvm::Type *ty = op_val->getType();
-  while (auto aty = llvm::dyn_cast<llvm::ArrayType>(
-             llvm::cast<llvm::PointerType>(ty)->getElementType())) {
-    ty = aty->getElementType()->getPointerTo();
+  if (!ty->isOpaquePointerTy()) {
+    while (auto aty = llvm::dyn_cast<llvm::ArrayType>(
+               ty->getNonOpaquePointerElementType())) {
+      ty = aty->getElementType()->getPointerTo();
+    }
   }
   op_val = b->CreateBitCast(op_val, ty);
 
@@ -91,7 +94,7 @@ Status EmitMlirFuncAndCall(
     mlir::MLIRContext *context, llvm::IRBuilder<> *b, const Shape &result_shape,
     llvm::ArrayRef<Shape> operand_shapes, llvm::Value *result_ptr,
     llvm::ArrayRef<llvm::Value *> operand_ptrs, llvm::StringRef func_name,
-    llvm::function_ref<void(mlir::OpBuilder *, mlir::FuncOp)> emitter) {
+    llvm::function_ref<void(mlir::OpBuilder *, mlir::func::FuncOp)> emitter) {
   llvm::Module *llvm_module = b->GetInsertBlock()->getParent()->getParent();
   mlir::Builder mlir_builder(context);
 
@@ -108,7 +111,7 @@ Status EmitMlirFuncAndCall(
 
   // Create the function an call the emission callback.
   mlir::Location loc = mlir::UnknownLoc::get(context);
-  auto function = mlir::FuncOp::create(
+  auto function = mlir::func::FuncOp::create(
       loc, func_name, mlir::FunctionType::get(context, operand_types, {}));
   function.addEntryBlock();
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(loc);

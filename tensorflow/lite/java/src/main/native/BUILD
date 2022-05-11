@@ -42,7 +42,10 @@ filegroup(
 
 filegroup(
     name = "native_hdrs",
-    srcs = ["jni_utils.h"],
+    srcs = [
+        "jni_utils.h",
+        "op_resolver_lazy_delegate_proxy.h",
+    ],
 )
 
 # Native code needed for TF Lite Java API, excluding experimental APIs;
@@ -54,9 +57,9 @@ filegroup(
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "nativesignaturerunner_jni.cc",
+        "op_resolver_lazy_delegate_proxy.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
-        "xnnpackdelegate_jni.cc",
     ],
 )
 
@@ -80,8 +83,11 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:c_api_without_op_resolver",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:create_op_resolver_header",
+        "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/core/shims:framework_stable",
         "//tensorflow/lite/core/shims:jni_utils",
+        "//tensorflow/lite/core/shims:xnnpack_plugin",
+        "//tensorflow/lite/core/shims:verifier_internal",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",
@@ -89,6 +95,7 @@ cc_library_with_tflite(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/java/jni",
     ],

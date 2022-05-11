@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
-#include <map>
 #include <memory>
 #include <queue>
 #include <string>
@@ -221,7 +220,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
         iteration_counter_->GetAndIncrement());
@@ -399,14 +398,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
-      dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
+      dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64_t deadline_micros = kint64max;
-      absl::optional<JobKey> key;
+      absl::optional<JobKeyDef> key;
       if (!dataset()->job_name_.empty()) {
         key.emplace();
-        key.value().set_job_name(std::string(dataset()->job_name_));
-        key.value().set_job_name_index(iterator_index_);
+        key.value().set_name(std::string(dataset()->job_name_));
+        key.value().set_iteration(iterator_index_);
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
@@ -729,8 +728,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatResponse resp;
       Status s = dispatcher_->ClientHeartbeat(req, resp);
       if (!s.ok()) {
-        if (errors::IsAborted(s) || errors::IsUnavailable(s) ||
-            errors::IsCancelled(s)) {
+        if (IsPreemptedError(s)) {
           LOG(WARNING)
               << "Failed to heartbeat to dispatcher from job client id "
               << job_client_id_
@@ -1104,8 +1102,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = TryGetElement(*task, get_element_result);
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
-        if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
-            !errors::IsAborted(s)) {
+        if (!IsPreemptedError(s)) {
           return s;
         }
         {

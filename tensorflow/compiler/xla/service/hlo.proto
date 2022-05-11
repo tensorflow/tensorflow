@@ -50,7 +50,7 @@ enum CustomCallApiVersion {
   // The first version of the API, with the following signatures:
   //
   // CPU:
-  //   void do_custom_call(void* out, const void** in)
+  //   void do_custom_call(void* out, const void** in);
   //
   // GPU:
   //   void do_custom_call(CUstream stream, void** buffers,
@@ -59,7 +59,9 @@ enum CustomCallApiVersion {
 
   // When the ability to return success/failure status was added:
   //
-  // CPU: Unimplemented
+  // CPU:
+  //   void do_custom_call(void* out, const void** in,
+  //                       XlaCustomCallStatus* status);
   //
   // GPU:
   //   void do_custom_call(CUstream stream, void** buffers,
@@ -67,6 +69,24 @@ enum CustomCallApiVersion {
   //                       XlaCustomCallStatus* status);
   //
   API_VERSION_STATUS_RETURNING = 2;
+
+  // Fixes the API signatures on the CPU side of the version STATUS_RETURNING by
+  // adding the opaque string so that the custom call API is consistent across
+  // CPUs and GPUs. For GPUs, the behaviors invoked by
+  // API_VERSION_STATUS_RETURNING and API_VERSION_STATUS_RETURNING_UNIFIED are
+  // the same.
+  //
+  // CPU:
+  //   void do_custom_call(void* out, const void** in,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  // GPU:
+  //   void do_custom_call(CUstream stream, void** buffers,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  API_VERSION_STATUS_RETURNING_UNIFIED = 3;
 }
 
 // Serialization of HloInstruction.
@@ -329,6 +349,11 @@ message HloComputationProto {
 
   // The id of the root of the computation.
   int64 root_id = 6;
+
+  // Whether this is a fusion computation. Fusion computations should use this
+  // to determine whether they are a fusion in CreateFromProto since the
+  // parent fusion_instruction_ may get removed and be nullptr.
+  bool is_fusion_computation = 7;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
@@ -451,26 +476,14 @@ message HloModuleProto {
 
   xla.OpSharding spmd_output_sharding = 12;
 
-  // The type of optimization profile in use.
+  repeated xla.OpSharding spmd_parameters_shardings = 14;
+
+  // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {
     INVALID = 0;
     FLAG = 1;
     FUSION = 2;
     LAYOUT = 3;
-  }
-
-  // The source of the optimization profile.
-  enum ProfileSource {
-    UNKNOWN_SOURCE = 0;
-    EMBEDDED = 1;
-    REMOTE = 2;
-  }
-
-  // The compilation event that triggered the use of the profile.
-  enum CompilationEvent {
-    UNKNOWN_EVENT = 0;
-    FIRST_COMPILATION = 1;
-    RECOMPILATION = 2;
   }
 
   // Information about the optimization profile that this module contains.
@@ -480,11 +493,12 @@ message HloModuleProto {
     // Speedup of tuned config compared to default config.
     double relative_speedup = 2;
     // The source of the optimization profile that this module contains.
-    ProfileSource profile_source = 3;
+    xla.ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profile.
-    CompilationEvent compilation_event = 4;
+    xla.CompilationEvent compilation_event = 4;
   }
 
+  // Profile information for the HLO module.
   repeated ProfileInfo profile_info = 13;
 }
 

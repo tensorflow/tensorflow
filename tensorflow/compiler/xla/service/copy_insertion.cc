@@ -350,7 +350,8 @@ Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                       in_place_op->parent()->DeepCopyInstruction(operand));
-  TF_RETURN_IF_ERROR(operand->ReplaceUseWith(in_place_op, deep_copy));
+  TF_RETURN_IF_ERROR(
+      operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
   return Status::OK();
 }
 
@@ -864,8 +865,10 @@ class ComputeRelativeLocation {
         return false;
       }
       return absl::c_any_of(
-          in_place, [&](const std::pair<HloUse, ShapeIndex>& a) {
-            auto* op2 = instr->operand(a.first.operand_number);
+          in_place, [&](const std::pair<HloOperandIndex, ShapeIndex>&
+                            operand_and_output_index) {
+            auto* op2 =
+                instr->operand(operand_and_output_index.first.operand_number);
             return (op == nullptr) ? (op2->opcode() == HloOpcode::kCopy)
                                    : (op2 == op);
           });
@@ -962,7 +965,6 @@ class ComputeRelativeLocation {
       case HloOpcode::kWhile:
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
-      case HloOpcode::kTupleSelect:
         return false;
       default:
         return true;
@@ -1210,8 +1212,8 @@ class CopyRemover {
 
       // Copy the HLO values's uses into the ValueNode for the value. These
       // uses in ValueNode are updated as copies are removed.
-      new_node->uses.reserve(value->uses().size());
-      for (const HloUse& use : value->uses()) {
+      new_node->uses.reserve(value->GetUses().size());
+      for (const HloUse& use : value->GetUses()) {
         new_node->uses.push_back(&use);
       }
 
@@ -1569,6 +1571,14 @@ class CopyRemover {
     }
     VLOG(3) << "Checking live ranges before :" << ValueListToString(&a)
             << " vs " << ValueListToString(&b) << "\n";
+    // If any of the positions of the "a" value is a root of the same
+    // computation as "b", "a"'s live range cannot be before "b"'s. This catches
+    // the cases where the root may not be the last instruction in the
+    // computation.
+    if (a.value->IsRootOf(b.value->defining_instruction()->parent())) {
+      VLOG(3) << "Value is root of the same computation";
+      return false;
+    }
     return ordering_->UsesBeforeValueDefinition(
         a.uses, *b.value, dataflow_,
         /* use_is_always_before_def_in_same_instr=*/false);
@@ -1815,13 +1825,13 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
         absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
-          const HloUse& operand = operand_and_output_index.first;
-          if (copied_operands.contains(operand.operand_number)) {
+          const HloOperandIndex& operand_index = operand_and_output_index.first;
+          if (copied_operands.contains(operand_index.operand_number)) {
             continue;
           }
-          copied_operands.insert(operand.operand_number);
+          copied_operands.insert(operand_index.operand_number);
           TF_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand.operand_number));
+              *alias_analysis, instruction, operand_index.operand_number));
         }
       }
     }
@@ -1880,7 +1890,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
         continue;
       }
       HloPosition position = value2->defining_position();
-      for (const HloUse& use : value->uses()) {
+      for (const HloUse& use : value->GetUses()) {
         if (use.instruction == position.instruction) {
           VLOG(3) << "Same instruction: " << position.instruction->ToString();
           if (!alias_analysis->dataflow_analysis()

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
+#include "pybind11/detail/common.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -51,13 +52,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
@@ -79,6 +80,10 @@ bool IsOptimizedBuild() {
 
 PYBIND11_MODULE(xla_extension, m) {
   CHECK(tensorflow::RegisterNumpyBfloat16());
+
+  // Exceptions
+  py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
+                                          PyExc_RuntimeError);
 
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
@@ -134,6 +139,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "client",
           [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
       .def("__str__", &PjRtDevice::DebugString)
+      .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
            [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -158,40 +164,26 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return LiteralToPython(std::move(literal));
            })
-      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
-        return device.client->LiveBuffersOnDevice(device.get());
-      });
+      .def("live_buffers",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             return device.client->LiveBuffersOnDevice(device.get());
+           })
+      .def(
+          "__getattr__",
+          [](PjRtDevice& device, std::string name) -> py::object {
+            const auto& attrs = device.Attributes();
+            if (auto it = attrs.find(name); it != attrs.end()) {
+              return absl::visit([](auto&& v) { return py::cast(v); },
+                                 it->second);
+            }
+            throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
+          });
 
-  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>>(
-      m, "CpuDevice")
-      .def("__repr__", [](const TfrtCpuDevice& device) {
-        return absl::StrFormat("CpuDevice(id=%i)", device.id());
-      });
-
-  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
-      .def_property_readonly("device_vendor", &GpuDevice::device_vendor)
-      .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
-                               device.id(), device.process_index());
-      });
-
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
-      m, "TpuDevice")
-      .def_property_readonly(
-          "coords",
-          [](const PjRtTpuDevice& device) -> pybind11::tuple {
-            return SpanToTuple(absl::MakeConstSpan(device.coords()));
-          },
-          "The coordinates of this TpuDevice's chip in the TPU mesh network.")
-      .def_property_readonly(
-          "core_on_chip", &PjRtTpuDevice::core_on_chip,
-          "The index of this TpuDevice's core on the TPU chip.")
-      .def("__repr__", [](const PjRtTpuDevice& device) {
-        return absl::StrFormat(
-            "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
-            device.id(), device.process_index(),
-            absl::StrJoin(device.coords(), ","), device.core_on_chip());
-      });
+  // TODO(tomhennigan): Remove these types.
+  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
+      m, "GpuDevice");
+  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
+      m, "TpuDevice");
 
   // Local XLA client methods.
 
@@ -240,6 +232,9 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("device") = nullptr, py::arg("force_copy") = false,
            py::arg("host_buffer_semantics") =
                PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def("make_cross_host_receive_buffers",
+           &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
+           py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("compile", &PyClient::CompileMlir, py::arg("computation"),
@@ -255,6 +250,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
+      .def("get_emit_python_callback_descriptor",
+           &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
+           py::arg("operand_shapes"), py::arg("result_shapes") = absl::nullopt)
+      // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback", &PyClient::EmitPythonCallback,
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
            py::arg("result_shapes"), py::arg("operand_layouts") = absl::nullopt,
@@ -288,17 +287,21 @@ PYBIND11_MODULE(xla_extension, m) {
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
+         int node_id, absl::optional<std::set<int>> allowed_devices,
+         absl::optional<std::string> platform_name)
+          -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtClient> client,
-            GetGpuClient(asynchronous, allocator_config,
-                         std::move(distributed_client), node_id));
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                            GetGpuClient(asynchronous, allocator_config,
+                                         std::move(distributed_client), node_id,
+                                         allowed_devices, platform_name));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
-      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
+      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
+      py::arg("allowed_devices") = absl::nullopt,
+      py::arg("platform_name") = absl::nullopt);
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
@@ -310,6 +313,19 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("max_inflight_computations") = 32);
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
+
+  py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
+      .def_readwrite("generated_code_size_in_bytes",
+                     &CompiledMemoryStats::generated_code_size_in_bytes)
+      .def_readwrite("argument_size_in_bytes",
+                     &CompiledMemoryStats::argument_size_in_bytes)
+      .def_readwrite("output_size_in_bytes",
+                     &CompiledMemoryStats::output_size_in_bytes)
+      .def_readwrite("alias_size_in_bytes",
+                     &CompiledMemoryStats::alias_size_in_bytes)
+      .def_readwrite("temp_size_in_bytes",
+                     &CompiledMemoryStats::temp_size_in_bytes)
+      .def("__str__", &CompiledMemoryStats::DebugString);
 
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
@@ -328,6 +344,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyExecutable::SizeOfGeneratedCodeInBytes)
+      .def("get_compiled_memory_stats", &PyExecutable::GetCompiledMemoryStats)
       .def("delete", &PyExecutable::Delete)
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
@@ -356,6 +373,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildPytreeSubmodule(m);
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
+  jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
 

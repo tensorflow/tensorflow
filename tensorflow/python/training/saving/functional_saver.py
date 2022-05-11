@@ -135,35 +135,39 @@ def registered_saver_filename(filename_tensor, saver_name):
 
 def _get_mapped_registered_save_fn(fn, trackables, call_with_mapped_captures):
   """Converts the function to a python or tf.function with a single file arg."""
+
+  def save_fn(file_prefix):
+    return fn(trackables=trackables, file_prefix=file_prefix)
   if call_with_mapped_captures is None:
-    def mapped_fn(file_prefix):
-      return fn(trackables=trackables, file_prefix=file_prefix)
-    return mapped_fn
+    return save_fn
   else:
-    tf_fn = def_function.function(fn, autograph=False)
+    tf_fn = def_function.function(save_fn, autograph=False)
     concrete = tf_fn.get_concrete_function(
-        trackables=trackables,
         file_prefix=tensor_spec.TensorSpec(shape=(), dtype=dtypes.string))
-    def mapped_fn(file_prefix):
+
+    def save_fn_with_replaced_captures(file_prefix):
       return call_with_mapped_captures(concrete, [file_prefix])
-    return mapped_fn
+
+    return save_fn_with_replaced_captures
 
 
 def _get_mapped_registered_restore_fn(fn, trackables,
                                       call_with_mapped_captures):
   """Converts the function to a python or tf.function with a single file arg."""
+
+  def restore_fn(merged_prefix):
+    return fn(trackables=trackables, merged_prefix=merged_prefix)
   if call_with_mapped_captures is None:
-    def mapped_fn(merged_prefix):
-      return fn(trackables=trackables, merged_prefix=merged_prefix)
-    return mapped_fn
+    return restore_fn
   else:
-    tf_fn = def_function.function(fn, autograph=False)
+    tf_fn = def_function.function(restore_fn, autograph=False)
     concrete = tf_fn.get_concrete_function(
-        trackables=trackables,
         merged_prefix=tensor_spec.TensorSpec(shape=(), dtype=dtypes.string))
-    def mapped_fn(merged_prefix):
+
+    def restore_fn_with_replaced_captures(merged_prefix):
       return call_with_mapped_captures(concrete, [merged_prefix])
-    return mapped_fn
+
+    return restore_fn_with_replaced_captures
 
 
 class MultiDeviceSaver(object):

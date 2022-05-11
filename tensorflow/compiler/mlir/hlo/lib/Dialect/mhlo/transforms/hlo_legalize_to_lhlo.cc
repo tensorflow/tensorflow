@@ -27,11 +27,12 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Shape/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -301,10 +302,11 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
             MemRefType::get(tensor_ty.getShape(), tensor_ty.getElementType()));
       }
     } else {
-      auto result_type =
-          return_op.results().front().getType().template cast<TensorType>();
-      sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
-                                                result_type.getElementType())});
+      for (auto result : return_op.results()) {
+        auto result_type = result.getType().template cast<TensorType>();
+        sig_conversion.addInputs({MemRefType::get(
+            result_type.getShape(), result_type.getElementType())});
+      }
     }
     rewriter.applySignatureConversion(&new_op.body(), sig_conversion);
 
@@ -416,19 +418,37 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
                     memref::MemRefDialect, shape::ShapeDialect>();
+    shape::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
  public:
   HloLegalizeToLhlo() = default;
 
+  LogicalResult runOpInterfaceBufferization() {
+    // Bufferize ops using BufferizableOpInterface. This could be switched to
+    // One-Shot Bufferize in the future.
+    RewritePatternSet patterns(&getContext());
+    bufferization::BufferizationOptions options =
+        bufferization::getPartialBufferizationOptions();
+    // TODO(springerm): Add dialects to this filter as more and more dialects
+    // will be migrated to BufferizableOpInterface-based bufferization.
+    options.allowDialectInFilter<shape::ShapeDialect>();
+    return bufferization::bufferizeOp(getOperation(), options);
+  }
+
   void runOnOperation() override {
+    if (failed(runOpInterfaceBufferization())) {
+      signalPassFailure();
+      return;
+    }
+
     auto& context = getContext();
     RewritePatternSet patterns(&context);
     ConversionTarget target(context);
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         lmhlo::LmhloDialect, memref::MemRefDialect, shape::ShapeDialect,
-        StandardOpsDialect, tensor::TensorDialect>();
+        func::FuncDialect, tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     // bufferization.to_memref is illegal if it has uses.
     // TODO(b/175670649) Make bufferization.to_memref illegal.
@@ -437,31 +457,29 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
     bufferization::BufferizeTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      return converter.isSignatureLegal(op.getType()) &&
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType()) &&
              converter.isLegal(&op.getBody());
     });
-    target.addDynamicallyLegalOp<CallOp>([&](CallOp op) {
+    target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
       return std::all_of(op.operand_type_begin(), op.operand_type_end(),
                          isMemRefType) &&
              std::all_of(op.result_type_begin(), op.result_type_end(),
                          isMemRefType);
     });
-    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp op) {
-      return std::all_of(op.operand_type_begin(), op.operand_type_end(),
-                         isMemRefType);
-    });
+    target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
+        [&](mlir::func::ReturnOp op) {
+          return std::all_of(op.operand_type_begin(), op.operand_type_end(),
+                             isMemRefType);
+        });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                             converter);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
-
-    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
-                                                      target);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))

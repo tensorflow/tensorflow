@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -46,7 +47,7 @@ class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the
   // beginning of the function, if it is non empty and has a block.
-  explicit MlirHloBuilder(mlir::FuncOp func)
+  explicit MlirHloBuilder(mlir::func::FuncOp func)
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
         loc_(builder_.getUnknownLoc()) {}

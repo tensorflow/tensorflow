@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/model.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "absl/time/clock.h"
@@ -69,6 +70,11 @@ inline bool IsAnyNode(const std::shared_ptr<Node> node) { return true; }
 // autotuning is disabled.
 inline bool IsAutotuneNode(const std::shared_ptr<Node> node) {
   return node->autotune();
+}
+
+// Helper function for node traversal that returns only synchronous nodes.
+inline bool IsSyncNode(const std::shared_ptr<Node> node) {
+  return !node->IsAsync();
 }
 
 // Wrapper for the square function to reduce verbosity.
@@ -197,7 +203,51 @@ class InterleaveMany : public Node {
  public:
   using Node::Node;
 
+  InterleaveMany(Node::Args args,
+                 std::vector<std::shared_ptr<Parameter>> parameters)
+      : Node(args) {
+    for (auto& parameter : parameters) {
+      parameters_[parameter->name] = std::move(parameter);
+    }
+  }
+
   virtual ~InterleaveMany() {}
+
+  // The ratio of an InterleaveMany node is `1/cycle_length`. If cycle length is
+  // not available, we approximate it by `1/input_size`. The input size does not
+  // include the original input dataset that generates other input datasets of
+  // interleave nodes.
+  double Ratio() const override {
+    auto* cycle_length = gtl::FindOrNull(parameters_, kCycleLength);
+    if (cycle_length != nullptr) {
+      return 1.0 / (*cycle_length)->value;
+    }
+    // After cl/436244658, `cycle_length` can not be `nullptr`. The remaining
+    // part of this function is used to approximate `Ratio()` of this node for
+    // model proto that was created before the CL.
+
+    // Cycle length is not available, use 1/input_size as the ratio.
+    std::size_t input_size = 1;
+    {
+      mutex_lock l(mu_);
+      if (inputs_.size() >= 2) {
+        auto first_input = inputs_.begin();
+        auto second_input = std::next(first_input);
+        // Some interleave datasets have 2 different inputs: the original input
+        // dataset and the generated input datasets when interleave is iterated,
+        // and some do not.
+        if ((*first_input)->name() == (*second_input)->name()) {
+          input_size = std::max(inputs_.size(), input_size);
+        } else {
+          input_size = std::max(inputs_.size() - 1, input_size);
+        }
+      }
+    }
+    if (input_size == 0) {
+      return 1.0;
+    }
+    return 1.0 / static_cast<double>(input_size);
+  }
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
@@ -318,6 +368,57 @@ class AsyncInterleaveMany : public Node {
   }
 
   virtual ~AsyncInterleaveMany() {}
+
+  bool IsAsync() const override { return true; }
+
+  // The ratio of an AsyncInterleaveMany node is 1/`cycle_length`. If cycle
+  // length is not available, we use 1/parallelism.
+  double Ratio() const override {
+    auto* cycle_length = gtl::FindOrNull(parameters_, kCycleLength);
+    if (cycle_length != nullptr) {
+      return 1.0 / (*cycle_length)->value;
+    }
+    // After cl/436244658, `cycle_length` can not be `nullptr`. The remaining
+    // part of this function is used to approximate `Ratio()` of this node for
+    // model proto that was created before the CL.
+
+    // Cycle length is not available, use 1/min(input_size, parallelism) as the
+    // ratio.
+    double parallelism = 1.0;
+    {
+      mutex_lock l(mu_);
+      if (inputs_.size() >= 2) {
+        auto first_input = inputs_.begin();
+        auto second_input = std::next(first_input);
+        // Some interleave datasets have 2 different inputs: the original
+        // input dataset and the generated input datasets when interleave is
+        // iterated, and some do not.
+        if ((*first_input)->name() == (*second_input)->name()) {
+          parallelism = std::max(inputs_.size(), size_t{1});
+        } else {
+          parallelism = std::max(inputs_.size() - 1, size_t{1});
+        }
+      }
+    }
+    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parameter) {
+      parallelism = std::min(parallelism, (*parameter)->value);
+    }
+    return 1.0 / parallelism;
+  }
+
+  double ComputeSelfTime() const override {
+    double parallelism = 1.0;
+    auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parallelism_parameter) {
+      parallelism = (*parallelism_parameter)->value;
+    }
+    if (num_elements_ == 0) {
+      return 0;
+    }
+    return static_cast<double>(processing_time_) /
+           (static_cast<double>(num_elements_) * parallelism);
+  }
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
@@ -477,6 +578,8 @@ class KnownRatio : public Node {
 
   virtual ~KnownRatio() {}
 
+  double Ratio() const override { return ratio_; }
+
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -565,31 +668,44 @@ class KnownRatio : public Node {
   const double ratio_;
 };
 
-class AsyncKnownRatio : public Node {
+class AsyncRatio : public Node {
  public:
-  AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
-                  std::vector<std::shared_ptr<Parameter>> parameters)
+  AsyncRatio(Node::Args args, double ratio, double memory_ratio,
+             std::vector<std::shared_ptr<Parameter>> parameters)
       : Node(args), ratio_(ratio), memory_ratio_(memory_ratio) {
     for (auto& parameter : parameters) {
       parameters_[parameter->name] = std::move(parameter);
     }
   }
 
-  virtual ~AsyncKnownRatio() {}
+  virtual ~AsyncRatio() {}
 
- protected:
-  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      TF_SHARED_LOCKS_REQUIRED(mu_) {
-    std::vector<std::shared_ptr<Parameter>> parameters;
-    for (auto& pair : parameters_) {
-      parameters.push_back(pair.second);
+  bool IsAsync() const override { return true; }
+
+  double Ratio() const override { return ratio_; }
+
+  double ComputeSelfTime() const override {
+    double parallelism = 1.0;
+    auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parallelism_parameter) {
+      parallelism = (*parallelism_parameter)->value;
     }
-    return std::make_shared<AsyncKnownRatio>(
-        Args{id_, name_, std::move(output)}, ratio_, memory_ratio_, parameters);
+    if (num_elements_ == 0) {
+      return 0;
+    }
+    return static_cast<double>(processing_time_) /
+           (static_cast<double>(num_elements_) * parallelism);
   }
 
+ protected:
+  virtual double RatioLocked() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    return ratio_;
+  }
+
+  double MemoryRatio() const { return memory_ratio_; }
+
   // The input time is the sum of inherited input time and parallelism adjusted
-  // self processing time, divided by `ratio_`.
+  // self processing time, divided by `Ratio()`.
   void InputTimeLocked(NodeValues* input_times) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
@@ -604,24 +720,25 @@ class AsyncKnownRatio : public Node {
       parallelism = (*parallelism_parameter)->value;
     }
 
-    if (ratio_ == 0.0) {
+    auto ratio = RatioLocked();
+    if (ratio == 0.0) {
       (*input_times)[long_name()] =
           inherited_input_time + SelfProcessingTimeLocked() / parallelism;
       return;
     }
     double input_time =
         (inherited_input_time + SelfProcessingTimeLocked() / parallelism) /
-        ratio_;
+        ratio;
     (*input_times)[long_name()] = input_time;
   }
 
   // The output time is the sum of parallelism adjusted self processing time and
   // expected wait time from the buffer model estimated using
   // `ComputeWaitTime(producer_time, consumer_time, parallelism, ...)`, where
-  // `producer_time` is the product of `ratio_` and the sum of output times of
-  // inputs, `consumer_time` is the product of `ratio_` and the `input_time`
+  // `producer_time` is the product of `Ratio()` and the sum of output times of
+  // inputs, `consumer_time` is the product of `Ratio()` and the `input_time`
   // specified through `input_times` (since for each element stored in the
-  // buffer, the inputs need to be called `ratio_` times), and if the node has
+  // buffer, the inputs need to be called `Ratio()` times), and if the node has
   // parallelism parameter, then `buffer_size` is derived from `parallelism`.
   //
   // Current implementation assumes that there is at most 1 parameter per node.
@@ -629,22 +746,23 @@ class AsyncKnownRatio : public Node {
                         ParameterGradients* gradients, NodeValues* output_times,
                         NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
+    auto ratio = RatioLocked();
     double parallelism = 1.0;
     double buffer_size = 0.0;
     auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
     auto* buffer_size_parameter = gtl::FindOrNull(parameters_, kBufferSize);
     if (parallelism_parameter) {
       parallelism = (*parallelism_parameter)->value;
-      if (ratio_ == 0) {
+      if (ratio == 0.0) {
         buffer_size = parallelism;
       } else {
         // Currently, MapAndBatch is the only transformation creates
         // AsyncKnownRatio nodes with ratio >= 1. For MapAndBatch, we create
         // `parallelism` threads to apply the function on elements from input
         // dataset, while one element in the buffer actually corresponds to
-        // `ratio_` elements from input dataset. So we adjust the `buffer_size`
-        // by dividing `ratio_`.
-        buffer_size = parallelism / ratio_;
+        // `Ratio()` elements from input dataset. So we adjust the `buffer_size`
+        // by dividing `Ratio()`.
+        buffer_size = parallelism / ratio;
       }
     } else if (buffer_size_parameter) {
       buffer_size = (*buffer_size_parameter)->value;
@@ -653,7 +771,7 @@ class AsyncKnownRatio : public Node {
     double output_time, wait_time, consumer_time, producer_time;
     double input_time = input_times.at(long_name());
 
-    if (ratio_ == 0) {
+    if (ratio == 0.0) {
       consumer_time = input_time;
       producer_time = 0.0L;
       if (gradients) {
@@ -690,8 +808,8 @@ class AsyncKnownRatio : public Node {
       return;
     }
 
-    consumer_time = input_time * ratio_;
-    producer_time = ratio_ * OutputTimeForInputs(*output_times);
+    consumer_time = input_time * ratio;
+    producer_time = ratio * OutputTimeForInputs(*output_times);
     if (gradients) {
       double producer_time_der = 0.0L;
       double consumer_time_der = 0.0L;
@@ -708,7 +826,7 @@ class AsyncKnownRatio : public Node {
         auto* gradient = gtl::FindOrNull(
             *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
-          *gradient *= (ratio_ * producer_time_der);
+          *gradient *= (ratio * producer_time_der);
         }
       }
 
@@ -716,7 +834,7 @@ class AsyncKnownRatio : public Node {
       if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
         (*gradients)[std::make_pair(long_name(),
                                     (*parallelism_parameter)->name)] =
-            buffer_size_der / ratio_ -
+            buffer_size_der / ratio -
             (1.0L + consumer_time_der +
              producer_time_der * inputs_time_der_sum) *
                 self_processing_time / Square(parallelism);
@@ -736,7 +854,7 @@ class AsyncKnownRatio : public Node {
   }
 
   // The processing time is the sum of the self processing time and the product
-  // of `ratio_` and the sum of processing times of inputs.
+  // of `Ratio()` and the sum of processing times of inputs.
   void TotalProcessingTimeLocked(NodeValues* processing_times,
                                  NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -744,12 +862,13 @@ class AsyncKnownRatio : public Node {
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
-    if (ratio_ == 0) {
+    auto ratio = RatioLocked();
+    if (ratio == 0) {
       (*total_processing_times)[long_name()] = self_processing_time;
       return;
     }
     double inputs_processing_time =
-        ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
+        ratio * TotalProcessingTimeForInputs(*total_processing_times);
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
@@ -775,14 +894,6 @@ class AsyncKnownRatio : public Node {
     return result;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
-    node_proto->set_ratio(ratio_);
-    node_proto->set_memory_ratio(memory_ratio_);
-    return Status::OK();
-  }
-
  private:
   // Identifies how many input elements need to be created to construct an
   // element for the dataset.
@@ -803,7 +914,24 @@ class UnknownRatio : public Node {
 
   virtual ~UnknownRatio() {}
 
+  double Ratio() const override {
+    tf_shared_lock l(mu_);
+    return RatioLocked();
+  }
+
  protected:
+  double RatioLocked() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    // TODO(wilsin): Consistent with UnknownRatio, current implementation
+    // assumes that the number of input elements consumed per output is the
+    // same across all inputs.
+    if (num_elements_ == 0 || inputs_.empty() ||
+        inputs_.front()->num_elements() == 0) {
+      return 0.0;
+    }
+    return static_cast<double>(inputs_.front()->num_elements()) /
+           static_cast<double>(num_elements_);
+  }
+
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     return std::make_shared<UnknownRatio>(Args{id_, name_, std::move(output)});
@@ -955,6 +1083,78 @@ class Unknown : public Node {
   }
 };
 
+class AsyncKnownRatio : public AsyncRatio {
+ public:
+  AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
+                  std::vector<std::shared_ptr<Parameter>> parameters)
+      : AsyncRatio(args, ratio, memory_ratio, parameters) {}
+
+  virtual ~AsyncKnownRatio() {}
+
+ protected:
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    std::vector<std::shared_ptr<Parameter>> parameters;
+    for (auto& pair : parameters_) {
+      parameters.push_back(pair.second);
+    }
+    return std::make_shared<AsyncKnownRatio>(
+        Args{id_, name_, std::move(output)}, Ratio(), MemoryRatio(),
+        parameters);
+  }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
+    node_proto->set_ratio(Ratio());
+    node_proto->set_memory_ratio(MemoryRatio());
+    return Status::OK();
+  }
+};
+
+class AsyncUnknownRatio : public AsyncRatio {
+ public:
+  AsyncUnknownRatio(Node::Args args,
+                    std::vector<std::shared_ptr<Parameter>> parameters)
+      : AsyncRatio(args, /*ratio=*/0.0, /*memory_ratio=*/0.0, parameters) {}
+
+  virtual ~AsyncUnknownRatio() {}
+
+  double Ratio() const override {
+    tf_shared_lock l(mu_);
+    return RatioLocked();
+  }
+
+ protected:
+  double RatioLocked() const TF_SHARED_LOCKS_REQUIRED(mu_) override {
+    // TODO(wilsin): Consistent with UnknownRatio, current implementation
+    // assumes that the number of input elements consumed per output is the same
+    // across all inputs.
+    if (num_elements_ == 0 || inputs_.empty() ||
+        inputs_.front()->num_elements() == 0) {
+      return 0.0;
+    }
+    return static_cast<double>(inputs_.front()->num_elements()) /
+           static_cast<double>(num_elements_);
+  }
+
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    std::vector<std::shared_ptr<Parameter>> parameters;
+    for (auto& pair : parameters_) {
+      parameters.push_back(pair.second);
+    }
+    return std::make_shared<AsyncUnknownRatio>(
+        Args{id_, name_, std::move(output)}, parameters);
+  }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_UNKNOWN_RATIO);
+    return Status::OK();
+  }
+};
+
 }  // namespace
 
 thread_local int64_t Node::work_start_;
@@ -965,12 +1165,28 @@ std::shared_ptr<Parameter> MakeParameter(const string& name,
   return std::make_shared<Parameter>(name, state, min, max);
 }
 
-std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args) {
-  return std::make_shared<InterleaveMany>(std::move(args));
+std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
+                                                   double value) {
+  return std::make_shared<Parameter>(name, nullptr, /*min=*/value,
+                                     /*max=*/value);
+}
+
+std::shared_ptr<Node> MakeInterleaveManyNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters) {
+  DCHECK(absl::c_any_of(parameters,
+                        [](const std::shared_ptr<Parameter>& parameter) {
+                          return parameter->name == kCycleLength;
+                        }));
+  return std::make_shared<InterleaveMany>(std::move(args),
+                                          std::move(parameters));
 }
 
 std::shared_ptr<Node> MakeAsyncInterleaveManyNode(
     Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters) {
+  DCHECK(absl::c_any_of(parameters,
+                        [](const std::shared_ptr<Parameter>& parameter) {
+                          return parameter->name == kCycleLength;
+                        }));
   return std::make_shared<AsyncInterleaveMany>(std::move(args),
                                                std::move(parameters));
 }
@@ -999,6 +1215,12 @@ std::shared_ptr<Node> MakeSourceNode(Node::Args args) {
 
 std::shared_ptr<Node> MakeUnknownRatioNode(Node::Args args) {
   return std::make_shared<UnknownRatio>(std::move(args));
+}
+
+std::shared_ptr<Node> MakeAsyncUnknownRatioNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters) {
+  return std::make_shared<AsyncUnknownRatio>(std::move(args),
+                                             std::move(parameters));
 }
 
 std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
@@ -1149,7 +1371,7 @@ Node::ModelParameters Node::CollectTunableParametersLocked() const {
   Node::ModelParameters parameters;
   // Collect tunable parameters from the leaves of the nodes tree to the root.
   for (const auto& node :
-       CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
+       CollectNodesLocked(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
     node->CollectTunableParametersHelper(&parameters);
   }
@@ -1167,7 +1389,7 @@ string Node::DebugString() const {
   tf_shared_lock l(mu_);
   // Build up the debug string from the leaves of the nodes tree to the root.
   for (const auto& node :
-       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
+       CollectNodesLocked(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->DebugStringHelper(&debug_strings);
   }
@@ -1191,7 +1413,7 @@ double Node::OutputTime(Node::NodeValues* input_times,
   // `nullptr`) and the output time for each node.
   Node::NodeValues output_time_gradients, output_times;
   tf_shared_lock l(mu_);
-  auto nodes = CollectNodes(TraversalOrder::BFS, IsAutotuneNode);
+  auto nodes = CollectNodesLocked(TraversalOrder::BFS, IsAutotuneNode);
 
   // Computes and stores input time for each node from the root to leaves of the
   // nodes tree.
@@ -1215,6 +1437,8 @@ double Node::OutputTime(Node::NodeValues* input_times,
 
   return output_times[long_name()];
 }
+
+double Node::ComputeSelfTime() const { return SelfProcessingTime(); }
 
 std::shared_ptr<Node> Node::Snapshot() const {
   NodePairList node_pairs;
@@ -1241,7 +1465,7 @@ double Node::TotalBufferedBytes() const {
   tf_shared_lock l(mu_);
   // Compute total buffered bytes from the leaves of the nodes tree to the root.
   for (const auto& node :
-       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
+       CollectNodesLocked(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalBufferedBytesHelper(&total_bytes);
   }
@@ -1256,7 +1480,7 @@ double Node::TotalMaximumBufferedBytes() const {
   // Compute total maximum buffered bytes from the leaves of the nodes tree
   // to the root.
   for (const auto& node :
-       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
+       CollectNodesLocked(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalMaximumBufferedBytesHelper(&total_bytes);
   }
@@ -1274,7 +1498,7 @@ double Node::TotalProcessingTime(Node::NodeValues* processing_times) {
   // Computes per-element CPU time spent in the subtree rooted in the node from
   // the leaves of the nodes tree to the root.
   for (const auto& node :
-       CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
+       CollectNodesLocked(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalProcessingTimeLocked(processing_times, &total_processing_times);
   }
@@ -1387,6 +1611,13 @@ double Node::SelfProcessingTimeLocked() const {
 }
 
 Node::NodeVector Node::CollectNodes(
+    TraversalOrder order,
+    bool collect_node(const std::shared_ptr<Node>)) const {
+  tf_shared_lock l(mu_);
+  return CollectNodesLocked(order, collect_node);
+}
+
+Node::NodeVector Node::CollectNodesLocked(
     TraversalOrder order, bool collect_node(const std::shared_ptr<Node>)) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
   NodeVector node_vector;
@@ -1425,7 +1656,7 @@ void Node::CollectTunableParametersHelper(
     return;
   }
   for (auto& pair : parameters_) {
-    if (pair.second->state->tunable) {
+    if (pair.second->state != nullptr && pair.second->state->tunable) {
       parameters->push_back(std::make_pair(long_name(), pair.second));
     }
   }
@@ -1544,8 +1775,10 @@ Status Node::ToProto(ModelProto::Node* node_proto) const {
     parameter_proto->set_value(parameter.second->value);
     parameter_proto->set_min(parameter.second->min);
     parameter_proto->set_max(parameter.second->max);
-    parameter_proto->set_state_value(parameter.second->state->value);
-    parameter_proto->set_tunable(parameter.second->state->tunable);
+    if (parameter.second->state != nullptr) {
+      parameter_proto->set_state_value(parameter.second->state->value);
+      parameter_proto->set_tunable(parameter.second->state->tunable);
+    }
   }
 
   // Add input node ids.
@@ -1586,6 +1819,8 @@ Status Node::FromProtoHelper(ModelProto::Node node_proto,
     node->parameters_[parameter_proto.name()] =
         MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
                       parameter_proto.max());
+    node->parameters_[parameter_proto.name()]->value =
+        std::max(parameter_proto.min(), parameter_proto.value());
   }
   return Status::OK();
 }
@@ -1613,6 +1848,10 @@ Status Node::FromProto(ModelProto::Node node_proto,
       break;
     case NodeClass::UNKNOWN_RATIO:
       *node = std::make_shared<UnknownRatio>(args);
+      break;
+    case NodeClass::ASYNC_UNKNOWN_RATIO:
+      *node = std::make_shared<AsyncUnknownRatio>(
+          args, /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
       break;
     default:
       *node = std::make_shared<Unknown>(args);
@@ -2066,6 +2305,166 @@ std::string Model::DebugString() {
   }
   cache_until_ = absl::Now() + absl::Seconds(kMinSecondsBetweenCalls);
   return cached_debug_string_;
+}
+
+Node::NodeVector Model::CollectNodes(
+    std::shared_ptr<Node> root, TraversalOrder order,
+    bool collect_node(const std::shared_ptr<Node>)) {
+  if (root == nullptr) {
+    return Node::NodeVector({});
+  }
+  auto subtree_nodes = root->CollectNodes(order, collect_node);
+  Node::NodeVector nodes;
+  if (order == TraversalOrder::BFS) {
+    nodes.push_back(root);
+    nodes.insert(nodes.end(), subtree_nodes.begin(), subtree_nodes.end());
+  } else {
+    nodes.insert(nodes.end(), subtree_nodes.begin(), subtree_nodes.end());
+    nodes.push_back(root);
+  }
+  return nodes;
+}
+
+ModelTiming::ModelTiming(std::shared_ptr<Model> model) : model_(model) {
+  ComputeTiming();
+}
+
+void ModelTiming::ComputeTiming() {
+  auto nodes =
+      model_->CollectNodes(model_->output(), TraversalOrder::BFS, IsAnyNode);
+  ComputeTimingComponents(nodes);
+  std::reverse(nodes.begin(), nodes.end());
+  ComputeTotalTimes(nodes);
+}
+
+const ModelTiming::NodeTiming* ModelTiming::GetTiming(Node* node) const {
+  if (timing_nodes_.find(node) == timing_nodes_.end()) {
+    return nullptr;
+  }
+  return &(timing_nodes_.at(node));
+}
+
+void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
+  for (const auto& node : bfs_nodes) {
+    auto& node_timing = timing_nodes_[node.get()];
+    double parent_pipeline_ratio = 1.0;
+    double parent_ratio = 1.0;
+    if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
+      const auto& output_timing = timing_nodes_[node->output()];
+      parent_pipeline_ratio = output_timing.pipeline_ratio;
+      parent_ratio = node->output()->Ratio();
+      if (parent_ratio <= 0.0) {
+        // Parent ratio is unknown, we use 1.0 as a guess.
+        parent_ratio = 1.0;
+      }
+    }
+    node_timing.pipeline_ratio = parent_pipeline_ratio * parent_ratio;
+    node_timing.self_time_nsec = node->ComputeSelfTime();
+  }
+}
+
+void ModelTiming::ComputeNodeTotalTime(std::shared_ptr<Node> node) {
+  DCHECK(timing_nodes_.contains(node.get()));
+  auto& node_timing = timing_nodes_[node.get()];
+  double input_total_time_nsec = 0.0;
+  for (auto input : node->inputs()) {
+    if (input->IsAsync()) {
+      continue;
+    }
+    if (!input->autotune() || input->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains(input.get()));
+    input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec;
+  }
+  node_timing.total_time_nsec =
+      node_timing.self_time_nsec + input_total_time_nsec * node->Ratio();
+}
+
+void ModelTiming::ComputeAsyncInterleaveManyTotalTime(
+    std::shared_ptr<Node> node) {
+  DCHECK(timing_nodes_.contains(node));
+  auto& node_timing = timing_nodes_[node.get()];
+  double max_input_total_time_nsec = 0.0;
+  double sum_input_throughput = 0.0;
+  auto inputs = node->inputs();
+  // `ParallelInterleave` is often used to interleave processing of datasets
+  // generated from the first input, e.g. reading from IO where the first input
+  // has the list of all filenames. The first input is typically not the
+  // bottleneck. We exclude the timing of the first input in the throughput
+  // computation of the remaining input. It also excluded from the total time
+  // computation of the async interleave node.
+  auto input = inputs.begin();
+  while ((input = std::next(input)) != inputs.end()) {
+    if ((*input)->IsAsync()) {
+      continue;
+    }
+    if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains((*input).get()));
+    auto input_total_time_nsec = timing_nodes_[(*input).get()].total_time_nsec;
+    max_input_total_time_nsec =
+        std::max(input_total_time_nsec, max_input_total_time_nsec);
+    if (input_total_time_nsec > 0.0) {
+      sum_input_throughput += 1.0 / input_total_time_nsec;
+    }
+  }
+  double input_total_time_nsec = 0.0;
+  auto deterministic = node->ParameterValue(kDeterministic);
+  // After cl/445005635, there should always be `deterministic` parameter for an
+  // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
+  // with protos saved and restored before that CL.
+  if (!deterministic.ok() || deterministic.ValueOrDie() == 1.0) {
+    // If deterministic = true, then the total time is `1/worst input
+    // throughput * cycle_length`, or `max input total time / cycle_length`.
+    input_total_time_nsec = max_input_total_time_nsec * node->Ratio();
+  } else if (sum_input_throughput > 0.0) {
+    // If deterministic = false, then the total time is
+    // `1/sum_input_throughput`.
+    input_total_time_nsec = 1.0 / sum_input_throughput;
+  }
+  node_timing.total_time_nsec =
+      node_timing.self_time_nsec + input_total_time_nsec;
+}
+
+void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
+  for (const auto& node : reverse_bfs_nodes) {
+    if (!node->autotune() || node->num_elements() <= 0) {
+      continue;
+    }
+#if !defined(IS_MOBILE_PLATFORM)
+    // This block of code is defined only for non-mobile platform because mobile
+    // platform lacks RTTI, i.e. the use of `dynamic_cast`.
+    if (dynamic_cast<const AsyncInterleaveMany*>(node.get()) != nullptr) {
+      ComputeAsyncInterleaveManyTotalTime(node);
+    } else {
+      ComputeNodeTotalTime(node);
+    }
+#else   // !IS_MOBILE_PLATFORM
+    ComputeNodeTotalTime(node);
+#endif  // !IS_MOBILE_PLATFORM
+  }
+}
+
+std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {
+  auto bfs_nodes =
+      model_->CollectNodes(model_->output(), TraversalOrder::BFS, IsAnyNode);
+  std::vector<std::shared_ptr<Node>> roots;
+  if (!bfs_nodes.empty() && !bfs_nodes[0]->IsAsync()) {
+    roots.push_back(bfs_nodes[0]);
+  }
+  for (auto& node : bfs_nodes) {
+    if (node->IsAsync()) {
+      roots.push_back(node);
+    }
+  }
+  return roots;
+}
+
+std::vector<std::shared_ptr<Node>> ModelTiming::GetStageNodes(
+    std::shared_ptr<Node> root) const {
+  return model_->CollectNodes(root, TraversalOrder::BFS, IsSyncNode);
 }
 
 }  // namespace model

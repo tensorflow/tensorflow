@@ -13,10 +13,21 @@ Pod::Spec.new do |s|
   resulting binary should also be force-loaded to the final app binary.
                        DESC
 
+  s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
   s.ios.deployment_target = '9.0'
 
   s.module_name = 'TensorFlowLiteSelectTfOps'
   s.library = 'c++'
-  s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.framework'
+  s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.${TFL_VENDORED_BUNDLE_TYPE}'
   s.weak_frameworks = 'CoreML'
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.pod_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
+  }
 end

@@ -2618,7 +2618,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   auto* local_cm = new CancellationManager(ctx->cancellation_manager());
-  auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
+  auto* rendez = new RefCountedIntraProcessRendezvous(device_mgr_);
   opts.cancellation_manager = local_cm;
   opts.rendezvous = rendez;
 
@@ -2627,7 +2627,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
        device_ordinal = device_ordinal, req_id = ordinal_selector_req_id, ctx,
        ordinal_selector = ordinal_selector_](const Status& status) {
         delete local_cm;
-        delete rendez;
+        rendez->Unref();
         if (!status.ok()) {
           ctx->SetStatus(status);
         }

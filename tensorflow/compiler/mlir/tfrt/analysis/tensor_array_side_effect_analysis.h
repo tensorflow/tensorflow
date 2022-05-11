@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_ANALYSIS_TENSOR_ARRAY_SIDE_EFFECT_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_ANALYSIS_TENSOR_ARRAY_SIDE_EFFECT_ANALYSIS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace tensorflow {
@@ -35,12 +36,12 @@ class TensorArraySideEffectAnalysis {
 
   // Return if the function contains only non-side-effecting ops or TensorArray
   // ops.
-  bool HasAtMostTensorArrayEffect(mlir::FuncOp func_op) const {
+  bool HasAtMostTensorArrayEffect(mlir::func::FuncOp func_op) const {
     return set_.count(func_op) > 0;
   }
 
  private:
-  llvm::DenseSet<mlir::FuncOp> set_;
+  llvm::DenseSet<mlir::func::FuncOp> set_;
 };
 
 }  // namespace tfrt_compiler

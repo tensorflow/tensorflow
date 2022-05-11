@@ -99,7 +99,8 @@ class HloPrintOptions {
         is_in_nested_computation_(false),
         print_ids_(true),
         canonicalize_computations_(false),
-        print_extra_attributes_(true) {}
+        print_extra_attributes_(true),
+        syntax_sugar_async_ops_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -121,9 +122,12 @@ class HloPrintOptions {
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
+        // Compact option won't print name of operand_k, where k > a threshold.
+        // Canonical (and Fingerprint) must include all operands.
         .set_compact_operands(false)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        // No index annotations as they are only for ease of human inspection.
         .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
@@ -131,24 +135,31 @@ class HloPrintOptions {
         .set_canonicalize_instruction_names(true);
   }
 
-  // Options to produce a fingerprint of an HLO.
+  // Options to produce a fingerprint of an HLO instruction.
+  // Based on Canonical() with some important changes commented below.
   static HloPrintOptions Fingerprint() {
-    return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
-        .set_print_metadata(false)
-        .set_print_backend_config(false)
+    return Canonical()
+        // Exclude because they do not affect HLO optimizations.
         .set_print_infeed_outfeed_config(false)
+        // Exclude floating point constant literals that are not all zeros, all
+        // ones, or integers because they may be randomly initialized weights,
+        // which may be changed across different runs.
         .set_print_only_essential_constants(true)
-        .set_compact_operands(true)
-        .set_print_operand_names(false)
-        .set_print_operand_shape(true)
-        .set_print_operand_index_annotation_interval(0)
-        .set_print_program_shape(false)
-        .set_print_percent(false)
-        .set_print_control_dependencies(false)
-        .set_canonicalize_instruction_names(true)
+        // Remove "id" in "name.id" (after period) because it can be
+        // non-deterministic. This mainly affects computations' names because
+        // canonicalized instructions' names are in "tmp_id" format.
         .set_print_ids(false)
+        // Sort computations.
         .set_canonicalize_computations(true);
+  }
+
+  // Options to produce a fingerprint of an HLO module and computation.
+  // Shorter (and therefore faster) than Fingerprint().
+  static HloPrintOptions ModuleFingerprint() {
+    return Fingerprint()
+        // Operand shapes can be inferred from output shapes and canonicalized
+        // names when we have an entire computation.
+        .set_print_operand_shape(false);
   }
 
   // If true, large constants will be printed out.
@@ -241,6 +252,51 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, uses the async operation syntax sugar to print async-start,
+  // async-update, and async-done HLOs. If the syntax sugar is enabled, the
+  // computations called by these instructions will not be printed and instead
+  // the root of the called computation will be printed instead of these
+  // instructions and -start, -update, and -done suffixes will be appended to
+  // the opcode of the async operation. For example, for an HLO module where the
+  // syntax sugar is off:
+  //
+  // HloModule Module
+  //
+  // %AsyncOp (p0.1: f32[10]) -> f32[20] {
+  //   %p0.1 = f32[10]{0} parameter(0)
+  //   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
+  //                                  custom_call_target="foo"
+  // }
+  //
+  // ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  //   %p0 = f32[10]{0} parameter(0)
+  //   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
+  //                                                    calls=%AsyncOp
+  //   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
+  //                                                         %async-start),
+  //                                                     calls=%AsyncOp
+  //   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
+  // }
+  //
+  // will be printed as following if the syntax sugar is enabled:
+  //
+  // HloModule Module
+  //
+  // ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  //   %p0 = f32[10]{0} parameter(0)
+  //   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(%p0),
+  //                                                    custom_call_target="foo"
+  //   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(
+  //                                                         %async-start),
+  //                                                    custom_call_target="foo"
+  //   ROOT %async-done = f32[20]{0} custom-call-done(%async-update),
+  //                                                    custom_call_target="foo"
+  // }
+  HloPrintOptions& set_syntax_sugar_async_op(bool value) {
+    syntax_sugar_async_ops_ = value;
+    return *this;
+  }
+
   // If true, only a part of operands will be printed out (note that in this
   // case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
@@ -281,45 +337,6 @@ class HloPrintOptions {
     return *this;
   }
 
-  // Instructions are selected for printing by a predicate function
-  // (`set_print_instructions`). We also print their surrounding instructions
-  // for ease of reading. We print `leading_and_trailing_instructions_number`
-  // instructions before and after the qualified ones inside a computation.
-  HloPrintOptions& set_leading_and_trailing_instructions_number(int value) {
-    leading_and_trailing_instructions_number_ = value;
-    return *this;
-  }
-
-  // A callback which takes an HloInstruction*, its string representation,
-  // the indentation level of the resulting block, and a
-  // bool variable indicating whether the instruction is root or not. The return
-  // value is a string which is used for this instruction during printing.
-  using FormatInstructionFunc = std::function<std::string(
-      const HloInstruction*, const std::string&, int, bool)>;
-
-  HloPrintOptions& set_format_instruction(FormatInstructionFunc callback) {
-    format_instruction_ = callback;
-    return *this;
-  }
-
-  using HloInstructionPredicate = std::function<bool(const HloInstruction*)>;
-
-  // A callback which takes an HloInstruction* and returns whether it should be
-  // printed or not.
-  HloPrintOptions& set_print_instruction(HloInstructionPredicate callback) {
-    print_instruction_ = callback;
-    return *this;
-  }
-
-  using HloComputationPredicate = std::function<bool(const HloComputation*)>;
-
-  // A callback which takes an HloComputation* and returns whether it should be
-  // printed or not.
-  HloPrintOptions& set_print_computation(HloComputationPredicate callback) {
-    print_computation_ = callback;
-    return *this;
-  }
-
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -347,26 +364,13 @@ class HloPrintOptions {
     return print_control_dependencies_;
   }
   bool print_extra_attributes() const { return print_extra_attributes_; }
+  bool syntax_sugar_async_ops() const { return syntax_sugar_async_ops_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
-  int leading_and_trailing_instructions_number() const {
-    return leading_and_trailing_instructions_number_;
-  }
-  std::string format_instruction(const HloInstruction* instr,
-                                 const std::string& instr_name, int indent,
-                                 bool is_root) const {
-    return format_instruction_(instr, instr_name, indent, is_root);
-  }
-  bool print_instruction(const HloInstruction* instr) const {
-    return print_instruction_(instr);
-  }
-  bool print_computation(const HloComputation* comp) const {
-    return print_computation_(comp);
-  }
 
  private:
   bool print_large_constants_;
@@ -392,19 +396,7 @@ class HloPrintOptions {
   bool print_ids_;
   bool canonicalize_computations_;
   bool print_extra_attributes_;
-  int leading_and_trailing_instructions_number_ = 3;
-  FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
-                                                 const std::string& instr_name,
-                                                 int indent, bool is_root) {
-    return absl::StrCat(std::string(2 * indent, ' '), is_root ? "ROOT " : "",
-                        instr_name);
-  };
-  HloInstructionPredicate print_instruction_ = [](const HloInstruction* instr) {
-    return true;
-  };
-  HloComputationPredicate print_computation_ = [](const HloComputation* comp) {
-    return true;
-  };
+  bool syntax_sugar_async_ops_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -412,26 +404,16 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  CanonicalNameMap() : index(0) {}
-
-  std::string LookupOrInsert(const std::string& old_name) {
-    auto iter = canonical_name_map.find(old_name);
-    if (iter != canonical_name_map.end()) {
-      return iter->second;
+  const std::string& LookupOrInsert(const std::string& name) {
+    std::string& canonical_name = canonical_name_map_[name];
+    if (canonical_name.empty()) {
+      absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
     }
-
-    std::string new_name = absl::StrCat("tmp_", index++);
-    canonical_name_map[old_name] = new_name;
-    return new_name;
-  }
-  void Clear() {
-    canonical_name_map.clear();
-    index = 0;
+    return canonical_name;
   }
 
  private:
-  int64_t index;
-  absl::flat_hash_map<std::string, std::string> canonical_name_map;
+  absl::flat_hash_map<std::string, std::string> canonical_name_map_;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -528,6 +510,10 @@ class HloInstruction {
   // instruction from each operand's user set and user's operand set.
   void DetachFromOperandsAndUsers();
 
+  // Adds a derived instruciton to the parent compuation of this instruction.
+  HloInstruction* AddInstruction(
+      std::unique_ptr<HloInstruction> derived_instruction);
+
   // Creates an instruction from the given proto. Arguments:
   //
   //   proto: the proto to convert from.
@@ -560,10 +546,6 @@ class HloInstruction {
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       HloInstruction* operand, int64_t index);
-
-  // Creates a trace instruction that logs the input operand in the computation.
-  static std::unique_ptr<HloInstruction> CreateTrace(const std::string& tag,
-                                                     HloInstruction* operand);
 
   // Creates a random number generation instruction that fills a shape with
   // random numbers from a given distribution.
@@ -637,6 +619,17 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64_t> fft_length);
+
+  // Creates an asynchronous start, update, and done op.
+  static std::unique_ptr<HloInstruction> CreateAsyncStart(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* async_computation);
+  static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
+      const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation);
+  static std::unique_ptr<HloInstruction> CreateAsyncDone(
+      const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -1060,6 +1053,14 @@ class HloInstruction {
       absl::Span<const int64_t> slice_sizes, bool indices_are_sorted);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloInstruction* scatter_indices,
+      absl::Span<HloInstruction* const> updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted, bool unique_indices);
+
+  static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
@@ -1163,6 +1164,12 @@ class HloInstruction {
   HloOpcode opcode() const { return opcode_; }
   HloOpcode* mutable_opcode() { return &opcode_; }
 
+  // Returns whether this instruction is the root of its parent computation.
+  bool IsRoot() const;
+
+  // Does this instruction have no users.
+  bool IsDead() const { return users_.empty() && !IsRoot(); }
+
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
   bool HasSideEffectNoRecurse() const;
@@ -1263,7 +1270,23 @@ class HloInstruction {
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
                              layout_sensitive,
-                             /*ignore_channel_id_values=*/false);
+                             /*ignore_channel_id_values=*/false,
+                             /*ignore_commutative_operand_order=*/false);
+  }
+
+  // Same as Identical() but ignores the order of commutative operands (e.g.
+  // considers add(a,b) equal to add(b,a)).
+  bool IdenticalIgnoringCommutativeOperandOrder(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands = std::equal_to<const HloInstruction*>(),
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/false,
+                             /*ignore_commutative_operand_order=*/true);
   }
 
   // Same as Identical() but ignores channel ID value mismatches, as long as
@@ -1277,7 +1300,8 @@ class HloInstruction {
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
                              layout_sensitive,
-                             /*ignore_channel_id_values=*/true);
+                             /*ignore_channel_id_values=*/true,
+                             /*ignore_commutative_operand_order=*/true);
   }
 
   // Generates a hash value of an HLO instruction. Hash considers
@@ -1317,6 +1341,13 @@ class HloInstruction {
 
   // Same as ReplaceUseWith(), but new_producer can have a different shape.
   Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
+  // Same as ReplaceUseWith but only replaces the use at the given operand
+  // number.
+  Status ReplaceUseWith(HloInstruction* user, int operand_number,
+                        HloInstruction* new_producer);
+  Status ReplaceUseWithDifferentShape(HloInstruction* user, int operand_number,
                                       HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand. The old and new operands
@@ -1412,7 +1443,7 @@ class HloInstruction {
   //
   // Precondition: The instruction has a valid to_apply_ field.
   HloComputation* to_apply() const;
-  void set_to_apply(HloComputation* to_apply);
+  void set_to_apply(HloComputation* computation);
 
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
@@ -1420,8 +1451,8 @@ class HloInstruction {
   // Precondition: The instruction is a While instruction.
   HloComputation* while_condition() const;
   HloComputation* while_body() const;
-  void set_while_condition(HloComputation* while_condition);
-  void set_while_body(HloComputation* while_body);
+  void set_while_condition(HloComputation* computation);
+  void set_while_body(HloComputation* computation);
 
   HloInstruction* while_init() const;
 
@@ -1485,12 +1516,6 @@ class HloInstruction {
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   virtual std::string ToCategory() const;
-
-  // Returns a logging instruction, if the output of this instruction is logged.
-  //
-  // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
-  HloInstruction* tracing() const;
-  void set_tracing(HloInstruction* trace_instruction);
 
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
@@ -1679,6 +1704,10 @@ class HloInstruction {
   // if no id has been assigned yet).
   int unique_id() const { return unique_id_; }
 
+  template <typename T>
+  using EnableIfProto = typename std::enable_if_t<
+      std::is_base_of<tensorflow::protobuf::Message, T>::value>;
+
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
   // or during general HLO optimization, since HLO optimizations do not preserve
@@ -1687,13 +1716,25 @@ class HloInstruction {
   // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
-  template <typename ConfigProto>
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(GetBackendConfigInternal(&proto));
     return std::move(proto);
   }
-  Status set_backend_config(const tensorflow::protobuf::Message& proto);
+
+  Status set_backend_config(const tensorflow::protobuf::Message& proto) {
+    backend_config_ = proto;
+    return Status::OK();
+  }
+
+  bool has_backend_config() const { return !backend_config_.empty(); }
+
+  void clear_backend_config() { backend_config_.clear(); }
+
+  void CopyBackendConfigFrom(const HloInstruction* other) {
+    backend_config_ = other->backend_config_.Clone();
+  }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
     frontend_attributes_ = std::move(frontend_attributes);
@@ -1711,7 +1752,7 @@ class HloInstruction {
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_;
+    return backend_config_.GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
     backend_config_ = std::move(config_str);
@@ -1768,6 +1809,9 @@ class HloInstruction {
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
   }
+  void set_metadata_replaced_op(absl::string_view replaced_op) {
+    metadata_.set_replaced_op(std::string(replaced_op));
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
@@ -1812,18 +1856,18 @@ class HloInstruction {
   void set_channel_id(const absl::optional<int64_t>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
-  virtual const std::vector<int64_t>& dimensions() const {
+  virtual absl::Span<const int64_t> dimensions() const {
     LOG(FATAL) << "Unimplemented method.";
   }
-  virtual int64_t dimensions(int64_t index) const {
-    LOG(FATAL) << "Unimplemented method.";
-  }
+
+  int64_t dimensions(int64_t index) const { return dimensions()[index]; }
+
   virtual std::vector<int64_t>* mutable_dimensions() {
     LOG(FATAL) << "Unimplemented method.";
   }
 
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
-  int64_t concatenate_dimension() const;
+  virtual int64_t concatenate_dimension() const;
 
   // Delegates to HloGetDimensionSizeInstruction::dimension.
   int64_t dimension() const;
@@ -1858,9 +1902,6 @@ class HloInstruction {
   // Delegate to HloConstantInstruction::RelayoutConstant.
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
-
-  // Delegates to HloTraceInstruction::TracingTag.
-  std::string TracingTag() const;
 
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
@@ -2051,11 +2092,26 @@ class HloInstruction {
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
 
+  // Returns true if the instruction is an async-start, async-update, or
+  // async-done.
+  bool IsAsynchronous() const;
+
+  // Returns the computation that will executed asynchronously.
+  HloComputation* async_wrapped_computation() const;
+
+  // Delagates to HloAsyncInstruction::async_wrapped_instruction().
+  HloInstruction* async_wrapped_instruction() const;
+
+  // Delagates to HloAsyncInstruction::async_wrapped_opcode().
+  HloOpcode async_wrapped_opcode() const;
+
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;
+  // Delegates to HloCompareInstruction::order().
+  ComparisonOrder comparison_order() const;
 
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;
@@ -2111,6 +2167,38 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+  // Wrapper class of string format and protobuf format of BackendConfig.
+  class BackendConfigRep {
+   public:
+    const tensorflow::protobuf::Message* GetProtoPtr() const {
+      return proto_.get();
+    }
+
+    const std::string& GetRawString() const;
+
+    BackendConfigRep Clone() const;
+
+    bool operator==(const BackendConfigRep& other) const;
+    bool operator!=(const BackendConfigRep& other) const {
+      return !(*this == other);
+    }
+
+    bool empty() const { return proto_ == nullptr && raw_string_.empty(); }
+
+    void clear() {
+      proto_.reset();
+      raw_string_.clear();
+    }
+
+    BackendConfigRep& operator=(std::string raw_string);
+    BackendConfigRep& operator=(const tensorflow::protobuf::Message& proto);
+    void SetProto(const tensorflow::protobuf::Message& proto);
+
+   private:
+    std::unique_ptr<tensorflow::protobuf::Message> proto_;
+    // If proto_ is not null, raw_string_ is a lazy cache of its string format.
+    mutable std::string raw_string_;
+  };
 
   bool IdenticalInternal(
       const HloInstruction& other,
@@ -2118,7 +2206,8 @@ class HloInstruction {
           eq_operands,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations,
-      bool layout_sensitive, bool ignore_channel_id_values) const;
+      bool layout_sensitive, bool ignore_channel_id_values,
+      bool ignore_commutative_operand_order) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -2224,7 +2313,7 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  std::string backend_config_;
+  mutable BackendConfigRep backend_config_;
 
   // Attributes passed from the frontend to give hints to the backend about
   // how to compile this HLO.

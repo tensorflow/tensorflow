@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -29,11 +30,11 @@ class TacModule;
 
 // Create an instance of the TargetAnnotationPass.
 // TODO(b/177376459): Remove in favor of the one below.
-std::unique_ptr<OperationPass<FuncOp>> CreateTargetAnnotationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     llvm::ArrayRef<std::string> device_specs);
 
 // Create and instance of TargetAnnotationPass.
-std::unique_ptr<OperationPass<FuncOp>> CreateTargetAnnotationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     const TacModule* module);
 
 // Create an instance of the RaiseTargetSubgraphsPass.
@@ -50,10 +51,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeCostPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreatePickSubgraphsPass();
 
 // Create an instance of DeviceTransformGPUPass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceTransformGPUPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceTransformGPUPass();
 
 // Create an instance of GetOpCostPass.
-std::unique_ptr<OperationPass<FuncOp>> CreateGetOpCostPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetOpCostPass();
 
 // Create an instance of FoldConstantsToSubgraphPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFoldConstantsToSubgraphPass(

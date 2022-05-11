@@ -44,6 +44,13 @@ def gen_api_init_files(
         compat_init_templates = [],
         packages = [
             "tensorflow.python",
+            "tensorflow.dtensor.python.api",
+            "tensorflow.dtensor.python.d_checkpoint",
+            "tensorflow.dtensor.python.d_variable",
+            "tensorflow.dtensor.python.layout",
+            "tensorflow.dtensor.python.mesh_util",
+            "tensorflow.dtensor.python.save_restore",
+            "tensorflow.dtensor.python.tpu_util",
             "tensorflow.lite.python.analyzer",
             "tensorflow.lite.python.lite",
             "tensorflow.lite.python.authoring.authoring",

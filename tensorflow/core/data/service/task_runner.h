@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/multi_trainer_cache.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -86,8 +87,11 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
       std::unique_ptr<TaskIterator> iterator);
   ~FirstComeFirstServedTaskRunner() override;
 
+  // Gets the next element. It may block if the element is not ready yet.
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+  Status GetNext(GetElementResult& result);
+
   void Cancel() override;
 
  private:
@@ -111,6 +115,48 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   TF_DISALLOW_COPY_AND_ASSIGN(FirstComeFirstServedTaskRunner);
 };
 
+// A task runner which prefetches elements on a first-come first-served basis
+// and caches elements in a sliding-window MultiTrainerCache. The cache has a
+// bounded size and progresses when a trainer that has consumed all elements in
+// the cache. Trainers read from a sliding window of the dataset and may not
+// read the full dataset.
+class CachingTaskRunner : public TaskRunner {
+ public:
+  explicit CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
+                             size_t max_cache_size_bytes);
+  ~CachingTaskRunner() override;
+
+  // Gets the next element from the multi-trainer cache, blocking if the data is
+  // not ready.
+  // REQUIRES: !req.trainer_id().empty()
+  Status GetNext(const GetElementRequest& req,
+                 GetElementResult& result) override;
+
+  // Cancel the task runner. After cancelling, all the `GetNext` calls will
+  // return a Cancelled status.
+  void Cancel() override;
+
+ private:
+  // The `GetElementResultSequence` generates a sequence of elements from the
+  // `FirstComeFirstServedTaskRunner`. It is used for the `MultiTrainerCache` to
+  // generate cached elements.
+  class GetElementResultSequence : public CachableSequence<GetElementResult> {
+   public:
+    explicit GetElementResultSequence(
+        FirstComeFirstServedTaskRunner& fcfs_task_runner);
+    StatusOr<GetElementResult> GetNext() override;
+    size_t GetElementSizeBytes(const GetElementResult& element) const override;
+
+   private:
+    FirstComeFirstServedTaskRunner& fcfs_task_runner_;
+  };
+
+  FirstComeFirstServedTaskRunner fcfs_task_runner_;
+  MultiTrainerCache<GetElementResult> cache_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CachingTaskRunner);
+};
+
 // An element produced by a task.
 struct Element {
   explicit Element(std::vector<Tensor>&& components, int64_t index)
@@ -131,7 +177,7 @@ class PrefetchThread {
   // Runs the prefetch thread. It runs until an error is encountered or the
   // destructor is called.
   void Run();
-  // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
+  // Fills `out` with a round of data. Waits for up to `wait_us` microseconds
   // before giving up and returning with `out` empty. A negative `wait_us`
   // signals to wait indefinitely.
   Status FillBuffer(int64_t wait_us,
@@ -148,13 +194,13 @@ class PrefetchThread {
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
   Status status_ TF_GUARDED_BY(mu_) = Status::OK();
-  // Thread which constantly tries to fill `buffer_` up with
-  // `num_consumers` elements.
-  std::unique_ptr<Thread> thread_;
   // Condition variable notified when elements are added to or removed from
   // `buffer_`, or when `status_` is changed.
   condition_variable cv_;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
+  // Thread which constantly tries to fill `buffer_` up with
+  // `num_consumers` elements.
+  std::unique_ptr<Thread> thread_;
 };
 
 // A task runner which enforces round-robin order for consuming a task's

@@ -17,17 +17,23 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/partitioning_utils.h"
+#include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -37,9 +43,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -90,14 +98,13 @@ absl::flat_hash_set<std::string> FindFunctionsToOptimize(
   return functions_to_optimize;
 }
 
-}  // namespace
-
-StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
-TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
-                                const FallbackState& fallback_state,
-                                bool run_placer_grappler_on_nested_functions) {
+// Preprocesses `graph_def`, returns the functions to optimize if
+// `run_placer_grappler_on_functions` is true.
+StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
+    tensorflow::GraphDef& graph_def, bool run_placer_grappler_on_functions) {
   if (VLOG_IS_ON(1)) {
-    DumpGraphDefToFile("create_input_graph_def", graph_def);
+    DumpGraphDefToFile("before_generate_resource_shared_name_graph_def",
+                       graph_def);
   }
 
   TF_RETURN_IF_ERROR(tensorflow::GenerateResourceSharedNameIfEmpty(
@@ -108,10 +115,21 @@ TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
                        graph_def);
   }
 
-  absl::flat_hash_set<std::string> functions_to_optimize;
-  if (run_placer_grappler_on_nested_functions) {
-    functions_to_optimize = FindFunctionsToOptimize(graph_def);
+  if (run_placer_grappler_on_functions) {
+    return FindFunctionsToOptimize(graph_def);
   }
+  return absl::flat_hash_set<std::string>();
+}
+
+}  // namespace
+
+StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
+TfrtGraphExecutionState::Create(const TfrtGraphExecutionState::Options& options,
+                                tensorflow::GraphDef graph_def,
+                                const FallbackState& fallback_state) {
+  TF_ASSIGN_OR_RETURN(
+      auto functions_to_optimize,
+      PreprocessGraph(graph_def, options.run_placer_grappler_on_functions));
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).
@@ -120,8 +138,7 @@ TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
       fallback_state.CreateGraphExecutionState(std::move(graph_def)));
 
   return std::make_unique<TfrtGraphExecutionState>(
-      std::move(graph_execution_state), fallback_state,
-      run_placer_grappler_on_nested_functions,
+      options, std::move(graph_execution_state), fallback_state,
       std::move(functions_to_optimize));
 }
 
@@ -173,7 +190,15 @@ StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
     DumpGraphDefToFile("before_eliminate_ref_variables_graph_def", graph_def);
   }
 
+  // Ref variables in V1 Control flow prevent it from being functionalized. So
+  // we eliminate them first.
   TF_RETURN_IF_ERROR(EliminateRefVariablesFromV1ControlFlow(graph_def));
+
+  // The "_input_shapes" attributes will be not be correct after function
+  // optimizer in grappler, we need to remove them. Note that "_input_shapes" is
+  // not used except as a debug hint (somehow this debug hint is used by MLIR
+  // graphdef importer, which is not expected).
+  RemoveInputShapesInFunctions(graph_def);
 
   auto pruned_graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
@@ -203,11 +228,144 @@ NodeDef CreateNewIdentityNode(const NodeDef& node,
   return identity;
 }
 
+// Inlines functions into the top level graph.
+Status InlineFunctions(std::unique_ptr<Graph>* graph,
+                       const DeviceSet* device_set) {
+  GraphOptimizationPassOptions optimization_options;
+  SessionOptions session_options;
+  // We don't lower v2 control flow to v1 for now.
+  session_options.config.mutable_experimental()->set_use_tfrt(true);
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+  optimization_options.session_options = &session_options;
+  optimization_options.graph = graph;
+  optimization_options.flib_def = (*graph)->mutable_flib_def();
+  optimization_options.device_set = device_set;
+  optimization_options.is_function_graph = false;
+
+  LowerFunctionalOpsPass pass;
+  return pass.Run(optimization_options);
+}
+
+// Assigns input/output nodes to the host.
+Status PlaceInputOutputNodesOnHost(const std::vector<std::string>& inputs,
+                                   const std::vector<std::string>& outputs,
+                                   const Device* cpu_device, Graph* graph) {
+  std::unordered_map<std::string, Node*> name_to_node_map =
+      graph->BuildNodeNameIndex();
+  for (const auto& input : inputs) {
+    name_to_node_map.at(grappler::NodeName(input))
+        ->set_assigned_device_name(cpu_device->name());
+  }
+
+  // Collect all output nodes.
+  absl::flat_hash_set<Node*> output_nodes;
+  for (const auto& output : outputs) {
+    output_nodes.insert(name_to_node_map.at(grappler::NodeName(output)));
+  }
+  for (const auto& output_node : output_nodes) {
+    // Append an IdentityN node to the original output node if it is not
+    // assigned to the host.
+    if (!output_node->IsIdentity() &&
+        output_node->type_string() != "IdentityN" &&
+        output_node->assigned_device_name() != cpu_device->name()) {
+      // Rename the original output node.
+      std::string output_node_name = output_node->name();
+      output_node->set_name(output_node_name + "/tfrt_renamed");
+
+      // Append an IdentityN node with the original output node name.
+      std::vector<NodeBuilder::NodeOut> output_tensors;
+      output_tensors.reserve(output_node->num_outputs());
+      for (int i = 0; i < output_node->num_outputs(); i++) {
+        output_tensors.push_back(NodeBuilder::NodeOut(output_node, i));
+      }
+      TF_RETURN_IF_ERROR(NodeBuilder(output_node_name, "IdentityN")
+                             .AssignedDevice(cpu_device->name())
+                             .Input(output_tensors)
+                             .Finalize(graph, /*created_node=*/nullptr));
+    } else {
+      output_node->set_assigned_device_name(cpu_device->name());
+    }
+  }
+  return Status::OK();
+}
+
+bool IsTpuGraph(const Graph* graph) {
+  static const auto* const kTpuOps = new absl::flat_hash_set<std::string>{
+      "TPUPartitionedCall", "TPUCompile", "TPUReplicateMetadata"};
+  for (const Node* node : graph->nodes()) {
+    if (kTpuOps->contains(node->type_string())) {
+      return true;
+    }
+  }
+  for (const std::string& func_name : graph->flib_def().ListFunctionNames()) {
+    const FunctionDef* func_def = graph->flib_def().Find(func_name);
+    for (const NodeDef& node_def : func_def->node_def()) {
+      if (kTpuOps->contains(node_def.op())) return true;
+    }
+  }
+  return false;
+}
+
+// Adds Send/Recv ops to `graph` for data transfer, if ops are run on different
+// devices. Returns a new graph with the added Send/Recv ops.
+// This is done by partitioning `graph` and add Send/Recv ops on the edges
+// across devices.
+StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
+    const FallbackState& fallback_state, const std::vector<std::string>& inputs,
+    const std::vector<std::string>& outputs, std::unique_ptr<Graph> graph) {
+  // Skip inserting transfer ops if this is a TPU graph.
+  // Our stack currently cannot run the old bridge on TPU graphs, as it will
+  // generate ops that are not supported by the subsequent MLIR passes.
+  // In the case where TPU related ops are not wrapped in TPUPartitionedCall,
+  // running placer and partitioning on such graphs will fail. So we skip TPU
+  // graphs for now.
+  // TODO(b/228510957): In the long term, we will want a unified way for data
+  // transfer, i.e., using Send/Recv ops for data transfer for TPU as well.
+  if (IsTpuGraph(graph.get())) {
+    return graph;
+  }
+
+  // Inline functions to facilitate partitioning nodes in the functions.
+  TF_RETURN_IF_ERROR(InlineFunctions(&graph, &fallback_state.device_set()));
+  if (VLOG_IS_ON(1)) {
+    DumpGraphToFile("after_inlining", *graph);
+  }
+
+  // Run placer.
+  const Device* cpu_device = fallback_state.device_manager().HostCPU();
+  if (cpu_device == nullptr) {
+    return errors::Internal("No CPU device found.");
+  }
+  Placer placer(graph.get(), /*function_name=*/"", &graph->flib_def(),
+                &fallback_state.device_set(), cpu_device,
+                /*allow_soft_placement=*/true,
+                /*log_device_placement=*/false);
+  TF_RETURN_IF_ERROR(placer.Run());
+  if (VLOG_IS_ON(1)) {
+    DumpGraphToFile("after_placer", *graph);
+  }
+
+  TF_RETURN_IF_ERROR(
+      PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph.get()));
+
+  // Insert send/recv ops to the graph.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Graph> new_graph,
+      InsertTransferOps(fallback_state.device_set(), std::move(graph)));
+  if (VLOG_IS_ON(1)) {
+    DumpGraphToFile("after_transfer_ops_insertion", *new_graph);
+  }
+
+  return new_graph;
+}
+
 }  // namespace
 
 StatusOr<TfrtGraphExecutionState::OptimizationResult>
 TfrtGraphExecutionState::CreateOptimizedGraph(
-    const tensorflow::GraphImportConfig& graph_import_config) {
+    tensorflow::GraphImportConfig& graph_import_config) {
   OptimizationResult result;
 
   tensorflow::BuildGraphOptions build_graph_options;
@@ -245,7 +403,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
       result.graph.get(),
       const_cast<tensorflow::FunctionLibraryDefinition*>(
           &result.graph->flib_def()),
-      /*restrict_functionalization_to_tpu_nodes=*/false));
+      /*restrict_functionalization_to_compiled_nodes=*/false));
 
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_functionalization", *result.graph);
@@ -270,7 +428,36 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
 
   result.grappler_duration = absl::Now() - grappler_start_time;
 
+  if (options_.enable_tfrt_gpu) {
+    TF_ASSIGN_OR_RETURN(result.graph,
+                        MaybeInsertTransferOps(fallback_state_, inputs,
+                                               graph_import_config.outputs,
+                                               std::move(result.graph)));
+
+    // Update `control_outputs` as there might be newly added Send ops.
+    for (const Node* node : result.graph->nodes()) {
+      if (node->IsSend()) {
+        graph_import_config.control_outputs.push_back(node->name());
+      }
+    }
+  }
+
   return result;
+}
+
+Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
+  std::unique_ptr<GraphExecutionState> new_state;
+  absl::MutexLock lock(&graph_execution_state_mu_);
+  TF_RETURN_IF_ERROR(graph_execution_state_->Extend(graph, &new_state));
+  graph_execution_state_.swap(new_state);
+
+  auto* graph_def = graph_execution_state_->original_graph_def();
+  DCHECK_NE(graph_def, nullptr);
+  TF_ASSIGN_OR_RETURN(
+      functions_to_optimize_,
+      PreprocessGraph(*graph_def, options_.run_placer_grappler_on_functions));
+
+  return Status::OK();
 }
 
 namespace {
@@ -526,6 +713,13 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
   return Status::OK();
 }
 
+void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
+  for (tensorflow::FunctionDef& function_def :
+       *graph_def.mutable_library()->mutable_function()) {
+    function_def.mutable_attr()->erase("_input_shapes");
+  }
+}
+
 namespace {
 
 // Optimizes the functions in `flib_proto` (filtering with
@@ -610,13 +804,16 @@ TfrtGraphExecutionState::OptimizeGraph(
   std::unique_ptr<tensorflow::Graph> optimized_graph;
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> optimized_flib;
 
-  // Invoke Grappler to optimize the graph.
-  TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
-      build_graph_options, graph, &graph.flib_def(), &optimized_graph,
-      &optimized_flib));
+  {
+    absl::MutexLock lock(&graph_execution_state_mu_);
+    // Invoke Grappler to optimize the graph.
+    TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
+        build_graph_options, graph, &graph.flib_def(), &optimized_graph,
+        &optimized_flib));
+  }
 
   FunctionDefLibrary optimized_flib_proto = optimized_flib->ToProto();
-  if (run_placer_grappler_on_functions_) {
+  if (options_.run_placer_grappler_on_functions) {
     TF_RETURN_IF_ERROR(OptimizeFunctions(optimized_flib_proto, *optimized_flib,
                                          fallback_state_,
                                          functions_to_optimize_));

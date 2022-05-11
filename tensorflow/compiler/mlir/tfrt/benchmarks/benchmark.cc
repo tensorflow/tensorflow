@@ -35,33 +35,10 @@ using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::MemrefType;
 
-const char* const kDefaultHostDeviceName =
-    "/job:localhost/replica:0/task:0/device:CPU:0";
-
 const bool kStaticDim = false;
 const bool kDynamicDim = true;
 
-std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
-  return std::make_unique<HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
-      },
-      tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue(),
-      kDefaultHostDeviceName);
-}
-
-std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
-  return std::make_unique<HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                         /*num_blocking_threads=*/1),
-      kDefaultHostDeviceName);
-}
-
-mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
+mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx& ctx,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
                                        const Type* runtime_type,
@@ -70,7 +47,9 @@ mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
   // Cast result to the arbitrary chosen memref type and rank because we only
   // need to know the base pointer value.
   auto* memref = static_cast<StridedMemRefType<float, 0>*>(result_ptr);
-  free(memref->basePtr);
+  if (llvm::find(ctx.input_ptrs, memref->data) == ctx.input_ptrs.end()) {
+    free(memref->basePtr);
+  }
   return mlir::success();
 }
 
@@ -137,13 +116,11 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 
   tfrt::TensorShape shape(dims);
-  MemrefDesc desc;
-  desc.dtype = dtype;
-  desc.data = tensor.data();
-  desc.offset = 0;
-  shape.GetDimensions(&desc.sizes);
-  shape.GetStrides(&desc.strides);
-  return desc;
+  return MemrefDesc(shape.GetRank(), dtype, tensor.data(), 0,
+                    [&](auto sizes, auto strides) {
+                      shape.GetDimensions(sizes);
+                      shape.GetStrides(strides);
+                    });
 }
 
 std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,

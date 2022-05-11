@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -170,6 +171,9 @@ class DataServiceDispatcherImpl {
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
 
+  // Exports the dispatcher state for debugging.
+  DispatcherStateExport ExportState() const;
+
  private:
   // Restores split providers from the state in `job` and stores them in
   // `restored`.
@@ -177,7 +181,7 @@ class DataServiceDispatcherImpl {
       const DispatcherState::Job& job,
       std::vector<std::unique_ptr<SplitProvider>>& restored)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Makes split providers for the specified `dataset_id`, and stores thent in
+  // Makes split providers for the specified `dataset_id`, and stores them in
   // `split_providers`.
   Status MakeSplitProviders(
       int64_t dataset_id,
@@ -196,7 +200,8 @@ class DataServiceDispatcherImpl {
       TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
-  Status CreateJob(const GetOrCreateJobRequest& request,
+  Status CreateJob(const DispatcherState::JobKey& job_key,
+                   const GetOrCreateJobRequest& request,
                    std::shared_ptr<const DispatcherState::Job>& job)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished job.
@@ -264,7 +269,7 @@ class DataServiceDispatcherImpl {
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
   Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
   // Records that a split was produced by a call to `GetSplit`.
-  Status RecordSplitProduced(int64_t job_id, int64_t repetition,
+  Status RecordSplitProduced(int64_t job_id, int64_t iteration,
                              int64_t split_provider_index, bool finished)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
@@ -293,7 +298,7 @@ class DataServiceDispatcherImpl {
   const experimental::DispatcherConfig config_;
   Env* env_;
 
-  mutex mu_;
+  mutable mutex mu_;
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
 

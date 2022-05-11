@@ -1,7 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -70,6 +72,32 @@ config_setting(
         "copt": "-DTF_LITE_STATIC_MEMORY",
         "cpu": "k8",
     },
+)
+
+# Flag to disable mmap: Fuchsia's minfs does not support mmap (blobfs
+# does, which is why we don't always disable mmap on Fuchsia).
+# TODO(b/227339138): dynamically decide depending on the filesystem.
+bool_flag(
+    name = "enable_fuchsia_mmap",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "fuchsia_mmap_disabled",
+    flag_values = if_google(
+        {
+            ":enable_fuchsia_mmap": "False",
+            "//tools/cpp:cc_target_os": "fuchsia",
+        },
+        {
+            ":enable_fuchsia_mmap": "False",
+        },
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
 )
 
 STABLE_FRAMEWORK_LIB_HDRS = [
@@ -198,10 +226,14 @@ cc_library(
 
 cc_library(
     name = "graph_info",
+    srcs = ["graph_info.cc"],
     hdrs = ["graph_info.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        ":kernel_api",
+        "//tensorflow/lite/c:common",
+    ],
 )
 
 cc_library(
@@ -222,6 +254,39 @@ cc_library(
         ":macros",
         "//tensorflow/lite/c:common",
     ],
+)
+
+# A config for enabling tensorflow profiler in TFLite. Currently, it only supports dynamic
+# allocation. Add '--define=tflite_tensorflow_profiler=true' in your build command line to use it.
+config_setting(
+    name = "tensorflow_profiler_config",
+    define_values = {"tflite_tensorflow_profiler": "true"},
+)
+
+# This is intended to be used only by allocators.
+cc_library(
+    name = "tensorflow_profiler_logger_shim",
+    srcs = ["tensorflow_profiler_logger_shim.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":macros",
+    ],
+    alwayslink = 1,
+)
+
+# Benchmarks should link this library to see the actual result.
+cc_library(
+    name = "tensorflow_profiler_logger",
+    srcs = ["tensorflow_profiler_logger.cc"],
+    hdrs = ["tensorflow_profiler_logger.h"],
+    copts = tflite_copts_warnings(),
+    deps = [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -279,6 +344,9 @@ cc_library(
             "mmap_allocation.cc",
         ],
         "//tensorflow:windows": [
+            "mmap_allocation_disabled.cc",
+        ],
+        ":fuchsia_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
@@ -430,6 +498,7 @@ alias(
 cc_library(
     name = "cc_api_stable",
     srcs = [
+        "core/subgraph.cc",
         "core/subgraph.h",
         "interpreter.cc",
         "interpreter_builder.cc",
@@ -442,28 +511,7 @@ cc_library(
         "model_builder.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings() +
-            # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
-            # could be specified simultaneously, use two selects here.
-            select({
-                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
-                "@XNNPACK//:xnn_enable_qs8_explicit_true": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//tensorflow:emscripten": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//conditions:default": [],
-            }) + select({
-        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
-        "@XNNPACK//:xnn_enable_qu8_explicit_true": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//tensorflow:emscripten": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -492,6 +540,8 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:telemetry",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -511,9 +561,6 @@ cc_library(
 cc_library(
     name = "cc_api_experimental",
     srcs = [
-        "core/subgraph.cc",
-        "graph_info.cc",
-        "interpreter_builder_experimental.cc",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],
@@ -1061,6 +1108,10 @@ cc_library(
     srcs = ["create_op_resolver_with_selected_ops.cc"],
     hdrs = ["create_op_resolver.h"],
     copts = tflite_copts(),
+    # This library is not self-contained; it needs to be linked
+    # together with an implementation of RegisterSelectedOps
+    # (normally one automatically generated by gen_selected_ops).
+    tags = ["allow_undefined_symbols"],
     deps = [
         ":mutable_op_resolver",
         ":op_resolver",
@@ -1197,5 +1248,26 @@ tflite_cc_shared_object(
         "//tensorflow/lite/kernels:builtin_ops_all_linked",
     ],
 )
+
+bzl_library(
+    name = "build_def_bzl",
+    srcs = ["build_def.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = [
+        ":special_rules_bzl",
+        "//tensorflow:tensorflow_bzl",
+        "//tensorflow/lite/java:aar_with_jni_bzl",
+        "@bazel_skylib//rules:build_test",
+    ],
+)
+
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = SPECIAL_RULES_DEPS,
+)
+
+tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
 
 tflite_portable_test_suite()

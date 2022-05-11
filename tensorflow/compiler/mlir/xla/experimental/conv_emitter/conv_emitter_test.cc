@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -53,11 +53,11 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
 
   mlir::MLIRContext context;
   context.loadDialect<mlir::AffineDialect, mlir::arith::ArithmeticDialect,
-                      mlir::memref::MemRefDialect, mlir::StandardOpsDialect>();
+                      mlir::memref::MemRefDialect, mlir::func::FuncDialect>();
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
-  mlir::FuncOp function =
+  mlir::func::FuncOp function =
       EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
 
   mlir_module->push_back(function);
@@ -75,7 +75,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
     pm.addPass(mlir::createLowerAffinePass());
     pm.addPass(mlir::createConvertSCFToCFPass());
     pm.addPass(mlir::createMemRefToLLVMPass());
-    pm.addPass(mlir::createLowerToLLVMPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }
 

@@ -71,12 +71,12 @@ class GrpcCoordinationClient : public CoordinationClient {
   }
   ~GrpcCoordinationClient() override {}
 
-  void RegisterWorkerAsync(CallOptions* call_opts,
-                           const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done) override {
+  void RegisterTaskAsync(CallOptions* call_opts,
+                         const RegisterTaskRequest* request,
+                         RegisterTaskResponse* response,
+                         StatusCallback done) override {
     new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/RegisterWorker", *request,
+        &stub_, cq_, "/tensorflow.CoordinationService/RegisterTask", *request,
         response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/false,
         &target_);
@@ -92,24 +92,46 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void HeartbeatAsync(const HeartbeatRequest* request,
+  void ShutdownTaskAsync(CallOptions* call_opts,
+                         const ShutdownTaskRequest* request,
+                         ShutdownTaskResponse* response,
+                         StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/ShutdownTask", *request,
+        response, std::move(done), call_opts,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void ResetTaskAsync(const ResetTaskRequest* request,
+                      ResetTaskResponse* response,
+                      StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/ResetTask", *request,
+        response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
                       HeartbeatResponse* response,
                       StatusCallback done) override {
     // Different from other RPCs which do not retry by default, the Heartbeat
     // RPC should retry automatically to tolerate transient network issues.
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/Heartbeat", *request,
-        response, std::move(done),
-        /*call_opts=*/nullptr, /*threadpool=*/nullptr, /*max_retries=*/3,
+        response, std::move(done), call_opts, /*threadpool=*/nullptr,
+        /*max_retries=*/3,
         /*fail_fast=*/true, &target_);
   }
 
-  void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                               ReportErrorToAgentResponse* response,
-                               StatusCallback done) override {
+  void ReportErrorToTaskAsync(CallOptions* call_opts,
+                              const ReportErrorToTaskRequest* request,
+                              ReportErrorToTaskResponse* response,
+                              StatusCallback done) override {
     new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToAgent",
-        *request, response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToTask",
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -139,6 +161,16 @@ class GrpcCoordinationClient : public CoordinationClient {
                         StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/GetKeyValue", *request,
+        response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                           GetKeyValueDirResponse* response,
+                           StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/GetKeyValueDir", *request,
         response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
@@ -247,6 +279,13 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
 CoordinationClientCache* NewGrpcCoordinationClientCache(
     std::shared_ptr<GrpcChannelCache> channel_cache) {
   return new GrpcCoordinationClientCache(channel_cache);
+}
+
+CoordinationClient* NewGrpcCoordinationClient(
+    std::shared_ptr<::grpc::Channel> channel) {
+  // TODO(hanyangtay): Pass in the logical task name for better logging.
+  return new GrpcCoordinationClient(
+      channel, /*target=*/"unknown_target_for_coordination_leader");
 }
 
 }  // namespace tensorflow

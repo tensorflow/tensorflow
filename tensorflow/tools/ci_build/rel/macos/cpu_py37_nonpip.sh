@@ -26,6 +26,7 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 # Set up py37 via pyenv and check it worked
 PY_VERSION=3.7.9
 setup_python_from_pyenv_macos "${PY_VERSION}"
+python -m venv .tf-venv && source .tf-venv/bin/activate
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
@@ -43,4 +44,5 @@ bazel test \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_output=errors \
-  -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+  -- ${DEFAULT_BAZEL_TARGETS} \
+  -//tensorflow/lite/... -//tensorflow/compiler/aot/...

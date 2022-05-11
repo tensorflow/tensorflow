@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdarg.h>
 
 #include <memory>
+#include <mutex>  // NOLINT
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/signature_runner.h"
 
 // Internal structures and subroutines used by the C API. These are likely to
 // change and should not be depended on directly by any C API clients.
@@ -60,6 +62,15 @@ struct TfLiteOpResolverCallbacks {
   // that was passed to `TfLiteInterpreterOptionsSetOpResolver`.
   const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
                                               int version);
+
+  // `find_builtin_op` which returns `TfLiteRegistration_V1`.
+  const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
+                                                     TfLiteBuiltinOperator op,
+                                                     int version);
+  // `find_custom_op` which returns `TfLiteRegistration_V1`.
+  const TfLiteRegistration_V1* (*find_custom_op_v1)(void* user_data,
+                                                    const char* op,
+                                                    int version);
 };
 
 // This struct mirrors the tflite::ErrorResolver C++ abstract base class.
@@ -93,6 +104,10 @@ struct TfLiteInterpreterOptions {
   // then if Invoke with delegates fails, it will be
   // automatically retried without delegates.
   bool enable_delegate_fallback = false;
+
+  // TfLiteRegistrationExternal objects owned by caller of
+  // `TfLiteInterpreterOptionsAddRegistrationExternal` API.
+  std::vector<TfLiteRegistrationExternal*> op_registrations;
 };
 
 struct TfLiteInterpreter {
@@ -110,8 +125,47 @@ struct TfLiteInterpreter {
   bool enable_delegate_fallback;
 };
 
+struct TfLiteSignatureRunner {
+  // The tflite::SignatureRunner runner object that this points to is owned by
+  // the interpreter. So this pointer will become invalid when the interpreter
+  // is destroyed.
+  tflite::SignatureRunner* impl;
+};
+
 namespace tflite {
 namespace internal {
+
+/// `CallbackOpResolver` is a (C++) `tflite::OpResolver` that forwards the
+/// methods to (C ABI) callback functions from a `TfLiteOpResolverCallbacks`
+/// struct.
+///
+/// The SetCallbacks method must be called before calling any of the FindOp
+/// methods.
+class CallbackOpResolver : public ::tflite::OpResolver {
+ public:
+  CallbackOpResolver() {}
+  void SetCallbacks(
+      const struct TfLiteOpResolverCallbacks& op_resolver_callbacks) {
+    op_resolver_callbacks_ = op_resolver_callbacks;
+  }
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override;
+
+  const TfLiteRegistration* FindOp(const char* op, int version) const override;
+
+ private:
+  CallbackOpResolver(const CallbackOpResolver&) = delete;
+  CallbackOpResolver& operator=(const CallbackOpResolver&) = delete;
+
+  struct TfLiteOpResolverCallbacks op_resolver_callbacks_ = {};
+
+  // mutable objects to store temporary `TfLiteRegistration`.
+  mutable std::mutex mutex_;
+  mutable std::vector<std::unique_ptr<TfLiteRegistration>>
+      temporary_builtin_registrations_;  // GUARDED_BY(mutex_)
+  mutable std::vector<std::unique_ptr<TfLiteRegistration>>
+      temporary_custom_registrations_;  // GUARDED_BY(mutex_)
+};
 
 // This adds the builtin and/or custom operators specified in options in
 // `optional_options` (if any) to `mutable_resolver`, and then returns a newly

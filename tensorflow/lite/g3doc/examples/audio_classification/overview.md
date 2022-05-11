@@ -66,7 +66,7 @@ There are two versions of the YAMNet model converted to TFLite:
     Learning, Web and Mobile deployment. It also has a more complex output.
 
 *   [YAMNet/classification](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1)
-    is a quantized version with a simpler fixed lengh frame input (15600
+    is a quantized version with a simpler fixed length frame input (15600
     samples) and return a single vector of scores for 521 audio event classes.
 
 ### Inputs

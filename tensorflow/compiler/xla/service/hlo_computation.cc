@@ -22,6 +22,8 @@ limitations under the License.
 #include <queue>
 #include <set>
 #include <sstream>
+#include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -100,6 +102,13 @@ HloComputation::~HloComputation() {
     CHECK(fusion_instruction_->fused_instructions_computation() == this);
     fusion_instruction_->ClearCalledComputations();
     fusion_instruction_ = nullptr;
+  }
+  if (IsAsyncComputation()) {
+    for (auto* async_instr : async_instructions_) {
+      CHECK(async_instr->async_wrapped_computation() == this);
+      async_instr->ClearCalledComputations();
+    }
+    async_instructions_.clear();
   }
 }
 
@@ -232,8 +241,7 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   int64_t removed = 0;
   for (int64_t i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
-    if (param_instruction->user_count() == 0 &&
-        param_instruction != root_instruction()) {
+    if (param_instruction->IsDead()) {
       TF_RETURN_IF_ERROR(
           RemoveInstructionImpl(param_instruction, allow_non_fusion));
       ++removed;
@@ -289,7 +297,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
 
-  TF_RET_CHECK(instruction->user_count() == 0);
+  TF_RET_CHECK(instruction->IsDead());
   TF_RET_CHECK(IsSafelyRemovable(instruction))
       << "Cannot remove instruction: " << instruction->ToString();
   absl::flat_hash_set<HloInstruction*> removed;
@@ -299,8 +307,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* item = worklist.front();
     worklist.pop();
 
-    if (removed.contains(item) || item->user_count() != 0 ||
-        item == root_instruction() || !IsSafelyRemovable(item) ||
+    if (removed.contains(item) || !item->IsDead() || !IsSafelyRemovable(item) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
@@ -331,11 +338,8 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
           << " from computation " << name();
   TF_RET_CHECK(ignore_safety_check || IsSafelyRemovable(instruction))
       << "cannot remove instruction: " << instruction->ToString();
-  TF_RET_CHECK(root_instruction() != instruction)
-      << "cannot remove root instruction " << instruction->name();
-  TF_RET_CHECK(instruction->user_count() == 0)
-      << "instruction " << instruction->name()
-      << " has users and cannot be removed";
+  TF_RET_CHECK(instruction->IsDead()) << "instruction " << instruction->name()
+                                      << " is live and cannot be removed";
   TF_RET_CHECK(instruction->control_predecessors().empty())
       << "instruction " << instruction->name()
       << " has control predecessors and cannot be removed";
@@ -406,144 +410,109 @@ void ComputeComputationPostOrder(HloComputation* computation,
   }
 }
 
+absl::optional<int64_t> GetChannelId(const HloInstruction& inst) {
+  // Note that we only include Send and RecvDone, as we want to create a
+  // dependency between those, but not SendDone and Recv.
+  switch (inst.opcode()) {
+    case HloOpcode::kSend:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kReduceScatter:
+      return inst.channel_id();
+    default:
+      return absl::nullopt;
+  }
+}
+
 }  // namespace
 
 void HloComputation::ComputeInstructionPostOrder(
-    const HloComputation::ChannelDependencyGroup& channel_dependency_group,
-    std::vector<HloInstruction*>* post_order, HloInstruction* root,
-    absl::flat_hash_map<HloInstruction*, VisitState>* visited) const {
-  std::vector<HloInstruction*> dfs_stack;
-  dfs_stack.push_back(root);
+    HloInstruction* root,
+    HloComputation::ChannelDependencyGroup& channel_dependencies,
+    absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+    std::vector<HloInstruction*>& post_order) const {
+  std::vector<HloInstruction*> dfs_stack = {root};
   while (!dfs_stack.empty()) {
-    const auto current = dfs_stack.back();
-    CHECK_EQ(current->parent(), this)
-        << "Instruction " << current->name()
-        << " is not in the current computation (" << name() << ").";
-    auto it = visited->find(current);
-    if (it != visited->end()) {
-      if (it->second == kVisited) {
-        // Already visited.
-        dfs_stack.pop_back();
-        continue;
-      }
-      // Visit this node.
-      CHECK_EQ(kVisiting, it->second);
+    HloInstruction& current = *dfs_stack.back();
+
+    auto result = visited.insert({&current, kVisiting});
+    if (!result.second) {  // We've already seen this instruction.
       dfs_stack.pop_back();
-      post_order->push_back(current);
-      it->second = kVisited;
+      if (result.first->second != kVisited) {
+        CHECK_EQ(current.parent(), this)
+            << "Instruction " << current.name()
+            << " is not in the current computation (" << name() << ").";
+        post_order.push_back(&current);
+        result.first->second = kVisited;
+      }
       continue;
     }
 
-    visited->insert({current, kVisiting});
-
-    const auto get_channel_id =
-        [](HloInstruction* inst) -> absl::optional<int64_t> {
-      switch (inst->opcode()) {
-        case HloOpcode::kRecvDone:
-        case HloOpcode::kAllReduce:
-        case HloOpcode::kAllGather:
-        case HloOpcode::kAllToAll:
-        case HloOpcode::kReduceScatter:
-          return inst->channel_id();
-        default:
-          return absl::nullopt;
+    // Add channel dependencies.
+    // A RecvDone op must be preceded by the corresponding Send op.
+    // Collectives with the same channel ID must be performed together, as these
+    // represent MPMD-partitioned that will later be split into separate modules
+    // and the order must be preserved.
+    absl::optional<int64_t> channel_id =
+        ((&current != root) && (current.opcode() != HloOpcode::kSend))
+            ? GetChannelId(current)
+            : absl::nullopt;
+    if (channel_id) {
+      auto it = channel_dependencies.find(*channel_id);
+      if (it != channel_dependencies.end()) {
+        dfs_stack.insert(dfs_stack.end(), it->second.begin(), it->second.end());
+        channel_dependencies.erase(it);
       }
-    };
-
-    // When adding a predecessor to the dfs_stack, we need to also add its
-    // associated channel dependencies.
-    const auto add_dfs_stack = [&](HloInstruction* inst) {
-      auto channel_id = get_channel_id(inst);
-      if (channel_id && channel_dependency_group.count(*channel_id)) {
-        auto it = channel_dependency_group.find(*channel_id);
-        for (HloInstruction* cinst : it->second) {
-          dfs_stack.emplace_back(cinst);
-        }
-      } else {
-        dfs_stack.emplace_back(inst);
-      }
-    };
-
-    const auto add_predecessors = [&](HloInstruction* inst) {
-      // Add the operands to the stack in reverse order so the first operand is
-      // processed first. This will produce a more natural ordering and a nicer
-      // result for things like HLO stringification.
-      const auto& operands = inst->operands();
-      for (int64_t i = operands.size() - 1; i >= 0; --i) {
-        add_dfs_stack(operands[i]);
-      }
-
-      for (HloInstruction* op : inst->control_predecessors()) {
-        add_dfs_stack(op);
-      }
-    };
-
-    // If the current instruction is a channel instruction, add the dependencies
-    // from all associated instructions of the channel.
-    auto channel_id = get_channel_id(current);
-    if (channel_id && channel_dependency_group.count(*channel_id)) {
-      auto it = channel_dependency_group.find(*channel_id);
-      for (HloInstruction* cinst : it->second) {
-        add_predecessors(cinst);
-      }
-    } else {
-      add_predecessors(current);
     }
+
+    // Add the operands to the stack in reverse order so the first operand is
+    // processed first. This will produce a more natural ordering and a nicer
+    // result for things like HLO stringification.
+    const HloInstruction::InstructionVector& operands = current.operands();
+    dfs_stack.insert(dfs_stack.end(), operands.rbegin(), operands.rend());
+
+    const std::vector<HloInstruction*>& predecessors =
+        current.control_predecessors();
+    dfs_stack.insert(dfs_stack.end(), predecessors.begin(), predecessors.end());
   }
 }
 
 HloComputation::ChannelDependencyGroup
 HloComputation::ComputeChannelDependencies() const {
-  ChannelDependencyGroup channel_dependency_group;
   if (parent() && parent()->config().has_static_device_assignment() &&
       (parent()->config().static_device_assignment().computation_count() == 1 ||
        parent()->config().use_spmd_partitioning())) {
-    return channel_dependency_group;
+    return {};
   }
+
+  ChannelDependencyGroup channel_dependencies;
   for (const auto& instruction : instructions_) {
-    switch (instruction->opcode()) {
-      case HloOpcode::kSend:
-      case HloOpcode::kRecvDone:
-      case HloOpcode::kAllReduce:
-      case HloOpcode::kAllGather:
-      case HloOpcode::kAllToAll:
-      case HloOpcode::kReduceScatter: {
-        auto channel_id = instruction->channel_id();
-        if (channel_id) {
-          channel_dependency_group[channel_id.value()].push_back(
-              instruction.get());
-        }
-        break;
-      }
-      default:
-        break;
-    }
+    absl::optional<int64_t> channel_id = GetChannelId(*instruction);
+    if (channel_id)
+      channel_dependencies[*channel_id].push_back(instruction.get());
   }
-  return channel_dependency_group;
+  return channel_dependencies;
 }
 
 static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
-  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
-    return user->opcode() == HloOpcode::kTrace;
-  });
+  return absl::c_all_of(instruction->users(),
+                        [](HloInstruction* user) { return false; });
 }
 
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
-  auto channel_dependency_group = ComputeChannelDependencies();
+  ChannelDependencyGroup channel_dependencies = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
   visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
-    if (instruction->opcode() == HloOpcode::kTrace) {
-      // Trace instructions aren't handled by the DFS visitor. Add trace
-      // instructions to the post order at the end (necessarily they have no
-      // users).
-      trace_instructions.push_back(instruction.get());
-    } else if (HasOnlyTraceUsers(instruction.get())) {
-      ComputeInstructionPostOrder(channel_dependency_group, &post_order,
-                                  instruction.get(), &visited);
+    if (HasOnlyTraceUsers(instruction.get())) {
+      ComputeInstructionPostOrder(instruction.get(), channel_dependencies,
+                                  visited, post_order);
     }
   }
   post_order.insert(post_order.end(), trace_instructions.begin(),
@@ -577,109 +546,72 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 }
 
 std::string HloComputation::ToString(const HloPrintOptions& options) const {
-  return ToString(options, MakeInstructionPostOrder());
+  return std::string(ToCord(options));
 }
 
 std::string HloComputation::ToString(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  CHECK_EQ(instruction_order.size(), instruction_count());
+  return std::string(ToCord(options, instruction_order));
+}
 
+absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
+  return ToCord(options, MakeInstructionPostOrder());
+}
+
+absl::Cord HloComputation::ToCord(
+    const HloPrintOptions& options,
+    absl::Span<const HloInstruction* const> instruction_order) const {
+  CHECK_EQ(instruction_order.size(), instruction_count());
   const std::string tab(2 * options.indent_amount(), ' ');
 
-  std::ostringstream s;
-  s << tab;
+  absl::Cord result;
+  result.Append(tab);
 
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
-      s << "%";
+      result.Append("%");
     }
     if (options.print_ids()) {
-      // Exclude entry computation's name because it includes and leads to
-      // non-deterministic fingerprint.
-      s << PrintName(name(), options.print_ids()) << " ";
+      // When print_ids() is false, exclude entry computation's name because it
+      // includes and leads to non-deterministic fingerprint.
+      result.Append(name());
+      result.Append(" ");
     }
   }
 
   if (options.print_program_shape()) {
-    s << ShapeUtil::HumanString(ComputeProgramShape(options.print_ids()))
-      << " ";
+    result.Append(
+        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())));
+    result.Append(" ");
   }
-  s << "{\n";
-
-  // There are instructions which are required to be printed. Additionally, we
-  // print some instructions before and after required ones. The resulting
-  // output has the following format.
-  //
-  //  computation {
-  //    ...
-  //    additional_instructions
-  //    required_instructions
-  //    additional_instructions
-  //    ...
-  //    additional_instructions
-  //    required_instructions
-  //    additional_instructions
-  //    ...
-  //  }
-  std::set<int> instructions_to_print;
-  {
-    // Find all the instructions that should be printed.
-    auto add_instruction = [&instructions_to_print,
-                            &instruction_order](int index) {
-      if (index < 0 || index >= instruction_order.size()) {
-        return;
-      }
-      instructions_to_print.insert(index);
-    };
-
-    auto add_instructions_arround = [&add_instruction, &options](int index) {
-      for (int i = index - options.leading_and_trailing_instructions_number();
-           i <= index + options.leading_and_trailing_instructions_number();
-           ++i) {
-        add_instruction(i);
-      }
-    };
-
-    for (int i = 0; i < instruction_order.size(); ++i) {
-      const HloInstruction* instruction = instruction_order[i];
-      CHECK_EQ(this, instruction->parent());
-      if (options.print_instruction(instruction)) {
-        add_instructions_arround(i);
-      }
-    }
-  }
+  result.Append("{\n");
 
   {
     // Print the instructions in this computation.
-    HloPrintOptions new_options = options;
-    new_options.set_indent_amount(options.indent_amount() + 1)
-        .set_is_in_nested_computation(true);
+    HloPrintOptions new_options =
+        HloPrintOptions(options)
+            .set_indent_amount(options.indent_amount() + 1)
+            .set_is_in_nested_computation(true);
 
     const std::string new_tab(2 * new_options.indent_amount(), ' ');
 
     CanonicalNameMap name_map;
-
-    bool print_prev = true;
-    for (int index = 0; index < instruction_order.size(); ++index) {
-      const HloInstruction* instruction = instruction_order[index];
-      if (instructions_to_print.find(index) != instructions_to_print.end()) {
-        s << new_options.format_instruction(
-                 instruction,
-                 instruction->ToStringWithCanonicalNameMap(new_options,
-                                                           &name_map),
-                 new_options.indent_amount(), instruction == root_instruction_)
-          << "\n";
-        print_prev = true;
-      } else if (print_prev) {
-        s << new_tab << "...\n";
-        print_prev = false;
+    for (const HloInstruction* const instruction : instruction_order) {
+      DCHECK_EQ(this, instruction->parent());
+      result.Append(new_tab);
+      if (instruction == root_instruction_) {
+        result.Append("ROOT ");
       }
+      result.Append(
+          instruction->ToStringWithCanonicalNameMap(new_options, &name_map));
+      result.Append("\n");
     }
   }
 
-  s << tab << "}";
-  return s.str();
+  result.Append(tab);
+  result.Append("}");
+  return result;
 }
 
 HloComputationProto HloComputation::ToProto() const {
@@ -695,6 +627,7 @@ HloComputationProto HloComputation::ToProto() const {
   }
   proto.set_root_id(root_instruction()->unique_id());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
+  proto.set_is_fusion_computation(is_fusion_computation_);
   return proto;
 }
 
@@ -757,6 +690,7 @@ HloComputation::CreateFromProto(
       new HloComputation(proto.name(), parameter_count, &instructions, root,
                          /*fusion_instruction=*/nullptr));
   computation->unique_id_ = proto.id();
+  computation->is_fusion_computation_ = proto.is_fusion_computation();
   return std::move(computation);
 }
 
@@ -773,7 +707,7 @@ void HloComputation::FuseInstructionsInto(
   for (size_t i = 1; i < instructions_to_fuse.size(); ++i) {
     HloInstruction* instruction = instructions_to_fuse[i];
     fusion_instruction->FuseInstruction(instruction);
-    if (instruction->user_count() == 0) {
+    if (instruction->IsDead()) {
       TF_CHECK_OK(RemoveInstruction(instruction));
     }
   }
@@ -1031,9 +965,7 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
   for (auto* instruction : instructions()) {
-    if (instruction->user_count() == 0 &&
-        instruction->control_successors().empty() &&
-        instruction != root_instruction()) {
+    if (instruction->IsDead() && instruction->control_successors().empty()) {
       unreachable_roots.push_back(instruction);
     }
   }
@@ -1199,7 +1131,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     }
     instructions.push_back(std::move(new_instr));
   }
-  Builder builder(name() + "." + suffix);
+  Builder builder(suffix.empty() ? name() : name() + "." + suffix);
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }

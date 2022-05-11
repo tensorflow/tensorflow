@@ -68,7 +68,8 @@ class EventNode {
   // REQUIRED: all inputs should not be nullptr.
   EventNode(const XPlaneVisitor* plane, XLine* raw_line, XEvent* raw_event);
 
-  EventNode(const EventNode& event_node);
+  EventNode(const EventNode& event_node) = delete;
+  EventNode& operator=(const EventNode&) = delete;
 
   const std::vector<EventNode*>& GetParents() const { return parents_; }
 
@@ -96,10 +97,6 @@ class EventNode {
 
   void AddStepName(absl::string_view step_name);
 
-  // Add a helper stat, "selected_group_ids", with group_ids of the groups
-  // connected to this event's group.
-  void AddSelectedGroupIds(const GroupMetadataMap& group_metadata_map);
-
   void SetIsEager(bool is_eager);
 
   // Returns true if this event is part of eagerly executed op.
@@ -123,6 +120,7 @@ class EventNode {
   int RootLevel() const { return root_level_; }
 
   bool IsAsync() const { return is_async_; }
+  bool IsCompiledFunc() const;
 
   // Compare two EventNodes based on start timestamp.
   bool operator<(const EventNode& other) const {

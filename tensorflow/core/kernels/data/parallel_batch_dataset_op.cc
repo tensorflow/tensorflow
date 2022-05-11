@@ -605,8 +605,6 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // TODO(xiaojies): improve the accuracy of the condition used for
     // determining when to record allocated bytes.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
-    // Background thread used for coordinating input processing.
-    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
 
@@ -618,6 +616,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    // Background thread used for coordinating input processing.
+    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const int64_t batch_size_;

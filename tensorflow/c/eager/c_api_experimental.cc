@@ -570,8 +570,8 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
   status->status = tensorflow::Status::OK();
 }
 
-TFE_Executor* TFE_NewExecutor(bool is_async) {
-  return new TFE_Executor(is_async);
+TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue) {
+  return new TFE_Executor(is_async, enable_streaming_enqueue);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
@@ -707,6 +707,11 @@ void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx, unsigned char enable,
 void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx, unsigned char enable,
                                         TF_Status* status) {
   tensorflow::unwrap(ctx)->SetRunEagerOpAsFunction(enable);
+}
+
+void TFE_ContextSetJitCompileRewrite(TFE_Context* ctx, unsigned char enable,
+                                     TF_Status* status) {
+  tensorflow::unwrap(ctx)->SetJitCompileRewrite(enable);
 }
 
 const char* TFE_TensorHandleDeviceType(TFE_TensorHandle* h, TF_Status* status) {

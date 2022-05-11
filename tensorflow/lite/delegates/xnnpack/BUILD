@@ -26,21 +26,103 @@ config_setting(
     define_values = {"xnnpack_force_float_precision": "fp16"},
 )
 
+# Enable offloading of quantized 8-bit signed operators to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_qs8_explicit_true",
+    define_values = {"tflite_with_xnnpack_qs8": "true"},
+)
+
+# Disable offloading of quantized 8-bit signed operators to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_qs8_explicit_false",
+    define_values = {"tflite_with_xnnpack_qs8": "false"},
+)
+
+# Default setting for offloading of quantized 8-bit signed operators to XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_qs8_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        # Enable for WebAssembly builds
+        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
+        # Disable for all other builds
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_qs8",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_qs8_explicit_true": ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
+        ":tflite_with_xnnpack_qs8_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_qs8_explicit_true": [],
+        ":tflite_with_xnnpack_qs8_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_qs8_default"],
+    }),
+)
+
+# Enable offloading of quantized 8-bit unsigned operators to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_qu8_explicit_true",
+    define_values = {"tflite_with_xnnpack_qu8": "true"},
+)
+
+# Disable offloading of quantized 8-bit unsigned operators to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_qu8_explicit_false",
+    define_values = {"tflite_with_xnnpack_qu8": "false"},
+)
+
+# Default setting for offloading of quantized 8-bit unsigned operators to XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_qu8_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        # Enable for WebAssembly builds
+        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
+        # Disable for all other builds
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_qu8",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_qu8_explicit_true": ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
+        ":tflite_with_xnnpack_qu8_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_qu8_explicit_true": [],
+        ":tflite_with_xnnpack_qu8_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_qu8_default"],
+    }),
+)
+
 cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
     hdrs = ["xnnpack_delegate.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + select({
-        ":xnnpack_force_float_precision_explicit_fp16": ["-DXNNPACK_FORCE_PRECISION_FP16"],
+        ":xnnpack_force_float_precision_explicit_fp16": ["-DXNNPACK_DELEGATE_FORCE_PRECISION_FP16=1"],
         "//conditions:default": [],
     }),
     linkstatic = True,
     deps = [
         ":quantization_util",
+        ":tflite_with_xnnpack_qs8",
+        ":tflite_with_xnnpack_qu8",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -71,6 +153,8 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -127,12 +211,30 @@ cc_library(
 )
 
 cc_library(
+    name = "concatenation_tester",
+    testonly = 1,
+    srcs = ["concatenation_tester.cc"],
+    hdrs = ["concatenation_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "conv_2d_tester",
     testonly = 1,
     srcs = ["conv_2d_tester.cc"],
     hdrs = ["conv_2d_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -169,6 +271,7 @@ cc_library(
     hdrs = ["depthwise_conv_2d_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -205,6 +308,7 @@ cc_library(
     hdrs = ["fully_connected_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -275,6 +379,7 @@ cc_library(
     hdrs = ["prelu_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -327,6 +432,7 @@ cc_library(
     srcs = ["quantized_conv_2d_tester.cc"],
     hdrs = ["quantized_conv_2d_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -344,6 +450,7 @@ cc_library(
     srcs = ["quantized_depthwise_conv_2d_tester.cc"],
     hdrs = ["quantized_depthwise_conv_2d_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -361,6 +468,7 @@ cc_library(
     srcs = ["quantized_fully_connected_tester.cc"],
     hdrs = ["quantized_fully_connected_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -509,6 +617,23 @@ cc_library(
 )
 
 cc_library(
+    name = "split_tester",
+    testonly = 1,
+    srcs = ["split_tester.cc"],
+    hdrs = ["split_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "softmax_tester",
     testonly = 1,
     srcs = ["softmax_tester.cc"],
@@ -549,6 +674,7 @@ cc_library(
     hdrs = ["transpose_conv_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -567,6 +693,7 @@ cc_library(
     srcs = ["quantized_transpose_conv_tester.cc"],
     hdrs = ["quantized_transpose_conv_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -677,6 +804,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "concatenation_test",
+    srcs = ["concatenation_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":concatenation_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1119,6 +1261,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_concatenation_test",
+    srcs = ["signed_quantized_concatenation_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":concatenation_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_conv_2d_test",
     srcs = ["signed_quantized_conv_2d_test.cc"],
     linkopts = select({
@@ -1142,6 +1299,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_depth_to_space_test",
+    srcs = ["signed_quantized_depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1263,7 +1435,22 @@ cc_test(
     deps = [
         ":quantized_resize_bilinear_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_split_test",
+    srcs = ["signed_quantized_split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1293,7 +1480,22 @@ cc_test(
     deps = [
         ":quantized_transpose_conv_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "split_test",
+    srcs = ["split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1383,7 +1585,7 @@ cc_test(
     deps = [
         ":test_main",
         ":transpose_conv_tester",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1434,6 +1636,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_concatenation_test",
+    srcs = ["unsigned_quantized_concatenation_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":concatenation_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_conv_2d_test",
     srcs = ["unsigned_quantized_conv_2d_test.cc"],
     linkopts = select({
@@ -1457,6 +1674,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_depth_to_space_test",
+    srcs = ["unsigned_quantized_depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1563,7 +1795,22 @@ cc_test(
     deps = [
         ":quantized_resize_bilinear_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_split_test",
+    srcs = ["unsigned_quantized_split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1593,7 +1840,23 @@ cc_test(
     deps = [
         ":quantized_transpose_conv_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "weights_cache_test",
+    srcs = ["weights_cache_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+    ],
+    deps = [
+        ":conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )

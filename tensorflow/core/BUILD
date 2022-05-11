@@ -90,18 +90,20 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_deps",
     "tf_additional_test_deps",
+    "tf_dtensor_tpu_dependencies",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
@@ -128,7 +130,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -535,6 +536,13 @@ cc_library(
 )
 
 cc_library(
+    name = "framework_types_hdr",
+    hdrs = ["//tensorflow/core/framework:types.h"],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "framework_lite",
     hdrs = [
         "//tensorflow/core/framework:numeric_types.h",
@@ -579,11 +587,15 @@ cc_library(
         "//tensorflow/c/kernels:merge_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/core/ops:ops",
+        "//tensorflow/dtensor/cc:dtensor_ops",
     ] + select({
         # Non-tpu platforms don't need tpu dependency.
         "//tensorflow:chromiumos": [],
         "//tensorflow:fuchsia": [],
-        "//conditions:default": ["//tensorflow/core/tpu/ops"],
+        "//conditions:default": [
+            "//tensorflow/core/tpu/ops",
+            "//tensorflow/dtensor/cc:dtensor_tpu_ops",
+        ],
     }) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
@@ -654,6 +666,7 @@ cc_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:ragged_ops",
+        "//tensorflow/core/kernels:random_index_shuffle_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
         "//tensorflow/core/kernels:random_binomial_op",
@@ -669,6 +682,7 @@ cc_library(
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:stateless_random_gamma_op",
+        "//tensorflow/core/kernels:stateless_shuffle",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
@@ -676,6 +690,7 @@ cc_library(
         "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
+        "//tensorflow/dtensor/cc:dtensor_kernels",
     ] + if_mkl([
         "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
@@ -696,6 +711,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_swish_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_mish_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
@@ -712,7 +728,7 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_op_kernels",
         "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
-    ]) + tf_tpu_dependencies(),
+    ]) + tf_tpu_dependencies() + tf_dtensor_tpu_dependencies(),
 )
 
 cc_library(
@@ -998,6 +1014,7 @@ filegroup(
         "ragged_ops",
         "composite_tensor_ops_op_lib",
         "random_grad_op_lib",
+        "random_index_shuffle_ops_op_lib",
         "random_ops_op_lib",
         "resource_variable_ops_op_lib",
         "risc_ops_op_lib",
@@ -1314,7 +1331,7 @@ cc_library(
             "-lpthread",
         ],
     }),
-    visibility = ["//tensorflow/python:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
@@ -1584,6 +1601,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
+        "//tensorflow/core/framework:ref_var.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
         "//tensorflow/core/framework:run_handler.h",
@@ -1895,6 +1913,29 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_tests(
+    name = "cell_reader_test",
+    size = "small",
+    srcs = [
+        "//tensorflow/core/lib/monitoring:cell_reader_test.cc",
+        "//tensorflow/core/lib/monitoring:test_utils_test.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:gauge",
+        "//tensorflow/core/lib/monitoring:sampler",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

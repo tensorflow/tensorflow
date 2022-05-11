@@ -107,6 +107,9 @@ class GraphExecutor {
       absl::Span<const std::string> target_tensor_names,
       std::vector<tensorflow::Tensor>* outputs);
 
+  // Extends the current graph by `graph`.
+  tensorflow::Status Extend(const GraphDef& graph);
+
   tensorflow::tfrt_stub::TfrtGraphExecutionState& graph_execution_state()
       const {
     return *graph_execution_state_;

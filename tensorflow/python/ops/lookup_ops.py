@@ -713,7 +713,7 @@ class TextFileInitializer(TableInitializerBase):
     value_dtype = dtypes.as_dtype(value_dtype)
 
     if key_index < -2:
-      raise ValueError("`key_index` should be >= -2, received: {key_index}.")
+      raise ValueError(f"`key_index` should be >= -2, received: {key_index}.")
 
     if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
       raise ValueError("`key_dtype` must be int64 if `key_index` is "
@@ -2038,15 +2038,21 @@ class MutableHashTable(LookupInterface):
             self.resource_handle, self._key_dtype, self._value_dtype)
     return exported_keys, exported_values
 
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                MutableHashTable._Saveable, table=self, name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing protocols for `Trackable`."""
+    tensors = self.export()
+    return {"table-keys": tensors[0], "table-values": tensors[1]}
 
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing protocols for `Trackable`."""
+    with ops.name_scope("%s_table_restore" % self._name):
+      with ops.colocate_with(self.resource_handle):
+        return gen_lookup_ops.lookup_table_import_v2(
+            self.resource_handle,
+            restored_tensors["table-keys"],
+            restored_tensors["table-values"])
+
+    # This class is needed for `MutableHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 
@@ -2366,15 +2372,21 @@ class DenseHashTable(LookupInterface):
 
     return exported_keys, exported_values
 
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                DenseHashTable._Saveable, table=self, name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing interface in `Trackable`."""
+    tensors = self.export()
+    return {"table-keys": tensors[0], "table-values": tensors[1]}
 
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing interface in `Trackable`."""
+    with ops.name_scope("%s_table_restore" % self._name):
+      with ops.colocate_with(self.resource_handle):
+        return gen_lookup_ops.lookup_table_import_v2(
+            self.resource_handle,
+            restored_tensors["table-keys"],
+            restored_tensors["table-values"])
+
+  # This class is needed for `DenseHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 

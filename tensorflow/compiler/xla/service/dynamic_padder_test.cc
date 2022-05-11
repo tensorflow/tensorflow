@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -42,10 +44,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
+
+namespace m = ::xla::match;
+namespace op = xla::testing::opcode_matchers;
 
 OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
   if (hlo->opcode() != HloOpcode::kCustomCall) {
@@ -92,7 +95,7 @@ class DynamicPadderTest : public HloTestBase {
     options.custom_call_handler = CustomCallDynamicDimensionInference;
     options.op_supports_dynamism_handler = OpHasDynamismSupport;
     DynamicPadder padder(std::move(options));
-    return padder.Run(module_.get());
+    return RunHloPass(&padder, module_.get());
   }
 
   void ExpectPadded(const HloInstruction* inst) {
@@ -172,7 +175,7 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   // Set up dynamic parameter binding.
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+      DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
   TF_ASSERT_OK(RunPadder().status());
 
@@ -476,6 +479,47 @@ ENTRY main {
     EXPECT_THAT(module_->entry_computation()->root_instruction()->operand(i),
                 op::Parameter());
   }
+}
+
+TEST_F(DynamicPadderTest, PadS8ToS32Dot) {
+  const std::string hlo_text = R"(
+HloModule test
+ENTRY test {
+  a = s8[<=16,32] parameter(0)
+  b = s8[32,64] parameter(1)
+  ROOT root = s32[<=16,64] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("SliceToDynamic",
+                                       m::Dot(m::Op().WithShape(S8, {16, 32}),
+                                              m::Op().WithShape(S8, {32, 64}))
+                                           .WithShape(S32, {16, 64}),
+                                       m::Op(), m::Op())));
+}
+
+TEST_F(DynamicPadderTest, PadToStaticForCustomCall) {
+  const std::string hlo_text = R"(
+HloModule test
+ENTRY test {
+  a = f32[64] parameter(0)
+  ROOT c = f32[<=128] custom-call(a),
+    custom_call_target="UnknownOp"
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+
+  EXPECT_THAT(
+      module_->entry_computation()->root_instruction(),
+      GmockMatch(m::CustomCall("SliceToDynamic",
+                               m::GetTupleElement(m::CustomCall(
+                                   "PadToStatic", m::CustomCall("UnknownOp"))),
+                               m::Op())));
 }
 
 // Test that dynamic padder has the same result as if not padded.
@@ -876,7 +920,7 @@ ENTRY main {
   param_0 = s32[3, 3] parameter(0)
   size = s32[] constant(2)
   param_padded_0 = s32[<=3, 3] set-dimension-size(param_0, size), dimensions={0}
-  param_padded_1 = s32[<=3, <=3] set-dimension-size(param_padded_0, size), 
+  param_padded_1 = s32[<=3, <=3] set-dimension-size(param_padded_0, size),
     dimensions={1}
   ROOT %reverse = s32[<=3, <=3]
     reverse(s32[<=3, <=3] param_padded_1),

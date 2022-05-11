@@ -155,20 +155,6 @@ class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
 
 class SaveCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
 
-  def _build_ds(self):
-    dataset = dataset_ops.Dataset.range(42)
-    return io._SaveDataset(
-        dataset=dataset, path=self._save_dir, shard_func=None, compression=None)
-
-  # This tests checkpointing for the _SaveDataset, which is internally
-  # consumed in the save() function. The purpose of this test is to
-  # thoroughly test the checkpointing functionality of the internal dataset.
-  @combinations.generate(
-      combinations.times(test_base.eager_only_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
-    verify_fn(self, self._build_ds, num_outputs=42)
-
   @combinations.generate(test_base.eager_only_combinations())
   def testSaveCheckpointingAPI(self):
     dataset = dataset_ops.Dataset.range(40)

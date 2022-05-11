@@ -12,6 +12,9 @@ tf_py_test(
     size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
+    tags = [
+        "noasan",  # b/231336996
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -109,6 +112,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",

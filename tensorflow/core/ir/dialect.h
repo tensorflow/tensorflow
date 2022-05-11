@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/core/ir/types/dialect.h"
 
@@ -66,7 +67,11 @@ using mlir::tf_type::VersionAttr;        // NOLINT
 class TFGraphOpAsmInterface;
 }  // namespace tfg
 }  // namespace mlir
+
 // Dialect main class is defined in ODS, we include it here.
 #include "tensorflow/core/ir/dialect.h.inc"
+// ODS-generated attribute classes.
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/core/ir/attributes.h.inc"
 
 #endif  // TENSORFLOW_CORE_IR_DIALECT_H_

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -175,6 +176,9 @@ struct LinalgTrivialBufferForwardingPattern
             });
 
         reused_inputs.insert(input_buffer);
+        // We have found an input buffer which we can forward. No need to keep
+        // looking for another input buffer to forward.
+        break;
       }
     }
 
@@ -189,7 +193,7 @@ struct LinalgTrivialBufferForwardingPass
     : public LinalgTrivialBufferForwardingBase<
           LinalgTrivialBufferForwardingPass> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
@@ -201,7 +205,7 @@ struct LinalgTrivialBufferForwardingPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialBufferForwardingPass() {
   return std::make_unique<LinalgTrivialBufferForwardingPass>();
 }

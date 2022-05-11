@@ -21,11 +21,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/RegionKindInterface.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
@@ -36,5 +38,26 @@ limitations under the License.
 
 #define GET_OP_CLASSES
 #include "tensorflow/core/ir/ops.h.inc"
+
+namespace mlir {
+namespace tfg {
+
+// Analysis that keeps track of all function names in a module.
+struct FunctionTable {
+  explicit FunctionTable(ModuleOp module);
+
+  // Returns whether there are no functions.
+  bool empty() const { return functions.empty(); }
+
+  // Returns whether `op` may be a call.
+  bool MaybeCall(Operation* op);
+
+ private:
+  // All the functions in the graph.
+  DenseSet<StringRef> functions;
+};
+
+}  // namespace tfg
+}  // namespace mlir
 
 #endif  // TENSORFLOW_CORE_IR_OPS_H_

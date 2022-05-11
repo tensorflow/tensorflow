@@ -19,6 +19,9 @@ limitations under the License.
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_
+
+#include "rocm/rocm_config.h"
+
 #if TF_ROCM_VERSION >= 40500
 
 #include "rocm/include/hipsolver.h"
@@ -66,6 +69,7 @@ namespace wrap {
 #define FOREACH_HIPSOLVER_API(__macro)       \
   __macro(hipsolverCreate)                   \
   __macro(hipsolverDestroy)                  \
+  __macro(hipsolverSetStream)                \
   __macro(hipsolverCgetrf)                   \
   __macro(hipsolverCgetrf_bufferSize)        \
   __macro(hipsolverDgetrf)                   \

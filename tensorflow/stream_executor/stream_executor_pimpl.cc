@@ -207,6 +207,12 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
   return implementation_->UnloadModule(module_handle);
 }
 
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+StreamExecutor::CreateOrShareConstant(Stream* stream,
+                                      const std::vector<uint8_t>& content) {
+  return implementation_->CreateOrShareConstant(stream, std::move(content));
+}
+
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
           << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();
@@ -247,6 +253,10 @@ int64_t StreamExecutor::GetDeviceLoad() const {
 
 int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
+}
+
+bool StreamExecutor::SupportsBlasPlans() const {
+  return implementation_->SupportsBlasPlans();
 }
 
 bool StreamExecutor::SupportsBlas() const {
@@ -792,6 +802,14 @@ bool StreamExecutor::AllocateStream(Stream* stream) {
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
+  dnn::DnnSupport* dnn;
+  {
+    absl::MutexLock lock(&mu_);
+    dnn = dnn_.get();
+  }
+  if (dnn) {
+    dnn->NotifyStreamDestroyed(stream);
+  }
   implementation_->DeallocateStream(stream);
   CHECK_GE(live_stream_count_.fetch_sub(1), 0)
       << "live stream count should not dip below zero";

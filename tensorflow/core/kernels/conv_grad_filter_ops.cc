@@ -646,6 +646,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 // To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::bfloat16>;
 template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
 template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
@@ -826,12 +827,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
-  // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
-  // fp16 in NHWC data layout. In all other configurations it's more efficient
-  // to run computation in NCHW data format.
-  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
-                               stream->GetCudaComputeCapability().IsAtLeast(
-                                   se::CudaComputeCapability::VOLTA);
+  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
+                                                    stream, /*is_conv2d=*/true);
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/dispatcher_impl.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -88,7 +91,7 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
 using DispatcherConfig = experimental::DispatcherConfig;
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
-using NamedJobKey = DispatcherState::NamedJobKey;
+using JobKey = DispatcherState::JobKey;
 using Job = DispatcherState::Job;
 using Task = DispatcherState::Task;
 
@@ -391,10 +394,10 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   int64_t job_id = request->job_id();
-  int64_t repetition = request->repetition();
+  int64_t iteration = request->iteration();
   int64_t provider_index = request->split_provider_index();
-  VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
-          << repetition << ", split provider index " << provider_index;
+  VLOG(3) << "Received GetSplit request for job " << job_id << ", iteration "
+          << iteration << ", split provider index " << provider_index;
   std::shared_ptr<const Job> job;
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   if (!job->distributed_epoch_state.has_value()) {
@@ -402,13 +405,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
         "Cannot get split for job ", job_id,
         ", since it is not a distributed_epoch job.");
   }
-  int64_t current_repetition =
-      job->distributed_epoch_state.value().repetitions[provider_index];
-  if (repetition < current_repetition) {
+  int64_t current_iteration =
+      job->distributed_epoch_state.value().iterations[provider_index];
+  if (iteration < current_iteration) {
     response->set_end_of_splits(true);
-    VLOG(3) << "Returning end_of_splits since current repetition "
-            << current_repetition
-            << " is greater than the requested repetition " << repetition;
+    VLOG(3) << "Returning end_of_splits since current iteration "
+            << current_iteration << " is greater than the requested iteration "
+            << iteration;
     return Status::OK();
   }
   SplitProvider* split_provider =
@@ -418,10 +421,10 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
   TF_RETURN_IF_ERROR(RecordSplitProduced(
-      job_id, repetition, request->split_provider_index(), end_of_splits));
+      job_id, iteration, request->split_provider_index(), end_of_splits));
   response->set_end_of_splits(end_of_splits);
   if (end_of_splits) {
-    // Reset the split provider to prepare for the next repetition.
+    // Reset the split provider to prepare for the next iteration.
     TF_RETURN_IF_ERROR(split_providers_[job_id][provider_index]->Reset());
   } else {
     split.AsProtoTensorContent(response->mutable_split());
@@ -532,39 +535,30 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   VLOG(3) << "GetOrCreateJob(" << request->DebugString() << ")";
-  absl::optional<NamedJobKey> key;
-  if (request->has_job_key()) {
-    key.emplace(request->job_key().job_name(),
-                request->job_key().job_name_index());
-  }
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
     mutex_lock l(mu_);
-    if (key.has_value()) {
-      Status s = state_.NamedJobByKey(key.value(), job);
-      if (s.ok()) {
-        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
-        // If the matching job was already garbage-collected, we fall through to
-        // re-create the job.
-        if (!job->garbage_collected) {
-          int64_t job_client_id;
-          TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-          response->set_job_client_id(job_client_id);
-          VLOG(3) << "Found existing job for name=" << key.value().name
-                  << ", index=" << key.value().index
-                  << ". job_id: " << job->job_id;
-          return Status::OK();
-        }
-      } else if (!errors::IsNotFound(s)) {
-        return s;
-      }
+    std::string job_name = request->job_key().name();
+    if (job_name.empty()) {
+      job_name = absl::StrCat("anonymous_job_", state_.NextAvailableJobId(),
+                              "_", random::New64());
     }
-    TF_RETURN_IF_ERROR(CreateJob(*request, job));
+    JobKey key(job_name, request->job_key().iteration());
+    Status s = state_.JobByKey(key, job);
+    if (!s.ok() && !errors::IsNotFound(s)) {
+      return s;
+    }
+    if (s.ok()) {
+      TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
+    }
+    if (errors::IsNotFound(s) || job->garbage_collected) {
+      TF_RETURN_IF_ERROR(CreateJob(key, *request, job));
+      TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
+    }
     int64_t job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
-    TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
   VLOG(3) << "Created job " << job->job_id << " for CreateJob("
@@ -636,8 +630,7 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
     std::shared_ptr<const Job> job, const GetOrCreateJobRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  DCHECK(job->named_job_key.has_value());
-  std::string job_name = job->named_job_key->name;
+  std::string job_name = job->job_key.name;
 
   if (!MessageDifferencer::Equals(job->processing_mode,
                                   request.processing_mode_def())) {
@@ -661,8 +654,8 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
 }
 
 Status DataServiceDispatcherImpl::CreateJob(
-    const GetOrCreateJobRequest& request, std::shared_ptr<const Job>& job)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    const JobKey& job_key, const GetOrCreateJobRequest& request,
+    std::shared_ptr<const Job>& job) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64_t job_id = state_.NextAvailableJobId();
   int64_t num_split_providers = 0;
@@ -677,11 +670,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_dataset_id(request.dataset_id());
   *create_job->mutable_processing_mode_def() = request.processing_mode_def();
   create_job->set_num_split_providers(num_split_providers);
-  if (request.has_job_key()) {
-    NamedJobKeyDef* key = create_job->mutable_named_job_key();
-    key->set_name(request.job_key().job_name());
-    key->set_index(request.job_key().job_name_index());
-  }
+  create_job->mutable_job_key()->set_name(job_key.name);
+  create_job->mutable_job_key()->set_iteration(job_key.iteration);
   const bool is_coordinated_read = (request.optional_num_consumers_case() ==
                                     GetOrCreateJobRequest::kNumConsumers);
   if (is_coordinated_read) {
@@ -999,12 +989,12 @@ Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceDispatcherImpl::RecordSplitProduced(
-    int64_t job_id, int64_t repetition, int64_t split_provider_index,
+    int64_t job_id, int64_t iteration, int64_t split_provider_index,
     bool finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   Update update;
   ProduceSplitUpdate* produce_split = update.mutable_produce_split();
   produce_split->set_job_id(job_id);
-  produce_split->set_repetition(repetition);
+  produce_split->set_iteration(iteration);
   produce_split->set_split_provider_index(split_provider_index);
   produce_split->set_finished(finished);
   return Apply(update);
@@ -1103,6 +1093,38 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
   return dataset_store_->Get(key, dataset_def);
+}
+
+DispatcherStateExport DataServiceDispatcherImpl::ExportState() const
+    TF_LOCKS_EXCLUDED(mu_) {
+  DispatcherStateExport dispatcher_state_export;
+  *dispatcher_state_export.mutable_dispatcher_config() = config_;
+  mutex_lock l(mu_);
+  if (!started_) {
+    return dispatcher_state_export;
+  }
+
+  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  for (const auto& worker : workers) {
+    dispatcher_state_export.add_worker_addresses(worker->address);
+  }
+
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  for (const auto& job : jobs) {
+    DispatcherStateExport::Job* job_export = dispatcher_state_export.add_jobs();
+    job_export->set_dataset_id(job->dataset_id);
+    job_export->set_job_id(job->job_id);
+    job_export->mutable_job_key()->set_name(job->job_key.name);
+    job_export->mutable_job_key()->set_iteration(job->job_key.iteration);
+    *job_export->mutable_processing_mode() = job->processing_mode;
+    if (job->num_consumers) {
+      job_export->set_num_consumers(*job->num_consumers);
+    }
+    job_export->set_num_clients(job->num_clients);
+    job_export->set_finished(job->finished);
+    job_export->set_garbage_collected(job->garbage_collected);
+  }
+  return dispatcher_state_export;
 }
 
 }  // namespace data

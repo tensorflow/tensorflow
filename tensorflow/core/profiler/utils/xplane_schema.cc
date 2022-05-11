@@ -74,7 +74,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"RunGraph", kRunGraph},
       {"RunGraphDone", kRunGraphDone},
       {"TfOpRun", kTfOpRun},
-      {"EagerKernelExecute", kEagerKernelExecute},
+      {"EagerExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},
       {"MemoryAllocation", kMemoryAllocation},
@@ -89,20 +89,12 @@ const HostEventTypeMap& GetHostEventTypeMap() {
        kTfDataCapturedFunctionRunInstantiated},
       {"InstantiatedCapturedFunction::RunAsync",
        kTfDataCapturedFunctionRunAsync},
-      // Functional ops.
-      {"CallOp", kCallOp},
+      // Loop ops.
       {"ParallelForOp", kParallelForOp},
       {"ForeverOp", kForeverOp},
-      {"NumericalGradientOp-EvalRight", kNumericalGradientOpEvalRight},
-      {"NumericalGradientOp-EvalLeft", kNumericalGradientOpEvalLeft},
-      {"SymbolicGradientOp", kSymbolicGradientOp},
-      {"RemoteCallOp", kRemoteCallOp},
-      {"IfOp", kIfOp},
-      {"CaseOp", kCaseOp},
       {"WhileOp-EvalCond", kWhileOpEvalCond},
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
-      {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -138,6 +130,43 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
+      // TPU related.
+      {"EnqueueRequestLocked", kEnqueueRequestLocked},
+      {"RunProgramRequest", kRunProgramRequest},
+      {"HostCallbackRequest", kHostCallbackRequest},
+      {"TransferH2DRequest", kTransferH2DRequest},
+      {"TransferPreprocessedH2DRequest", kTransferPreprocessedH2DRequest},
+      {"TransferD2HRequest", kTransferD2HRequest},
+      {"OnDeviceSendRequest", kOnDeviceSendRequest},
+      {"OnDeviceRecvRequest", kOnDeviceRecvRequest},
+      {"OnDeviceSendRecvLocalRequest", kOnDeviceSendRecvLocalRequest},
+      {"CustomWait", kCustomWait},
+      {"OnDeviceSendRequestMulti", kOnDeviceSendRequestMulti},
+      {"OnDeviceRecvRequestMulti", kOnDeviceRecvRequestMulti},
+      {"PjrtAsyncWait", kPjrtAsyncWait},
+      {"DoEnqueueProgram", kDoEnqueueProgram},
+      {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
+      {"WriteHbm", kWriteHbm},
+      {"ReadHbm", kReadHbm},
+      {"TpuExecuteOp", kTpuExecuteOp},
+      {"CompleteCallbacks", kCompleteCallbacks},
+      {"TPUPartitionedCallOp-InitializeVarOnTPU",
+       kTpuPartitionedCallOpInitializeVarOnTpu},
+      {"TPUPartitionedCallOp-ExecuteRemote",
+       kTpuPartitionedCallOpExecuteRemote},
+      {"TPUPartitionedCallOp-ExecuteLocal", kTpuPartitionedCallOpExecuteLocal},
+      {"Linearize", kLinearize},
+      {"Delinearize", kDelinearize},
+      {"TransferBufferFromDevice-FastPath", kTransferBufferFromDeviceFastPath},
+      {"tpu::System::TransferToDevice=>IssueEvent",
+       kTransferToDeviceIssueEvent},
+      {"tpu::System::TransferToDevice=>IssueEvent=>Done",
+       kTransferToDeviceDone},
+      {"tpu::System::TransferFromDevice=>IssueEvent",
+       kTransferFromDeviceIssueEvent},
+      {"tpu::System::TransferFromDevice=>IssueEvent=>Done",
+       kTransferFromDeviceDone},
+      {"tpu::System::Execute", kTpuSystemExecute},
   });
   DCHECK_EQ(host_event_type_map->size(), kNumHostEventTypes);
   return *host_event_type_map;
@@ -148,8 +177,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"UnknownStatType", kUnknownStatType},
       // TraceMe arguments.
       {"id", kStepId},
-      {"parent_step_id", kParentStepId},
-      {"function_step_id", kFunctionStepId},
       {"device_ordinal", kDeviceOrdinal},
       {"chip_ordinal", kChipOrdinal},
       {"node_ordinal", kNodeOrdinal},
@@ -203,7 +230,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"group_id", kGroupId},
       {"flow", kFlow},
       {"step_name", kStepName},
-      {"level 0", kLevel0},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
       {"hlo_category", kHloCategory},
@@ -211,11 +237,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
+      {"is_func", kIsFunc},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
-      {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
@@ -325,13 +351,11 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
     case StatType::kKernelDetails:
-    case StatType::kLevel0:
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;

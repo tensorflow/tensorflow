@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -106,7 +106,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     }
     op_state.addAttributes(attrs);
 
-    Operation* tf_op = rewriter.createOperation(op_state);
+    Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
 
     // Special type fixes for TF Resource Tensors that are casted to
@@ -226,12 +226,15 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 };
 
 class LiftTfliteFlexOpsPass
-    : public mlir::PassWrapper<LiftTfliteFlexOpsPass, OperationPass<FuncOp>> {
+    : public mlir::PassWrapper<LiftTfliteFlexOpsPass,
+                               OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LiftTfliteFlexOpsPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-lift-tflite-flex-ops";
   }
@@ -241,7 +244,7 @@ class LiftTfliteFlexOpsPass
 
   void runOnOperation() override {
     MLIRContext* context = &getContext();
-    FuncOp func = getOperation();
+    func::FuncOp func = getOperation();
 
     mlir::RewritePatternSet patterns(context);
     patterns.add<LiftFlexCustomOp>(context);
@@ -254,7 +257,7 @@ class LiftTfliteFlexOpsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLiftTfliteFlexOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass() {
   return std::make_unique<LiftTfliteFlexOpsPass>();
 }
 

@@ -244,7 +244,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "not fusing constant";
   }
 
-  return {};
+  // Make sure the new fusion obeys the in-place semantics.
+  return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
@@ -254,6 +255,33 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
     return false;
   }
 
+  // Allowing multi-output fusions that contain in-place operations makes code
+  // generation more difficult. For the generated loop to iterate over all
+  // outputs in parallel, it must find an iteration order that guarantees that
+  // no loop iteration writes an element of any in-place operand that is read
+  // or written by any other iteration. For example:
+  //
+  //   %fused_computation {
+  //     %param_0 = s32[4,4]{1,0} parameter(0)
+  //     ...
+  //     %updated = s32[4,4]{1,0} dynamic-update-slice(
+  //         %param_0, %add, %constant_1, %constant_0)
+  //     %transpose = s32[4,4]{0,1} transpose(%updated), dimensions={1,0}
+  //     ROOT %tuple.5 = tuple(%transpose, %updated)
+  //   }
+  //
+  // Iterating 'transpose' and 'updated' in parallel by array index is
+  // not valid, because an iteration that produces some element of 'transpose'
+  // will read from an element of 'param_0' that has been overwritten by some
+  // other iteration (writing to 'updated').
+  //
+  // To avoid these problems, we simply ban fusion altogether when the producer
+  // is in-place. (We can relax this restriction by establishing an explicit
+  // contract that describes what multi-output fusion scenarios are supported by
+  // codegen and then changing this check to allow exactly those fusions).
+  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
+    return false;
+  }
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }

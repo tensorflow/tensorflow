@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/rewrite_utils.h"
 
+#include "tensorflow/core/platform/refcount.h"
+
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
 #if !defined(IS_MOBILE_PLATFORM)
@@ -167,7 +169,8 @@ RewriterConfig CreateRewriterConfig(
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool record_fingerprint, DatasetBase** rewritten_input) {
+                      bool record_fingerprint,
+                      core::RefCountPtr<DatasetBase>* rewritten_input) {
   std::vector<std::pair<string, Tensor>> input_list;
   GraphDef graph_def;
   string output_node;
@@ -198,8 +201,11 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
 
   TF_RETURN_IF_ERROR(
       graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
-  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
-  (*rewritten_input)->Ref();
+  DatasetBase* rewritten_dataset;
+  TF_RETURN_IF_ERROR(
+      GetDatasetFromVariantTensor(outputs[0], &rewritten_dataset));
+  rewritten_dataset->Ref();
+  rewritten_input->reset(rewritten_dataset);
 
   if (record_fingerprint) {
     (*ctx->runner())([graph_def = std::move(graph_def),
@@ -328,6 +334,18 @@ StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
   for (const auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
       return node.input(0);
+    }
+  }
+  return errors::NotFound(
+      absl::Substitute("Dataset node for graph is not found:\n$0",
+                       graph_def.ShortDebugString()));
+}
+
+StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
+  TF_ASSIGN_OR_RETURN(std::string dataset_node_name, GetDatasetNode(graph_def));
+  for (const auto& node : graph_def.node()) {
+    if (node.name() == dataset_node_name) {
+      return node;
     }
   }
   return errors::NotFound(

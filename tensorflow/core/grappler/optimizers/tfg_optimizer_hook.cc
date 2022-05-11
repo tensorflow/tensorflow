@@ -15,18 +15,29 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/strings/str_cat.h"
+#include "llvm/Support/ThreadPool.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
-#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -37,79 +48,121 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 
-TfgGrapplerOptimizer::TfgGrapplerOptimizer(const std::string& pass_pipeline)
-    : pass_pipeline_(pass_pipeline) {}
+// The implementation of the TFG optimizer. It holds the MLIR context and the
+// pass manager.
+class TFGGrapplerOptimizer::Impl {
+ public:
+  // Builds the pass pipeline. The context is initialized with threading
+  // disabled. If the user specifies to run the optimizer with more than zero
+  // threads, a threadpool is initialized and passed to the MLIR context.
+  explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
+      : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
+    DialectRegistry registry;
+    // Register the TF op registry interface so that passes can query it.
+    registry.addExtension(+[](MLIRContext* ctx, TFGraphDialect* dialect) {
+      dialect->addInterfaces<TensorFlowOpRegistryInterface>();
+    });
+    ctx_.appendDialectRegistry(registry);
+    builder(mgr_);
+    if (num_tfg_threads) {
+      llvm::ThreadPoolStrategy strategy;
+      strategy.ThreadsRequested = num_tfg_threads;
+      threadpool_ = std::make_unique<llvm::ThreadPool>(strategy);
+      ctx_.setThreadPool(*threadpool_);
+    }
+  }
 
-Status TfgGrapplerOptimizer::Optimize(
+  // Runs the pass manager.
+  LogicalResult RunPipeline(ModuleOp module) { return mgr_.run(module); }
+
+  // Get the context.
+  MLIRContext* GetContext() { return &ctx_; }
+
+  // Convert the pass pipeline to a textual string.
+  std::string GetPipelineString() {
+    std::string pipeline;
+    llvm::raw_string_ostream os(pipeline);
+    mgr_.printAsTextualPipeline(os);
+    return os.str();
+  }
+
+ private:
+  // An optional threadpool for running MLIR with threading. Use an external
+  // threadpool so the number of threads can be controlled.
+  std::unique_ptr<llvm::ThreadPool> threadpool_;
+  // The MLIR context.
+  MLIRContext ctx_;
+  // The pass manager containing the loaded TFG pass pipeline.
+  PassManager mgr_;
+};
+
+TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
+                                           unsigned num_tfg_threads)
+    : impl_(std::make_unique<Impl>(std::move(builder), num_tfg_threads)) {}
+
+TFGGrapplerOptimizer::~TFGGrapplerOptimizer() = default;
+
+std::string TFGGrapplerOptimizer::name() const {
+  return absl::StrCat("tfg_optimizer{", impl_->GetPipelineString(), "}");
+}
+
+Status TFGGrapplerOptimizer::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::GraphDef* optimized_graph) {
-  // The grappler passes operate on a single graph, there is no point in
-  // having MLIR threading. Also creating and destroying thread on every
-  // Grappler invocation has a non-trivial cost.
-  MLIRContext context(MLIRContext::Threading::DISABLED);
-#ifndef NDEBUG
-  if (VLOG_IS_ON(5))
-    fprintf(stderr, "Before Graph: %s\n", item.graph.DebugString().c_str());
-#endif  // NDEBUG
+  VLOG(5) << "TFG Before Graph: \n" << item.graph.DebugString();
 
+  // Import the GraphDef to TFG.
   tensorflow::GraphDebugInfo debug_info;
-
   tensorflow::metrics::ScopedCounter<2> metrics(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {"TfgOptimizer", "convert_graphdef_to_tfg"});
-  auto error_or_module = ImportGraphDefToMlir(&context, debug_info, item.graph);
+  auto error_or_module =
+      ImportGraphDef(impl_->GetContext(), debug_info, item.graph);
   if (!error_or_module.ok()) {
     auto status = error_or_module.status();
-    ::tensorflow::errors::AppendToMessage(
+    tensorflow::errors::AppendToMessage(
         &status, "when importing GraphDef to MLIR module in GrapplerHook");
-#ifndef NDEBUG
-    fprintf(
-        stderr,
-        "Error: %s\n\n=========\n=========\n=========\n=========\n=========\n%s"
-        "=========\n=========\n=========\n=========\n",
-        status.ToString().c_str(), item.graph.DebugString().c_str());
-#endif
+    VLOG(4) << "GraphDef import error: " << status.ToString();
     return status;
   }
   metrics.ReportAndStop();
 
+  // Run the pipeline on the graph.
   ModuleOp module = (*error_or_module).get();
-
-  auto graph_op = dyn_cast<GraphOp>(module.getBody()->front());
-  if (!graph_op)
-    return InvalidArgument("Invariant broken, missing graph op in Module");
-
-  if (!pass_pipeline_.empty()) {
-    // Parse the pipeline and run it on the graph.
-    PassManager pm(&context, GraphOp::getOperationName());
-    std::string error;
-    llvm::raw_string_ostream error_stream(error);
-    if (failed(parsePassPipeline(pass_pipeline_, pm, error_stream)))
-      return InvalidArgument("Invalid pass_pipeline: ", error_stream.str());
-
-    StatusScopedDiagnosticHandler error_handler(&context);
-    if (failed(pm.run(graph_op)))
-      return error_handler.Combine(
-          InvalidArgument("MLIR Graph Optimizer failed: "));
+  StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
+  if (failed(impl_->RunPipeline(module)))
+    return error_handler.Combine(
+        InvalidArgument("MLIR Graph Optimizer failed: "));
+  // While pass execution, it may use emitError to return a failure status, this
+  // will be caught by the error_handler. As a result, even if the pass left
+  // without failure, there may still have some message cached in the handler.
+  tensorflow::Status status = error_handler.ConsumeStatus();
+  if (!status.ok()) {
+    VLOG(4) << "Pass execution leftover diagnostics: " << status.error_message()
+            << "\n These message doesn't imply any failure of the pipeline "
+               "execution. They are cached because certain error diagnostics "
+               "were used to pass the internal execution result. Use warning "
+               "diagnostic when possible if you want to avoid this.";
   }
 
+  // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;
-  *graphdef.mutable_library() = item.graph.library();
   metrics.Reset({"TfgOptimizer", "convert_tfg_to_graphdef"});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::ExportMlirToGraphdef(module, &graphdef),
+      ConvertToGraphDef(module, &graphdef),
       "when exporting MLIR module to GraphDef in GrapplerHook");
+  // Ensure that an empty library is instantiated.
+  (void)graphdef.mutable_library();
   metrics.ReportAndStop();
   *optimized_graph = std::move(graphdef);
-#ifndef NDEBUG
+
   if (VLOG_IS_ON(5)) {
-    fprintf(stderr, "After Graph: %s\nMlir Module:\n",
-            optimized_graph->DebugString().c_str());
+    VLOG(5) << "TFG After Graph: \n"
+            << optimized_graph->DebugString() << "\nMLIR module: \n";
     module.dump();
-    fprintf(stderr, "======\n");
   }
-#endif  // NDEBUG
+
   return Status::OK();
 }
 

@@ -20,10 +20,11 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -120,7 +121,8 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningOpRef<ModuleOp>(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   // Register extra TF ops passed as OpDef.
@@ -149,7 +151,7 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 // on the translated_result using quant_specs and saving the final output in
 // result.
 Status ApplyDynamicRangeQuantizationFromOldQuantizer(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     std::string translated_result, std::string* result) {
   flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
   const uint8_t* buffer =
@@ -171,8 +173,8 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
 
   bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
   if (::tflite::optimize::QuantizeWeights(
-          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme) !=
-      kTfLiteOk) {
+          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
+          ::tflite::optimize::QuantizerType::OLD_QUANTIZER) != kTfLiteOk) {
     return errors::InvalidArgument("Quantize weights transformation failed.");
   }
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
@@ -271,7 +273,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  const mlir::TFL::QuantizationSpecs& quant_specs = pass_config.quant_specs;
+  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;

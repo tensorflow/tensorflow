@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
 
+#include <string>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
+#include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -99,10 +105,101 @@ class TestGmlStLoopPeelingPass
   }
 };
 
+struct LinalgTilingPattern
+    : public OpInterfaceRewritePattern<linalg::LinalgOp> {
+  LinalgTilingPattern(MLIRContext *context, linalg::LinalgTilingOptions options,
+                      linalg::LinalgTransformationFilter f,
+                      PatternBenefit benefit = 1)
+      : OpInterfaceRewritePattern<linalg::LinalgOp>(context, benefit),
+        filter(std::move(f)),
+        options(std::move(options)) {}
+
+  LogicalResult matchAndRewrite(linalg::LinalgOp op,
+                                PatternRewriter &rewriter) const override {
+    if (failed(filter.checkAndNotify(rewriter, op))) return failure();
+
+    FailureOr<linalg::TiledLinalgOp> res =
+        gml_st::tileLinalgOp(rewriter, op, options);
+    if (failed(res)) return failure();
+
+    filter.replaceLinalgTransformationFilter(rewriter, res->op);
+
+    if (res->tensorResults.empty())
+      rewriter.eraseOp(op);
+    else
+      rewriter.replaceOp(op, res->tensorResults);
+
+    return success();
+  }
+
+ private:
+  linalg::LinalgTransformationFilter filter;
+  linalg::LinalgTilingOptions options;
+};
+
+struct TestGmlStLoopTilingPass
+    : public TestGmlStLoopTilingBase<TestGmlStLoopTilingPass> {
+  TestGmlStLoopTilingPass() = default;
+  TestGmlStLoopTilingPass(ArrayRef<int64_t> tileSizes,
+                          ArrayRef<StringRef> distributionTypes) {
+    this->tile_sizes = tileSizes;
+    this->distribution_types = llvm::to_vector<2>(llvm::map_range(
+        distributionTypes, [](StringRef ref) { return ref.str(); }));
+  }
+
+  void runOnOperation() override {
+    func::FuncOp funcOp = getOperation();
+
+    auto distTypes = llvm::to_vector<2>(llvm::map_range(
+        distribution_types, [](std::string &str) { return StringRef(str); }));
+    auto options = linalg::LinalgTilingOptions()
+                       .setTileSizes(tile_sizes)
+                       .setDistributionTypes(distTypes);
+    MLIRContext *ctx = funcOp.getContext();
+    RewritePatternSet patterns(ctx);
+
+    linalg::LinalgTransformationFilter f(ArrayRef<StringAttr>{},
+                                         StringAttr::get(ctx, "tile"));
+    patterns.add<LinalgTilingPattern>(ctx, options, f);
+    (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+
+    funcOp.walk([](linalg::LinalgOp op) {
+      op->removeAttr(linalg::LinalgTransforms::kLinalgTransformMarker);
+    });
+  }
+};
+
+struct TestGmlStBufferizationPass
+    : public TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    linalg::registerBufferizableOpInterfaceExternalModels(registry);
+    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
+  }
+
+  void runOnOperation() override {
+    bufferization::OneShotBufferizationOptions opts;
+    opts.bufferizeFunctionBoundaries = true;
+
+    ModuleOp module = getOperation();
+    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
+      signalPassFailure();
+      return;
+    }
+  }
+};
+
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopPeelingPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass() {
   return std::make_unique<TestGmlStLoopPeelingPass>();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass() {
+  return std::make_unique<TestGmlStLoopTilingPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass() {
+  return std::make_unique<TestGmlStBufferizationPass>();
 }
 
 }  // namespace gml_st

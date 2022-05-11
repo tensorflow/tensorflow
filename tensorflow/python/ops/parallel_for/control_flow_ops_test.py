@@ -2546,7 +2546,7 @@ class CompositeTensorTest(PForTestCase, parameterized.TestCase):
         parallel_iterations=parallel_iterations)
     # Naively batching the component shapes would give `[4, 3]` and `[4, 5, 3]`
     # which have no consistent broadcast shape.
-    self.assertTrue(particles.mass.shape, [4, 1, 3])
+    self.assertEqual(particles.mass.shape, [4, 1, 3])
     self.assertAllEqual(particles.velocity.shape, [4, 5, 3])
 
   def test_vectorized_map_gathers_composite_tensors(self):
@@ -2653,6 +2653,21 @@ class PartitionedCallTest(PForTestCase):
       return outer(array_ops.gather(z, i))
 
     self._test_loop_fn(loop_fn, 4)
+
+  def test_nested_calls_loop_fn_autograph(self):
+    #TODO (@bhack) Do we need to extend the coverage?
+
+    def loop_fn(x):
+      for y in range(array_ops.constant(3)):
+        pass
+      return math_ops.square(x)
+
+    @def_function.function
+    def loop_fn_caller():
+      self._test_loop_fn(loop_fn, 4)
+
+    loop_fn_caller()
+
 
   def test_nested_definition(self):
 

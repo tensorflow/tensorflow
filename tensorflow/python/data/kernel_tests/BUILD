@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
+
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
@@ -69,6 +71,8 @@ tf_py_test(
     size = "small",
     srcs = ["cache_test.py"],
     tags = [
+        "noasan",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notap",  # TODO(b/231479582): re-enable after flakiness resolved.
         "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
     ],
     deps = [
@@ -703,6 +707,9 @@ tf_py_test(
     name = "prefetch_test",
     size = "small",
     srcs = ["prefetch_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231979296)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1073,9 +1080,26 @@ tf_py_test(
     ],
 )
 
+py_strict_test(
+    name = "io_test",
+    srcs = ["io_test.py"],
+    deps = [
+        ":checkpoint_test_base",
+        ":test_base",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "window_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_test.py"],
     shard_count = 2,
     deps = [

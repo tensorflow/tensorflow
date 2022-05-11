@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DivNoNan"
   input_arg {
     name: "x"

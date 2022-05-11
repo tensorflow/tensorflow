@@ -16,8 +16,9 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -104,6 +105,10 @@ def IsSameOrValid : AttrConstraint<
     CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
           "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
     "'SAME' or 'VALID' paddings">;
+
+def TFL_GetMirrorPaddingType : NativeCodeCall<
+    "mlir::TFL::MirrorPaddingTypeAttr::get($_builder.getContext(), " #
+        "GetTFLMirrorPaddingFromString($0));">;
 
 def LegalizeAbs : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
 def LegalizeAddN : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
@@ -195,6 +200,16 @@ def LegalizeRange : Pat<(TF_RangeOp $start, $limit, $delta),
                         (TFL_RangeOp $start, $limit, $delta)>;
 def LegalizeRelu6 : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def LegalizeRelu : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
+// TFL Relu doesn't support I32/I64 type, so legalizes TF Relu to TFL Maximum.
+def LegalizeReluI32 :
+  Pat<(TF_ReluOp TensorOf<[I32]>:$arg),
+      (TFL_MaximumOp $arg,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[]>,"0">))>;
+def LegalizeReluI64 :
+  Pat<(TF_ReluOp TensorOf<[I64]>:$arg),
+      (TFL_MaximumOp $arg,
+        (Arith_ConstantOp
+          ConstantAttr<RankedI64ElementsAttr<[]>,"static_cast<int64_t>(0)">))>;
 def LegalizeReverseSequence : Pat<
   (TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
   (TFL_ReverseSequenceOp $input, $seq_lengths,
@@ -403,8 +418,8 @@ def LegalizeResizeNearestNeighbor : Pat<
   (TFL_ResizeNearestNeighborOp $images, $size, $align_corners,
     $half_pixel_centers)>;
 
-def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst),
-                            (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
+def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $mode),
+                            (TFL_MirrorPadOp $arg0, $arg1, (TFL_GetMirrorPaddingType $mode))>;
 
 def LegalizeSparseToDense : Pat<
   (TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values,
@@ -542,3 +557,7 @@ def LegalizeMultinomial : Pat<
   (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
   (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeXlaDynamicUpdateSlice : Pat<
+  (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
+  (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;

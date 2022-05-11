@@ -38,8 +38,37 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
+# TODO(b/136040013): Drop support for Defun.
 class Defun(object):
-  """Decorator used to define TensorFlow functions.
+  """Obsolete. Slated for deletion. Please use tf.function instead.
+
+  Known feature gaps while migrating to tf.function (could be outdated):
+  - tf.function doesn’t support Send/Recv capability since it doesn’t share
+    rendezvous with the main graph but always creates a new one.
+  - tf.function doesn’t support custom gradient function directly, instead you
+    need to define the function inside a tf.custom_gradient wrapper together
+    with the gradient function.
+  - Unlike Defun, Keras layers used inside a tf.function need to be created only
+    once to avoid variable recreation.
+  - Defun respects the device assignments and applies them to the function body
+    but tf.function needs it to be done manually.
+  - Defun might prune out unused ops automatically but tf.function doesn't.
+
+  Limitations of Defun:
+  - Original source locations are not preserved so errors do not include
+    full/valid stack traces.
+  - Only supports linear sequence of arguments and return values, putting the
+    burden on the caller to pack/unpack everything across a Defun boundary into
+    tuples (as opposed to passing list and dict-like structures directly).
+  - Does not support overloading or late-bound specializations.
+  - Has its own way for defining gradient overrides which does not follow
+    current conventions.
+  - Cannot support imperative control flow or automatic control dependencies.
+  - Does not reflect statefulness in the graph and has a calling convention that
+    differs from how more modern tools interact.
+  - Is only compatible with graph building mode.
+
+  Decorator used to define TensorFlow functions.
 
   Use this decorator to make a Python function usable directly as a TensorFlow
   function.
@@ -316,15 +345,16 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     if self._c_func:
       with c_api_util.tf_buffer() as buf:
-        c_api.TF_FunctionToFunctionDef(self._c_func.func, buf)
-        fdef = function_pb2.FunctionDef()
-        proto_data = c_api.TF_GetBuffer(buf)
-        fdef.ParseFromString(compat.as_bytes(proto_data))
-        with ops.init_scope():
-          if context.executing_eagerly():
-            context.add_function(self._c_func.func)
-            self._function_deleter = _DefinedFunctionDeleter(
-                fdef.signature.name)
+        with self._c_func.get() as func:
+          c_api.TF_FunctionToFunctionDef(func, buf)
+          fdef = function_pb2.FunctionDef()
+          proto_data = c_api.TF_GetBuffer(buf)
+          fdef.ParseFromString(compat.as_bytes(proto_data))
+          with ops.init_scope():
+            if context.executing_eagerly():
+              context.add_function(func)
+              self._function_deleter = _DefinedFunctionDeleter(
+                  fdef.signature.name)
       return fdef
     return self._definition
 
@@ -459,7 +489,7 @@ class _DefinedFunction(object):
           [], # control_output_names
           None,  # opts
           description)
-      self._c_func = c_api_util.ScopedTFFunction(c_func)
+      self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
 
@@ -486,8 +516,9 @@ class _DefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use the same status.
-      c_api.TF_FunctionSetAttrValueProto(self._c_func.func, compat.as_str(name),
-                                         serialized)
+      with self._c_func.get() as func:
+        c_api.TF_FunctionSetAttrValueProto(func, compat.as_str(name),
+                                           serialized)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.
@@ -1122,7 +1153,7 @@ def _from_definition(fdef, grad_func=None):
   # pylint: disable=protected-access
   serialized = fdef.SerializeToString()
   c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-  result._c_func = c_api_util.ScopedTFFunction(c_func)
+  result._c_func = c_api_util.ScopedTFFunction(c_func, func_name)
   result._extra_inputs = []
   result._op_def = fdef.signature
   # pylint: enable=protected-access
@@ -1338,13 +1369,3 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16"
 }
-
-
-def function_def_from_tf_function(c_func):
-  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
-  with c_api_util.tf_buffer() as buf:
-    c_api.TF_FunctionToFunctionDef(c_func, buf)
-    data = c_api.TF_GetBuffer(buf)
-  fdef = function_pb2.FunctionDef()
-  fdef.ParseFromString(compat.as_bytes(data))
-  return fdef

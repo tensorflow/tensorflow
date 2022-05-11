@@ -78,9 +78,6 @@ class DfsHloVisitorWithDefaultBase
   Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
   }
-  Status HandleTupleSelect(HloInstructionPtr tuple_select) override {
-    return DefaultAction(tuple_select);
-  }
   Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }
@@ -228,6 +225,15 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleConditional(HloInstructionPtr conditional) override {
     return DefaultAction(conditional);
+  }
+  Status HandleAsyncStart(HloInstructionPtr async_start) override {
+    return DefaultAction(async_start);
+  }
+  Status HandleAsyncUpdate(HloInstructionPtr async_update) override {
+    return DefaultAction(async_update);
+  }
+  Status HandleAsyncDone(HloInstructionPtr async_done) override {
+    return DefaultAction(async_done);
   }
   Status HandleCopyStart(HloInstructionPtr copy_start) override {
     return DefaultAction(copy_start);

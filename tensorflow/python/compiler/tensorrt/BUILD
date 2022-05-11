@@ -58,15 +58,6 @@ py_library(
 )
 
 py_library(
-    name = "trt_convert_windows",
-    srcs = ["trt_convert_windows.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:util",
-    ],
-)
-
-py_library(
     name = "tf_trt_integration_test_base",
     srcs = ["//tensorflow/python/compiler/tensorrt/test:tf_trt_integration_test_base_srcs"],
     srcs_version = "PY3",
@@ -94,7 +85,6 @@ cuda_py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
-        "no_windows",
         "nomac",
     ],
     xla_enable_strict_auto_jit = False,
@@ -106,6 +96,7 @@ cuda_py_test(
         "//tensorflow/python:graph_util",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",

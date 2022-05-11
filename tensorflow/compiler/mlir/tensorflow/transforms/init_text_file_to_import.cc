@@ -18,7 +18,8 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -140,7 +141,7 @@ class ConvertInitializeTableFromTextFileV2
 void InitTextFileToImportPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
@@ -150,11 +151,10 @@ void InitTextFileToImportPass::runOnOperation() {
 }  // namespace
 
 // Replace InitializeTableFromTextFileV2Ops with LookupTableImportV2Ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateInitTextFileToImportPass(
     std::string saved_model_dir) {
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
-
 
 }  // namespace TF
 }  // namespace mlir

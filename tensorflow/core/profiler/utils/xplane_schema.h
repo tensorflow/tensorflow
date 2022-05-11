@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include <cstdint>
+#include <string>
+
+#include "absl/hash/hash.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -23,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -83,20 +88,12 @@ enum HostEventType {
   kTfDataCapturedFunctionRunWithBorrowedArgs,
   kTfDataCapturedFunctionRunInstantiated,
   kTfDataCapturedFunctionRunAsync,
-  // Functional ops.
-  kCallOp,
+  // Loop ops.
   kParallelForOp,
   kForeverOp,
-  kNumericalGradientOpEvalRight,
-  kNumericalGradientOpEvalLeft,
-  kSymbolicGradientOp,
-  kRemoteCallOp,
-  kIfOp,
-  kCaseOp,
   kWhileOpEvalCond,
   kWhileOpStartBody,
   kForOp,
-  kPartitionedCallOp,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
@@ -131,7 +128,38 @@ enum HostEventType {
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
-  kLastHostEventType = kKernelExecute,
+  // TPU related
+  kEnqueueRequestLocked,
+  kRunProgramRequest,
+  kHostCallbackRequest,
+  kTransferH2DRequest,
+  kTransferPreprocessedH2DRequest,
+  kTransferD2HRequest,
+  kOnDeviceSendRequest,
+  kOnDeviceRecvRequest,
+  kOnDeviceSendRecvLocalRequest,
+  kCustomWait,
+  kOnDeviceSendRequestMulti,
+  kOnDeviceRecvRequestMulti,
+  kPjrtAsyncWait,
+  kDoEnqueueProgram,
+  kDoEnqueueContinuationProgram,
+  kWriteHbm,
+  kReadHbm,
+  kTpuExecuteOp,
+  kCompleteCallbacks,
+  kTransferToDeviceIssueEvent,
+  kTransferToDeviceDone,
+  kTransferFromDeviceIssueEvent,
+  kTransferFromDeviceDone,
+  kTpuSystemExecute,
+  kTpuPartitionedCallOpInitializeVarOnTpu,
+  kTpuPartitionedCallOpExecuteRemote,
+  kTpuPartitionedCallOpExecuteLocal,
+  kLinearize,
+  kDelinearize,
+  kTransferBufferFromDeviceFastPath,
+  kLastHostEventType = kTransferBufferFromDeviceFastPath,
 };
 
 enum StatType {
@@ -139,8 +167,6 @@ enum StatType {
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
-  kParentStepId,
-  kFunctionStepId,
   kDeviceOrdinal,
   kChipOrdinal,
   kNodeOrdinal,
@@ -196,7 +222,6 @@ enum StatType {
   kGroupId,
   kFlow,
   kStepName,
-  kLevel0,
   kTfOp,
   kHloOp,
   kHloCategory,
@@ -204,11 +229,11 @@ enum StatType {
   kProgramId,
   kEquation,
   kIsEager,
+  kIsFunc,
   kTfFunctionCall,
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
-  kSelectedGroupIds,
   kSourceInfo,
   kModelName,
   kModelVersion,
@@ -274,7 +299,7 @@ bool IsInternalStat(absl::optional<int64_t> stat_type);
 
 // Support for flow events:
 // This class enables encoding/decoding the flow id and direction, stored as
-// XStat value.
+// XStat value. The flow id are limited to 56 bits.
 class XFlow {
  public:
   enum FlowDirection {
@@ -284,24 +309,57 @@ class XFlow {
     kFlowInOut = 0x3,
   };
 
-  XFlow(uint64 flow_id, FlowDirection direction)
-      : encoded_((flow_id << 2) | (direction & 0x3)) {
-    DCHECK_NE(Direction(), kFlowUnspecified);
+  XFlow(uint64_t flow_id, FlowDirection direction,
+        ContextType category = ContextType::kGeneric) {
+    DCHECK_NE(direction, kFlowUnspecified);
+    encoded_.parts.direction = direction;
+    encoded_.parts.flow_id = flow_id;
+    encoded_.parts.category = static_cast<uint64_t>(category);
   }
 
   // Encoding
-  uint64 ToStatValue() const { return encoded_; }
+  uint64 ToStatValue() const { return encoded_.whole; }
 
   // Decoding
-  static XFlow FromStatValue(uint64 encoded) { return XFlow(encoded); }
+  static XFlow FromStatValue(uint64_t encoded) { return XFlow(encoded); }
 
-  uint64 Id() const { return (encoded_ >> 2); }
-  FlowDirection Direction() const { return FlowDirection(encoded_ & 0x3); }
+  /* NOTE: absl::HashOf is not consistent across processes (some process level
+   * salt is added), even different executions of the same program.
+   * However we are not tracking cross-host flows, i.e. A single flow's
+   * participating events are from the same XSpace. On the other hand,
+   * events from the same XSpace is always processed in the same profiler
+   * process. Flows from different hosts are unlikely to collide because of
+   * 2^56 hash space. Therefore, we can consider this is good for now. We should
+   * revisit the hash function when cross-hosts flows became more popular.
+   */
+  template <typename... Args>
+  static uint64_t GetFlowId(Args&&... args) {
+    return absl::HashOf(std::forward<Args>(args)...) & kFlowMask;
+  }
+
+  uint64_t Id() const { return encoded_.parts.flow_id; }
+  ContextType Category() const {
+    return GetSafeContextType(encoded_.parts.category);
+  }
+  FlowDirection Direction() const {
+    return FlowDirection(encoded_.parts.direction);
+  }
 
  private:
-  explicit XFlow(uint64 encoded) : encoded_(encoded) {}
+  explicit XFlow(uint64_t encoded) { encoded_.whole = encoded; }
+  static constexpr uint64_t kFlowMask = (1ULL << 56) - 1;
 
-  uint64 encoded_;
+  union {
+    // Encoded representation.
+    uint64_t whole;
+    struct {
+      uint64_t direction : 2;
+      uint64_t flow_id : 56;
+      uint64_t category : 6;
+    } parts;
+  } encoded_ ABSL_ATTRIBUTE_PACKED;
+
+  static_assert(sizeof(encoded_) == sizeof(uint64_t), "Must be 64 bits.");
 };
 
 }  // namespace profiler

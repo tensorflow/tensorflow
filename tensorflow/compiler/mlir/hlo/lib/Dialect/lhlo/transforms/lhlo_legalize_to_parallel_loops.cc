@@ -19,10 +19,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -709,7 +709,7 @@ struct LhloLegalizeToParallelLoopsPass
     : public LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, StandardOpsDialect,
+    registry.insert<arith::ArithmeticDialect, func::FuncDialect,
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
@@ -727,7 +727,7 @@ struct LhloLegalizeToParallelLoopsPass
 
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
+                           memref::MemRefDialect, func::FuncDialect,
                            scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();
@@ -739,7 +739,8 @@ struct LhloLegalizeToParallelLoopsPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeLhloToParallelLoopsPass() {
   return std::make_unique<LhloLegalizeToParallelLoopsPass>();
 }
 

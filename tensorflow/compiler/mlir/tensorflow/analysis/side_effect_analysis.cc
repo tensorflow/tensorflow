@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -263,7 +263,7 @@ class OpSideEffectCollector {
   // populates `op_side_effect_map_`.
   explicit OpSideEffectCollector(ModuleOp module) {
     symbol_table_collection_.getSymbolTable(module);
-    for (auto func : module.getOps<FuncOp>()) {
+    for (auto func : module.getOps<func::FuncOp>()) {
       CollectOpSideEffects(func);
     }
   }
@@ -296,16 +296,16 @@ class OpSideEffectCollector {
     if (!MayHaveSideEffect(op)) return;
     // Skip following ops to avoid that every island, graph and function is
     // classified as unknown side-effecting.
-    if (isa<tf_executor::YieldOp, tf_executor::FetchOp, mlir::ReturnOp>(op))
+    if (isa<tf_executor::YieldOp, tf_executor::FetchOp, mlir::func::ReturnOp>(op))
       return;
 
     // Propagate side effects from regions or functions attached to `op` for
     // some special cases.
-    if (auto func = llvm::dyn_cast<FuncOp>(op)) {
+    if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
       AddRegionSideEffectsForOp(func.getBody(), op);
     } else if (auto call = llvm::dyn_cast<CallOpInterface>(op)) {
-      FuncOp func_op =
-          dyn_cast<FuncOp>(call.resolveCallable(&symbol_table_collection_));
+      func::FuncOp func_op =
+          dyn_cast<func::FuncOp>(call.resolveCallable(&symbol_table_collection_));
       if (func_op) {
         AddRegionSideEffectsForOp(func_op.getBody(), op);
       }
@@ -317,7 +317,7 @@ class OpSideEffectCollector {
     } else if (auto while_region_op = dyn_cast<WhileRegionOp>(op)) {
       AddRegionSideEffectsForOp(while_region_op.body(), op);
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
-      llvm::SmallVector<FuncOp, 4> branch_funcs;
+      llvm::SmallVector<func::FuncOp, 4> branch_funcs;
       case_op.get_branch_functions(branch_funcs);
       for (auto branch_func : branch_funcs) {
         AddRegionSideEffectsForOp(branch_func.getBody(), op);
@@ -469,7 +469,7 @@ void SideEffectAnalysisInfo::UpdateAccess(ResourceId resource_id,
   }
 }
 
-void SideEffectAnalysisInfo::AnalyzeFunction(FuncOp func_op) {
+void SideEffectAnalysisInfo::AnalyzeFunction(func::FuncOp func_op) {
   // AnalyzeRegion() recursively analyzes the function body, and only populates
   // control_predecessors_.
   AnalyzeRegion(&func_op.getBody());
@@ -664,7 +664,7 @@ SideEffectAnalysis::SideEffectAnalysis(ModuleOp module)
   detail::OpSideEffectCollector op_side_effect_collector(module);
 
   // Analyze all functions.
-  for (auto func : module.getOps<FuncOp>())
+  for (auto func : module.getOps<func::FuncOp>())
     this->info_map_.try_emplace(func, func,
                                 op_side_effect_collector,
                                 alias_analysis_.GetAnalysisForFunc(func));

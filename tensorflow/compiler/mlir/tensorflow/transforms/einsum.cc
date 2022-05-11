@@ -35,7 +35,8 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -543,7 +544,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTransformEinsumPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTransformEinsumPass() {
   return std::make_unique<TransformEinsumPass>();
 }
 

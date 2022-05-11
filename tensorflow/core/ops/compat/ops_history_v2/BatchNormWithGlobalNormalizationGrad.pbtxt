@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "BatchNormWithGlobalNormalizationGrad"
   input_arg {
     name: "t"
