@@ -2427,7 +2427,7 @@ class MultipleInheritanceModelTest(keras_parameterized.TestCase):
     self.assertEqual(m.get_foo(), '123')
 
   def testFunctionalSubclassPostMixin(self):
-    # Make sure the mixin class is also init correct when the order changed.
+    # Make sure the the mixin class is also init correct when the order changed.
 
     class MixedFunctionalSubclassModel(FunctionalSubclassModel, MixinClass):
       pass
