@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -75,28 +74,37 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
                                        absl::Span<const int64_t> row_dims,
                                        absl::Span<const int64_t> col_dims) {
   TF_RET_CHECK(shape.has_layout());
+  TF_RET_CHECK(!row_dims.empty());
+  TF_RET_CHECK(!col_dims.empty());
 
-  // Start by classifying each physical dimension as batch, row, or column.
-  // This is O(rank**2), but we expect rank to be small.
   std::vector<int64_t> minor_to_major;
-  minor_to_major.reserve(shape.rank());
-  for (int64_t dim : shape.layout().minor_to_major()) {
-    size_t batch_matches = absl::c_count(batch_dims, dim);
-    size_t row_matches = absl::c_count(row_dims, dim);
-    size_t col_matches = absl::c_count(col_dims, dim);
-    size_t total_matches = batch_matches + row_matches + col_matches;
-    TF_RET_CHECK(total_matches == 1) << "dimensions incomplete or overlapping";
-    minor_to_major.push_back(batch_matches ? 0 : row_matches ? 1 : 2);
+  for (size_t i = 0; i < shape.rank();) {
+    // The GeMM output always has its layout set such that the batch, row, and
+    // col dim groups are each laid out physically sequentially. GeMM operands
+    // must, therefore, be laid out similarly.
+    auto check_physically_sequential = [&](absl::Span<const int64_t> dims) {
+      for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
+        // NOTE: `i` is incremented as we check the dimensions.
+        if (*it != shape.layout().minor_to_major()[i++])
+          return InvalidArgument("dims not physically sequential");
+      }
+      return Status::OK();
+    };
+
+    int64_t dim = shape.layout().minor_to_major()[i];
+    if (dim == row_dims.back()) {
+      minor_to_major.push_back(1);
+      TF_RETURN_IF_ERROR(check_physically_sequential(row_dims));
+    } else if (dim == col_dims.back()) {
+      minor_to_major.push_back(2);
+      TF_RETURN_IF_ERROR(check_physically_sequential(col_dims));
+    } else if (!batch_dims.empty() && (dim == batch_dims.back())) {
+      minor_to_major.push_back(0);
+      TF_RETURN_IF_ERROR(check_physically_sequential(batch_dims));
+    } else {
+      return InvalidArgument("dims not physically sequential");
+    }
   }
-
-  // Remove repeated items (e.g. `[0, 0, 2, 1, 1, 1]` -> `[0, 2, 1]`).
-  minor_to_major.erase(
-      std::unique(minor_to_major.begin(), minor_to_major.end()),
-      minor_to_major.end());
-
-  // In order to "collapse" the shape to 3D, each of the batch, row, and column
-  // dims must be in consecutive physical dimensions.
-  TF_RET_CHECK(minor_to_major.size() == (batch_dims.empty() ? 2 : 3));
 
   if (batch_dims.empty()) minor_to_major.push_back(0);
 
@@ -162,6 +170,42 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
       Shape batch_row_col_shape,
       GetBatchRowColumnShape(shape, batch_dims, row_dims, col_dims));
   return MatrixLayout::For(batch_row_col_shape);
+}
+
+StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
+                                              int64_t operand_idx) {
+  TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
+  TF_RET_CHECK(dot.operand_count() > operand_idx);
+
+  const HloInstruction& transpose = *dot.operand(operand_idx);
+  TF_RET_CHECK(transpose.opcode() == HloOpcode::kTranspose);
+
+  const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
+
+  auto transposed = [&](const auto& dims) {
+    std::vector<int64_t> transposed_dims;
+    transposed_dims.reserve(dims.size());
+    for (int64_t dim : dims) {
+      transposed_dims.push_back(transpose.dimensions(dim));
+    }
+    return transposed_dims;
+  };
+
+  auto batch_dims = (operand_idx == 0) ? dot_dims.lhs_batch_dimensions()
+                                       : dot_dims.rhs_batch_dimensions();
+  auto contracting_dims = (operand_idx == 0)
+                              ? dot_dims.lhs_contracting_dimensions()
+                              : dot_dims.rhs_contracting_dimensions();
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> non_contracting_dims,
+      GetNonContractingDims(transpose.shape(), batch_dims, contracting_dims));
+
+  // If we're able to construct a valid `MatrixLayout` for the transposed
+  // dimensions, then GeMM can support folding the transpose.
+  return MatrixLayout::For(transpose.operand(0)->shape(),
+                           transposed(batch_dims), transposed(contracting_dims),
+                           transposed(non_contracting_dims))
+      .ok();
 }
 
 namespace {
@@ -321,26 +365,24 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
 
 se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
                                          se::DeviceMemoryBase data) {
-  // TODO(cjfj): Add support for batch not in most major physical dimension.
-  CHECK((layout.batch_stride == 0) ||
-        (layout.batch_stride == layout.num_rows * layout.num_cols));
   bool transpose = layout.order != MatrixLayout::Order::kColumnMajor;
   return {
       data,
+      layout.leading_dim_stride,
+      layout.batch_stride,
       transpose ? se::blas::Transpose::kTranspose
                 : se::blas::Transpose::kNoTranspose,
-      transpose ? layout.num_cols : layout.num_rows,
-      transpose ? layout.num_rows : layout.num_cols,
-      layout.batch_stride,
   };
 }
 
-void MakeBlasGemmCompatible(se::blas::MatrixDescriptor& lhs,
+void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
+                            se::blas::MatrixDescriptor& lhs,
                             se::blas::MatrixDescriptor& rhs,
                             se::blas::MatrixDescriptor& output) {
   // BLAS GeMM doesn't support transposed output, but we can use the identity:
   // C^T = (A @ B)^T = B^T @ A^T.
   if (output.transpose == se::blas::Transpose::kTranspose) {
+    std::swap(m, n);
     std::swap(lhs, rhs);
     TransposeMatrixDesc(lhs);
     TransposeMatrixDesc(rhs);

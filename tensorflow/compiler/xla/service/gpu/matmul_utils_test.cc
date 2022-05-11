@@ -65,18 +65,25 @@ INSTANTIATE_TEST_SUITE_P(
         {"f32[3,4]{1,0}", {}, {1}, {0}, "f32[1,4,3]{1,2,0}"},
         {"f32[3,4,5]{2,1,0}", {0}, {1}, {2}, "f32[3,4,5]{2,1,0}"},
         {"f32[3,4,5]{2,1,0}", {2}, {1}, {0}, "f32[5,4,3]{0,1,2}"},
-        {"f32[3,4,5,6,7,8]{2,5,1,4,0,3}",
+        {"f32[3,4,5,6,7,8]{5,2,4,1,3,0}",
          {0, 3},
          {1, 4},
          {2, 5},
          "f32[18,28,40]{2,1,0}"},
     }));
 
-TEST(GetBatchRowColumnShapeTest, InvalidPhysicalLayout) {
+TEST(GetBatchRowColumnShapeTest, BatchRowsColsInterleaved) {
   Shape shape = ParseShape("f32[3,4,5,6,7,8]{5,4,3,2,1,0}").ValueOrDie();
   auto result =
       GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 3},
                              /*row_dims=*/{1, 4}, /*col_dims=*/{2, 5});
+  EXPECT_FALSE(result.ok());
+}
+
+TEST(GetBatchRowColumnShapeTest, WrongPhysicalOrder) {
+  Shape shape = ParseShape("f32[3,4,5,6]{3,2,0,1}").ValueOrDie();
+  auto result = GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 1},
+                                       /*row_dims=*/{2}, /*col_dims=*/{3});
   EXPECT_FALSE(result.ok());
 }
 

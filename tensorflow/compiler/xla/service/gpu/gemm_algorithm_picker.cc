@@ -133,6 +133,9 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
                       get_initialized_buffer(instr));
 
+  int64_t m = config.output_layout.num_rows;
+  int64_t n = config.output_layout.num_cols;
+  int64_t k = config.lhs_layout.num_cols;
   se::blas::MatrixDescriptor lhs = GetMatrixDesc(config.lhs_layout, lhs_buffer);
   se::blas::MatrixDescriptor rhs = GetMatrixDesc(config.rhs_layout, rhs_buffer);
   se::blas::MatrixDescriptor output =
@@ -140,7 +143,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   int64_t batch_size = config.output_layout.batch_size;
 
   // TODO(cjfj): Support transposed output when using cuBLASLt.
-  MakeBlasGemmCompatible(lhs, rhs, output);
+  MakeBlasGemmCompatible(m, n, lhs, rhs, output);
 
   TF_ASSIGN_OR_RETURN(
       tensorflow::DataType dtype,
@@ -149,11 +152,6 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   int device_id = stream->parent()->device_ordinal();
   bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
   bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
-
-  int64_t m = output.num_rows;
-  int64_t n = output.num_cols;
-  int64_t k = lhs.reduced_dim();
-
   bool broadcast = batch_size == 1;
 
   VLOG(4) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
@@ -169,8 +167,8 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
 
   TF_ASSIGN_OR_RETURN(
       const se::blas::PlanAndAlgorithms* plan_and_algorithms,
-      se::GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, dtype,
-                               lhs, rhs, output));
+      se::GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, m, n, k,
+                               dtype, lhs, rhs, output));
 
   const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
       algorithms = plan_and_algorithms->algorithms;
