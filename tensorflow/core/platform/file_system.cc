@@ -319,19 +319,19 @@ std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
     }
 
     // Safe to do this arithmetic here, we are in case 2 above
-    return std::make_pair(StringPiece(uri.begin(), host.end() - uri.begin()),
+    return std::make_pair(StringPiece(uri.data(), host.end() - uri.begin()),
                           path);
   }
 
   // Handle the case with a single leading '/' in 'path'.
   if (pos == 0) {
     return std::make_pair(
-        StringPiece(uri.begin(), path.begin() + 1 - uri.begin()),
+        StringPiece(uri.data(), path.begin() + 1 - uri.begin()),
         StringPiece(path.data() + 1, path.size() - 1));
   }
 
   return std::make_pair(
-      StringPiece(uri.begin(), path.begin() + pos - uri.begin()),
+      StringPiece(uri.data(), path.begin() + pos - uri.begin()),
       StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
 }
 
@@ -452,8 +452,8 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
            .OneLiteral("://")
            .GetResult(&remaining, scheme)) {
     // If there's no scheme, assume the entire string is a path.
-    *scheme = StringPiece(remaining.begin(), 0);
-    *host = StringPiece(remaining.begin(), 0);
+    *scheme = StringPiece();
+    *host = StringPiece();
     *path = remaining;
     return;
   }
@@ -462,7 +462,7 @@ void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
   if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
     // No path, so the rest of the URI is the host.
     *host = remaining;
-    *path = StringPiece(remaining.end(), 0);
+    *path = StringPiece();
     return;
   }
 
