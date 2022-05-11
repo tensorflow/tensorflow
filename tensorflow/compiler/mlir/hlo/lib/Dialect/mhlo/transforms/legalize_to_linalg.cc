@@ -2930,55 +2930,28 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
         rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
     SmallVector<AffineMap, 3> indexing_maps;
 
-    // Get LHS map
-    {
-      llvm::SmallVector<AffineExpr> lhs_indices(
-          lhs_rank, rewriter.getAffineConstantExpr(0));
-      llvm::BitVector assigned_dims(lhs_rank, false);
-      for (const auto& i : llvm::enumerate(lhs_batching_dims)) {
-        lhs_indices[i.value()] = rewriter.getAffineDimExpr(i.index());
-        assigned_dims.set(i.value());
+    auto get_map = [&](int64_t rank, ArrayRef<int64_t> batching_dims,
+                       ArrayRef<int64_t> contracting_dims, size_t extra_dims) {
+      llvm::SmallVector<AffineExpr> indices(rank);
+      for (const auto& i : llvm::enumerate(batching_dims)) {
+        indices[i.value()] = rewriter.getAffineDimExpr(i.index());
       }
-      for (const auto& i : llvm::enumerate(lhs_contracting_dims)) {
-        assigned_dims.set(i.value());
-        lhs_indices[i.value()] =
-            rewriter.getAffineDimExpr(i.index() + target_rank);
+      for (const auto& i : llvm::enumerate(contracting_dims)) {
+        indices[i.value()] = rewriter.getAffineDimExpr(i.index() + target_rank);
       }
-      for (int i = 0; i < lhs_rank; ++i) {
-        if (!assigned_dims[i]) {
-          lhs_indices[i] =
-              rewriter.getAffineDimExpr(i + lhs_batching_dims.size());
+      for (int i = 0; i < rank; ++i) {
+        if (!indices[i]) {
+          indices[i] = rewriter.getAffineDimExpr(extra_dims++);
         }
       }
       indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
-                                             /*symbolCount=*/0, lhs_indices,
+                                             /*symbolCount=*/0, indices,
                                              op->getContext()));
-    }
-
-    // Get RHS map
-    {
-      llvm::SmallVector<AffineExpr> rhs_indices(
-          rhs_rank, rewriter.getAffineConstantExpr(0));
-      llvm::BitVector assigned_dims(rhs_rank, false);
-      for (const auto& i : llvm::enumerate(rhs_batching_dims)) {
-        rhs_indices[i.value()] = rewriter.getAffineDimExpr(i.index());
-        assigned_dims.set(i.value());
-      }
-      for (const auto& i : llvm::enumerate(rhs_contracting_dims)) {
-        assigned_dims.set(i.value());
-        rhs_indices[i.value()] =
-            rewriter.getAffineDimExpr(i.index() + target_rank);
-      }
-      for (int i = 0; i < rhs_rank; ++i) {
-        if (!assigned_dims[i]) {
-          rhs_indices[i] = rewriter.getAffineDimExpr(
-              i + rhs_batching_dims.size() + lhs_extra_dims);
-        }
-      }
-      indexing_maps.push_back(AffineMap::get(/*dimCount=*/total_loop_count,
-                                             /*symbolCount=*/0, rhs_indices,
-                                             op->getContext()));
-    }
+    };
+    get_map(lhs_rank, lhs_batching_dims, lhs_contracting_dims,
+            lhs_batching_dims.size());
+    get_map(rhs_rank, rhs_batching_dims, rhs_contracting_dims,
+            rhs_batching_dims.size() + lhs_extra_dims);
 
     {
       SmallVector<AffineExpr, 4> dim_exprs;

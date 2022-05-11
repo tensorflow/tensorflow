@@ -4459,3 +4459,30 @@ func.func @dot_general_unsigned(%arg0: tensor<?x?x?xui32>,
 // CHECK: linalg.generic
 // CHECK-SAME: ins({{.*}} : tensor<?x?x?xi32>, tensor<?x?x?xi32>)
 // CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
+
+// -----
+
+func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
+             %arg1: tensor<3x4x3x2xi32>) -> tensor<3x4x4x3xi32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [3]>,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<3x4x2x4xi32>, tensor<3x4x3x2xi32>) -> tensor<3x4x4x3xi32>
+  return %0 : tensor<3x4x4x3xi32>
+}
+
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d4, d2)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4)>
+// CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @dot_general_multiple_batch_dimensions(
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel", "reduction"]}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<3x4x2x4xi32>, tensor<3x4x3x2xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<3x4x4x3xi32>)
+// CHECK-SAME: {someattr}
