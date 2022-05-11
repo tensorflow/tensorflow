@@ -40,10 +40,9 @@ TEST(PrimitiveTypesTest, LiteralIntType) {
   EXPECT_TRUE(int_1.is_subtype_of(*int_1_copy));
   EXPECT_FALSE(int_1.is_subtype_of(int_2));
 
-  std::unique_ptr<TraceType> result =
-      int_1.most_specific_common_supertype({&int_1});
+  std::unique_ptr<TraceType> result = int_1.join({&int_1});
   EXPECT_EQ(*result, int_1);
-  EXPECT_EQ(int_1.most_specific_common_supertype({&int_2}), nullptr);
+  EXPECT_EQ(int_1.join({&int_2}), nullptr);
 }
 
 TEST(PrimitiveTypesTest, LiteralBoolType) {
@@ -62,10 +61,9 @@ TEST(PrimitiveTypesTest, LiteralBoolType) {
   EXPECT_TRUE(bool_1.is_subtype_of(*bool_1_copy));
   EXPECT_FALSE(bool_1.is_subtype_of(bool_2));
 
-  std::unique_ptr<TraceType> result =
-      bool_1.most_specific_common_supertype({&bool_1});
+  std::unique_ptr<TraceType> result = bool_1.join({&bool_1});
   EXPECT_EQ(*result, bool_1);
-  EXPECT_EQ(bool_1.most_specific_common_supertype({&bool_2}), nullptr);
+  EXPECT_EQ(bool_1.join({&bool_2}), nullptr);
 }
 
 TEST(PrimitiveTypesTest, LiteralStringType) {
@@ -84,10 +82,9 @@ TEST(PrimitiveTypesTest, LiteralStringType) {
   EXPECT_TRUE(string_1.is_subtype_of(*string_1_copy));
   EXPECT_FALSE(string_1.is_subtype_of(string_2));
 
-  std::unique_ptr<TraceType> result =
-      string_1.most_specific_common_supertype({&string_1});
+  std::unique_ptr<TraceType> result = string_1.join({&string_1});
   EXPECT_EQ(*result, string_1);
-  EXPECT_EQ(string_1.most_specific_common_supertype({&string_2}), nullptr);
+  EXPECT_EQ(string_1.join({&string_2}), nullptr);
 }
 
 TEST(PrimitiveTypesTest, NoneType) {
@@ -105,10 +102,9 @@ TEST(PrimitiveTypesTest, NoneType) {
   EXPECT_TRUE(none_1.is_subtype_of(*none_1_copy));
   EXPECT_FALSE(none_1.is_subtype_of(string));
 
-  std::unique_ptr<TraceType> result =
-      none_1.most_specific_common_supertype({&none_1});
+  std::unique_ptr<TraceType> result = none_1.join({&none_1});
   EXPECT_EQ(*result, none_1);
-  EXPECT_EQ(none_1.most_specific_common_supertype({&string}), nullptr);
+  EXPECT_EQ(none_1.join({&string}), nullptr);
 }
 
 TEST(PrimitiveTypesTest, Any) {
@@ -128,13 +124,10 @@ TEST(PrimitiveTypesTest, Any) {
   EXPECT_TRUE(any_1.is_subtype_of(any_2));
   EXPECT_FALSE(any_2.is_subtype_of(any_1));
 
-  std::unique_ptr<TraceType> result_1 =
-      any_1.most_specific_common_supertype({&any_1});
+  std::unique_ptr<TraceType> result_1 = any_1.join({&any_1});
   EXPECT_EQ(*result_1, any_1);
-  EXPECT_EQ(any_1.most_specific_common_supertype({any_1.base().value()}),
-            nullptr);
-  std::unique_ptr<TraceType> result_2(
-      any_1.most_specific_common_supertype({&any_2}));
+  EXPECT_EQ(any_1.join({any_1.base().value()}), nullptr);
+  std::unique_ptr<TraceType> result_2(any_1.join({&any_2}));
   EXPECT_EQ(*result_2, any_2);
 }
 
@@ -165,10 +158,9 @@ TEST(PrimitiveTypesTest, ProductOfLiterals) {
   EXPECT_TRUE(product_1.is_subtype_of(*product_1_copy));
   EXPECT_FALSE(product_1.is_subtype_of(product_2));
 
-  std::unique_ptr<TraceType> result =
-      product_1.most_specific_common_supertype({&product_1});
+  std::unique_ptr<TraceType> result = product_1.join({&product_1});
   EXPECT_EQ(*result, product_1);
-  EXPECT_EQ(product_1.most_specific_common_supertype({&product_2}), nullptr);
+  EXPECT_EQ(product_1.join({&product_2}), nullptr);
 }
 
 TEST(PrimitiveTypesTest, ProductOfAny) {
@@ -199,8 +191,8 @@ TEST(PrimitiveTypesTest, ProductOfAny) {
   EXPECT_TRUE(product_1.is_subtype_of(product_2));
   EXPECT_FALSE(product_2.is_subtype_of(product_1));
 
-  EXPECT_EQ(*product_1.most_specific_common_supertype({&product_1}), product_1);
-  EXPECT_EQ(*product_1.most_specific_common_supertype({&product_2}), product_2);
+  EXPECT_EQ(*product_1.join({&product_1}), product_1);
+  EXPECT_EQ(*product_1.join({&product_2}), product_2);
 }
 
 TEST(PrimitiveTypesTest, RecordTypeLiterals) {
@@ -230,10 +222,9 @@ TEST(PrimitiveTypesTest, RecordTypeLiterals) {
   EXPECT_TRUE(record_1.is_subtype_of(*record_1_copy));
   EXPECT_FALSE(record_1.is_subtype_of(record_2));
 
-  std::unique_ptr<TraceType> result =
-      record_1.most_specific_common_supertype({&record_1});
+  std::unique_ptr<TraceType> result = record_1.join({&record_1});
   EXPECT_EQ(*result, record_1);
-  EXPECT_EQ(record_1.most_specific_common_supertype({&record_2}), nullptr);
+  EXPECT_EQ(record_1.join({&record_2}), nullptr);
 }
 
 TEST(PrimitiveTypesTest, RecordTypeAnys) {
@@ -264,8 +255,8 @@ TEST(PrimitiveTypesTest, RecordTypeAnys) {
   EXPECT_FALSE(record_1.is_subtype_of(record_2));
   EXPECT_FALSE(record_2.is_subtype_of(record_1));
 
-  EXPECT_EQ(*record_1.most_specific_common_supertype({&record_1}), record_1);
-  EXPECT_EQ(*record_2.most_specific_common_supertype({&record_2}), record_2);
+  EXPECT_EQ(*record_1.join({&record_1}), record_1);
+  EXPECT_EQ(*record_2.join({&record_2}), record_2);
 
   std::vector<std::unique_ptr<TraceType>> keys_3;
   std::vector<std::unique_ptr<TraceType>> values_3;
@@ -273,7 +264,7 @@ TEST(PrimitiveTypesTest, RecordTypeAnys) {
   values_3.push_back(std::make_unique<Any>(absl::nullopt));
   Record supertype = Record(std::move(keys_3), std::move(values_3));
 
-  EXPECT_EQ(*record_1.most_specific_common_supertype({&record_2}), supertype);
+  EXPECT_EQ(*record_1.join({&record_2}), supertype);
 }
 
 TEST(PrimitiveTypesTest, UserDefinedType) {
@@ -295,8 +286,8 @@ TEST(PrimitiveTypesTest, UserDefinedType) {
   EXPECT_FALSE(def_1.is_subtype_of(def_2));
   EXPECT_FALSE(def_2.is_subtype_of(def_1));
 
-  EXPECT_EQ(*def_1.most_specific_common_supertype({&def_1}), def_1);
-  EXPECT_EQ(def_1.most_specific_common_supertype({&def_2}), nullptr);
+  EXPECT_EQ(*def_1.join({&def_1}), def_1);
+  EXPECT_EQ(def_1.join({&def_2}), nullptr);
 }
 
 }  // namespace trace_type

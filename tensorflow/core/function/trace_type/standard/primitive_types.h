@@ -32,7 +32,7 @@ class None : public TraceType {
   std::unique_ptr<TraceType> clone() const override;
 
   bool is_subtype_of(const TraceType& other) const override;
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override;
 
   std::string to_string() const override;
@@ -51,7 +51,7 @@ class Any : public TraceType {
   absl::optional<const TraceType*> base() const;
 
   bool is_subtype_of(const TraceType& other) const override;
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override;
 
   std::string to_string() const override;
@@ -79,7 +79,7 @@ class Literal : public TraceType {
     return *this == other;
   }
 
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override {
     for (const auto& other : others) {
       if (*this != *other) return nullptr;
@@ -126,7 +126,7 @@ class Product : public TraceType {
   const std::vector<const TraceType*> elements() const;
 
   bool is_subtype_of(const TraceType& other) const override;
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override;
 
   std::string to_string() const override;
@@ -166,7 +166,7 @@ class Record : public TraceType {
   const RecordMap& fields() const;
 
   bool is_subtype_of(const TraceType& other) const override;
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override;
 
   std::string to_string() const override;
@@ -191,7 +191,7 @@ class UserDefinedType : public TraceType {
   const TraceType* base() const;
 
   bool is_subtype_of(const TraceType& other) const override;
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override;
 
   std::string to_string() const override;

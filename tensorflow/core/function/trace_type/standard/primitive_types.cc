@@ -42,7 +42,7 @@ bool None::is_subtype_of(const TraceType& other) const {
   return *this == other;
 }
 
-std::unique_ptr<TraceType> None::most_specific_common_supertype(
+std::unique_ptr<TraceType> None::join(
     const std::vector<const TraceType*>& others) const {
   for (const auto& other : others) {
     if (*this != *other) return nullptr;
@@ -96,7 +96,7 @@ bool Any::is_subtype_of(const TraceType& other) const {
   return base_.value()->is_subtype_of(*casted_other->base().value());
 }
 
-std::unique_ptr<TraceType> Any::most_specific_common_supertype(
+std::unique_ptr<TraceType> Any::join(
     const std::vector<const TraceType*>& others) const {
   std::vector<const Any*> casted_others;
   for (const auto& other : others) {
@@ -119,8 +119,7 @@ std::unique_ptr<TraceType> Any::most_specific_common_supertype(
     raw_ptrs.push_back(casted_other->base().value());
   }
 
-  std::unique_ptr<TraceType> result(
-      base_.value()->most_specific_common_supertype(raw_ptrs));
+  std::unique_ptr<TraceType> result(base_.value()->join(raw_ptrs));
 
   if (result == nullptr) {
     return std::unique_ptr<TraceType>(new Any(absl::nullopt));
@@ -185,7 +184,7 @@ bool Product::is_subtype_of(const TraceType& other) const {
                        const TraceType* r) { return l->is_subtype_of(*r); });
 }
 
-std::unique_ptr<TraceType> Product::most_specific_common_supertype(
+std::unique_ptr<TraceType> Product::join(
     const std::vector<const TraceType*>& others) const {
   std::vector<const Product*> collection_others;
   for (const auto& other : others) {
@@ -205,8 +204,7 @@ std::unique_ptr<TraceType> Product::most_specific_common_supertype(
     for (const auto& collection_other : collection_others) {
       raw_ptrs.push_back(collection_other->elements()[i]);
     }
-    std::unique_ptr<TraceType> supertype =
-        elements_[i]->most_specific_common_supertype(raw_ptrs);
+    std::unique_ptr<TraceType> supertype = elements_[i]->join(raw_ptrs);
     if (supertype == nullptr) return nullptr;
     element_supertypes.push_back(std::move(supertype));
   }
@@ -301,7 +299,7 @@ bool Record::is_subtype_of(const TraceType& other) const {
   return true;
 }
 
-std::unique_ptr<TraceType> Record::most_specific_common_supertype(
+std::unique_ptr<TraceType> Record::join(
     const std::vector<const TraceType*>& others) const {
   std::vector<const Record*> record_others;
   for (const auto& other : others) {
@@ -330,8 +328,7 @@ std::unique_ptr<TraceType> Record::most_specific_common_supertype(
         return nullptr;
       }
     }
-    std::unique_ptr<TraceType> supertype =
-        value->most_specific_common_supertype(raw_ptrs);
+    std::unique_ptr<TraceType> supertype = value->join(raw_ptrs);
     if (supertype == nullptr) return nullptr;
     value_supertypes.push_back(std::move(supertype));
   }
@@ -410,7 +407,7 @@ bool UserDefinedType::is_subtype_of(const TraceType& other) const {
   return base_->is_subtype_of(*casted_other->base());
 }
 
-std::unique_ptr<TraceType> UserDefinedType::most_specific_common_supertype(
+std::unique_ptr<TraceType> UserDefinedType::join(
     const std::vector<const TraceType*>& others) const {
   std::vector<const TraceType*> base_others;
   for (const auto& other : others) {
@@ -422,8 +419,7 @@ std::unique_ptr<TraceType> UserDefinedType::most_specific_common_supertype(
     base_others.push_back(casted_other->base());
   }
 
-  std::unique_ptr<TraceType> result(
-      base_->most_specific_common_supertype(base_others));
+  std::unique_ptr<TraceType> result(base_->join(base_others));
 
   if (result == nullptr) {
     return nullptr;
