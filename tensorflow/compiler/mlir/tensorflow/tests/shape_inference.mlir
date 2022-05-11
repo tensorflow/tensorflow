@@ -1658,6 +1658,27 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0, %2 : tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>
   }
 
+  // CHECK-LABEL: infer_output_type_for_restore_with_cast
+  func.func @infer_output_type_for_restore_with_cast(%arg0: tensor<!tf_type.string>) -> (tensor<!tf_type.resource<tensor<192x2680xbf16>>>, tensor<!tf_type.resource<tensor<128xbf16>>>) {
+    %cst = arith.constant dense<"client/1"> : tensor<1x!tf_type.string>
+    %cst_0 = arith.constant dense<"train/0"> : tensor<1x!tf_type.string>
+    %cst_1 = arith.constant dense<""> : tensor<1x!tf_type.string>
+    %0 = "tf.VarHandleOp"() {container = "", shared_name = "foo"} : () -> tensor<!tf_type.resource<tensor<192x2680xbf16>>>
+    // CHECK: "tf.RestoreV2"({{.*}}) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<192x2680xf32>
+    %1 = "tf.RestoreV2"(%arg0, %cst, %cst_1) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<*xf32>
+    // CHECK: "tf.Cast"({{.*}}) : (tensor<192x2680xf32>) -> tensor<192x2680xbf16>
+    %2 = "tf.Cast"(%1) : (tensor<*xf32>) -> tensor<*xbf16>
+    "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource<tensor<192x2680xbf16>>>, tensor<*xbf16>) -> ()
+    %3 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<128xbf16>>>
+    // CHECK: "tf.Restore"({{.*}}) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<128xf32>
+    %4 = "tf.Restore"(%arg0, %cst_0) {device = ""} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<*xf32>
+    %5 = "tf.Identity"(%4) : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK: "tf.Cast"({{.*}}) : (tensor<128xf32>) -> tensor<128xbf16>
+    %6 = "tf.Cast"(%5) : (tensor<*xf32>) -> tensor<*xbf16>
+    "tf.AssignVariableOp"(%3, %6) : (tensor<!tf_type.resource<tensor<128xbf16>>>, tensor<*xbf16>) -> ()
+    func.return %0, %3 : tensor<!tf_type.resource<tensor<192x2680xbf16>>>, tensor<!tf_type.resource<tensor<128xbf16>>>
+  }
+
   // CHECK-LABEL: infer_var_handle_op_from_assign
   func.func @infer_var_handle_op_from_assigns() -> tensor<1xi8> {
     %cst = arith.constant dense<1> : tensor<1xi8>

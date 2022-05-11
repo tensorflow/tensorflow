@@ -1004,8 +1004,20 @@ bool ShapeInference::InferShapeForRestore(Operation* op) {
   if (op->getNumResults() != 1) return false;
   if (!CanBeRefined(op->getResult(0).getType())) return false;
 
+  llvm::SmallVector<mlir::Operation*> worklist;
+  llvm::append_range(worklist, op->getUsers());
+
   // Look for any `AssignVariableOp` that uses the result of this op.
-  for (auto use : op->getUsers()) {
+  while (!worklist.empty()) {
+    mlir::Operation* const use = worklist.pop_back_val();
+
+    // Follow the `CastOp`/`IdentityOp`'s users to handle the `RestoreV2` ->
+    // (optionally `IdentityOp`) -> `CastOp` `AssignVariableOp` case.
+    if (llvm::isa<TF::CastOp, TF::IdentityOp>(use)) {
+      llvm::append_range(worklist, use->getUsers());
+      continue;
+    }
+
     TF::AssignVariableOp assign_op = llvm::dyn_cast<TF::AssignVariableOp>(use);
     if (!assign_op) {
       continue;
@@ -1016,11 +1028,18 @@ bool ShapeInference::InferShapeForRestore(Operation* op) {
     if (subtypes.empty()) {
       continue;
     }
+    auto subtype = subtypes.front().dyn_cast<ShapedType>();
+    if (subtype == nullptr) {
+      continue;
+    }
+    // Preserve the dtype from the restore op even if `AssignVariableOp` uses a
+    // different dtype, which is possible when there's a `CastOp` between them.
+    subtype = subtype.clone(
+        op->getResult(0).getType().cast<ShapedType>().getElementType());
     // Update the result type of this op with the resource's type. We only use
     // the resource subtype of the first user since shapes from all the users
     // should be equal or compatible.
-    return UpdateTypeAndInsertIncompatibleUseCasts(subtypes.front(),
-                                                   op->getResult(0));
+    return UpdateTypeAndInsertIncompatibleUseCasts(subtype, op->getResult(0));
   }
   return false;
 }
