@@ -14,6 +14,7 @@ Pod::Spec.new do |s|
   acceleration.
                        DESC
 
+  s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
   s.ios.deployment_target = '11.0'
 
   s.module_name = 'TFLTensorFlowLite'
@@ -27,12 +28,12 @@ Pod::Spec.new do |s|
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
     # TODO: Remove this after adding support for arm64 simulator.
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   # TODO: Remove this after adding support for arm64 simulator.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   s.default_subspec = 'Core'
