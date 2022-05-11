@@ -107,7 +107,6 @@ class TwoEnginesOneVarTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     # Variables are only supported in dynamic shape mode.
-    # TODO: dynamic engine / static engine?
     return (run_params.dynamic_shape and
             run_params.is_v2, "test v2 dynamic shape")
 
@@ -163,7 +162,6 @@ class BiasAddTwoConstInputsTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     # Variables are only supported in dynamic shape mode.
-    # TODO: dynamic engine / static engine?
     return (run_params.dynamic_shape and
             run_params.is_v2, "test v2 dynamic shape")
 
@@ -219,7 +217,6 @@ class BatchMatMulTwoConstInputsTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     # Variables are only supported in dynamic shape mode.
-    # TODO: dynamic engine / static engine?
     return (run_params.dynamic_shape and
             run_params.is_v2, "test v2 dynamic shape")
 
@@ -278,7 +275,6 @@ class EngineWithoutInputsTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     # Variables are only supported in dynamic shape mode.
-    # TODO: dynamic engine / static engine?
     return (run_params.dynamic_shape and
             run_params.is_v2, "test v2 dynamic shape")
 
@@ -294,6 +290,60 @@ class EngineWithoutInputsTest(trt_test.TfTrtIntegrationTestBase):
     # Note: The engine with c1, c2, add1, mul, relu is discarded.
     return {
         "TRTEngineOp_000": ["add2"],
+    }
+
+
+class ResourceGatherModel(module.Module):
+  """Model with a ResourceGather node.
+  """
+
+  def __init__(self):
+    self.v1 = None
+
+  @def_function.function
+  def __call__(self, input_0):
+    if self.v1 is None:
+        self.v1 = variables.Variable(
+            np.reshape(np.r_[:64].astype(np.float32), (16, 4)),
+            name="v1")
+    lookup = array_ops.gather(self.v1, input_0, name="lookup")
+    c1 = constant_op.constant(np.reshape(
+        np.r_[:20].astype(np.float32), (5, 4)), name="c1")
+    add = math_ops.add(lookup, c1, name="add")
+    relu = nn.relu(add, "relu")
+    return array_ops.squeeze(relu, name="output_0")
+
+
+@run_all_without_freezing()
+class ResourceGatherTest(trt_test.TfTrtIntegrationTestBase):
+  def _MakeSavedModelV2(self, run_params):
+    my_model = ResourceGatherModel()
+    cfunc = my_model.__call__.get_concrete_function(
+        tensor_spec.TensorSpec([8, 5], dtypes.int32))
+    saved_model_dir = self._GetSavedModelDir(
+        run_params, trt_test.GraphState.ORIGINAL)
+    logging.info("Saving input SavedModel to %s", saved_model_dir)
+    save.save(my_model, saved_model_dir,
+              {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: cfunc})
+    return saved_model_dir
+
+  def ShouldRunTest(self, run_params):
+    # Variables are only supported in dynamic shape mode.
+    return (run_params.dynamic_shape and
+            run_params.is_v2, "test v2 dynamic shape")
+
+  def GetParams(self):
+    in_shapes = [[8, 5]]
+    out_shapes = [[8, 5, 4]]
+    my_model = ResourceGatherModel()
+    return self.BuildParams(my_model.__call__, dtypes.int32,
+                            input_shapes=in_shapes,
+                            output_shapes=out_shapes)
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {
+        "TRTEngineOp_000": ["v1", "lookup", "c1", "add", "relu"],
     }
 
 if __name__ == "__main__":

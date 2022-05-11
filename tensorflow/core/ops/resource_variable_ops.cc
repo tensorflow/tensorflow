@@ -259,9 +259,20 @@ REGISTER_OP("ResourceGather")
     .Attr("dtype: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
+      // As for ReadVariableOp, the shape of the variable (not to be confused
+      // with the output shape) can be annotated with the attribute _shape.
+      PartialTensorShape partial_shape;
+      Status annotation_found_status = c->GetAttr("_shape", &partial_shape);
+      ShapeHandle input_shape;
       std::vector<ShapeAndType> handle_shape_and_type;
-      TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
-          c, &handle_shape_and_type));
+      if (annotation_found_status.ok()) {
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(partial_shape, &input_shape));
+      } else {
+        TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
+            c, &handle_shape_and_type));
+        input_shape = handle_shape_and_type[0].shape;
+      }
 
       ShapeHandle indices_shape = c->input(1);
 
@@ -272,19 +283,19 @@ REGISTER_OP("ResourceGather")
         return errors::InvalidArgument("batch_dims is negative (", batch_dims,
                                        ")");
 
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(handle_shape_and_type[0].shape,
-                                            batch_dims + 1, &unused));
+      TF_RETURN_IF_ERROR(
+          c->WithRankAtLeast(input_shape, batch_dims + 1, &unused));
 
       TF_RETURN_IF_ERROR(
           c->WithRankAtLeast(indices_shape, batch_dims, &unused));
 
       ShapeHandle params_subshape1;
-      TF_RETURN_IF_ERROR(c->Subshape(handle_shape_and_type[0].shape, 0,
-                                     batch_dims, &params_subshape1));
+      TF_RETURN_IF_ERROR(
+          c->Subshape(input_shape, 0, batch_dims, &params_subshape1));
 
       ShapeHandle params_subshape2;
-      TF_RETURN_IF_ERROR(c->Subshape(handle_shape_and_type[0].shape,
-                                     batch_dims + 1, &params_subshape2));
+      TF_RETURN_IF_ERROR(
+          c->Subshape(input_shape, batch_dims + 1, &params_subshape2));
 
       ShapeHandle indices_subshape;
       TF_RETURN_IF_ERROR(
@@ -298,8 +309,8 @@ REGISTER_OP("ResourceGather")
       TF_RETURN_IF_ERROR(c->Concatenate(out, params_subshape2, &out));
 
       c->set_output(0, out);
-      if (handle_shape_and_type[0].dtype == DT_VARIANT &&
-          !handle_shape_and_type.empty()) {
+      if (!handle_shape_and_type.empty() &&
+          handle_shape_and_type[0].dtype == DT_VARIANT) {
         std::vector<ShapeAndType> variant_shape_and_type;
         std::copy(handle_shape_and_type.begin() + 1,
                   handle_shape_and_type.end(),
