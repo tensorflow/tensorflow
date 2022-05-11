@@ -369,40 +369,6 @@ def get_var(environ_cp,
   return var
 
 
-def set_build_var(environ_cp,
-                  var_name,
-                  query_item,
-                  option_name,
-                  enabled_by_default,
-                  bazel_config_name=None):
-  """Set if query_item will be enabled for the build.
-
-  Ask user if query_item will be enabled. Default is used if no input is given.
-  Set subprocess environment variable and write to .bazelrc if enabled.
-
-  Args:
-    environ_cp: copy of the os.environ.
-    var_name: string for name of environment variable, e.g. "TF_NEED_CUDA".
-    query_item: string for feature related to the variable, e.g. "CUDA for
-      Nvidia GPUs".
-    option_name: string for option to define in .bazelrc.
-    enabled_by_default: boolean for default behavior.
-    bazel_config_name: Name for Bazel --config argument to enable build feature.
-  """
-
-  var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
-  environ_cp[var_name] = var
-  if var == '1':
-    write_to_bazelrc('build:%s --define %s=true' %
-                     (bazel_config_name, option_name))
-    write_to_bazelrc('build --config=%s' % bazel_config_name)
-  elif bazel_config_name is not None:
-    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
-    # options and not to set build configs through environment variables.
-    write_to_bazelrc('build:%s --define %s=true' %
-                     (bazel_config_name, option_name))
-
-
 def set_action_env_var(environ_cp,
                        var_name,
                        query_item,
