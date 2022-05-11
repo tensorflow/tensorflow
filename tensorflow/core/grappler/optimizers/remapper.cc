@@ -1205,6 +1205,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
   // ops), we check if (i) MatMul op is CpuCompatible or GpuComptible, (ii)
   // const nodes have desired values.
   if (found_gelu_exact) {
+    if (!IsMKLEnabled()) return false;
     // Check if the MatMul to be fused is CPU compatible
     // TODO(kaixih@nvidia): Add GPU support when cublastLt supports the exact
     // form.
