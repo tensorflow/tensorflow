@@ -674,7 +674,7 @@ class Loader(object):
           self._save_options.experimental_variable_policy
               ._save_variable_devices()
           and config.get_soft_device_placement()
-          and saved_device != ''
+          and saved_device
       )
       if load_with_device:
         with ops.device(saved_device):

@@ -98,6 +98,11 @@ class LoadOptions(object):
       experimental_skip_checkpoint: bool. Defaults to `False`. If set to `True`,
         checkpoints will not be restored. Note that this in the majority of
         cases will generate an unusable model.
+      experimental_variable_policy: string. The policy to apply to variables
+        when loading. This is either a `saved_model.experimental.VariablePolicy`
+        enum instance or one of its value strings (case is not important). See
+        that enum documentation for details. A value of `None` corresponds to
+        the default policy.
 
     Example:
 
