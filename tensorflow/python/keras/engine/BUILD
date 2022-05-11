@@ -465,7 +465,6 @@ tf_py_test(
     srcs = ["training_arrays_test.py"],
     python_version = "PY3",
     tags = [
-        "no_aarch64",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [

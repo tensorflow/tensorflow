@@ -79,7 +79,6 @@ cuda_py_test(
     name = "batch_matmul_op_test",
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
-    tags = ["no_aarch64"],
     shard_count = 20,
     deps = [
         "//tensorflow/python:array_ops",

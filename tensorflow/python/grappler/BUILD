@@ -307,7 +307,6 @@ tf_py_test(
     ],
     python_version = "PY3",
     tags = [
-        "no_aarch64",
         "grappler",
     ],
     deps = [
