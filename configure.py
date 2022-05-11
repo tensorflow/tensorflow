@@ -45,9 +45,6 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-# TODO(mihaimaruseac): Remove these checks as they are no longer useful
-_TF_MIN_BAZEL_VERSION = '4.2.2'
-_TF_MAX_BAZEL_VERSION = '999999.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -466,12 +463,8 @@ def convert_version_to_int(version):
   return int(version_str)
 
 
-def check_bazel_version(min_version, max_version):
-  """Check installed bazel version is between min_version and max_version.
-
-  Args:
-    min_version: string for minimum bazel version (must exist!).
-    max_version: string for maximum bazel version (must exist!).
+def retrieve_bazel_version():
+  """Retrieve installed bazel version (or bazelisk).
 
   Returns:
     The bazel version detected.
@@ -490,29 +483,14 @@ def check_bazel_version(min_version, max_version):
   if curr_version.startswith('bazel '):
     curr_version = curr_version.split('bazel ')[1]
 
-  min_version_int = convert_version_to_int(min_version)
   curr_version_int = convert_version_to_int(curr_version)
-  max_version_int = convert_version_to_int(max_version)
 
   # Check if current bazel version can be detected properly.
   if not curr_version_int:
     print('WARNING: current bazel installation is not a release version.')
-    print('Make sure you are running at least bazel %s' % min_version)
     return curr_version
 
   print('You have bazel %s installed.' % curr_version)
-
-  if curr_version_int < min_version_int:
-    print('Please upgrade your bazel installation to version %s or higher to '
-          'build TensorFlow!' % min_version)
-    sys.exit(1)
-  if (curr_version_int > max_version_int and
-      'TF_IGNORE_MAX_BAZEL_VERSION' not in os.environ):
-    print('Please downgrade your bazel installation to version %s or lower to '
-          'build TensorFlow! To downgrade: download the installer for the old '
-          'version (from https://github.com/bazelbuild/bazel/releases) then '
-          'run the installer.' % max_version)
-    sys.exit(1)
   return curr_version
 
 
@@ -1308,10 +1286,9 @@ def main():
   environ_cp = dict(os.environ)
 
   try:
-    current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
-                                                _TF_MAX_BAZEL_VERSION)
+    current_bazel_version = retrieve_bazel_version()
   except subprocess.CalledProcessError as e:
-    print('Error checking bazel version: ', e.output.decode('UTF-8').strip())
+    print('Error retrieving bazel version: ', e.output.decode('UTF-8').strip())
     raise e
 
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
