@@ -51,17 +51,36 @@ export CONTAINER_TYPE="CPU"
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
-# Set extra TF build arguments
-extra_args="--copt=-mtune=generic --copt=-march=armv8-a --copt=-O3 --copt=-fopenmp --copt=-flax-vector-conversions --linkopt=-lgomp"
-
 # Set python version string
 py_ver=$(python -c 'import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))')
 
-# Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=mkl_aarch64 ${extra_args}"
-export TF_TEST_FLAGS="--config=mkl_aarch64 ${extra_args} --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true --test_lang_filters=py --verbose_failures=true --test_keep_going"
-export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... -//tensorflow/compiler/mlir/lite/tests:const-fold.mlir.test -//tensorflow/compiler/mlir/lite/tests:prepare-tf.mlir.test"
-export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
+# Export optional variables for running pip_new.sh
+export TF_BUILD_FLAGS="--config=mkl_aarch64 --copt=-mtune=generic --copt=-march=armv8-a \
+    --copt=-O3 --copt=-fopenmp --copt=-flax-vector-conversions --linkopt=-lgomp"
+export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
+    --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --test_lang_filters=py \
+    --define=no_tensorflow_py_deps=true --verbose_failures=true --test_keep_going"
+export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
+    -//tensorflow/lite/... \
+    -//tensorflow/compiler/mlir/lite/tests:const-fold.mlir.test \
+    -//tensorflow/compiler/mlir/lite/tests:prepare-tf.mlir.test \
+    -//tensorflow/python:nn_grad_test \
+    -//tensorflow/python/eager:forwardprop_test \
+    -//tensorflow/python/framework:node_file_writer_test \
+    -//tensorflow/python/grappler:memory_optimizer_test \
+    -//tensorflow/python/keras/engine:training_arrays_test \
+    -//tensorflow/python/kernel_tests/linalg:linear_operator_householder_test \
+    -//tensorflow/python/kernel_tests/linalg:linear_operator_inversion_test \
+    -//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test \
+    -//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test \
+    -//tensorflow/python/kernel_tests/linalg:linear_operator_kronecker_test \
+    -//tensorflow/python/kernel_tests/math_ops:batch_matmul_op_test \
+    -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
+    -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
+    -//tensorflow/python/kernel_tests/nn_ops:conv3d_backprop_filter_v2_grad_test \
+    -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
+    -//tensorflow/python/ops/parallel_for:math_test"
+export TF_PIP_TESTS="test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-no_oss_py${py_ver},-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-requires-gpu"
 export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
 export TF_PROJECT_NAME="tensorflow_cpu"
