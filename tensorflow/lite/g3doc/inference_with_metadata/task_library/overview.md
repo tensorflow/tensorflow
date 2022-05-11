@@ -38,12 +38,14 @@ we continue enabling more and more use cases.
     *   [ImageClassifier](image_classifier.md)
     *   [ObjectDetector](object_detector.md)
     *   [ImageSegmenter](image_segmenter.md)
+    *   [ImageSearcher](image_searcher.md)
 
 *   **Natural Language (NL) APIs**
 
     *   [NLClassifier](nl_classifier.md)
     *   [BertNLClassifier](bert_nl_classifier.md)
     *   [BertQuestionAnswerer](bert_question_answerer.md)
+    *   [TextSearcher](text_searcher.md)
 
 *   **Audio APIs**
 
