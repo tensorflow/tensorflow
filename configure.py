@@ -116,21 +116,6 @@ def symlink_force(target, link_name):
       raise e
 
 
-def sed_in_place(filename, old, new):
-  """Replace old string with new string in file.
-
-  Args:
-    filename: string for filename.
-    old: string to replace.
-    new: new string to replace to.
-  """
-  with open(filename, 'r') as f:
-    filedata = f.read()
-  newdata = filedata.replace(old, new)
-  with open(filename, 'w') as f:
-    f.write(newdata)
-
-
 def write_to_bazelrc(line):
   with open(_TF_BAZELRC, 'a') as f:
     f.write(line + '\n')
