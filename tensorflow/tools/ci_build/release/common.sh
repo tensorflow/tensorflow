@@ -279,7 +279,7 @@ function install_macos_pip_deps_no_venv {
 
   # See https://github.com/pypa/setuptools/issues/3293
   # Must happen first, before anyhting else
-  ${PIP_CMD} install --upgrade 'importlib-metadata > 4'
+  ${PIP_CMD} install --user --upgrade 'importlib-metadata > 4'
 
   # LINT.IfChange(mac_pip_installations)
   # Remove any historical keras package if they are installed.
