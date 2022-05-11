@@ -282,7 +282,7 @@ retained with length 1.
   let hasVerifier = 1;
 }
 
-def TF_AllToAllOp : TF_Op<"AllToAll", [NoSideEffect, TF_NoConstantFold]> {
+def TF_AllToAllOp : TF_Op<"AllToAll", [TF_NoConstantFold]> {
   let summary = "An Op to exchange data across TPU replicas.";
 
   let description = [{
@@ -2832,7 +2832,7 @@ of corresponding 3-element vectors is cross-multiplied independently.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
+def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
   let summary = "An Op to sum inputs across replicated TPU instances.";
 
   let description = [{
