@@ -823,35 +823,6 @@ def set_tf_cudnn_version(environ_cp):
   environ_cp['TF_CUDNN_VERSION'] = tf_cudnn_version
 
 
-def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
-  """Check compatibility between given library and cudnn/cudart libraries."""
-  ldd_bin = which('ldd') or '/usr/bin/ldd'
-  ldd_out = run_shell([ldd_bin, lib], True)
-  ldd_out = ldd_out.split(os.linesep)
-  cudnn_pattern = re.compile('.*libcudnn.so\\.?(.*) =>.*$')
-  cuda_pattern = re.compile('.*libcudart.so\\.?(.*) =>.*$')
-  cudnn = None
-  cudart = None
-  cudnn_ok = True  # assume no cudnn dependency by default
-  cuda_ok = True  # assume no cuda dependency by default
-  for line in ldd_out:
-    if 'libcudnn.so' in line:
-      cudnn = cudnn_pattern.search(line)
-      cudnn_ok = False
-    elif 'libcudart.so' in line:
-      cudart = cuda_pattern.search(line)
-      cuda_ok = False
-  if cudnn and len(cudnn.group(1)):
-    cudnn = convert_version_to_int(cudnn.group(1))
-  if cudart and len(cudart.group(1)):
-    cudart = convert_version_to_int(cudart.group(1))
-  if cudnn is not None:
-    cudnn_ok = (cudnn == cudnn_ver)
-  if cudart is not None:
-    cuda_ok = (cudart == cuda_ver)
-  return cudnn_ok and cuda_ok
-
-
 def set_tf_tensorrt_version(environ_cp):
   """Set TF_TENSORRT_VERSION."""
   if not (is_linux() or is_windows()):
