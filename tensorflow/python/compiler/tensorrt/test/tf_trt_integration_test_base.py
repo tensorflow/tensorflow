@@ -53,6 +53,8 @@ from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 
+logging.get_logger().propagate = False
+
 TfTrtIntegrationTestParams = collections.namedtuple(
     "TfTrtIntegrationTestParams",
     [
