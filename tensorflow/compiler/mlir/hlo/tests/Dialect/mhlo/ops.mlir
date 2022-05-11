@@ -973,7 +973,7 @@ func.func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<1
   %4 = mhlo.constant dense<[10, 12]> : tensor<2xui64>
   %0 = mhlo.constant dense<[10, 12]> : tensor<2xi32>
   %1 = mhlo.constant dense<3> : tensor<i32>
-  %2, %3 = "mhlo.rng_bit_generator"(%4) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  %2, %3 = "mhlo.rng_bit_generator"(%4) {rng_algorithm = #mhlo.rng_algorithm<DEFAULT>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
   func.return %2, %3 : tensor<2xui64>, tensor<10x12xui32>
 }
 
@@ -984,7 +984,7 @@ func.func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<1
   %0 = mhlo.constant dense<[10, 12]> : tensor<2xi32>
   %1 = mhlo.constant dense<3> : tensor<i32>
   // expected-error@+1 {{output state shape must match initial state shape. Got: 'tensor<2xui64>' and 'tensor<3xui64>'}}
-  %2, %3 = "mhlo.rng_bit_generator"(%4) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<3xui64>, tensor<10x12xui32>)
+  %2, %3 = "mhlo.rng_bit_generator"(%4) {rng_algorithm = #mhlo.rng_algorithm<DEFAULT>} : (tensor<2xui64>) -> (tensor<3xui64>, tensor<10x12xui32>)
   func.return %2, %3 : tensor<3xui64>, tensor<10x12xui32>
 }
 
@@ -1197,10 +1197,10 @@ func.func @dynamic_slice_mismatch_indices(%arg0: tensor<3x4xi32>, %arg1: tensor<
 
 // -----
 
-// CHECK-LABEL: @dynamic_slice_different_indice_element_type
-func.func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<i32>) -> tensor<1x4xi32> {
-  %0 = "mhlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i32>) -> tensor<1x4xi32>
-  func.return %0 : tensor<1x4xi32>
+// TODO(b/230381865) Fix this wrong positive test: slice_sizes.size() != operand_shape.rank()
+func.func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
 }
 
 // -----
@@ -1209,6 +1209,14 @@ func.func @dynamic_slice_mismatch_element_types(%arg0: tensor<3x4xi32>, %arg1: t
   // expected-error@+1 {{failed to verify that all of {operand, result} have same element type}}
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
+}
+
+// -----
+
+func.func @dynamic_slice_mismatch_return_shape(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<2x4xi32> {
+  // expected-error@+1 {{'mhlo.dynamic-slice' op inferred type(s) 'tensor<1x4xi32>' are incompatible with return type(s) of operation 'tensor<2x4xi32>'}}
+  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<2x4xi32>
+  func.return %0 : tensor<2x4xi32>
 }
 
 // -----
@@ -3251,6 +3259,43 @@ func.func @quantized_dot_general(%arg0: tensor<2x16x32x!quant.uniform<i8:f32, 2.
 
 // -----
 
+// CHECK-LABEL: func @add_dependency
+func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%data, %token) : (tensor<4x16xf32>, !mhlo.token) -> tensor<4x16xf32>
+  func.return %0 : tensor<4x16xf32>
+}
+// -----
+
+// CHECK-LABEL: func @add_dependency_token
+func.func @add_dependency_token(%data: tensor<4x16xf32>) -> !mhlo.token {
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token2 = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%token2, %token) : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// -----
+
+func.func @add_dependency(%data: tensor<4x16xf32>) -> !mhlo.token {
+  // expected-error@+2 {{'mhlo.add_dependency' op inferred type(s) 'tensor<4x16xf32>' are incompatible with return type(s) of operation '!mhlo.token'}}
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%data, %token) : (tensor<4x16xf32>, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// -----
+
+func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
+  // expected-error@+3 {{inferred type(s) '!mhlo.token' are incompatible with return type(s) of operation 'tensor<4x16xf32>'}}
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token2 = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%token2, %token) : (!mhlo.token, !mhlo.token) -> tensor<4x16xf32>
+  func.return %0 : tensor<4x16xf32>
+}
+
+// -----
+
 // CHECK: func @uniform_quantize
 func.func @uniform_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>> {
   %0 = mhlo.uniform_quantize(%arg) : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
@@ -3333,4 +3378,254 @@ func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> te
          {batch_group_count = 1 : i64, feature_group_count = 1 : i64} :
        (tensor<64x8x8x8xi4>, tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8>
   func.return %0 : tensor<64x3x3x32xi8>
+}
+
+// -----
+
+// CHECK-LABEL: func @pad
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<i64>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{'mhlo.pad' op requires the same element type for all operands and results}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<i64>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<2xf16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{padding value type should be a rank-0 tensor, is rank 1}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<2xf16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{edge_padding_low length (2) must match operand rank (3)}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1]> : tensor<2xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{edge_padding_high length (2) must match operand rank (3)}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1]> : tensor<2xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{interior_padding length (2) must match operand rank (3)}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0]> : tensor<2xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<8x8x8xf16> {
+  // expected-error@+1 {{'mhlo.pad' op inferred type(s) 'tensor<2x4x7xf16>' are incompatible with return type(s) of operation 'tensor<8x8x8xf16>'}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<8x8x8xf16>
+  func.return %0 : tensor<8x8x8xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x3xf16> {
+  // expected-error@+1 {{Interior padding cannot be negative: -1}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, -1]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x3xf16>
+  func.return %0 : tensor<2x4x3xf16>
+}
+
+// -----
+
+func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+  // expected-error@+1 {{Padding result in negative size for dimension 2}}
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+    edge_padding_low = dense<[0, 1, -4]> : tensor<3xi64>,
+    interior_padding = dense<[0, 0, 0]> : tensor<3xi64>
+  } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
+  func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+func.func @is_compatible_dynamism_mix(%arg0: tensor<?xf32>, %arg1: tensor<1xf32>) {
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %1 = "mhlo.add"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<1xf32>
+  %2 = "mhlo.add"(%arg0, %arg1) : (tensor<?xf32>, tensor<1xf32>) -> tensor<?xf32>
+  %3 = "mhlo.add"(%arg0, %arg1) : (tensor<?xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %4 = "mhlo.add"(%arg1, %arg0) : (tensor<1xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %5 = "mhlo.add"(%arg1, %arg0) : (tensor<1xf32>, tensor<?xf32>) -> tensor<1xf32>
+  %6 = "mhlo.add"(%arg1, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<?xf32>
+  %7 = "mhlo.add"(%arg1, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  func.return
+}
+
+// TODO(b/231448733): verifyCompatibleShape allows rankedness mismatches but Elemementwise doesn't.
+// Sort this out while refactoring uses of SameOperandsAndResultType and friends.
+// func.func @is_compatible_dynamism_mix(%arg0: tensor<*xf32>, %arg1: tensor<?xf32>, %arg2: tensor<1xf32>) {
+//   %0 = "mhlo.add"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+//   %1 = "mhlo.add"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<?xf32>
+//   %2 = "mhlo.add"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<1xf32>
+//   %3 = "mhlo.add"(%arg0, %arg1) : (tensor<*xf32>, tensor<?xf32>) -> tensor<*xf32>
+//   %4 = "mhlo.add"(%arg0, %arg1) : (tensor<*xf32>, tensor<?xf32>) -> tensor<?xf32>
+//   %5 = "mhlo.add"(%arg0, %arg1) : (tensor<*xf32>, tensor<?xf32>) -> tensor<1xf32>
+//   %6 = "mhlo.add"(%arg0, %arg2) : (tensor<*xf32>, tensor<1xf32>) -> tensor<*xf32>
+//   %7 = "mhlo.add"(%arg0, %arg2) : (tensor<*xf32>, tensor<1xf32>) -> tensor<?xf32>
+//   %8 = "mhlo.add"(%arg0, %arg2) : (tensor<*xf32>, tensor<1xf32>) -> tensor<1xf32>
+//   %9 = "mhlo.add"(%arg1, %arg0) : (tensor<?xf32>, tensor<*xf32>) -> tensor<*xf32>
+//   %10 = "mhlo.add"(%arg1, %arg0) : (tensor<?xf32>, tensor<*xf32>) -> tensor<?xf32>
+//   %11 = "mhlo.add"(%arg1, %arg0) : (tensor<?xf32>, tensor<*xf32>) -> tensor<1xf32>
+//   %12 = "mhlo.add"(%arg1, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<*xf32>
+//   %13 = "mhlo.add"(%arg1, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+//   %14 = "mhlo.add"(%arg1, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<1xf32>
+//   %15 = "mhlo.add"(%arg1, %arg2) : (tensor<?xf32>, tensor<1xf32>) -> tensor<*xf32>
+//   %16 = "mhlo.add"(%arg1, %arg2) : (tensor<?xf32>, tensor<1xf32>) -> tensor<?xf32>
+//   %17 = "mhlo.add"(%arg1, %arg2) : (tensor<?xf32>, tensor<1xf32>) -> tensor<1xf32>
+//   %18 = "mhlo.add"(%arg2, %arg0) : (tensor<1xf32>, tensor<*xf32>) -> tensor<*xf32>
+//   %19 = "mhlo.add"(%arg2, %arg0) : (tensor<1xf32>, tensor<*xf32>) -> tensor<?xf32>
+//   %20 = "mhlo.add"(%arg2, %arg0) : (tensor<1xf32>, tensor<*xf32>) -> tensor<1xf32>
+//   %21 = "mhlo.add"(%arg2, %arg1) : (tensor<1xf32>, tensor<?xf32>) -> tensor<*xf32>
+//   %22 = "mhlo.add"(%arg2, %arg1) : (tensor<1xf32>, tensor<?xf32>) -> tensor<?xf32>
+//   %23 = "mhlo.add"(%arg2, %arg1) : (tensor<1xf32>, tensor<?xf32>) -> tensor<1xf32>
+//   %24 = "mhlo.add"(%arg2, %arg2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<*xf32>
+//   %25 = "mhlo.add"(%arg2, %arg2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<?xf32>
+//   %26 = "mhlo.add"(%arg2, %arg2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+//   func.return
+// }
+
+// -----
+
+func.func @is_compatible_dynamism_rankedness_mismatch(%arg0: tensor<*xf32>) {
+  // expected-error@+1 {{all non-scalar operands/results must have the same shape and base type}}
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<1xf32>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_dynamism_ranked_mismatch(%arg0: tensor<?xf32>) {
+  // expected-error@+1 {{op requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?x?xf32>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_dynamism_dim_mismatch(%arg0: tensor<1x?xf32>) {
+  // expected-error@+1 {{op requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x?xf32>, tensor<1x?xf32>) -> tensor<2x2xf32>
+  func.return
+}
+
+// -----
+
+// TODO(b/230263270): For mhlo.add, the plan is to only allow fp+fp=fp, q+q=q and q+q=fp.
+func.func @is_compatible_quant_mix_non_quant(%arg0: tensor<1xf32>, %arg1: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "mhlo.add"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  %2 = "mhlo.add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  %3 = "mhlo.add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  %4 = "mhlo.add"(%arg1, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1xf32>) -> tensor<1xf32>
+  %5 = "mhlo.add"(%arg1, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1xf32>) -> tensor<1xf32>
+  %6 = "mhlo.add"(%arg1, %arg1) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  %7 = "mhlo.add"(%arg1, %arg1) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_quant_mix_scale(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 2.0:17>>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_quant_mix_zero_point(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:18>>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_quant_expressed_mismatch(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+  // expected-error@+1 {{op requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:bf16, 1.0:17>>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_quant_storage_mismatch(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+  // expected-error@+1 {{op requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i4:f32, 1.0:17>>
+  func.return
+}
+
+// -----
+
+func.func @is_compatible_quant_signedness_mismatch(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+  // expected-error@+1 {{op requires compatible types for all operands and results}}
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<u8:f32, 1.0:17>>
+  func.return
+}
+
+// -----
+
+#SV = #sparse_tensor.encoding<{
+  dimLevelType = ["compressed"]
+}>
+
+func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tensor<1xf32, #SV>) {
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "mhlo.add"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32, #SV>
+  %2 = "mhlo.add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32, #SV>) -> tensor<1xf32, #SV>
+  %3 = "mhlo.add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32, #SV>) -> tensor<1xf32, #SV>
+  %4 = "mhlo.add"(%arg1, %arg0) : (tensor<1xf32, #SV>, tensor<1xf32>) -> tensor<1xf32>
+  %5 = "mhlo.add"(%arg1, %arg0) : (tensor<1xf32, #SV>, tensor<1xf32>) -> tensor<1xf32>
+  %6 = "mhlo.add"(%arg1, %arg1) : (tensor<1xf32, #SV>, tensor<1xf32, #SV>) -> tensor<1xf32, #SV>
+  %7 = "mhlo.add"(%arg1, %arg1) : (tensor<1xf32, #SV>, tensor<1xf32, #SV>) -> tensor<1xf32, #SV>
+  func.return
 }

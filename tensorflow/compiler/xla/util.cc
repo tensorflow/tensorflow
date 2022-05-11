@@ -328,11 +328,6 @@ absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
       bounds.emplace_back(i, j);
       continue;
     }
-    if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
-      std::tie(prior_i, prior_j) = std::make_pair(i, j);
-      bounds.emplace_back(i, j);
-      continue;
-    }
     bool in_bounds_i = i < a.size();
     bool in_bounds_j = j < b.size();
     if (!(in_bounds_i || in_bounds_j)) {

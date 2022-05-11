@@ -2829,7 +2829,7 @@ rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices)` </b>
+<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |

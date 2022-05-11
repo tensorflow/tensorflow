@@ -495,6 +495,7 @@ cc_library(
         ":op_utils",
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

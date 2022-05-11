@@ -135,6 +135,7 @@ TfLiteRegistration* Register_REDUCE_PROD();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU6();
 TfLiteRegistration* Register_RELU_N1_TO_1();
+TfLiteRegistration* Register_RELU_0_TO_1();
 TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_RESIZE_BILINEAR();
 TfLiteRegistration* Register_RESIZE_NEAREST_NEIGHBOR();

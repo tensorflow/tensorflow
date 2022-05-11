@@ -521,6 +521,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                       conversion_params)
     converter.convert()
 
+    if run_params.is_v2:
+      try:
+        line_length = max(160, os.get_terminal_size().columns)
+      except OSError:
+        line_length = 160
+      converter.summary(line_length=line_length, detailed=True)
+
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
 

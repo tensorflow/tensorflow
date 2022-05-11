@@ -293,7 +293,6 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
   re.set_task_count(run_environment.task_count());
   re.set_device_type(run_environment.device_type());
   re.set_device_core_count(run_environment.device_core_count());
-  re.set_per_core_batch_size(run_environment.per_core_batch_size());
   re.set_replica_count(run_environment.replica_count());
   re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
   *re.mutable_host_independent_job_info() =

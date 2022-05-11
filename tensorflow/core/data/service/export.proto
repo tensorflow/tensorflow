@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/protobuf/service_config.proto";
+
+// State of the dispatcher server, exported to improve debuggability.
+// Next tag: 3
+message DispatcherStateExport {
+  experimental.DispatcherConfig dispatcher_config = 1;
+  repeated string worker_addresses = 2;
+}
+
+// State of the tf.data service server, exported to improve debuggability.
+// The dispatcher and worker servers will populate the corresponding fields.
+// Next tag: 2
+message ServerStateExport {
+  DispatcherStateExport dispatcher_state_export = 1;
+}

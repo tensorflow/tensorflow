@@ -7,14 +7,13 @@ input / output information. The metadata consists of both
 *   human readable parts which convey the best practice when using the model,
     and
 *   machine readable parts that can be leveraged by code generators, such as the
-    [TensorFlow Lite Android code generator](../inference_with_metadata/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
+    [TensorFlow Lite Android code generator](../inference_with_metadata/codegen#generate-code-with-tensorflow-lite-android-code-generator)
     and the
-    [Android Studio ML Binding feature](../inference_with_metadata/codegen.md#generate-code-with-android-studio-ml-model-binding).
+    [Android Studio ML Binding feature](../inference_with_metadata/codegen#generate-code-with-android-studio-ml-model-binding).
 
 All image models published on
-[TensorFlow Lite hosted models](https://www.tensorflow.org/lite/guide/hosted_models)
-and [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) have been
-populated with metadata.
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) have been populated
+with metadata.
 
 ## Model with metadata format
 
@@ -77,9 +76,9 @@ There are three parts to the model metadata in the
     [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L599).
 
 Since TensorFlow Lite only supports single subgraph at this point, the
-[TensorFlow Lite code generator](../inference_with_metadata/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
+[TensorFlow Lite code generator](../inference_with_metadata/codegen#generate-code-with-tensorflow-lite-android-code-generator)
 and the
-[Android Studio ML Binding feature](../inference_with_metadata/codegen.md#generate-code-with-android-studio-ml-model-binding)
+[Android Studio ML Binding feature](../inference_with_metadata/codegen#generate-code-with-android-studio-ml-model-binding)
 will use `ModelMetadata.name` and `ModelMetadata.description`, instead of
 `SubGraphMetadata.name` and `SubGraphMetadata.description`, when displaying
 metadata and generating code.
@@ -115,7 +114,7 @@ for more details.
 The associated file information can be recorded in the metadata. Depending on
 the file type and where the file is attached to (i.e. `ModelMetadata`,
 `SubGraphMetadata`, and `TensorMetadata`),
-[the TensorFlow Lite Android code generator](../inference_with_metadata/codegen.md)
+[the TensorFlow Lite Android code generator](../inference_with_metadata/codegen)
 may apply corresponding pre/post processing automatically to the object. See
 [the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L77-L127)
 in the schema for more details.
@@ -460,7 +459,7 @@ dependencies {
 ```
 
 To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](../guide/build_android#use_nightly_snapshots).
+[Sonatype snapshot repository](https://www.tensorflow.org/lite/android/lite_build#use_nightly_snapshots).
 
 You can initialize a `MetadataExtractor` object with a `ByteBuffer` that points
 to the model:

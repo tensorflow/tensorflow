@@ -704,6 +704,18 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp token;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  auto operand_shape = ctx.builder->GetShape(operand).ConsumeValueOrDie();
+  value_map[op] = xla::internal::XlaBuilderFriend::BuildAddDependency(
+      ctx.builder, operand, token, operand_shape);
+  return success();
+}
+
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
@@ -1040,7 +1052,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
-  if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
+  if (failed(GetTuple(op, op.operands(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
@@ -1252,7 +1264,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.inputs(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
       failed(GetTuple(op, op.init_values(), ctx, init_values))) {
     return failure();
   }
@@ -1276,7 +1288,7 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.inputs(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
       failed(GetTuple(op, op.init_values(), ctx, init_values))) {
     return failure();
   }

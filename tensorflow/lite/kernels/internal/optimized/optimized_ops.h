@@ -96,6 +96,7 @@ using reference_ops::LessWithScaling;
 using reference_ops::Mean;
 using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
+using reference_ops::Relu0To1;  // NOLINT
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;

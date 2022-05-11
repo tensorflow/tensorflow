@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -25,6 +26,8 @@ namespace gml_st {
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopPeelingPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass();
+
+std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc"

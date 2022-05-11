@@ -304,13 +304,13 @@ class Device:
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
+  def __getattr__(self, name: str) -> Any: ...
 
 class GpuDevice(Device):
-  device_vendor: str
+  pass
 
 class TpuDevice(Device):
-  coords: Tuple[int, ...]
-  core_on_chip: int
+  pass
 
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int
@@ -399,7 +399,9 @@ def get_gpu_client(
     asynchronous: bool = ...,
     allocator_config: GpuAllocatorConfig = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
-    node_id: int = ...) -> Client:...
+    node_id: int = ...,
+    allowed_devices: Optional[Any] = ...,
+    platform_name: Optional[str] = ...) -> Client:...
 def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
 
 class DeviceArrayBase: ...

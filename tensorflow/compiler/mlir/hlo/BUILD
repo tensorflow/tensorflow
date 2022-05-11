@@ -1675,10 +1675,15 @@ cc_library(
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
+        ":bufferizable_op_interface",
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
         "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
@@ -2235,6 +2240,22 @@ cc_library(
         ":map_mhlo_to_scalar_op",
         ":tiling_interface_inc_gen",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "bufferizable_op_interface",
+    srcs = ["lib/Dialect/gml_st/transforms/bufferizable_op_interface_impl.cpp"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

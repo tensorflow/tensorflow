@@ -23,13 +23,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -41,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
@@ -133,6 +130,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
+  std::vector<KeyValueEntry> GetKeyValueDir(
+      absl::string_view directory_key) override;
   Status DeleteKeyValue(const std::string& key) override;
   void BarrierAsync(const std::string& barrier_id, absl::Duration timeout,
                     const CoordinatedTask& task,
@@ -717,7 +716,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   payload->set_is_reported_error(is_reported_by_task);
   CallOptions call_opts;
   call_opts.SetTimeout(kServiceToClientTimeoutMs);
-  std::vector<std::shared_ptr<Notification>> notifications;
+  std::vector<std::shared_ptr<absl::Notification>> notifications;
 
   std::vector<absl::string_view> task_names;
   {
@@ -746,7 +745,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
     }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
     auto response = std::make_shared<ReportErrorToTaskResponse>();
-    auto n = std::make_shared<Notification>();
+    auto n = std::make_shared<absl::Notification>();
     client->ReportErrorToTaskAsync(
         &call_opts, &request, response.get(), [response, n, task](Status s) {
           if (!s.ok()) {
@@ -836,6 +835,33 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
         get_cb_.emplace(norm_key, std::vector<StatusOrValueCallback>()).first;
   }
   cb_iter->second.emplace_back(std::move(done));
+}
+
+std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
+    absl::string_view directory_key) {
+  std::vector<KeyValueEntry> kvs_in_directory;
+  const std::string norm_key = NormalizeKey(directory_key);
+  const std::string dir = absl::StrCat(norm_key, "/");
+
+  mutex_lock l(kv_mu_);
+  // Find first key in ordered map that has the directory prefix.
+  auto begin = kv_store_.lower_bound(dir);
+  std::map<std::string, std::string>::iterator it;
+  // Iterate through key range that match directory prefix.
+  for (it = begin; it != kv_store_.end(); ++it) {
+    // Stop once the next key does not have the directory prefix. Since keys are
+    // ordered, none of the other keys would have a matching prefix.
+    if (std::mismatch(dir.begin(), dir.end(), it->first.begin()).first !=
+        dir.end()) {
+      break;
+    }
+    KeyValueEntry kv;
+    kv.set_key(it->first);
+    kv.set_value(it->second);
+    kvs_in_directory.push_back(kv);
+  }
+
+  return kvs_in_directory;
 }
 
 Status CoordinationServiceStandaloneImpl::DeleteKeyValue(

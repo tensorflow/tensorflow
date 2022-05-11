@@ -9158,14 +9158,14 @@ ENTRY %module {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
-
+  VLOG(1) << module->ToString();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   auto all_reduce_val =
       AllOf(op::Shape("f32[2,64,2]"),
-            op::Slice(op::AllReduce(op::DynamicUpdateSlice(_, _, _, _, _))));
+            op::AllReduce(op::DynamicUpdateSlice(_, _, _, _, _)));
   auto all_reduce_idx =
       AllOf(op::Shape("s32[2,64,2]"),
-            op::Slice(op::AllReduce(op::DynamicUpdateSlice(_, _, _, _, _))));
+            op::AllReduce(op::DynamicUpdateSlice(_, _, _, _, _)));
   auto tuple = AllOf(op::Shape("(f32[2,64,2], s32[2,64,2])"),
                      op::Tuple(all_reduce_val, all_reduce_idx));
   EXPECT_THAT(root, tuple);
@@ -10143,6 +10143,27 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Copy(AllOf(op::DynamicSlice(op::Concatenate(halo1, halo2), _),
                              op::Shape("f32[1]"))));
+}
+
+TEST_F(SpmdPartitioningTest, PartialDusReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[3,2] parameter(0),
+    sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %copy = f32[3,2] copy(input), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  VLOG(1) << module->ToString();
+  auto dus =
+      AllOf(op::Shape("f32[3,2]"),
+            op::DynamicUpdateSlice(op::Broadcast(),
+                                   op::Select(_, op::Parameter(0), _), _, _));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(AllOf(op::AllReduce(op::AllReduce(dus)))));
 }
 
 }  // namespace

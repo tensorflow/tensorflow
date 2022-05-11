@@ -148,6 +148,7 @@ py_library(
         ":autotrackable",
         ":data_structures",
         ":resource",
+        "//tensorflow/python/eager:function_saved_model_utils",
     ],
 )
 

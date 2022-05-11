@@ -268,5 +268,5 @@ func.func @remove_empty_loop(%in: tensor<16xf32>, %out: tensor<f32>,
       (tensor<4xf32>, tensor<f32>) -> tensor<f32>
     gml_st.yield %result : tensor<f32>
   }
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }

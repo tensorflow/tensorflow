@@ -1425,7 +1425,7 @@ func.func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
 // CHECK:  [[GTE1:%.*]] = u32[2,2] get-tuple-element((u64[3], u32[2,2]) [[RNG]]), index=1
 // CHECK:  ROOT
 // CHECK-SAME: [[RES:%.*]] = (u64[3], u32[2,2]) tuple(u64[3] [[GTE0]], u32[2,2] [[GTE1]])
-  %0:2 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  %0:2 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
   func.return %1 : tuple<tensor<3xui64>, tensor<2x2xui32>>
 }
@@ -1514,4 +1514,16 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,
            window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: %[[TOK:.*]] = token[] after-all()
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] add-dependency(f32[3,4] %[[ARG0]], token[] %[[TOK]])
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
 }

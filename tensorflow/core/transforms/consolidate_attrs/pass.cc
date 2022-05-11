@@ -112,7 +112,7 @@ class ConsolidateAttributesPassImpl
  private:
   // Reify `tf._input_shapes`, `tf._output_shapes` and `tfg.handle_data` into
   // the types of the function arguments. Drop the attributes `tfg.dtype` and
-  // `tfg.is_ref`. Return the the new argument attributes.
+  // `tfg.is_ref`. Return the new argument attributes.
   ArrayAttr reifyAndDropFunctionArgumentAttributes(GraphFuncOp func);
   // Reify `tf._output_shapes` and `tfg.handle_data` into the types of the
   // function results. Drop the attribute `tfg.dtype`. Return the new result

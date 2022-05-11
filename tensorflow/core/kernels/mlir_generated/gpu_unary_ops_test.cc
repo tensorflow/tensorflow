@@ -15,10 +15,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <limits>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 #include "tensorflow/core/kernels/mlir_generated/base_unary_ops_test.h"
 
@@ -195,14 +194,16 @@ DstT baseline_cast(SrcT x) {
           .InputAttribute("SrcT")                                       \
           .OutputAttribute("DstT"))
 
-#define TEST_CAST_TO_NO_UNSIGNED(from_type) \
-  TEST_CAST_FROM_TO(from_type, DT_BOOL)     \
-  TEST_CAST_FROM_TO(from_type, DT_INT8)     \
-  TEST_CAST_FROM_TO(from_type, DT_INT16)    \
-  TEST_CAST_FROM_TO(from_type, DT_INT32)    \
-  TEST_CAST_FROM_TO(from_type, DT_INT64)    \
-  TEST_CAST_FROM_TO(from_type, DT_FLOAT)    \
-  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)
+#define TEST_CAST_TO_NO_UNSIGNED(from_type)  \
+  TEST_CAST_FROM_TO(from_type, DT_BOOL)      \
+  TEST_CAST_FROM_TO(from_type, DT_INT8)      \
+  TEST_CAST_FROM_TO(from_type, DT_INT16)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT32)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT64)     \
+  TEST_CAST_FROM_TO(from_type, DT_FLOAT)     \
+  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)    \
+  TEST_CAST_FROM_TO(from_type, DT_COMPLEX64) \
+  TEST_CAST_FROM_TO(from_type, DT_COMPLEX128)
 
 #define TEST_CAST_TO_UNSIGNED(from_type)  \
   TEST_CAST_FROM_TO(from_type, DT_UINT8)  \
@@ -290,6 +291,17 @@ GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, std::cos,
 GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::OpsTestConfig())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Cos, DT_COMPLEX64, DT_COMPLEX64, std::cos,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cos, DT_COMPLEX128, DT_COMPLEX128, std::cos,
+                      test::OpsTestConfig())
+
+#endif
+
 /// Test `tf.Cosh`.
 
 GENERATE_DEFAULT_TEST_2(Cosh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cosh,
@@ -300,6 +312,17 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::OpsTestConfig())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Cosh, DT_COMPLEX64, DT_COMPLEX64, std::cosh,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cosh, DT_COMPLEX128, DT_COMPLEX128, std::cosh,
+                      test::OpsTestConfig())
+
+#endif
 
 /// Test `tf.Digamma`.
 
@@ -1050,6 +1073,17 @@ GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, std::sin,
 GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
                         test::OpsTestConfig())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Sin, DT_COMPLEX64, DT_COMPLEX64, std::sin,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sin, DT_COMPLEX128, DT_COMPLEX128, std::sin,
+                      test::OpsTestConfig())
+
+#endif
+
 /// Test `tf.Sinh`.
 
 GENERATE_DEFAULT_TEST_2(Sinh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sinh,
@@ -1060,6 +1094,17 @@ GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
 
 GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
                       test::OpsTestConfig())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Sinh, DT_COMPLEX64, DT_COMPLEX64, std::sinh,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sinh, DT_COMPLEX128, DT_COMPLEX128, std::sinh,
+                      test::OpsTestConfig())
+
+#endif
 
 /// Test `tf.Softplus`.
 
@@ -1120,6 +1165,17 @@ GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, std::tan,
 
 GENERATE_DEFAULT_TEST_2(Tan, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tan,
                         test::OpsTestConfig())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Tan, DT_COMPLEX64, DT_COMPLEX64, std::tan,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Tan, DT_COMPLEX128, DT_COMPLEX128, std::tan,
+                      test::OpsTestConfig())
+
+#endif
 
 /// Test `tf.Tanh`.
 

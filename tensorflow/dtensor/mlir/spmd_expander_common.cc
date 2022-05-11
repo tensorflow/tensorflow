@@ -472,7 +472,7 @@ mlir::LogicalResult PopulateConsumersFromModule(
 // If the mesh shape is [a, b, c, d], then the mesh coordinates are
 // [device_id/b/c/d, device_id/c/d%b, device_id/d%c, device_id%d]
 // for convenience, since device_id < a*b*c*d, we can apply %a on the first
-// coordinate as well for simplicies sake.
+// coordinate as well for simplicity's sake.
 // Thus we can decompose this calculation into the following tf ops:
 // tf.FloorMod(tf.Div(device_id, [b*c*d, c*d, d, 1]), [a, b, c, d]) where
 // [a, b, c, d] and [b*c*d, c*d, d, 1] are simply precomputed constants.

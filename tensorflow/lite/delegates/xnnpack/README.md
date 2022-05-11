@@ -184,7 +184,7 @@ TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
 
 // Later, after all the interpreters and XNNPACK delegates using the cache are
 // destroyed, release the weights cache.
-TfLiteXNNPackWeightsCacheDelete(weights_cache);
+TfLiteXNNPackDelegateWeightsCacheDelete(weights_cache);
 ```
 
 The weights cache is a contents-based cache. Every time XNNPACK has to pack

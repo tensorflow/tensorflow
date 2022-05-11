@@ -281,6 +281,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
 )
@@ -291,6 +292,7 @@ cuda_py_test(
     srcs = ["cudnn_deterministic_ops_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
+        "no_rocm",
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -304,6 +306,7 @@ cuda_py_test(
     srcs = ["cudnn_d9m_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
+        "no_rocm",
     ],
     deps = [
         ":cudnn_deterministic_base",
@@ -332,6 +335,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TODO(b/231615784): Re-enable this test once fixed.
     ],
     deps = [
         ":depthwise_conv_op_base",
@@ -348,6 +352,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
+        "notap",  # TODO(b/231615784): Re-enable this test once fixed.
     ],
     deps = [
         ":depthwise_conv_op_base",
@@ -659,7 +664,11 @@ cuda_py_test(
     name = "xent_op_d9m_test",
     size = "medium",
     srcs = ["xent_op_d9m_test.py"],
-    tags = ["notsan"],  # TODO(b/200548634): Remove.
+    tags = [
+        "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
+        "noasan",  # TODO(b/231484532): Remove after flakiness resolved.
+        "notsan",  # TODO(b/200548634): Remove.
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":xent_op_test_base",

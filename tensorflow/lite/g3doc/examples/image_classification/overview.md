@@ -110,7 +110,7 @@ Note: Image classification can only tell you the probability that an image
 represents one or more of the classes that the model was trained on. It cannot
 tell you the position or identity of objects within the image. If you need to
 identify objects and their positions within images, you should use an
-<a href="../object_detection/overview.md">object detection</a> model.
+<a href="../object_detection/overview">object detection</a> model.
 
 <h4>Ambiguous results</h4>
 
@@ -150,8 +150,9 @@ more accurate model.
 
 TensorFlow Lite provides you with a variety of image classification models which
 are all trained on the original dataset. Model architectures like MobileNet,
-Inception, and NASNet are available on the
-<a href="../../guide/hosted_models.md">hosted models page</a>. To choose the best model for
+Inception, and NASNet are available on
+<a href="https://tfhub.dev/s?deployment-format=lite">TensorFlow Hub</a>. To
+choose the best model for
 your use case, you need to consider the individual architectures as well as some
 of the tradeoffs between various models. Some of these model tradeoffs are based
 on metrics such as performance, accuracy, and model size. For example, you might
@@ -175,8 +176,8 @@ If you want to train a model to recognize new classes, see
 For the following use cases, you should use a different type of model:
 
 <ul>
-  <li>Predicting the type and position of one or more objects within an image (see <a href="../object_detection/overview.md">Object detection</a>)</li>
-  <li>Predicting the composition of an image, for example subject versus background (see <a href="../segmentation/overview.md">Segmentation</a>)</li>
+  <li>Predicting the type and position of one or more objects within an image (see <a href="../object_detection/overview">Object detection</a>)</li>
+  <li>Predicting the composition of an image, for example subject versus background (see <a href="../segmentation/overview">Segmentation</a>)</li>
 </ul>
 
 Once you have the starter model running on your target device, you can
@@ -263,11 +264,10 @@ Accuracy is measured in terms of how often the model correctly classifies an
 image. For example, a model with a stated accuracy of 60% can be expected to
 classify an image correctly an average of 60% of the time.
 
-The [list of hosted models](../../guide/hosted_models.md) provides Top-1 and
-Top-5 accuracy statistics. Top-1 refers to how often the correct label appears
-as the label with the highest probability in the model’s output. Top-5 refers to
-how often the correct label appears in the 5 highest probabilities in the
-model’s output.
+The most relevant accuracy metrics are Top-1 and Top-5. Top-1 refers to how
+often the correct label appears as the label with the highest probability in the
+model’s output. Top-5 refers to how often the correct label appears in the 5
+highest probabilities in the model’s output.
 
 The TensorFlow Lite quantized MobileNet models’ Top-5 accuracy range from 64.4
 to 89.9%.

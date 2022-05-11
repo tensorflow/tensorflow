@@ -2,12 +2,12 @@
 
 Image segmenters predict whether each pixel of an image is associated with a
 certain class. This is in contrast to
-<a href="../../models/object_detection/overview.md">object detection</a>, which
-detects objects in rectangular regions, and
-<a href="../../models/image_classification/overview.md">image
+<a href="../../examples/object_detection/overview">object detection</a>,
+which detects objects in rectangular regions, and
+<a href="../../examples/image_classification/overview">image
 classification</a>, which classifies the overall image. See the
-[introduction of image segmentation](../../models/segmentation/overview.md) for
-more information about image segmenters.
+[image segmentation overview](../../examples/segmentation/overview) for more
+information about image segmenters.
 
 Use the Task Library `ImageSegmenter` API to deploy your custom image segmenters
 or pretrained ones into your mobile apps.
@@ -147,7 +147,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageSegmenter` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+[TFLite Model Metadata](../../convert/metadata). See examples of creating
 metadata for image segmenters using the
 [TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#image_segmenters).
 

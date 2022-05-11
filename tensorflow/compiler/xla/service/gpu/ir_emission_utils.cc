@@ -245,8 +245,8 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
     return false;
   }
 
-  mlir::Value first_input = reduce.inputs()[0];
-  Shape operand_shape = GetShape(first_input);
+  mlir::Value first_operand = reduce.operands()[0];
+  Shape operand_shape = GetShape(first_operand);
 
   llvm::SmallVector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d : reduce.dimensions()) {

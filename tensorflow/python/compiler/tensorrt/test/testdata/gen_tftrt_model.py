@@ -83,6 +83,11 @@ def GenerateModelV2(tf_saved_model_dir, tftrt_saved_model_dir):
   converter = trt_convert.TrtGraphConverterV2(
       input_saved_model_dir=tf_saved_model_dir)
   converter.convert()
+  try:
+    line_length = max(160, os.get_terminal_size().columns)
+  except OSError:
+    line_length = 160
+  converter.summary(line_length=line_length, detailed=True)
   converter.save(tftrt_saved_model_dir)
 
 

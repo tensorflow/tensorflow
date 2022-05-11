@@ -343,16 +343,17 @@ struct ShapeVisitor {
   void backwardReduceShape(Value op) {
     forwards_worklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
-    if (reduceOp.inputs().size() == 1)
+    if (reduceOp.operands().size() == 1) {
       backwards_worklist.push_back(
-          ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back()));
+          ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back()));
+    }
   }
   void forwardReduceShape(Value op) {
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
-    if (reduceOp.inputs().size() != 1) return forwardUnknownShape(op);
+    if (reduceOp.operands().size() != 1) return forwardUnknownShape(op);
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     for (const auto &dim : llvm::enumerate(lookup(
-             ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back())))) {
+             ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back())))) {
       if (!llvm::is_contained(reduceOp.dimensions(), dim.index()))
         dims.push_back(dim.value());
     }

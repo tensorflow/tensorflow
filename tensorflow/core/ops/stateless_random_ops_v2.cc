@@ -95,6 +95,15 @@ REGISTER_OP("StatelessRandomUniformFullIntV2")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn(StatelessShapeV2);
 
+REGISTER_OP("StatelessShuffle")
+    .Input("value: T")
+    .Input("key: uint64")
+    .Input("counter: uint64")
+    .Input("alg: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StatelessRandomGetKeyCounterAlg")
     .Input("seed: Tseed")
     .Output("key: uint64")

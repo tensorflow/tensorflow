@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -43,12 +42,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
@@ -60,6 +60,8 @@ using tensorflow::DataType;
 using tensorflow::DataTypeVector;
 using tensorflow::FullTypeDef;
 using tensorflow::FunctionDef;
+using tensorflow::FunctionLibraryDefinition;
+using tensorflow::Graph;
 using tensorflow::GraphDebugInfo;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -70,6 +72,7 @@ using tensorflow::Status;
 using tensorflow::StatusOr;
 using tensorflow::StringPiece;
 using tensorflow::TensorId;
+using tensorflow::VersionDef;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::errors::NotFound;
 
@@ -146,16 +149,19 @@ class GraphDefImporter {
   class ConversionState
       : public absl::flat_hash_map<StringPiece, std::unique_ptr<ResultInfo>> {
    public:
-    // Create a conversion state with a placeholder value.
-    explicit ConversionState(const OperationState &placeholder_state)
-        : placeholder_op_(OpBuilder(placeholder_state.getContext())
-                              .create(placeholder_state)),
+    // Create a conversion state with a placeholder value. Put the plaecholder
+    // in the block so that it is owned.
+    explicit ConversionState(Block *block,
+                             const OperationState &placeholder_state)
+        : placeholder_op_(
+              OpBuilder::atBlockBegin(block).create(placeholder_state)),
           placeholder_(placeholder_op_->getResult(0)) {}
-    // Destroy the placeholder op on destruction.
-    ~ConversionState() { placeholder_op_->erase(); }
 
     // Get the placeholder value.
     Value GetPlaceholder() { return placeholder_; }
+
+    // Finalize the conversion. The placeholder is destroyed.
+    void Finalize() { placeholder_op_->erase(); }
 
    private:
     // The placeholder operation.
@@ -230,6 +236,31 @@ class GraphDefImporter {
 };
 }  // namespace
 
+// Convert a VersionDef to an MLIR version attribute.
+static VersionAttr ConvertVersionAttr(MLIRContext *context,
+                                      const VersionDef &version) {
+  ArrayRef<int32_t> bad_consumers(version.bad_consumers().data(),
+                                  version.bad_consumers().size());
+  return VersionAttr::get(context, version.producer(), version.min_consumer(),
+                          bad_consumers);
+}
+
+// Returns true if the function is a generic function, i.e. it contains
+// placeholder attributes.
+//
+// TODO(jeffniu): Having to iterate over every function just to check for
+// placeholder attributes is slow. Since most functions are not generic, we can
+// speculate by converting all functions as non-generic until we see a
+// placeholder attribute, bail out, and fall back to the generic function
+// converter.
+static bool IsGenericFunction(const FunctionDef &fdef) {
+  for (const NodeDef &node : fdef.node_def())
+    for (const auto &named_attr : node.attr())
+      if (!named_attr.second.placeholder().empty()) return true;
+
+  return false;
+}
+
 StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     const GraphDef &graph) {
   // Create the module.
@@ -255,14 +286,13 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     gradient_map.emplace(gradient.function_name(), gradient.gradient_func());
 
   // Convert the graph.
-  ConversionState s(placeholder_state_);
+  ConversionState s(&graph_op.nodes().front(), placeholder_state_);
   TF_RETURN_IF_ERROR(
       ConvertNodes(builder, s, graph.node(), &graph_op.nodes().front()));
 
   // A function to convert a generic or non-generic function.
   const auto convert_func = [this, &gradient_map](GraphFuncOp func_op,
                                                   const FunctionDef &function) {
-    // TODO(jeffniu): `IsGenericFunction` is slow.
     if (IsGenericFunction(function)) {
       // Generic functions aren't on the hot path so just call the old
       // importer.
@@ -455,7 +485,7 @@ Location GraphDefImporter::ConvertLocation(StringRef node_name,
 StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
                                                     ResultInfo *info) {
   if (id.output.empty()) {
-    if (id.index > info->data.size()) {
+    if (id.index >= info->data.size()) {
       return InvalidArgument("Result #", id.index, " of node '", id.node.str(),
                              "' is out of bounds");
     }
@@ -467,7 +497,7 @@ StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
     return InvalidArgument("Node '", id.node.str(), "' has no output called '",
                            id.output.str(), "'");
   }
-  if (id.index > it->second.size()) {
+  if (id.index >= it->second.size()) {
     return InvalidArgument("Result #", id.index, " of segment '", id.node.str(),
                            ":", id.output.str(), "' is out of bounds");
   }
@@ -548,7 +578,7 @@ Status GraphDefImporter::ConvertFunctionDef(
 
   // Iterate over the arguments again and map them. We have to add them first
   // otherwise the ranges will be invalidated.
-  ConversionState s(placeholder_state_);
+  ConversionState s(body, placeholder_state_);
   for (const auto &it : llvm::enumerate(signature.input_arg())) {
     s.emplace(
         it.value().name(),
@@ -657,6 +687,9 @@ Status GraphDefImporter::ConvertNodes(
         "\n");
     return InvalidArgument(std::move(os.str()));
   }
+  // The placeholder has no uses and should not acquire any more uses. Safely
+  // delete it from the IR.
+  s.Finalize();
 
   return Status::OK();
 }
@@ -865,6 +898,17 @@ StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
   GraphDefImporter importer(context->getOrLoadDialect<TFGraphDialect>(),
                             *OpRegistry::Global(), debug_info);
   return importer.ConvertGraphDef(graph_def);
+}
+
+StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const Graph &graph, const GraphDebugInfo &debug_info,
+    const FunctionLibraryDefinition &flib_def) {
+  // TODO(b/231723721): This conversion path is slow because both the graph and
+  // the function library are converted to GraphDef.
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  *graph_def.mutable_library() = flib_def.ToProto();
+  return ImportGraphDef(context, debug_info, graph_def);
 }
 
 }  // namespace tfg

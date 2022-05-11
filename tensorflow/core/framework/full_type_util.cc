@@ -38,6 +38,13 @@ OpTypeConstructor NoOp() {
   return nullptr;
 }
 
+OpTypeConstructor NoOutputs() {
+  return [](OpDef* op_def) {
+    op_def->mutable_output_arg();
+    return Status::OK();
+  };
+}
+
 OpTypeConstructor Nullary(FullTypeId t) {
   return [t](OpDef* op_def) {
     FullTypeDef* tdef =
@@ -366,6 +373,12 @@ bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs, bool covariant) {
   }
   // Compatibility rule: UNSET is treated as ANY for the purpose of subtyping.
   if (rhs.type_id() == TFT_UNSET) {
+    return true;
+  }
+  // Compatibility rule: TENSOR[LEGACY_VARIANT] is treated as ANY for the
+  // purpose of subtyping.
+  if ((rhs.type_id() == TFT_TENSOR) &&
+      (GetArgDefaultUnset(rhs, 0).type_id() == TFT_LEGACY_VARIANT)) {
     return true;
   }
   // Rule: encodings are subtypes of the encoding type.
