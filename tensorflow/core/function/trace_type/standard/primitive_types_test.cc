@@ -203,5 +203,78 @@ TEST(PrimitiveTypesTest, ProductOfAny) {
   EXPECT_EQ(*product_1.most_specific_common_supertype({&product_2}), product_2);
 }
 
+TEST(PrimitiveTypesTest, RecordTypeLiterals) {
+  std::vector<std::unique_ptr<TraceType>> keys;
+  std::vector<std::unique_ptr<TraceType>> values;
+
+  keys.push_back(std::make_unique<Literal<std::string>>("a"));
+  values.push_back(std::make_unique<Literal<int>>(33));
+
+  Record record_1 = Record(std::move(keys), std::move(values));
+  std::unique_ptr<TraceType> record_1_copy = record_1.clone();
+
+  std::vector<std::unique_ptr<TraceType>> keys_2;
+  std::vector<std::unique_ptr<TraceType>> values_2;
+  keys_2.push_back(std::make_unique<Literal<std::string>>("b"));
+  values_2.push_back(std::make_unique<Literal<int>>(34));
+  Record record_2 = Record(std::move(keys_2), std::move(values_2));
+
+  EXPECT_EQ(record_1.to_string(), "Record<String<a>:Int<33>>");
+  EXPECT_EQ(record_1_copy->to_string(), "Record<String<a>:Int<33>>");
+  EXPECT_EQ(record_2.to_string(), "Record<String<b>:Int<34>>");
+
+  EXPECT_EQ(record_1, *record_1_copy);
+  EXPECT_EQ(record_1.hash(), record_1_copy->hash());
+  EXPECT_NE(record_1, record_2);
+
+  EXPECT_TRUE(record_1.is_subtype_of(*record_1_copy));
+  EXPECT_FALSE(record_1.is_subtype_of(record_2));
+
+  std::unique_ptr<TraceType> result =
+      record_1.most_specific_common_supertype({&record_1});
+  EXPECT_EQ(*result, record_1);
+  EXPECT_EQ(record_1.most_specific_common_supertype({&record_2}), nullptr);
+}
+
+TEST(PrimitiveTypesTest, RecordTypeAnys) {
+  std::vector<std::unique_ptr<TraceType>> keys;
+  std::vector<std::unique_ptr<TraceType>> values;
+
+  keys.push_back(std::make_unique<Literal<std::string>>("a"));
+  values.push_back(std::make_unique<Any>(std::make_unique<Literal<int>>(33)));
+
+  Record record_1 = Record(std::move(keys), std::move(values));
+  std::unique_ptr<TraceType> record_1_copy = record_1.clone();
+
+  std::vector<std::unique_ptr<TraceType>> keys_2;
+  std::vector<std::unique_ptr<TraceType>> values_2;
+  keys_2.push_back(std::make_unique<Literal<std::string>>("a"));
+  values_2.push_back(std::make_unique<Any>(std::make_unique<Literal<int>>(34)));
+  Record record_2 = Record(std::move(keys_2), std::move(values_2));
+
+  EXPECT_EQ(record_1.to_string(), "Record<String<a>:Any<Int<33>>>");
+  EXPECT_EQ(record_1_copy->to_string(), "Record<String<a>:Any<Int<33>>>");
+  EXPECT_EQ(record_2.to_string(), "Record<String<a>:Any<Int<34>>>");
+
+  EXPECT_EQ(record_1, *record_1_copy);
+  EXPECT_EQ(record_1.hash(), record_1_copy->hash());
+  EXPECT_NE(record_1, record_2);
+
+  EXPECT_TRUE(record_1.is_subtype_of(*record_1_copy));
+  EXPECT_FALSE(record_1.is_subtype_of(record_2));
+  EXPECT_FALSE(record_2.is_subtype_of(record_1));
+
+  EXPECT_EQ(*record_1.most_specific_common_supertype({&record_1}), record_1);
+  EXPECT_EQ(*record_2.most_specific_common_supertype({&record_2}), record_2);
+
+  std::vector<std::unique_ptr<TraceType>> keys_3;
+  std::vector<std::unique_ptr<TraceType>> values_3;
+  keys_3.push_back(std::make_unique<Literal<std::string>>("a"));
+  values_3.push_back(std::make_unique<Any>(absl::nullopt));
+  Record supertype = Record(std::move(keys_3), std::move(values_3));
+
+  EXPECT_EQ(*record_1.most_specific_common_supertype({&record_2}), supertype);
+}
+
 }  // namespace trace_type
 }  // namespace tensorflow

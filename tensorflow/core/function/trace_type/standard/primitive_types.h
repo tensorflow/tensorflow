@@ -15,10 +15,10 @@ limitations under the License.
 
 #ifndef TENSORFLOW_CORE_FUNCTION_TRACE_TYPE_STANDARD_PRIMITIVE_TYPES_H_
 #define TENSORFLOW_CORE_FUNCTION_TRACE_TYPE_STANDARD_PRIMITIVE_TYPES_H_
-
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/function/trace_type/standard/trace_type.h"
 
@@ -136,6 +136,48 @@ class Product : public TraceType {
 
  private:
   std::vector<std::unique_ptr<TraceType>> elements_;
+};
+
+struct TraceTypeHashByRef {
+  std::size_t operator()(const TraceType* const& t) const noexcept {
+    return t->hash();
+  }
+};
+
+struct TraceTypeEqByRef {
+  bool operator()(const TraceType* lhs, const TraceType* rhs) const {
+    return *lhs == *rhs;
+  }
+};
+
+using RecordMap = absl::flat_hash_map<const TraceType*, const TraceType*,
+                                      TraceTypeHashByRef, TraceTypeEqByRef>;
+
+// TODO(b/232114163): Reconsider flexibility of structural subtyping.
+// Represents a set of fields consisting of a key type and a value type.
+// Key type must be an invariant type (a.is_subtype_of(b) implies a == b).
+class Record : public TraceType {
+ public:
+  explicit Record(std::vector<std::unique_ptr<TraceType>> keys,
+                  std::vector<std::unique_ptr<TraceType>> values);
+
+  std::unique_ptr<TraceType> clone() const override;
+
+  const RecordMap& fields() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> most_specific_common_supertype(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  std::vector<std::unique_ptr<TraceType>> owned_keys_;
+  std::vector<std::unique_ptr<TraceType>> owned_values_;
+  RecordMap fields_;
 };
 
 }  // namespace trace_type
