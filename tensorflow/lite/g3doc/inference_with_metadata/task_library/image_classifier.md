@@ -65,16 +65,15 @@ android {
     aaptOptions {
         noCompress "tflite"
     }
-
 }
 
 dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.4.0'
     // Import the GPU delegate plugin Library for GPU inference
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
 }
 ```
 
@@ -97,6 +96,127 @@ List<Classifications> results = imageClassifier.classify(image);
 
 See the
 [source code and javadoc](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/vision/classifier/ImageClassifier.java)
+for more options to configure `ImageClassifier`.
+
+## Run inference in iOS
+
+### Step 1: Install the dependencies
+
+The Task Library supports installation using CocoaPods. Make sure that CocoaPods
+is installed on your system. Please see the
+[CocoaPods installation guide](https://guides.cocoapods.org/using/getting-started.html#getting-started)
+for instructions.
+
+Please see the
+[CocoaPods guide](https://guides.cocoapods.org/using/using-cocoapods.html) for
+details on adding pods to an Xcode project.
+
+Add the `TensorFlowLiteTaskVision` pod in the Podfile.
+
+```
+target 'MyAppWithTaskAPI' do
+  use_frameworks!
+  pod 'TensorFlowLiteTaskVision'
+end
+```
+
+Make sure that the `.tflite` model you will be using for inference is present in
+your app bundle.
+
+### Step 2: Using the model
+
+#### Swift
+
+```swift
+// Imports
+import TensorFlowLiteTaskVision
+
+// Initialization
+guard let modelPath = Bundle.main.path(forResource: "birds_V1",
+                                            ofType: "tflite") else { return }
+
+let options = ImageClassifierOptions(modelPath: modelPath)
+
+// Configure any additional options:
+// options.classificationOptions.maxResults = 3
+
+let classifier = try ImageClassifier.imageClassifier(options: options)
+
+// Convert the input image to MLImage.
+// There are other sources for MLImage. For more details, please see:
+// https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
+guard let image = UIImage (named: "sparrow.jpg"), let mlImage = MLImage(image: image) else { return }
+
+// Run inference
+let classificationResults = try classifier.classify(gmlImage: mlImage)
+```
+
+#### Objective C
+
+```objc
+// Imports
+#import <TensorFlowLiteTaskVision/TFLTaskVision.h>
+
+// Initialization
+NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"birds_V1" ofType:@"tflite"];
+
+TFLImageClassifierOptions *options =
+    [[TFLImageClassifierOptions alloc] initWithModelPath:modelPath];
+
+// Configure any additional options:
+// options.classificationOptions.maxResults = 3;
+
+TFLImageClassifier *classifier = [TFLImageClassifier imageClassifierWithOptions:options
+                                                                          error:nil];
+
+// Convert the input image to MLImage.
+UIImage *image = [UIImage imageNamed:@"sparrow.jpg"];
+
+// There are other sources for GMLImage. For more details, please see:
+// https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
+GMLImage *gmlImage = [[GMLImage alloc] initWithImage:image];
+
+// Run inference
+TFLClassificationResult *classificationResult =
+    [classifier classifyWithGMLImage:gmlImage error:nil];
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/vision/sources/TFLImageClassifier.h)
+for more options to configure `TFLImageClassifier`.
+
+## Run inference in Python
+
+### Step 1: Install the pip package
+
+```
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
+```python
+# Imports
+from tflite_support.task import vision
+from tflite_support.task import core
+from tflite_support.task import processor
+
+# Initialization
+base_options = core.BaseOptions(file_name=model_path)
+classification_options = processor.ClassificationOptions(max_results=2)
+options = vision.ImageClassifierOptions(base_options=base_options, classification_options=classification_options)
+classifier = vision.ImageClassifier.create_from_options(options)
+
+# Alternatively, you can create an image classifier in the following manner:
+# classifier = vision.ImageClassifier.create_from_file(model_path)
+
+# Run inference
+image = vision.TensorImage.create_from_file(image_path)
+classification_result = classifier.classify(image)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/vision/image_classifier.py)
 for more options to configure `ImageClassifier`.
 
 ## Run inference in C++
