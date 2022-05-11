@@ -2238,6 +2238,23 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 
 // -----
 
+func.func @reduce_add_complex(%arg0: tensor<5x4xcomplex<f32>>) -> tensor<5xcomplex<f32>> {
+  %cst = mhlo.constant dense<(0.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+  %0 = "mhlo.reduce"(%arg0, %cst) ({
+  ^bb0(%arg3: tensor<complex<f32>>, %arg4 : tensor<complex<f32>>):
+    %1 = mhlo.add %arg3, %arg4 : tensor<complex<f32>>
+    "mhlo.return"(%1) : (tensor<complex<f32>>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<5x4xcomplex<f32>>, tensor<complex<f32>>) -> tensor<5xcomplex<f32>>
+  func.return %0 : tensor<5xcomplex<f32>>
+}
+
+// CHECK-LABEL: @reduce_add_complex
+// CHECK: %[[INIT:.*]] = complex.constant [0.000000e+00 : f32, 0.000000e+00 : f32] : complex<f32>
+// CHECK: linalg.fill ins(%[[INIT]]
+// CHECK: complex.add
+
+// -----
+
 func.func @reduce_minimum(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):

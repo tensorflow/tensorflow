@@ -156,16 +156,6 @@ SmallVector<int64_t, 4> Extract1DVector(DenseIntElementsAttr elements) {
   return ret;
 }
 
-/// Returns the constant value associated with the init value if the defining
-/// operation is a constant.
-Attribute GetInitValueAsConst(Value init) {
-  DenseElementsAttr attr;
-  if (!matchPattern(init, m_Constant(&attr))) return {};
-  auto type = attr.getType().dyn_cast<ShapedType>();
-  if (!type || type.getRank() != 0) return {};
-  return attr.getValues<Attribute>()[0];
-}
-
 /// Returns a permutation AffineMap that puts all reduction dimensions to the
 /// last. The order of parallel loops and reduction loops are all sorted. E.g.,
 /// if `rank` is 4 and `reductionDims` is {1, 3}, then
@@ -1761,13 +1751,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
       Value operand = std::get<0>(values);
       Value init_value = std::get<1>(values);
       Value result = std::get<2>(values);
-      Attribute init_const_val = GetInitValueAsConst(init_value);
-      if (init_const_val) {
-        init_value = rewriter.create<arith::ConstantOp>(
-            init_value.getDefiningOp()->getLoc(), init_const_val);
-      } else {
-        init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
-      }
+      init_value = rewriter.createOrFold<tensor::ExtractOp>(loc, init_value);
 
       operands.push_back(operand);
       auto result_type = result.getType().cast<ShapedType>();
