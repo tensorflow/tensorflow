@@ -364,5 +364,7 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
   }
 }
 
+/*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
+
 }  // namespace profiler
 }  // namespace tensorflow
