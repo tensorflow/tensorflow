@@ -537,6 +537,9 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);
 
+std::string convert_range_error_msg(float start, float limit, float delta);
+std::string convert_range_expected_msg(const NodeDef& node_def);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
