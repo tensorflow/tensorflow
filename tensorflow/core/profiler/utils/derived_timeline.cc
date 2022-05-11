@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 

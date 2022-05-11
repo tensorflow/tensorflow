@@ -16,13 +16,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 
 #include <functional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -34,11 +34,13 @@ namespace profiler {
 // of the same Op on the XLine.
 struct XEventInfo {
   int64_t group_id;  // group ID of this XEvent or kInvalidGroupId.
+
   // The set of low level events associated with this XEvent.
   // For a TF op that is compiled by XLA, these are its composing HLO op names.
   // For a TF op that is not compiled by XLA, these are its composing kernel
   // names.
   absl::flat_hash_set<std::string> low_level_event_names;
+
   XEventInfo(int64_t gid, absl::string_view low_level_event_name) {
     group_id = gid;
     if (!low_level_event_name.empty()) {
@@ -50,7 +52,8 @@ struct XEventInfo {
 // Helper for deriving an XLine from events in another XLine.
 class DerivedXLineBuilder {
  public:
-  static const int64_t kInvalidGroupId = -1;
+  static constexpr int64_t kInvalidGroupId = -1;
+
   DerivedXLineBuilder(XPlaneBuilder* plane, int64_t line_id,
                       absl::string_view name, int64_t timestamp_ns,
                       std::vector<DerivedXLineBuilder*> dependent_lines);
