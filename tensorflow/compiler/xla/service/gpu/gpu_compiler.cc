@@ -717,7 +717,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // since commit 7d529df, this is not always true at this point.
   // Therefore, rerun transpose folding.
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
-                                     CanFoldOutputTransposeIntoDot,
                                      TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();

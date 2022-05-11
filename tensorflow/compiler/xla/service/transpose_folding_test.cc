@@ -42,7 +42,6 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using ::tensorflow::testing::IsOkAndHolds;
-using ::testing::AllOf;
 
 using TransposeFoldingTest = HloTestBase;
 
@@ -52,9 +51,9 @@ HloModule FoldDotTranspose
 
 ENTRY entry_computation {
   x = f32[2,3]{1,0} parameter(0)
-  y = f32[4,3]{1,0} parameter(1)
-  transpose = f32[3,4]{1,0} transpose(y), dimensions={1,0}
-  ROOT dot = f32[2,4]{1,0} dot(x, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  y = f32[2,3]{1,0} parameter(1)
+  transpose = f32[3,2]{1,0} transpose(y), dimensions={1,0}
+  ROOT dot = f32[2,2]{1,0} dot(x, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -66,36 +65,15 @@ ENTRY entry_computation {
                       /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/1));
 }
 
-TEST_F(TransposeFoldingTest, FoldDotTransposeBothOperands) {
-  constexpr absl::string_view kHloString = R"(
-HloModule FoldDotTransposeBothOperands
-
-ENTRY entry_computation {
-  x = f32[3,2]{1,0} parameter(0)
-  transpose_x = f32[2,3]{1,0} transpose(x), dimensions={1,0}
-  y = f32[4,3]{1,0} parameter(1)
-  transpose_y = f32[3,4]{1,0} transpose(y), dimensions={1,0}
-  ROOT dot = f32[2,4]{1,0} dot(transpose_x, transpose_y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::Parameter(0), op::Parameter(1),
-                      /*lhs_contracting_dim=*/0, /*rhs_contracting_dim=*/1));
-}
-
 TEST_F(TransposeFoldingTest, DontFoldTransposeOfBatchDimByDefault) {
   constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
-  x = f32[5,2,3] parameter(0)
-  y = f32[3,5,4] parameter(1)
-  transpose = f32[5,3,4] transpose(y), dimensions={1,0,2}
-  ROOT dot = f32[5,2,4] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+  x = f32[2,3] parameter(0)
+  y = f32[3,2] parameter(1)
+  transpose = f32[2,3] transpose(y), dimensions={1,0}
+  ROOT dot = f32[2] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -115,6 +93,7 @@ ENTRY entry_computation {
   ROOT dot = f32[5,2,4] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
 }
 )";
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
@@ -126,82 +105,6 @@ ENTRY entry_computation {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0), op::Parameter(1),
                       /*lhs_contracting_dim=*/2, /*rhs_contracting_dim=*/0));
-}
-
-TEST_F(TransposeFoldingTest, DontFoldTransposeOfDotOutputByDefault) {
-  constexpr absl::string_view kHloString = R"(
-HloModule DontFoldTransposeOfDotOutputByDefault
-
-ENTRY entry_computation {
-  x = f32[5,2,3] parameter(0)
-  y = f32[5,3,4] parameter(1)
-  dot = f32[5,2,4] dot(x, y), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-  ROOT transpose = f32[5,4,2] transpose(dot), dimensions={0,2,1}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
-}
-
-TEST_F(TransposeFoldingTest, FoldTransposeOfDotOutputWhenPermitted) {
-  constexpr absl::string_view kHloString = R"(
-HloModule DontFoldTransposeOfDotOutputByDefault
-
-ENTRY entry_computation {
-  x = f32[5,2,3] parameter(0)
-  y = f32[5,3,4] parameter(1)
-  dot = f32[5,2,4] dot(x, y), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-  ROOT transpose = f32[5,4,2] transpose(dot), dimensions={0,2,1}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  TransposeFolding transpose_folding(
-      /*dot_can_fold_transpose_operand=*/[](const HloInstruction&,
-                                            int64_t) { return false; },
-      /*dot_can_fold_output_transpose=*/
-      [](const HloInstruction&) { return true; });
-  EXPECT_THAT(transpose_folding.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      AllOf(op::ShapeWithLayout("f32[5,4,2]{2,1,0}"),
-            op::Bitcast(AllOf(op::ShapeWithLayout("f32[5,2,4]{1,2,0}"),
-                              op::Dot(op::Parameter(0), op::Parameter(1),
-                                      /*lhs_contracting_dim=*/2,
-                                      /*rhs_contracting_dim=*/1)))));
-}
-
-TEST_F(TransposeFoldingTest, FoldDotOperandAndOutputTransposeWhenPermitted) {
-  constexpr absl::string_view kHloString = R"(
-HloModule DontFoldTransposeOfDotOutputByDefault
-
-ENTRY entry_computation {
-  x = f32[5,2,3] parameter(0)
-  y = f32[3,5,4] parameter(1)
-  transpose = f32[5,3,4] transpose(y), dimensions={1,0,2}
-  dot = f32[5,2,4] dot(x, transpose), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-  ROOT transpose2 = f32[5,4,2] transpose(dot), dimensions={0,2,1}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  TransposeFolding transpose_folding(
-      /*dot_can_fold_transpose_operand=*/[](const HloInstruction&,
-                                            int64_t) { return true; },
-      /*dot_can_fold_output_transpose=*/
-      [](const HloInstruction&) { return true; });
-  EXPECT_THAT(transpose_folding.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      AllOf(op::ShapeWithLayout("f32[5,4,2]{2,1,0}"),
-            op::Bitcast(AllOf(op::ShapeWithLayout("f32[5,2,4]{1,2,0}"),
-                              op::Dot(op::Parameter(0), op::Parameter(1),
-                                      /*lhs_contracting_dim=*/2,
-                                      /*rhs_contracting_dim=*/0)))));
 }
 
 TEST_F(TransposeFoldingTest, DontFoldTransposeOfRank1Dot) {
