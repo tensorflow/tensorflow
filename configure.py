@@ -788,29 +788,6 @@ def set_gcc_host_compiler_path(environ_cp):
   write_action_env_to_bazelrc('GCC_HOST_COMPILER_PATH', gcc_host_compiler_path)
 
 
-def reformat_version_sequence(version_str, sequence_count):
-  """Reformat the version string to have the given number of sequences.
-
-  For example:
-  Given (7, 2) -> 7.0
-        (7.0.1, 2) -> 7.0
-        (5, 1) -> 5
-        (5.0.3.2, 1) -> 5
-
-  Args:
-      version_str: String, the version string.
-      sequence_count: int, an integer.
-
-  Returns:
-      string, reformatted version string.
-  """
-  v = version_str.split('.')
-  if len(v) < sequence_count:
-    v = v + (['0'] * (sequence_count - len(v)))
-
-  return '.'.join(v[:sequence_count])
-
-
 def set_tf_cuda_paths(environ_cp):
   """Set TF_CUDA_PATHS."""
   ask_cuda_paths = (
