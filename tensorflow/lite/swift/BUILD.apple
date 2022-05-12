@@ -58,11 +58,8 @@ swift_library(
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS + ["nobuilder"],
     visibility = ios_visibility_allowlist(),
-    deps = [
-        "//third_party/apple_frameworks:Darwin",
-        "//third_party/apple_frameworks:Foundation",
-        "//tensorflow/lite/ios:tensorflow_lite_c",
-    ] + select({
+    # Do not sort: these targets sort differently internally vs open source
+    deps = ["//tensorflow/lite/ios:tensorflow_lite_c"] + select({
         ":use_coreml_delegate": [
             "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
@@ -89,8 +86,6 @@ swift_library(
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/ios:tensorflow_lite_c",
-        "//third_party/apple_frameworks:Darwin",
-        "//third_party/apple_frameworks:Foundation",
     ],
 )
 
@@ -126,7 +121,6 @@ swift_library(
     deps = [
         ":Resources",
         ":TensorFlowLiteAllDelegates",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
