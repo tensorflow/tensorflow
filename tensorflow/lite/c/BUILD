@@ -119,6 +119,7 @@ cc_library(
         ":c_api_internal",
         ":c_api_types",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/kernels:kernel_util",
