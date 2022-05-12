@@ -3203,7 +3203,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
-           IsContractionWithAdd(ctx, node_index);
+           IsContractionWithAdd(ctx, node_index) ||
+           is_relu_biasadd_conv_candidate();
 
   return is_relu_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
