@@ -79,8 +79,9 @@ class TestCluster {
   // Stops all workers.
   void StopWorkers();
 
-  // Returns the dispatcher state export.
+  // Returns the server state exports.
   ServerStateExport ExportDispatcherState() const;
+  ServerStateExport ExportWorkerState(size_t index) const;
 
  private:
   bool initialized_ = false;

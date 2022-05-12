@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -80,6 +81,9 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
   Status GetWorkerTasks(const GetWorkerTasksRequest* request,
                         GetWorkerTasksResponse* response);
+
+  // Exports the worker state for debugging.
+  WorkerStateExport ExportState() const;
 
  private:
   struct Task {
