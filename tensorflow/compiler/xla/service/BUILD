@@ -4346,6 +4346,7 @@ cc_library(
         ":memory_space_assignment_utils",
         ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/core/lib/math:math_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings",
