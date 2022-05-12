@@ -306,7 +306,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
 
   std::vector<se::blas::AlgorithmType> algorithms;
-  CHECK(stream->parent()->GetBlasGemmAlgorithms(&algorithms));
+  CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
 
   absl::optional<se::blas::AlgorithmType> first_algorithm;
   std::vector<AutotuneResult> profile_results;

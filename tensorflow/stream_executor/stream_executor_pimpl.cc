@@ -366,12 +366,12 @@ bool StreamExecutor::GetRnnAlgorithms(
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(
-    std::vector<blas::AlgorithmType>* out_algorithms) {
+    Stream* stream, std::vector<blas::AlgorithmType>* out_algorithms) {
   blas::BlasSupport* blas_support = AsBlas();
   if (!blas_support) {
     return false;
   }
-  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
+  return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
 port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
