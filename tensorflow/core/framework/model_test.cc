@@ -1645,8 +1645,8 @@ TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
       1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_4.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_5.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.0, model_timing.GetTiming(batch_4.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.0, model_timing.GetTiming(batch_5.get())->pipeline_ratio);
 
   EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time_nsec);
   EXPECT_DOUBLE_EQ(
