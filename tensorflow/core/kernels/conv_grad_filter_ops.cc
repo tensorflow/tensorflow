@@ -827,8 +827,13 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
+#if GOOGLE_CUDA
   const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
                                                     stream, /*is_conv2d=*/true);
+#else
+  // fast NHWC implementation is a CUDA only feature
+  const bool compute_in_nhwc = false;
+#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and
