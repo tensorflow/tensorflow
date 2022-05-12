@@ -151,8 +151,8 @@ struct DynamicReshapeOpInterface
       if (failed(alloc)) return failure();
 
       operand = *alloc;
-      auto copy_status = bufferization::createMemCpy(
-          rewriter, op->getLoc(), *operand_buffer, operand, state.getOptions());
+      auto copy_status = state.getOptions().createMemCpy(
+          rewriter, op->getLoc(), *operand_buffer, operand);
       if (failed(copy_status)) return failure();
     }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(

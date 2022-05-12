@@ -170,8 +170,8 @@ struct LoopOpInterface
       Value output = std::get<1>(it);
       Value to_memref_op = rewriter.create<bufferization::ToMemrefOp>(
           new_terminator.getLoc(), output.getType(), std::get<0>(it));
-      if (failed(createMemCpy(rewriter, new_terminator.getLoc(), to_memref_op,
-                              output, state.getOptions())))
+      if (failed(state.getOptions().createMemCpy(
+              rewriter, new_terminator.getLoc(), to_memref_op, output)))
         return failure();
     }
 
