@@ -88,3 +88,6 @@ export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 
 source tensorflow/tools/ci_build/builds/pip_new.sh
+
+# remove duplicate wheel and copy wheel to mounted volume for local access
+rm -rf /tensorflow/pip_test/whl/*linux_aarch64.whl && cp -r /tensorflow/pip_test/whl .

@@ -28,5 +28,5 @@ jobs:
     - name: Upload pip wheel
       uses: actions/upload-artifact@v3
       with:
-        name: tensorflow_${{ matrix.pyver }}_pipwheel
-        path: /tensorflow/pip_test/whl/**
+        name: tensorflow_py${{ matrix.pyver }}_wheel
+        path: /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/whl/*.whl
