@@ -28,10 +28,10 @@ index 3e8bbe8a1cc1..8883b16b7350 100644
  # The necessary warnings and other compile flags should be provided by the
  # toolchain or the `.bazelrc` file. This is just a workaround until we have a
 diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-index ff64df694048..c9c35b01711c 100644
+index 0d3a5de2f20b..534c835384f6 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
 +++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-@@ -76,8 +76,8 @@ os_defines = select({
+@@ -82,8 +82,8 @@ os_defines = select({
  # TODO: We should split out host vs. target here.
  llvm_config_defines = os_defines + select({
      "@bazel_tools//src/conditions:windows": native_arch_defines("X86", "x86_64-pc-win32"),
@@ -40,7 +40,7 @@ index ff64df694048..c9c35b01711c 100644
 +    "//llvm:macos_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
 +    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
      "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     "@bazel_tools//src/conditions:linux_s390x": native_arch_defines("SystemZ", "systemz-unknown-linux_gnu"),
      "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
- }) + [
 -- 
 2.30.1 (Apple Git-130)
