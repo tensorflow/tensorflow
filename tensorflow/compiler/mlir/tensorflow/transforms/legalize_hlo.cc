@@ -759,61 +759,15 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    // Strides must be 1 otherwise we cannot legalize this `mhlo.slice` op.
-    if (!AreStridesLegal(slice_op)) return failure();
-
-    rewriter.setInsertionPointAfter(slice_op.getOperation());
-    auto start_indices = slice_op.start_indices();
-    auto limit_indices = slice_op.limit_indices();
-    std::vector<int64_t> size_values;
-    for (auto pair : llvm::zip(start_indices.getValues<APInt>(),
-                               limit_indices.getValues<APInt>())) {
-      size_values.emplace_back(std::get<1>(pair).getSExtValue() -
-                               std::get<0>(pair).getSExtValue());
-    }
-
-    RankedTensorType ty =
-        RankedTensorType::get({static_cast<int64_t>(size_values.size())},
-                              rewriter.getIntegerType(64));
-    auto start = rewriter.create<ConstOp>(slice_op.getLoc(), start_indices);
-    auto size = rewriter.create<ConstOp>(
-        slice_op.getLoc(), DenseIntElementsAttr::get(ty, size_values));
-    rewriter.replaceOpWithNewOp<SliceOp>(slice_op, slice_op.getType(),
-                                         slice_op.operand(), start, size);
+    auto begin =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.start_indices());
+    auto end =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.limit_indices());
+    auto strides =
+        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.strides());
+    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+        slice_op, slice_op.getType(), slice_op.operand(), begin, end, strides);
     return success();
-  }
-
- private:
-  // Strides are legal if stride is 1, or equals to the entire input dimension
-  // length and output dimension length is 1.
-  bool AreStridesLegal(mhlo::SliceOp slice_op) const {
-    DenseIntElementsAttr strides = slice_op.strides();
-    if (strides.isSplat() && strides.getSplatValue<APInt>() == 1) {
-      return true;
-    }
-
-    auto input_type = slice_op.operand().getType().cast<ShapedType>();
-    auto output_type = slice_op.getResult().getType().cast<ShapedType>();
-    if (!input_type.hasStaticShape() || !output_type.hasStaticShape()) {
-      return false;
-    }
-
-    for (auto p : llvm::enumerate(strides.getValues<APInt>())) {
-      const int dim = p.index();
-      const int64_t stride = p.value().getSExtValue();
-      if (stride == 1) {
-        continue;
-      }
-
-      if (stride == input_type.getDimSize(dim) &&
-          output_type.getDimSize(dim) == 1) {
-        continue;
-      }
-
-      return false;
-    }
-
-    return true;
   }
 };
 

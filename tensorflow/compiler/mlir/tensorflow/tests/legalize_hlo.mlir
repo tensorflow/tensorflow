@@ -1456,26 +1456,16 @@ func.func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK-LABEL:   func @convert_slice(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<[0, 4153]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 519]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<1x4672xf32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x519xf32>
-// CHECK:           return %[[VAL_3]] : tensor<1x519xf32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 4672]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() {value = dense<1> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = "tf.StridedSlice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]])
+// CHECK-SAME:          {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}
+// CHECK-SAME:          (tensor<1x4672xf32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x519xf32>
+// CHECK:           return %[[VAL_4]] : tensor<1x519xf32>
 // CHECK:         }
 func.func @convert_slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
   %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4672]> : tensor<2xi64>, start_indices = dense<[0, 4153]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<1x4672xf32>) -> tensor<1x519xf32>
   func.return %0 : tensor<1x519xf32>
-}
-
-
-// CHECK-LABEL:   func @convert_slice_non_one_stride(
-// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<2xbf16>) -> tensor<1xbf16> {
-// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi64>} : () -> tensor<1xi64>
-// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
-// CHECK:           %[[VAL_3:.*]] = "tf.Slice"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<2xbf16>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xbf16>
-// CHECK:           return %[[VAL_3]] : tensor<1xbf16>
-// CHECK:         }
-func.func @convert_slice_non_one_stride(%arg0: tensor<2xbf16>) -> tensor<1xbf16> {
-  %0 = "mhlo.slice"(%arg0) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<2> : tensor<1xi64>} : (tensor<2xbf16>) -> tensor<1xbf16>
-  func.return %0 : tensor<1xbf16>
 }
 
 // CHECK-LABEL:   func @reshape(
