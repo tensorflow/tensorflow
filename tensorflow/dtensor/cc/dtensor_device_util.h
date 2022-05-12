@@ -548,6 +548,11 @@ void AddDTensorFunctionAttr(FunctionDef& function_def);
 StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
     const std::vector<TensorWithLayout*>& inputs);
 
+Status InsertFunctionForTPUEmbeddingCheckpoint(
+    TF_Status* status, Graph* graph,
+    const std::vector<TensorWithLayout*>& inputs,
+    const std::string& checkpoint_fn_name);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 
