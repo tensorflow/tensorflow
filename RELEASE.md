@@ -18,6 +18,8 @@
 *   `tf.lite`:
     *   New operations supported:
           * tflite SelectV2 now supports 5D.
+          * tf.einsum is supported with multiple unknown shapes.
+          * tf.unsortedsegmentprod op is supported.
 *   `tf.keras`:
 
     *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This

@@ -397,6 +397,9 @@ struct GeluOptionsT;
 struct DynamicUpdateSliceOptions;
 struct DynamicUpdateSliceOptionsT;
 
+struct UnsortedSegmentProdOptions;
+struct UnsortedSegmentProdOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -876,11 +879,12 @@ enum BuiltinOperator {
   BuiltinOperator_GELU = 150,
   BuiltinOperator_DYNAMIC_UPDATE_SLICE = 151,
   BuiltinOperator_RELU_0_TO_1 = 152,
+  BuiltinOperator_UNSORTED_SEGMENT_PROD = 153,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RELU_0_TO_1
+  BuiltinOperator_MAX = BuiltinOperator_UNSORTED_SEGMENT_PROD
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[153] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[154] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1034,13 +1038,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[153] {
     BuiltinOperator_MULTINOMIAL,
     BuiltinOperator_GELU,
     BuiltinOperator_DYNAMIC_UPDATE_SLICE,
-    BuiltinOperator_RELU_0_TO_1
+    BuiltinOperator_RELU_0_TO_1,
+    BuiltinOperator_UNSORTED_SEGMENT_PROD
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[154] = {
+  static const char * const names[155] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1194,13 +1199,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "GELU",
     "DYNAMIC_UPDATE_SLICE",
     "RELU_0_TO_1",
+    "UNSORTED_SEGMENT_PROD",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_RELU_0_TO_1)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_UNSORTED_SEGMENT_PROD)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1324,11 +1330,12 @@ enum BuiltinOptions {
   BuiltinOptions_BucketizeOptions = 115,
   BuiltinOptions_GeluOptions = 116,
   BuiltinOptions_DynamicUpdateSliceOptions = 117,
+  BuiltinOptions_UnsortedSegmentProdOptions = 118,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_DynamicUpdateSliceOptions
+  BuiltinOptions_MAX = BuiltinOptions_UnsortedSegmentProdOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[118] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[119] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1447,13 +1454,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[118] {
     BuiltinOptions_RandomOptions,
     BuiltinOptions_BucketizeOptions,
     BuiltinOptions_GeluOptions,
-    BuiltinOptions_DynamicUpdateSliceOptions
+    BuiltinOptions_DynamicUpdateSliceOptions,
+    BuiltinOptions_UnsortedSegmentProdOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[119] = {
+  static const char * const names[120] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1572,13 +1580,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "BucketizeOptions",
     "GeluOptions",
     "DynamicUpdateSliceOptions",
+    "UnsortedSegmentProdOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_DynamicUpdateSliceOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_UnsortedSegmentProdOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2053,6 +2062,10 @@ template<> struct BuiltinOptionsTraits<tflite::GeluOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::DynamicUpdateSliceOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_DynamicUpdateSliceOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentProdOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentProdOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -3022,6 +3035,14 @@ struct BuiltinOptionsUnion {
   const tflite::DynamicUpdateSliceOptionsT *AsDynamicUpdateSliceOptions() const {
     return type == BuiltinOptions_DynamicUpdateSliceOptions ?
       reinterpret_cast<const tflite::DynamicUpdateSliceOptionsT *>(value) : nullptr;
+  }
+  tflite::UnsortedSegmentProdOptionsT *AsUnsortedSegmentProdOptions() {
+    return type == BuiltinOptions_UnsortedSegmentProdOptions ?
+      reinterpret_cast<tflite::UnsortedSegmentProdOptionsT *>(value) : nullptr;
+  }
+  const tflite::UnsortedSegmentProdOptionsT *AsUnsortedSegmentProdOptions() const {
+    return type == BuiltinOptions_UnsortedSegmentProdOptions ?
+      reinterpret_cast<const tflite::UnsortedSegmentProdOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10662,6 +10683,60 @@ inline flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOp
 
 flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct UnsortedSegmentProdOptionsT : public flatbuffers::NativeTable {
+  typedef UnsortedSegmentProdOptions TableType;
+  int32_t num_segments;
+  UnsortedSegmentProdOptionsT()
+      : num_segments(0) {
+  }
+};
+
+struct UnsortedSegmentProdOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UnsortedSegmentProdOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NUM_SEGMENTS = 4
+  };
+  int32_t num_segments() const {
+    return GetField<int32_t>(VT_NUM_SEGMENTS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SEGMENTS) &&
+           verifier.EndTable();
+  }
+  UnsortedSegmentProdOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UnsortedSegmentProdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UnsortedSegmentProdOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UnsortedSegmentProdOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_num_segments(int32_t num_segments) {
+    fbb_.AddElement<int32_t>(UnsortedSegmentProdOptions::VT_NUM_SEGMENTS, num_segments, 0);
+  }
+  explicit UnsortedSegmentProdOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  UnsortedSegmentProdOptionsBuilder &operator=(const UnsortedSegmentProdOptionsBuilder &);
+  flatbuffers::Offset<UnsortedSegmentProdOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UnsortedSegmentProdOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t num_segments = 0) {
+  UnsortedSegmentProdOptionsBuilder builder_(_fbb);
+  builder_.add_num_segments(num_segments);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -11162,6 +11237,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const tflite::DynamicUpdateSliceOptions *builtin_options_as_DynamicUpdateSliceOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_DynamicUpdateSliceOptions ? static_cast<const tflite::DynamicUpdateSliceOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::UnsortedSegmentProdOptions *builtin_options_as_UnsortedSegmentProdOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentProdOptions ? static_cast<const tflite::UnsortedSegmentProdOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -11665,6 +11743,10 @@ template<> inline const tflite::GeluOptions *Operator::builtin_options_as<tflite
 
 template<> inline const tflite::DynamicUpdateSliceOptions *Operator::builtin_options_as<tflite::DynamicUpdateSliceOptions>() const {
   return builtin_options_as_DynamicUpdateSliceOptions();
+}
+
+template<> inline const tflite::UnsortedSegmentProdOptions *Operator::builtin_options_as<tflite::UnsortedSegmentProdOptions>() const {
+  return builtin_options_as_UnsortedSegmentProdOptions();
 }
 
 struct OperatorBuilder {
@@ -15776,6 +15858,32 @@ inline flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOp
       _fbb);
 }
 
+inline UnsortedSegmentProdOptionsT *UnsortedSegmentProdOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new UnsortedSegmentProdOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void UnsortedSegmentProdOptions::UnPackTo(UnsortedSegmentProdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = num_segments(); _o->num_segments = _e; }
+}
+
+inline flatbuffers::Offset<UnsortedSegmentProdOptions> UnsortedSegmentProdOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUnsortedSegmentProdOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnsortedSegmentProdOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _num_segments = _o->num_segments;
+  return tflite::CreateUnsortedSegmentProdOptions(
+      _fbb,
+      _num_segments);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -16719,6 +16827,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentProdOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -17205,6 +17317,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentProdOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -17679,6 +17795,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptionsT *>(value);
       return CreateDynamicUpdateSliceOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentProdOptionsT *>(value);
+      return CreateUnsortedSegmentProdOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -18151,6 +18271,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_DynamicUpdateSliceOptions: {
       value = new tflite::DynamicUpdateSliceOptionsT(*reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      value = new tflite::UnsortedSegmentProdOptionsT(*reinterpret_cast<tflite::UnsortedSegmentProdOptionsT *>(u.value));
       break;
     }
     default:
@@ -18742,6 +18866,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_DynamicUpdateSliceOptions: {
       auto ptr = reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_UnsortedSegmentProdOptions: {
+      auto ptr = reinterpret_cast<tflite::UnsortedSegmentProdOptionsT *>(value);
       delete ptr;
       break;
     }

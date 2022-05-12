@@ -171,6 +171,7 @@ TfLiteRegistration* Register_RANDOM_UNIFORM();
 TfLiteRegistration* Register_MULTINOMIAL();
 TfLiteRegistration* Register_GELU();
 TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD();
 
 namespace {
 
@@ -499,6 +500,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_DYNAMIC_UPDATE_SLICE,
              Register_DYNAMIC_UPDATE_SLICE());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_PROD,
+             Register_UNSORTED_SEGMENT_PROD());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

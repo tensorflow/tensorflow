@@ -4810,6 +4810,25 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
+def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "UnsortedSegmentProd operator";
+
+  let description = [{
+    Computes the product along segments of a tensor.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    I32Attr:$num_segments
+  );
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+  let hasOptions = 1;
+}
+
 def TFL_YieldOp : Op<TFL_Dialect, "yield",
   [NoSideEffect,
    Terminator,
