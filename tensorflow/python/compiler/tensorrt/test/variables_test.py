@@ -67,9 +67,9 @@ class TwoEnginesOneVarModel(module.Module):
   @def_function.function
   def __call__(self, input_0):
     if self.v1 is None:
-        self.v1 = variables.Variable(
-            np.reshape(np.r_[:243].astype(np.float32), (3, 3, 3, 3, 3)),
-            name="filter")
+      self.v1 = variables.Variable(
+          np.reshape(np.r_[:243].astype(np.float32), (3, 3, 3, 3, 3)),
+          name="filter")
     conv0 = nn.conv3d(
         input=input_0,
         filter=self.v1,
@@ -137,9 +137,9 @@ class BiasAddTwoConstInputsModel(module.Module):
   @def_function.function
   def __call__(self, input_0):
     if self.v1 is None:
-        self.v1 = variables.Variable(
-            np.reshape(np.r_[:48].astype(np.float32), (4, 4, 3)),
-            name="v1")
+      self.v1 = variables.Variable(
+          np.reshape(np.r_[:48].astype(np.float32), (4, 4, 3)),
+          name="v1")
     bias = constant_op.constant([1., 2., 3.], name="bias")
     bias_add = nn.bias_add(self.v1, bias, name="bias_add")
     add = math_ops.add(bias_add, input_0, name="add")
@@ -191,9 +191,9 @@ class BatchMatMulTwoConstInputsModel(module.Module):
   @def_function.function
   def __call__(self, input_0):
     if self.v1 is None:
-        self.v1 = variables.Variable(
-            np.reshape(np.r_[:80].astype(np.float32), (4, 4, 5)),
-            name="v1")
+      self.v1 = variables.Variable(
+          np.reshape(np.r_[:80].astype(np.float32), (4, 4, 5)),
+          name="v1")
     c1 = constant_op.constant(np.reshape(
         np.r_[:60].astype(np.float32), (4, 5, 3)), name="c1")
     mmul = math_ops.matmul(self.v1, c1, name="mmul")
@@ -245,9 +245,9 @@ class EngineWithoutInputsModel(module.Module):
   @def_function.function
   def __call__(self, input_0):
     if self.v1 is None:
-        self.v1 = variables.Variable(
-            np.reshape(np.r_[:48].astype(np.float32), (4, 4, 3)),
-            name="v1")
+      self.v1 = variables.Variable(
+          np.reshape(np.r_[:48].astype(np.float32), (4, 4, 3)),
+          name="v1")
     c1 = constant_op.constant(np.reshape(
         np.r_[:48].astype(np.float32), (4, 4, 3)), name="c1")
     c2 = constant_op.constant(np.reshape(
@@ -303,9 +303,9 @@ class ResourceGatherModel(module.Module):
   @def_function.function
   def __call__(self, input_0):
     if self.v1 is None:
-        self.v1 = variables.Variable(
-            np.reshape(np.r_[:64].astype(np.float32), (16, 4)),
-            name="v1")
+      self.v1 = variables.Variable(
+          np.reshape(np.r_[:64].astype(np.float32), (16, 4)),
+          name="v1")
     lookup = array_ops.gather(self.v1, input_0, name="lookup")
     c1 = constant_op.constant(np.reshape(
         np.r_[:20].astype(np.float32), (5, 4)), name="c1")
