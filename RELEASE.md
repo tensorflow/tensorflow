@@ -1,3 +1,36 @@
+# Release 2.7.2
+
+
+This releases introduces several vulnerability fixes:
+
+*   Fixes a code injection in `saved_model_cli` ([CVE-2022-29216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29216))
+*   Fixes a missing validation which causes `TensorSummaryV2` to crash ([CVE-2022-29193](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29193))
+*   Fixes a missing validation which crashes `QuantizeAndDequantizeV4Grad` ([CVE-2022-29192](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29192))
+*   Fixes a missing validation which causes denial of service via `DeleteSessionTensor` ([CVE-2022-29194](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29194))
+*   Fixes a missing validation which causes denial of service via `GetSessionTensor` ([CVE-2022-29191](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29191))
+*   Fixes a missing validation which causes denial of service via `StagePeek` ([CVE-2022-29195](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29195))
+*   Fixes a missing validation which causes denial of service via `UnsortedSegmentJoin` ([CVE-2022-29197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29197))
+*   Fixes a missing validation which causes denial of service via `LoadAndRemapMatrix` ([CVE-2022-29199](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29199))
+*   Fixes a missing validation which causes denial of service via `SparseTensorToCSRSparseMatrix` ([CVE-2022-29198](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29198))
+*   Fixes a missing validation which causes denial of service via `LSTMBlockCell` ([CVE-2022-29200](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29200))
+*   Fixes a missing validation which causes denial of service via `Conv3DBackpropFilterV2` ([CVE-2022-29196](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29196))
+*   Fixes a `CHECK` failure in depthwise ops via overflows ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197))
+*   Fixes issues arising from undefined behavior stemming from users supplying invalid resource handles ([CVE-2022-29207](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29207))
+*   Fixes a segfault due to missing support for quantized types ([CVE-2022-29205](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29205))
+*   Fixes a missing validation which results in undefined behavior in `SparseTensorDenseAdd` ([CVE-2022-29206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29206))
+*   Fixes a missing validation which results in undefined behavior in `QuantizedConv2D` ([CVE-2022-29201](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29201))
+*   Fixes an integer overflow in `SpaceToBatchND` ([CVE-2022-29203](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29203))
+*   Fixes a segfault and OOB write due to incomplete validation in `EditDistance` ([CVE-2022-29208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29208))
+*   Fixes a missing validation which causes denial of service via `Conv3DBackpropFilterV2` ([CVE-2022-29204](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29204))
+*   Fixes a denial of service in `tf.ragged.constant` due to lack of validation ([CVE-2022-29202](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29202))
+*   Fixes a segfault when `tf.histogram_fixed_width` is called with NaN values ([CVE-2022-29211](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29211))
+*   Fixes a core dump when loading TFLite models with quantization ([CVE-2022-29212](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29212))
+*   Fixes crashes stemming from incomplete validation in signal ops ([CVE-2022-29213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29213))
+*   Fixes a type confusion leading to `CHECK`-failure based denial of service ([CVE-2022-29209](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-29209))
+*   Updates `curl` to `7.83.1` to handle ([CVE-2022-22576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-22576), ([CVE-2022-27774](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27774), ([CVE-2022-27775](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27775), ([CVE-2022-27776](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27776), ([CVE-2022-27778](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27778), ([CVE-2022-27779](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27779), ([CVE-2022-27780](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27780), ([CVE-2022-27781](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27781), ([CVE-2022-27782](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-27782) and ([CVE-2022-30115](https://cve.mitre.org/cgi-bin/cvename.cgi?name=VE-2022-30115)
+*   Updates `zlib` to `1.2.12` after `1.2.11` was pulled due to [security issue](https://www.openwall.com/lists/oss-security/2022/03/28/1)
+
+
 # Release 2.7.1
 
 This releases introduces several vulnerability fixes:
