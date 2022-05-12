@@ -961,23 +961,6 @@ def set_other_cuda_vars(environ_cp):
     write_to_bazelrc('build --config=cuda')
 
 
-def set_host_c_compiler(environ_cp):
-  """Set HOST_C_COMPILER."""
-  default_c_host_compiler = which('gcc') or ''
-
-  host_c_compiler = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='HOST_C_COMPILER',
-      var_default=default_c_host_compiler,
-      ask_for_var=('Please specify which C compiler should be used as the host '
-                   'C compiler.'),
-      check_success=os.path.exists,
-      error_msg='Invalid C compiler path. %s cannot be found.',
-  )
-
-  write_action_env_to_bazelrc('HOST_C_COMPILER', host_c_compiler)
-
-
 def system_specific_test_config(environ_cp):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
