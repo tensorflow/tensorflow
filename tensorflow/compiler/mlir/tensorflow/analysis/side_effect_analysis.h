@@ -136,7 +136,8 @@ class SideEffectAnalysisInfo {
 
   // Returns a set of resource IDs that are conflicting with `resource_id`, i.e.
   // there are potentially dependencies between the corresponding resources.
-  llvm::SmallSet<ResourceId, 8> GetConflictingIds(ResourceId resource_id) const;
+  llvm::SmallSet<ResourceId, 8> GetConflictingIds(ResourceId resource_id,
+                                                  bool is_fetch_op) const;
 
   // Maps from an op to its control predecessors.
   llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 4>, 8>

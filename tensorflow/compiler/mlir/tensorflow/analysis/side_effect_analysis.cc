@@ -554,14 +554,18 @@ void SideEffectAnalysisInfo::AnalyzeRegion(Region* region) {
 }
 
 ResourceIdSet
-SideEffectAnalysisInfo::GetConflictingIds(ResourceId resource_id)  const {
+SideEffectAnalysisInfo::GetConflictingIds(ResourceId resource_id,
+                                          bool is_fetch_op)  const {
   ResourceIdSet conflicting_ids;
   if (resource_id == kUnknownResourceId) {
     // Unknown resource has potential conflict with all other resources, except
-    // those that are only self-dependent.
+    // those that are only self-dependent. For `Fetch` op make every resource
+    // conflicting in any case to ensure that all side-effecting ops in
+    // `Graph` feed into `Fetch` (its terminator).
     for (auto& entry : per_resource_access_info_) {
       ResourceId other_id = entry.getFirst();
-      if (!op_side_effect_collector_.IsOnlySelfDependent(other_id))
+      if (!op_side_effect_collector_.IsOnlySelfDependent(other_id) ||
+          is_fetch_op)
         conflicting_ids.insert(other_id);
     }
   } else {
@@ -604,7 +608,8 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
     // Effect is dominated by previous unknown resource read effect.
     if (read_only && had_unknown_resource_read) continue;
 
-    ResourceIdSet conflicting_ids = GetConflictingIds(resource_id);
+    ResourceIdSet conflicting_ids = GetConflictingIds(
+        resource_id, isa<tf_executor::FetchOp>(op));
 
     // Add predecessors for conflicting IDs.
     bool is_unknown_access_indirectly_tracked = false;
