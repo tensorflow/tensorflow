@@ -379,17 +379,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               // `interleave_indices_`.
               interleave_indices_[index] = staging_indices_.front();
               staging_indices_.pop_front();
-              {
-                tf_shared_lock ckpt_l(ckpt_mu_);
-                if (worker_thread_states_[interleave_indices_[index]]
-                        .iterator != nullptr) {
-                  // TODO(wilsin): Write a unit test where we iterate through a
-                  // dataset, pause, and check the model proto autotune value.
-                  EnableAutotune(
-                      ctx, worker_thread_states_[interleave_indices_[index]]
-                               .iterator.get());
-                }
-              }
+
               next_index_ = (index + 1) % interleave_indices_.size();
               block_count_ = 0;
               // Restart the inner [for] loop
@@ -690,16 +680,16 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             input_impl_.reset();
             return Status::OK();
           }
-          if (i < dataset()->cycle_length_) {
-            interleave_indices_.push_back(i);
-          } else {
-            staging_indices_.push_back(i);
-          }
           workers_[i].SetInputs(s, std::move(args));
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.push_back(ctx->StartThread(
               strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
+          if (i < dataset()->cycle_length_) {
+            interleave_indices_.push_back(i);
+          } else {
+            staging_indices_.push_back(i);
+          }
         }
         DCHECK(interleave_indices_.size() == dataset()->cycle_length_);
         DCHECK(staging_indices_.size() == dataset()->prefetch_input_elements_);
@@ -789,12 +779,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             // CHECKPOINT_MARKER_A
             // We have the input tensors but have not built the iterator yet.
           }
-          bool thread_in_staging = false;
-          {
-            mutex_lock l(mu_);
-            thread_in_staging = absl::c_find(staging_indices_, thread_index) !=
-                                staging_indices_.end();
-          }
+
           // 1b. Run the user defined function to produce a new iterator.
           {
             tf_shared_lock l(ckpt_mu_);
@@ -808,12 +793,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 worker_thread_states_[thread_index].iterator_creation_status;
             if (!iterator_creation_status.ok()) {
               worker_thread_states_[thread_index].input.clear();
-            } else if (thread_in_staging) {
-              // TODO(wilsin): Write a unit test where we iterate through a
-              // dataset, pause, and check the model proto autotune value.
-              DisableAutotune(
-                  ctx.get(),
-                  worker_thread_states_[thread_index].iterator.get());
             }
             // CHECKPOINT_MARKER_B
             // Either an iterator has been successfully built and placed in
