@@ -17,7 +17,7 @@ jobs:
     steps:
     - name: Clean repository
       shell: bash
-      run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec rm -rf -- {} + || true
+      run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Build and test pip wheel
