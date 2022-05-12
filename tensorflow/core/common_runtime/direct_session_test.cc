@@ -1251,17 +1251,13 @@ TEST(DirectSessionTest, SessionMetadataPresent) {
   std::vector<Tensor> outputs;
   RunOptions run_opts;
   run_opts.set_inter_op_thread_pool(-1);
-  RunMetadata metadata;
-  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, &metadata);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   SessionMetadata read_metadata;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       outputs[0].scalar<tstring>()(), &read_metadata));
   EXPECT_EQ("name", read_metadata.name());
   EXPECT_EQ(1, read_metadata.version());
-
-  EXPECT_EQ(session_metadata->name(), metadata.session_metadata().name());
-  EXPECT_EQ(session_metadata->version(), metadata.session_metadata().version());
 }
 
 TEST(DirectSessionTest, SessionMetadataPresentViaFunction) {
@@ -1286,17 +1282,13 @@ TEST(DirectSessionTest, SessionMetadataPresentViaFunction) {
   std::vector<Tensor> outputs;
   RunOptions run_opts;
   run_opts.set_inter_op_thread_pool(-1);
-  RunMetadata metadata;
-  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, &metadata);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   SessionMetadata read_metadata;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       outputs[0].scalar<tstring>()(), &read_metadata));
   EXPECT_EQ("name", read_metadata.name());
   EXPECT_EQ(1, read_metadata.version());
-
-  EXPECT_EQ(session_metadata->name(), metadata.session_metadata().name());
-  EXPECT_EQ(session_metadata->version(), metadata.session_metadata().version());
 }
 
 TEST(DirectSessionTest, SessionMetadataKey) {
