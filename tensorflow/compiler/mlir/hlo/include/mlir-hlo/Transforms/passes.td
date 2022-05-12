@@ -91,12 +91,16 @@ def ShapeSimplification
   let constructor = "CreateShapeSimplification()";
 }
 
+def OneShotBufferize : Pass<"hlo-one-shot-bufferize", "ModuleOp"> {
+  let summary = "One shot bufferization pass.";
+  let constructor = "hlo::CreateOneShotBufferizePass()";
+}
+
 def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
   let summary = "Pass to transform compute operations (hlo and linalg) on "
                 "values to buffer based ones.";
   let constructor = "CreateComputeOpAndFuncBufferizePass()";
 }
-
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "

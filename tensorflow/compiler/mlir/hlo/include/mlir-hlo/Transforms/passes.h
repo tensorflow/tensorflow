@@ -89,6 +89,9 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc = {},
     BufferizePatternsCallback pc = {});
 
+namespace hlo {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass();
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // MLIR_HLO_TRANSFORMS_PASSES_H

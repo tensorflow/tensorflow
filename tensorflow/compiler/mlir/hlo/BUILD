@@ -1697,7 +1697,7 @@ cc_library(
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [
-        ":bufferizable_op_interface",
+        ":gml_st_bufferizable_op_interface",
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
         "@llvm-project//mlir:Affine",
@@ -1946,6 +1946,7 @@ cc_library(
         ":bufferize",
         ":bufferize_tiled_loop",
         ":gml_st",
+        ":gml_st_bufferizable_op_interface",
         ":hlo",
         ":hlo_legalize_to_memref",
         ":legalize_trigonometric_to_approximation",
@@ -2268,7 +2269,7 @@ cc_library(
 )
 
 cc_library(
-    name = "bufferizable_op_interface",
+    name = "gml_st_bufferizable_op_interface",
     srcs = ["lib/Dialect/gml_st/transforms/bufferizable_op_interface_impl.cpp"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h",
