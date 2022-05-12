@@ -16,17 +16,24 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace monitoring {
 namespace testing {
 namespace {
+
+std::vector<double> GetDefaultPercentiles() {
+  return {25.0, 50.0, 80.0, 90.0, 95.0, 99.0};
+}
 
 auto* test_counter = monitoring::Counter<0>::New(
     "/tensorflow/monitoring/test/counter", "Test counter.");
@@ -66,6 +73,17 @@ auto* test_bool_gauge = monitoring::Gauge<bool, 0>::New(
 auto* test_bool_gauge_with_labels = monitoring::Gauge<bool, 2>::New(
     "/tensorflow/monitoring/test/bool_gauge_with_labels", "Test gauge.",
     "label1", "label2");
+
+auto* test_percentiles = monitoring::PercentileSampler<0>::New(
+    {"/tensorflow/monitoring/test/percentiles", "Test percentiles."},
+    GetDefaultPercentiles(), /*max_samples=*/1024,
+    monitoring::UnitOfMeasure::kTime);
+
+auto* test_percentiles_with_labels = monitoring::PercentileSampler<2>::New(
+    {"/tensorflow/monitoring/test/percentiles_with_labels", "Test percentiles.",
+     "label1", "label2"},
+    GetDefaultPercentiles(), /*max_samples=*/1024,
+    monitoring::UnitOfMeasure::kTime);
 
 TEST(CellReaderTest, CounterDeltaNoLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
@@ -1058,6 +1076,162 @@ TEST(CellReaderTest, BoolGaugeRepeatedSetAndRead) {
   EXPECT_EQ(cell_reader.Read("x2", "y2"), true);
 }
 
+TEST(CellReaderTest, PercentilesDeltaNoLabels) {
+  CellReader<Percentiles> cell_reader(
+      "/tensorflow/monitoring/test/percentiles");
+  Percentiles percentiles = cell_reader.Delta();
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+
+  test_percentiles->GetCell()->Add(1.0);
+  percentiles = cell_reader.Delta();
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 1.0);
+
+  test_percentiles->GetCell()->Add(-10.0);
+  percentiles = cell_reader.Delta();
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -10.0);
+
+  test_percentiles->GetCell()->Add(1000.0);
+  percentiles = cell_reader.Delta();
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 1000.0);
+}
+
+TEST(CellReaderTest, PercentilesReadNoLabels) {
+  CellReader<Percentiles> cell_reader(
+      "/tensorflow/monitoring/test/percentiles");
+  Percentiles percentiles = cell_reader.Read();
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+
+  test_percentiles->GetCell()->Add(1.0);
+  percentiles = cell_reader.Read();
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 1.0);
+
+  test_percentiles->GetCell()->Add(-10.0);
+  percentiles = cell_reader.Read();
+  EXPECT_EQ(percentiles.num(), 2);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -9.0);
+
+  test_percentiles->GetCell()->Add(1000.0);
+  percentiles = cell_reader.Read();
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 991.0);
+}
+
+TEST(CellReaderTest, PercentilesWithLabels) {
+  CellReader<Percentiles> cell_reader(
+      "/tensorflow/monitoring/test/percentiles_with_labels");
+  Percentiles percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+  percentiles = cell_reader.Delta("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+  percentiles = cell_reader.Read("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+  percentiles = cell_reader.Read("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+
+  test_percentiles_with_labels->GetCell("x1", "y1")->Add(-1.0);
+  percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -1.0);
+  percentiles = cell_reader.Delta("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+  percentiles = cell_reader.Read("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -1.0);
+  percentiles = cell_reader.Read("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+
+  test_percentiles_with_labels->GetCell("x2", "y2")->Add(1.0);
+  percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+  percentiles = cell_reader.Delta("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 1.0);
+  percentiles = cell_reader.Read("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -1.0);
+  percentiles = cell_reader.Read("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 1.0);
+
+  test_percentiles_with_labels->GetCell("x1", "y1")->Add(100.0);
+  test_percentiles_with_labels->GetCell("x2", "y2")->Add(-100.0);
+  percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 100.0);
+  percentiles = cell_reader.Delta("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 1);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -100.0);
+  percentiles = cell_reader.Read("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 2);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 99.0);
+  percentiles = cell_reader.Read("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 2);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -99.0);
+}
+
+TEST(CellReaderTest, PercentilesRepeatedSetAndRead) {
+  CellReader<Percentiles> cell_reader(
+      "/tensorflow/monitoring/test/percentiles_with_labels");
+  Percentiles percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+  percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0.0);
+
+  test_percentiles_with_labels->GetCell("x1", "y1")->Add(1.0);
+  test_percentiles_with_labels->GetCell("x2", "y2")->Add(-1.0);
+  test_percentiles_with_labels->GetCell("x1", "y1")->Add(10.0);
+  test_percentiles_with_labels->GetCell("x2", "y2")->Add(-10.0);
+  test_percentiles_with_labels->GetCell("x1", "y1")->Add(100.0);
+  test_percentiles_with_labels->GetCell("x2", "y2")->Add(-100.0);
+
+  percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 111.0);
+  percentiles = cell_reader.Read("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 111.0);
+
+  // Repeats the previous read. The values will stay the same, while the deltas
+  // will be 0.
+  percentiles = cell_reader.Delta("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0);
+  percentiles = cell_reader.Read("x1", "y1");
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 111.0);
+
+  percentiles = cell_reader.Delta("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -111.0);
+  percentiles = cell_reader.Read("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -111.0);
+
+  // Repeats the previous read. The values will stay the same, while the deltas
+  // will be 0.
+  percentiles = cell_reader.Delta("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 0);
+  EXPECT_FLOAT_EQ(percentiles.sum(), 0);
+  percentiles = cell_reader.Read("x2", "y2");
+  EXPECT_EQ(percentiles.num(), 3);
+  EXPECT_FLOAT_EQ(percentiles.sum(), -111.0);
+}
+
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(CellReaderTest, WrongNumberOfLabels) {
   CellReader<int64_t> cell_reader("/tensorflow/monitoring/test/counter");
@@ -1099,6 +1273,24 @@ TEST(CellReaderTest, BoolGaugeDelta) {
   EXPECT_DEATH(cell_reader.Delta(), "Please use `Read` instead.");
   EXPECT_DEATH(cell_reader_with_labels.Delta("x", "y"),
                "Please use `Read` instead.");
+}
+
+TEST(CellReaderTest, InvalidType) {
+  CellReader<std::vector<int>> cell_reader(
+      "/tensorflow/monitoring/test/counter");
+  CellReader<std::vector<int>> cell_reader_with_labels(
+      "/tensorflow/monitoring/test/counter_with_labels");
+  EXPECT_DEATH(cell_reader.Read(),
+               "Tensorflow CellReader does not support type");
+  EXPECT_DEATH(cell_reader_with_labels.Delta("x", "y"),
+               "Tensorflow CellReader does not support type");
+
+  test_counter->GetCell()->IncrementBy(1);
+  test_counter_with_labels->GetCell("x", "y")->IncrementBy(1);
+  EXPECT_DEATH(cell_reader.Read(),
+               "Tensorflow CellReader does not support type");
+  EXPECT_DEATH(cell_reader_with_labels.Delta("x", "y"),
+               "Tensorflow CellReader does not support type");
 }
 #endif
 
