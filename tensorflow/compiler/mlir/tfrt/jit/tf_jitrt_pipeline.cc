@@ -212,7 +212,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
 
-  AddBufferizationPasses(pm, options.one_shot_bufferize);
+  AddBufferizationPasses(pm, options.one_shot_bufferize || options.vectorize);
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

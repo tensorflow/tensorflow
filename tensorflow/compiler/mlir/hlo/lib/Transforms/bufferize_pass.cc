@@ -220,13 +220,14 @@ struct OneShotBufferizePass
                     lmhlo::LmhloDialect, linalg::LinalgDialect,
                     memref::MemRefDialect, mhlo::MhloDialect, scf::SCFDialect,
                     shape::ShapeDialect, vector::VectorDialect>();
-    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
-    linalg::registerBufferizableOpInterfaceExternalModels(registry);
+    arith::registerBufferizableOpInterfaceExternalModels(registry);
     bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
         registry);
+    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
+    linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
-    tensor::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
+    tensor::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
