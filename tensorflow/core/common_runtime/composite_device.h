@@ -28,7 +28,7 @@ namespace tensorflow {
 extern const char* const kCompositeDeviceType;
 
 // A virtual device which represents a set of devices. We don't execute any
-// op on this virtial device.
+// op on this virtual device.
 class CompositeDevice : public Device {
  public:
   Status Sync() override {
