@@ -222,18 +222,6 @@ struct SequentialMatMulKernel {
     }
   }
 };
-
-inline Status FromExecutorStatus(const se::port::Status& s) {
-  return s.ok() ? Status::OK()
-                : Status(static_cast<error::Code>(static_cast<int>(s.code())),
-                         s.error_message());
-}
-
-template <typename T>
-inline Status FromExecutorStatus(const se::port::StatusOr<T>& s) {
-  return FromExecutorStatus(s.status());
-}
-
 }  // namespace
 
 template <typename Device, typename Scalar>
@@ -480,16 +468,14 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                   << "plan_params.stride_c " << plan_params.stride_c;
           auto status_or_plan =
               stream->parent()->CreateBlasLtMatmulPlan(plan_params);
-          OP_REQUIRES(context, status_or_plan.ok(),
-                      FromExecutorStatus(status_or_plan));
+          OP_REQUIRES_OK(context, status_or_plan.status());
           std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
               status_or_plan.ConsumeValueOrDie();
 
           auto status_or_algorithms =
               stream->parent()->GetBlasLtMatmulAlgorithms(
                   plan.get(), max_scratch_size, max_algorithm_count);
-          OP_REQUIRES(context, status_or_algorithms.ok(),
-                      FromExecutorStatus(status_or_algorithms));
+          OP_REQUIRES_OK(context, status_or_algorithms.status());
           auto algorithms = status_or_algorithms.ConsumeValueOrDie();
           plan_and_algorithms =
               se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
@@ -848,16 +834,14 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
                   << "plan_params.stride_c " << plan_params.stride_c;
           auto status_or_plan =
               stream->parent()->CreateBlasLtMatmulPlan(plan_params);
-          OP_REQUIRES(context, status_or_plan.ok(),
-                      FromExecutorStatus(status_or_plan));
+          OP_REQUIRES_OK(context, status_or_plan.status());
           std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
               status_or_plan.ConsumeValueOrDie();
 
           auto status_or_algorithms =
               stream->parent()->GetBlasLtMatmulAlgorithms(
                   plan.get(), max_scratch_size, max_algorithm_count);
-          OP_REQUIRES(context, status_or_algorithms.ok(),
-                      FromExecutorStatus(status_or_algorithms));
+          OP_REQUIRES_OK(context, status_or_algorithms.status());
           auto algorithms = status_or_algorithms.ConsumeValueOrDie();
           plan_and_algorithms =
               se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
