@@ -80,21 +80,33 @@ class CompatibleOperandsAndResultType
     return success(all_match);
   }
 
-  // This function is not going to be called automatically.
-  // It needs to be paired with INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS
-  // (see examples in hlo_ops.cc).
-  static LogicalResult inferReturnTypeComponentsFromOperands(
-      MLIRContext *, Optional<Location> location, ValueShapeRange operands,
+  static LogicalResult inferReturnTypes(
+      MLIRContext *context, Optional<Location> location, ValueRange operands,
       DictionaryAttr attributes, RegionRange regions,
-      SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+      SmallVectorImpl<Type> &inferredReturnTypes) {
     // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
     // support quantization or sparsity.
     if (operands.empty())
       return emitOptionalError(
           location,
           "Expected non-empty operands for [CompatibleOperandsAndResultType]");
-    auto first_operand_type = operands[0].getType().cast<ShapedType>();
-    inferredReturnShapes.push_back(first_operand_type);
+    inferredReturnTypes.push_back(operands[0].getType());
+    return success();
+  }
+
+  // This function is not going to be called automatically.
+  // It needs to be paired with INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS
+  // (see examples in hlo_ops.cc).
+  static LogicalResult inferReturnTypeComponentsFromOperands(
+      MLIRContext *context, Optional<Location> location,
+      ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+      SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    SmallVector<Type> inferred_return_types;
+    if (failed(inferReturnTypes(context, location, operands.getValues(),
+                                attributes, regions, inferred_return_types)))
+      return failure();
+    auto inferred_return_type = inferred_return_types[0].cast<ShapedType>();
+    inferredReturnShapes.push_back(inferred_return_type);
     return success();
   }
 };

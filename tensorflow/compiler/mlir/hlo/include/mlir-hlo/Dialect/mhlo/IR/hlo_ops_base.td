@@ -243,8 +243,9 @@ def HLO_PairwiseSameOperandAndResultType :
 def HLO_CompatibleOperandsAndResultType : TraitList<
   // TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
   // support quantization or sparsity.
-  InferTensorType.traits #
   [
+    InferTypeOpInterface,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, ["inferReturnTypeComponents"]>,
     HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
   ]>;
 

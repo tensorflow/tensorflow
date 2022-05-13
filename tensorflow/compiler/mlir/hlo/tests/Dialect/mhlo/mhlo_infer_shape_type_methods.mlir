@@ -107,3 +107,18 @@ func.func @cholesky(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2xindex> {
       : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
   func.return %1: tensor<1x2x2xindex>
 }
+
+// -----
+
+#CSR = #sparse_tensor.encoding<{
+  dimLevelType = ["dense", "compressed"]
+}>
+
+// CHECK-LABEL: @tanh_sparsity
+func.func @tanh_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
+  %0 = "mhlo.tanh"(%arg0) : (tensor<10x10xf32, #CSR>) -> tensor<10x10xf32>
+  %1 = "mhlo_test.get_return_types"(%0)
+      : (tensor<10x10xf32>) -> tensor<10x10xindex>
+// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  func.return %1 : tensor<10x10xindex>
+}
