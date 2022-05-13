@@ -3703,18 +3703,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
           "requires that ellipsis_mask, if set, refer to the last dimension of "
           "input (when begin/end values are dynamic)");
 
-    uint64_t begin_mask = op.begin_mask();
-    if (begin_mask)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that begin_mask is either set to 0 or not set when "
-          "begin/end values are dynamic");
-    uint64_t end_mask = op.end_mask();
-    if (end_mask)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that end_mask is either set to 0 or not set when begin/end "
-          "values are dynamic");
     uint64_t new_axis_mask = op.new_axis_mask();
     if (new_axis_mask)
       return rewriter.notifyMatchFailure(
@@ -3722,21 +3710,26 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
           "requires that new_axis_mask is either set to 0 or not set when "
           "begin/end values are dynamic");
 
-    // In this case where the begin and end values are dynamic, the number of
-    // output elements has to be equal to the number of input elements that
-    // are sliced.
+    // In this case where the begin and end values are dynamic, we only support
+    // cases where the number of output elements has to be equal to the number
+    // of input elements that are sliced. Each dimension is either sliced fully
+    // or sliced with a size of one.
     int output_elements = result_ty.getNumElements();
     int input_elements_sliced = 1;
 
     // Begin must be a ranked, 1-dimensional tensor: This is checked by the
     // verifier.
     int64_t slicing_dim_size =
-        op.begin().getType().cast<RankedTensorType>().getShape()[0];
+        op.begin().getType().cast<RankedTensorType>().getDimSize(0);
+    uint64_t begin_mask = op.begin_mask();
+    uint64_t end_mask = op.end_mask();
     const int input_rank = input_shape.size();
-    for (int d = slicing_dim_size; d < input_rank; ++d) {
-      // We only support slicing major dimensions, so minor dimensions after
-      // slicing dimensions are all sliced with their full sizes.
-      input_elements_sliced *= input_shape[d];
+    for (int d = 0; d < input_rank; ++d) {
+      // Each dimension is either sliced fully or has size of one.
+      if ((((begin_mask >> d) & 1) && ((end_mask >> d) & 1)) ||
+          (d >= slicing_dim_size)) {
+        input_elements_sliced *= input_shape[d];
+      }
     }
     if (input_elements_sliced != output_elements) {
       return rewriter.notifyMatchFailure(
@@ -3747,14 +3740,21 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
 
     SmallVector<Value, 4> slice_begin_indices;
     // For the dimensions that are to be sliced, all have slice sizes of 1.
-    SmallVector<int64_t, 4> slice_sizes(slicing_dim_size, 1);
+    SmallVector<int64_t, 4> slice_sizes;
     auto begin_element_ty =
         op.begin().getType().cast<ShapedType>().getElementType();
     // Scalar tensor type.
     TensorType type = RankedTensorType::get(/*shape=*/{}, begin_element_ty);
     Location loc = op.getLoc();
     auto zero = GetScalarConstOfType(begin_element_ty, loc, 0, &rewriter);
-    for (int d = 0; d < slicing_dim_size; ++d) {
+    for (int d = 0; d < input_rank; ++d) {
+      if ((((begin_mask >> d) & 1) && ((end_mask >> d) & 1)) ||
+          (d >= slicing_dim_size)) {
+        slice_begin_indices.push_back(zero);
+        slice_sizes.push_back(input_shape[d]);
+        continue;
+      }
+
       auto index = rewriter.create<SliceOp>(
           loc, op.begin(), GetI64ElementsAttr({d}, &rewriter),
           GetI64ElementsAttr({d + 1}, &rewriter),
@@ -3771,12 +3771,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
       auto final_index = rewriter.create<SelectOp>(
           loc, type, index_negative, wrapped_index, reshaped_index);
       slice_begin_indices.push_back(final_index);
-    }
-
-    // For non-slice dims, get the full slice of that dimension.
-    for (int d = slicing_dim_size, end = input_shape.size(); d < end; ++d) {
-      slice_sizes.push_back(input_shape[d]);
-      slice_begin_indices.push_back(zero);
+      slice_sizes.push_back(1);
     }
 
     auto slice_sizes_attr = GetI64ElementsAttr(slice_sizes, &rewriter);
