@@ -47542,6 +47542,14 @@ func TPUReplicateMetadataUseSpmdForXlaPartitioning(value bool) TPUReplicateMetad
 	}
 }
 
+// TPUReplicateMetadataTpuCompileOptionsProto sets the optional tpu_compile_options_proto attribute to value.
+// If not specified, defaults to ""
+func TPUReplicateMetadataTpuCompileOptionsProto(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["tpu_compile_options_proto"] = value
+	}
+}
+
 // Metadata indicating how the TPU computation should be replicated.
 //
 // This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
