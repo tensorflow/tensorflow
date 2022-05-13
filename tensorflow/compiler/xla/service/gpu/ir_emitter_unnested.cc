@@ -1479,8 +1479,8 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   TF_RET_CHECK(operands.size() == 4);
 
   // We expect Fortran layout for everything other than the temp buffer (the
-  // last operand).  Fortran layout is is XLA default layout with elements 0 and
-  // 1 swapped.  For example instead of default layout {3,2,1,0} we'd have
+  // last operand).  Fortran layout is not XLA default layout with elements 0
+  // and 1 swapped.  For example instead of default layout {3,2,1,0} we'd have
   // Fortran layout {2,3,1,0}.
   TF_RET_CHECK(absl::c_all_of(operands.drop_back(1), [&](mlir::Value v) {
     const Shape& shape = GetShape(v);
@@ -2007,7 +2007,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
     const ReductionCodegenInfo& reduction_info,
     const ExtraOutputGensMap& extra_output_gens) {
   // Compute all extra output values before writing them. This avoids
-  // overwriting aliased input/output buffers before all reads occured.
+  // overwriting aliased input/output buffers before all reads occurred.
   absl::flat_hash_map<const HloInstruction*, llvm::Value*>
       extra_output_ir_values;
   for (const auto& p : extra_output_gens) {
