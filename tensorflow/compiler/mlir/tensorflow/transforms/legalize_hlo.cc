@@ -2136,7 +2136,9 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     auto is_splat_int64_ones =
         [&rewriter,
          &operand_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
-          if (!attr.hasValue()) return false;
+          // According to the definition, the default value of these attributes
+          // are all ones when unspecified.
+          if (!attr.hasValue()) return true;
           if (attr->getType().getShape()[0] != operand_type.getRank())
             return false;
           if (!attr->isSplat()) return false;
