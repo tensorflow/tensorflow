@@ -163,6 +163,46 @@ Value fillTensorWithZeros(OpBuilder& builder, Location loc, Value tensor) {
   return builder.create<linalg::FillOp>(loc, zero, tensor).result();
 }
 
+/// Sparsifies a (block of) operation(s) that cannot be handled directly
+/// by the sparse compiler but has well-known semi-ring semantics.
+///
+/// This yields something of the following form:
+///
+///   %result = sparse_tensor.unary %values[0]
+///     present={
+///       ^bb1(%val):
+///         ... codegen proceeds here using %val ....
+///         sparse_tensor.yield
+///     }
+///     absent={}
+///   linalg.yield %result
+Value PreSparsify(Operation* op, llvm::SmallVector<Value, 2>& values,
+                  OpBuilder* b) {
+  if (auto signop = dyn_cast<mhlo::SignOp>(op)) {
+    if (!sparse_tensor::getSparseTensorEncoding(signop.result().getType()) &&
+        !sparse_tensor::getSparseTensorEncoding(signop.operand().getType()))
+      return Value();
+    Type rtp = values[0].getType();
+    Location loc = op->getLoc();
+    auto semiring = b->create<sparse_tensor::UnaryOp>(loc, rtp, values[0]);
+    Block* present = b->createBlock(&semiring.presentRegion(), {}, rtp, loc);
+    b->setInsertionPointToStart(&semiring.presentRegion().front());
+    values[0] = present->getArgument(0);
+    return semiring;
+  }
+  return Value();
+}
+
+/// Finalizes sparse semi-ring construction.
+Value PostSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
+  if (semiring) {
+    b->create<sparse_tensor::YieldOp>(op->getLoc(), result);
+    b->setInsertionPointAfter(semiring.getDefiningOp());
+    return semiring;
+  }
+  return result;
+}
+
 SmallVector<int64_t, 4> Extract1DVector(DenseIntElementsAttr elements) {
   SmallVector<int64_t, 4> ret;
   for (const APInt& element : elements) {
@@ -690,12 +730,14 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         [&](OpBuilder& nested_builder, Location /*nested_loc*/,
             ValueRange args) {
           Type inner_result_ty = getElementTypeOrSelf(output);
+          auto argvec = llvm::to_vector<2>(args.take_front(inputs.size()));
+          auto semiring = PreSparsify(op, argvec, &rewriter);
           Value inner_result = mhlo::MhloOpToStdScalarOp::map<OpTy>(
-              op, inner_result_ty,
-              llvm::to_vector<2>(args.take_front(inputs.size())), &rewriter);
+              op, inner_result_ty, argvec, &rewriter);
           if (inner_result == nullptr) {
             failed = true;
           } else {
+            inner_result = PostSparsify(op, semiring, inner_result, &rewriter);
             nested_builder.create<linalg::YieldOp>(loc, inner_result);
           }
         },

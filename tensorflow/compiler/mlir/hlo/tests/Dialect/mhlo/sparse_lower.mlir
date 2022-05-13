@@ -100,7 +100,13 @@ func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK:           arith.negf
 // CHECK:         }
 // CHECK:         %[[T4:.*]] = linalg.generic {{{.*}}} ins(%[[T3]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ], {{.*}} }>>) outs
-// CHECK:           math.copysign
+// CHECK:           sparse_tensor.unary
+// CHECK:           present = {
+// CHECK:             math.copysign
+// CHECK:             sparse_tensor.yield
+// CHECK:           }
+// CHECK:           absent = {
+// CHECK:           }
 // CHECK:         }
 // CHECK:         %[[T5:.*]] = linalg.generic {{{.*}}} ins(%[[T4]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ], {{.*}} }>>) outs
 // CHECK:           math.sin
@@ -131,6 +137,25 @@ func.func @sparse_math(%arg0: tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64,
   %8 = mhlo.ceil(%7) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
   %9 = mhlo.floor(%8) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
   func.return %9 : tensor<10x20x30xf64, #ST>
+}
+
+// CHECK-LABEL: func @sparse_sign(
+// CHECK-SAME:    %[[A:.*]]: tensor<100xi32, #{{.*}}>) -> tensor<100xi32> {
+// CHECK:         %[[T:.*]] = linalg.generic {{{.*}}} ins(%[[A]] : tensor<100xi32, #{{.*}}>)
+// CHECK:           %[[U:.*]] = sparse_tensor.unary
+// CHECK:           present = {
+// CHECK:             arith.cmpi eq
+// CHECK:             sparse_tensor.yield
+// CHECK:           }
+// CHECK:           absent = {
+// CHECK:           }
+// CHECK:           linalg.yield %[[U]] : i32
+// CHECK:         } -> tensor<100xi32>
+// CHECK:         return %[[T]] : tensor<100xi32>
+// CHECK:       }
+func.func @sparse_sign(%arg0: tensor<100xi32, #SV>) -> tensor<100xi32> {
+  %0 = mhlo.sign(%arg0) : (tensor<100xi32, #SV>) -> tensor<100xi32>
+  func.return %0 : tensor<100xi32>
 }
 
 // CHECK-LABEL: func @sparse_reduce(
