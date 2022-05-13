@@ -18,7 +18,7 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import resource
+from tensorflow.python.trackable import resource
 
 
 def run_inside_wrap_function_in_eager_mode(graph_function):

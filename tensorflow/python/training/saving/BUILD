@@ -1,8 +1,6 @@
 # Description:
 #   Low-level utilities for reading and writing checkpoints.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -15,6 +13,8 @@ py_library(
     srcs = ["checkpoint_options.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -28,23 +28,10 @@ py_library(
         ":saveable_hook",
         ":saveable_object",
         ":saveable_object_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model/registration",
-    ],
-)
-
-cuda_py_test(
-    name = "functional_saver_test",
-    size = "medium",
-    srcs = [
-        "functional_saver_test.py",
-    ],
-    deps = [
-        ":checkpoint_options",
-        ":functional_saver",
-        ":saveable_hook",
-        "//tensorflow/python/eager:remote",
-        "//tensorflow/python/eager:test",
     ],
 )
 

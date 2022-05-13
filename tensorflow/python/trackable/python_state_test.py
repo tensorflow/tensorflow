@@ -22,7 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import python_state
+from tensorflow.python.trackable import python_state
 from tensorflow.python.training.tracking import util
 
 

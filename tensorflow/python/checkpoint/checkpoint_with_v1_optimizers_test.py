@@ -17,6 +17,7 @@ import os
 
 import six
 
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -29,7 +30,6 @@ from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import adam
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class CheckpointingTests(test.TestCase):

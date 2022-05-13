@@ -20,8 +20,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import base_delegate
+from tensorflow.python.trackable import base
+from tensorflow.python.trackable import base_delegate
 from tensorflow.python.training.tracking import util
 
 

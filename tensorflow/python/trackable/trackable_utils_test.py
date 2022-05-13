@@ -15,7 +15,7 @@
 """Tests for trackable_utils."""
 
 from tensorflow.python.eager import test
-from tensorflow.python.training.tracking import trackable_utils
+from tensorflow.python.trackable import trackable_utils
 
 
 class TrackableUtilsTest(test.TestCase):

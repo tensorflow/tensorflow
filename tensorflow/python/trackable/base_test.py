@@ -18,7 +18,7 @@ import os
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import base
+from tensorflow.python.trackable import base
 from tensorflow.python.training.tracking import util
 
 

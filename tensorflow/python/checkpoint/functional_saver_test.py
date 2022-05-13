@@ -16,6 +16,8 @@
 
 import os
 
+from tensorflow.python.checkpoint import checkpoint_options
+from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
@@ -27,10 +29,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.saving import checkpoint_options
-from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object_util
+
 
 LOCALHOST = "/job:localhost/replica:0/task:0/device:CPU:0"
 

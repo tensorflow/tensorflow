@@ -24,9 +24,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.platform import test
+from tensorflow.python.trackable import base
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import util
 
 

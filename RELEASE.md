@@ -4,14 +4,18 @@
 
 # Breaking Changes
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+*   <DOCUMENT BREAKING CHANGES HERE>
+*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+*   Some files in `tensorflow/python/training` have been moved to
+    `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
+    update your imports accordingly, the old files will be removed in Release
+    2.11.
 
 # Known Caveats
 
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+*   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+*   <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+*   <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 # Major Features and Improvements
 
@@ -48,9 +52,9 @@
 
 *   `tf.vectorized_map`:
 
-    * Added an optional parameter: `warn`.  This parameter controls whether or
-      not warnings will be printed when operations in the provided `fn` fall
-      back to a while loop.
+    *   Added an optional parameter: `warn`. This parameter controls whether or
+        not warnings will be printed when operations in the provided `fn` fall
+        back to a while loop.
 
 # Bug Fixes and Other Changes
 
@@ -86,75 +90,81 @@ This release contains contributions from many people at Google, as well as:
 # Breaking Changes
 
 *   Build, Compilation and Packaging
-    * TensorFlow is now compiled with `_GLIBCXX_USE_CXX11_ABI=1`. Downstream
-      projects that encounter `std::__cxx11` or `[abi:cxx11]` linker errors will
-      need to adopt this compiler option. See
-      [the GNU C++ Library docs on Dual ABI](https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html).
-    * TensorFlow Python wheels now specifically conform to
-      [manylinux2014](https://peps.python.org/pep-0599/), an upgrade from
-      manylinux2010. The minimum Pip version supporting manylinux2014 is Pip
-      19.3 (see [pypa/manylinux](https://github.com/pypa/manylinux). This change
-      may affect you if you have been using TensorFlow on a very old platform
-      equivalent to CentOS 6, as manylinux2014 targets CentOS 7 as a
-      compatibility base. Note that TensorFlow does not officially support
-      either platform.
-    * Discussion for these changes can be found on SIG Build's
-      [TensorFlow Community Forum thread](https://discuss.tensorflow.org/t/tensorflow-linux-wheels-are-being-upgraded-to-manylinux2014/8339)
+
+    *   TensorFlow is now compiled with `_GLIBCXX_USE_CXX11_ABI=1`. Downstream
+        projects that encounter `std::__cxx11` or `[abi:cxx11]` linker errors
+        will need to adopt this compiler option. See
+        [the GNU C++ Library docs on Dual ABI](https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html).
+    *   TensorFlow Python wheels now specifically conform to
+        [manylinux2014](https://peps.python.org/pep-0599/), an upgrade from
+        manylinux2010. The minimum Pip version supporting manylinux2014 is Pip
+        19.3 (see [pypa/manylinux](https://github.com/pypa/manylinux). This
+        change may affect you if you have been using TensorFlow on a very old
+        platform equivalent to CentOS 6, as manylinux2014 targets CentOS 7 as a
+        compatibility base. Note that TensorFlow does not officially support
+        either platform.
+    *   Discussion for these changes can be found on SIG Build's
+        [TensorFlow Community Forum thread](https://discuss.tensorflow.org/t/tensorflow-linux-wheels-are-being-upgraded-to-manylinux2014/8339)
 
 *   The `tf.keras.mixed_precision.experimental` API has been removed. The
     non-experimental symbols under `tf.keras.mixed_precision` have been
     available since TensorFlow 2.4 and should be used instead.
-    * The non-experimental API has some minor differences from the experimental
-      API. In most cases, you only need to make three minor changes:
-      1. Remove the word "experimental" from `tf.keras.mixed_precision` symbols.
-         E.g., replace `tf.keras.mixed_precision.experimental.global_policy`
-         with `tf.keras.mixed_precision.global_policy`.
-      2. Replace `tf.keras.mixed_precision.experimental.set_policy` with
-         `tf.keras.mixed_precision.set_global_policy`. The experimental symbol
-         `set_policy` was renamed to `set_global_policy` in the non-experimental
-         API.
-      3. Replace `LossScaleOptimizer(opt, "dynamic")` with
-         `LossScaleOptimizer(opt)`. If you pass anything other than `"dynamic"`
-         to the second argument, see (1) of the next section.
-    * In the following rare cases, you need to make more changes when switching
-      to the non-experimental API:
-      1. If you passed anything other than `"dynamic"` to the `loss_scale`
-         argument (the second argument) of `LossScaleOptimizer`:
-          * The LossScaleOptimizer constructor takes in different arguments.
-            See the
-            [TF 2.7 documentation of tf.keras.mixed_precision.experimental.LossScaleOptimizer](https://www.tensorflow.org/versions/r2.7/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer)
-            for details on the differences, which has examples on how to convert
-            to the non-experimental LossScaleOptimizer.
-      2. If you passed a value to the `loss_scale` argument (the second
-          argument) of `Policy`:
-          * The experimental version of `Policy` optionally took in a
-            `tf.compat.v1.mixed_precision.LossScale` in the constructor, which
-            defaulted to a dynamic loss scale for the `"mixed_float16"` policy
-            and no loss scale for other policies. In `Model.compile`, if the
-            model's policy had a loss scale, the optimizer would be wrapped with
-            a `LossScaleOptimizer`. With the non-experimental `Policy`, there is
-            no loss scale associated with the `Policy`, and `Model.compile`
-            wraps the optimizer with a `LossScaleOptimizer` if and only if the
-            policy is a `"mixed_float16"` policy. If you previously passed a
-            `LossScale` to the experimental `Policy`, consider just removing it,
-            as the default loss scaling behavior is usually what you want. If
-            you really want to customize the loss scaling behavior, you can wrap
-            your optimizer with a `LossScaleOptimizer` before passing it to
-            `Model.compile`.
-      3. If you use the very rarely-used function
-         `tf.keras.mixed_precision.experimental.get_layer_policy`:
-          * Replace
-            `tf.keras.mixed_precision.experimental.get_layer_policy(layer)` with
-            `layer.dtype_policy`.
-* `tf.mixed_precision.experimental.LossScale` and its subclasses have been
-  removed from the TF2 namespace. This symbols were very rarely used and were
-  only useful in TF2 for use in the now-removed
-  `tf.keras.mixed_precision.experimental` API. The symbols are still available
-  under `tf.compat.v1.mixed_precision`.
 
-* The `experimental_relax_shapes` heuristic for `tf.function` has been
-  deprecated and replaced with `reduce_retracing` which encompasses broader
-  heuristics to reduce the number of retraces (see below).
+    *   The non-experimental API has some minor differences from the
+        experimental API. In most cases, you only need to make three minor
+        changes:
+        1.  Remove the word "experimental" from `tf.keras.mixed_precision`
+            symbols. E.g., replace
+            `tf.keras.mixed_precision.experimental.global_policy` with
+            `tf.keras.mixed_precision.global_policy`.
+        2.  Replace `tf.keras.mixed_precision.experimental.set_policy` with
+            `tf.keras.mixed_precision.set_global_policy`. The experimental
+            symbol `set_policy` was renamed to `set_global_policy` in the
+            non-experimental API.
+        3.  Replace `LossScaleOptimizer(opt, "dynamic")` with
+            `LossScaleOptimizer(opt)`. If you pass anything other than
+            `"dynamic"` to the second argument, see (1) of the next section.
+    *   In the following rare cases, you need to make more changes when
+        switching to the non-experimental API:
+        1.  If you passed anything other than `"dynamic"` to the `loss_scale`
+            argument (the second argument) of `LossScaleOptimizer`:
+            *   The LossScaleOptimizer constructor takes in different arguments.
+                See the [TF 2.7 documentation of
+                tf.keras.mixed_precision.experimental.LossScaleOptimizer](https://www.tensorflow.org/versions/r2.7/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer)
+                for details on the differences, which has examples on how to
+                convert to the non-experimental LossScaleOptimizer.
+        2.  If you passed a value to the `loss_scale` argument (the second
+            argument) of `Policy`:
+            *   The experimental version of `Policy` optionally took in a
+                `tf.compat.v1.mixed_precision.LossScale` in the constructor,
+                which defaulted to a dynamic loss scale for the
+                `"mixed_float16"` policy and no loss scale for other policies.
+                In `Model.compile`, if the model's policy had a loss scale, the
+                optimizer would be wrapped with a `LossScaleOptimizer`. With the
+                non-experimental `Policy`, there is no loss scale associated
+                with the `Policy`, and `Model.compile` wraps the optimizer with
+                a `LossScaleOptimizer` if and only if the policy is a
+                `"mixed_float16"` policy. If you previously passed a `LossScale`
+                to the experimental `Policy`, consider just removing it, as the
+                default loss scaling behavior is usually what you want. If you
+                really want to customize the loss scaling behavior, you can wrap
+                your optimizer with a `LossScaleOptimizer` before passing it to
+                `Model.compile`.
+        3.  If you use the very rarely-used function
+            `tf.keras.mixed_precision.experimental.get_layer_policy`:
+            *   Replace
+                `tf.keras.mixed_precision.experimental.get_layer_policy(layer)`
+                with `layer.dtype_policy`.
+
+*   `tf.mixed_precision.experimental.LossScale` and its subclasses have been
+    removed from the TF2 namespace. This symbols were very rarely used and were
+    only useful in TF2 for use in the now-removed
+    `tf.keras.mixed_precision.experimental` API. The symbols are still available
+    under `tf.compat.v1.mixed_precision`.
+
+*   The `experimental_relax_shapes` heuristic for `tf.function` has been
+    deprecated and replaced with `reduce_retracing` which encompasses broader
+    heuristics to reduce the number of retraces (see below).
 
 # Known Caveats
 
@@ -165,10 +175,11 @@ This release contains contributions from many people at Google, as well as:
 # Major Features and Improvements
 
 *   `tf.keras`:
-    *   Added `tf.keras.applications.resnet_rs` models.  This includes the
+
+    *   Added `tf.keras.applications.resnet_rs` models. This includes the
         `ResNetRS50`, `ResNetRS101`, `ResNetRS152`, `ResNetRS200`,
-        `ResNetRS270`, `ResNetRS350` and `ResNetRS420` model architectures.
-        The ResNetRS models are based on the architecture described in
+        `ResNetRS270`, `ResNetRS350` and `ResNetRS420` model architectures. The
+        ResNetRS models are based on the architecture described in
         [Revisiting ResNets: Improved Training and Scaling Strategies](https://arxiv.org/pdf/2103.07579.pdf)
     *   Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
         optimizer gives more control over different phases of optimizer calls,
@@ -182,8 +193,8 @@ This release contains contributions from many people at Google, as well as:
         `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
     *   Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
     *   Added `tf.keras.regularizers.OrthogonalRegularizer`, a new regularizer
-        that encourages orthogonality between the rows (or columns) or a
-        weight matrix.
+        that encourages orthogonality between the rows (or columns) or a weight
+        matrix.
     *   Added `tf.keras.layers.RandomBrightness` layer for image preprocessing.
     *   Added APIs for switching between interactive logging and absl logging.
         By default, Keras always writes the logs to stdout. However, this is not
@@ -198,14 +209,13 @@ This release contains contributions from many people at Google, as well as:
         and `Model.predict()` to `"auto"`, which defaults to `verbose=1` for
         most cases and defaults to `verbose=2` when used with
         `ParameterServerStrategy` or with interactive logging disabled.
-    *   Argument `jit_compile` in `Model.compile()` now applies
-        to `Model.evaluate()` and `Model.predict()`.
-        Setting `jit_compile=True` in `compile()` compiles the model's
-        training, evaluation, and inference steps to
-        [XLA](https://www.tensorflow.org/xla).
-        Note that `jit_compile=True` may not necessarily work for all models.
-    *   Added DTensor-related Keras APIs under `tf.keras.dtensor` namespace.
-        The APIs are still classified as experimental. You are welcome to try it
+    *   Argument `jit_compile` in `Model.compile()` now applies to
+        `Model.evaluate()` and `Model.predict()`. Setting `jit_compile=True` in
+        `compile()` compiles the model's training, evaluation, and inference
+        steps to [XLA](https://www.tensorflow.org/xla). Note that
+        `jit_compile=True` may not necessarily work for all models.
+    *   Added DTensor-related Keras APIs under `tf.keras.dtensor` namespace. The
+        APIs are still classified as experimental. You are welcome to try it
         out. Please check the tutoral and guide on https://www.tensorflow.org/
         for more details about DTensor.
 
@@ -227,22 +237,22 @@ This release contains contributions from many people at Google, as well as:
             quantization and post-training float16 quantization.
         *   Set `experimental_new_dynamic_range_quantizer` in
             tf.lite.TFLiteConverter to False to disable this change
-    *   Native TF Lite variables are now enabled during conversion by default
-        on all v2 TfLiteConverter entry points.
-        `experimental_enable_resource_variables` on tf.lite.TFLiteConverter
-        is now True by default and will be removed in the future.
+    *   Native TF Lite variables are now enabled during conversion by default on
+        all v2 TfLiteConverter entry points.
+        `experimental_enable_resource_variables` on tf.lite.TFLiteConverter is
+        now True by default and will be removed in the future.
 
 *   `tf.function`:
 
-    *    Custom classes used as arguments for `tf.function` can now specify
-         rules regarding when retracing needs to occur by implementing the
-         Tracing Protocol available through
-         `tf.types.experimental.SupportsTracingProtocol`.
-    *    `TypeSpec` classes (as associated with `ExtensionTypes`) also implement
-         the Tracing Protocol which can be overriden if necessary.
-    *    The newly introduced `reduce_retracing` option also uses the Tracing
-         Protocol to proactively generate generalized traces similar to
-         `experimental_relax_shapes` (which has now been deprecated).
+    *   Custom classes used as arguments for `tf.function` can now specify rules
+        regarding when retracing needs to occur by implementing the Tracing
+        Protocol available through
+        `tf.types.experimental.SupportsTracingProtocol`.
+    *   `TypeSpec` classes (as associated with `ExtensionTypes`) also implement
+        the Tracing Protocol which can be overriden if necessary.
+    *   The newly introduced `reduce_retracing` option also uses the Tracing
+        Protocol to proactively generate generalized traces similar to
+        `experimental_relax_shapes` (which has now been deprecated).
 
 *   Unified eager and `tf.function` execution:
 
@@ -268,14 +278,14 @@ This release contains contributions from many people at Google, as well as:
     *   Fixed bug in `tf.data.experimental.parse_example_dataset` when
         `tf.io.RaggedFeatures` would specify `value_key` but no `partitions`.
         Before the fix, setting `value_key` but no `partitions` would result in
-        the feature key being replaced by the value key, e.g.
-        `{'value_key': <RaggedTensor>}` instead of `{'key': <RaggedTensor>}`.
-        Now the correct feature key will be used. This aligns the behavior of
+        the feature key being replaced by the value key, e.g. `{'value_key':
+        <RaggedTensor>}` instead of `{'key': <RaggedTensor>}`. Now the correct
+        feature key will be used. This aligns the behavior of
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
     *   Promoting `tf.data.experimental.load` API to `tf.data.Dataset.load`
-        (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/load)
-        and deprecating the experimental endpoint.
+        (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/load) and
+        deprecating the experimental endpoint.
     *   Promoting `tf.data.experimental.save` API to `tf.data.Dataset.save`
         (https://www.tensorflow.org/api_docs/python/tf/data/Dataset/save) and
         deprecating the experimental endpoint.
@@ -287,24 +297,28 @@ This release contains contributions from many people at Google, as well as:
         datasets containing `choose_from_datasets` and `enumerate`
         transformations.
 
-*    `tf.keras`:
+*   `tf.keras`:
 
     *   Fixed bug in optimizers that prevented them from properly checkpointing
         slot variables when they are `ShardedVariable`s (used for training with
         `tf.distribute.experimental.ParameterServerStrategy`).
 
-* `tf.random`
-    * Added `tf.random.experimental.index_shuffle`, for shuffling a sequence
-      without materializing the sequence in memory.
+*   `tf.random`
+
+    *   Added `tf.random.experimental.index_shuffle`, for shuffling a sequence
+        without materializing the sequence in memory.
 
 *   `tf.RaggedTensor`:
+
     *   Introduced `tf.experimental.RowPartition`, which encodes how one
         dimension in a RaggedTensor relates to another, into the public API.
     *   Introduced `tf.experimental.DynamicRaggedShape`, which represents the
         shape of a RaggedTensor.
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+
 *   <NOTES SHOULD BE GROUPED PER AREA>
 
 # Thanks to our Contributors
@@ -372,9 +386,9 @@ This release contains contributions from many people at Google, as well as:
 *   `tf.data`:
 
     *   Fixed a bug where setting `options.deterministic = False` would only
-        modify one transformation to run non-deterministically,
-        leaving other transformations deterministic. The option will now
-        apply the same across all transformations.
+        modify one transformation to run non-deterministically, leaving other
+        transformations deterministic. The option will now apply the same across
+        all transformations.
     *   The optimization `parallel_batch` now becomes default if not disabled by
         users, which will parallelize copying of batch elements.
     *   Added the ability for `TensorSliceDataset` to identify and handle inputs

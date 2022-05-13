@@ -666,6 +666,7 @@ distribute_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",

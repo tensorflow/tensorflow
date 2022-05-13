@@ -19,8 +19,8 @@ import numpy as np
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import autotrackable
-from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 

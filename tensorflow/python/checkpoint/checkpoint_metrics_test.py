@@ -13,14 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for checking the checkpoint reading and writing metrics."""
+
 import os
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.eager import context
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.training.tracking import util
 
 
 class CheckpointMetricTests(test.TestCase):

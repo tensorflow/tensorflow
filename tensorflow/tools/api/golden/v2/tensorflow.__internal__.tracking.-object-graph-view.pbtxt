@@ -1,6 +1,6 @@
 path: "tensorflow.__internal__.tracking.ObjectGraphView"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.tracking.graph_view.ObjectGraphView\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.graph_view.ObjectGraphView\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "attached_dependencies"
