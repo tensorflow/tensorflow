@@ -1151,7 +1151,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->create<mlir::mhlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
-                                        &reduce_scatter_op.computation()));
+                                        &reduce_scatter_op.computation(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       return reduce_scatter_op.getOperation();
     }

@@ -895,6 +895,13 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
+%reduce_helper_add_returning_tuple {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tple = (f32[]) tuple(add)
+}
+
 // CHECK-LABEL:  func private @test_reduce_scatter
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
 %test_reduce_scatter {
@@ -908,6 +915,16 @@ add {
   // CHECK-SAME:           scatter_dimension = 1 : i64
   // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>
   ROOT ars = f32[4,4] reduce-scatter(input), replica_groups={{0,1}}, dimensions={1}, to_apply=reduce_helper_add
+}
+
+// CHECK-LABEL:  func private @test_reduce_scatter_with_region_returning_tuple
+%test_reduce_scatter_with_region_returning_tuple {
+  input = f32[4,8] parameter(0)
+  // CHECK-NEXT: "mhlo.reduce_scatter"
+  // CHECK-NEXT:   ^bb0
+  // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add
+  // CHECK-NEXT:     "mhlo.return"([[ADD]])
+  ROOT ars = f32[4,4] reduce-scatter(input), replica_groups={{0,1}}, dimensions={1}, to_apply=reduce_helper_add_returning_tuple
 }
 
 // CHECK-LABEL:  func private @test_reduce_scatter_with_channel
