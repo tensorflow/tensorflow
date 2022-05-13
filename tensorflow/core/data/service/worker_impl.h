@@ -148,7 +148,6 @@ class DataServiceWorkerImpl {
   bool registered_ TF_GUARDED_BY(mu_) = false;
   condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
   condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
-  int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;
 
   // A thread for notifying the dispatcher when tasks complete.
