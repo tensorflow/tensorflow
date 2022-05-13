@@ -153,6 +153,7 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     eps = 2e-8
     self.assertLess(err, eps)
 
+
 class LogPoissonLossTest(test_lib.TestCase):
 
   def _log_poisson_loss(self, x, z, compute_full_loss=False):
