@@ -80,6 +80,11 @@ class CompileAndRunTest(test.TestCase):
       return np.float32
     if ir.F64Type.isinstance(mlir_type):
       return np.float64
+    if ir.ComplexType.isinstance(mlir_type):
+      if ir.F32Type.isinstance(ir.ComplexType(mlir_type).element_type):
+        return np.complex64
+      if ir.F64Type.isinstance(ir.ComplexType(mlir_type).element_type):
+        return np.complex128
     raise Exception(f'unknown scalar type: {mlir_type}')
 
   def test_compile_and_run(self):
