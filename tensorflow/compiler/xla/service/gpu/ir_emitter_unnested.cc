@@ -734,6 +734,9 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   auto output_dim_arrays =
       absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
 
+  llvm::Type* index_ty = GetIndexTypeForKernel(
+      pad_to_static, launch_dimensions.launch_bound(), &b_);
+
   // pseudo code for PadToStatic on a 2d array
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
@@ -774,7 +777,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //     *output[1] = *dyn_dim0_size;
   //     *output[2] = *dyn_dim1_size;
   //   }
-  KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
+  KernelSupportLibrary{&b_}.If("is_thread_0", IsBlock0Thread0(&b_), [&] {
     for (int64_t i = 1; i < pad_to_static.output().size(); ++i) {
       const int64_t dim_index = i - 1;
       llvm::Value* dest_dim_size_address =
@@ -787,10 +790,13 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //     int dyn_element_total = 1;
   //     dyn_element_total *= *dyn_dim0_size;
   //     dyn_element_total *= *dyn_dim1_size;
-  llvm::Value* dyn_element_total = llvm::ConstantInt::get(b_.getInt32Ty(), 1);
+  llvm::Value* dyn_element_total = llvm::ConstantInt::get(index_ty, 1);
   for (llvm::Value* dynamic_dim : dynamic_dims) {
-    dyn_element_total = b_.CreateMul(dyn_element_total, dynamic_dim,
-                                     /*Name=*/"dyn_element_total");
+    dyn_element_total =
+        b_.CreateMul(dyn_element_total,
+                     b_.CreateIntCast(dynamic_dim, dyn_element_total->getType(),
+                                      /*isSigned=*/true),
+                     /*Name=*/"dyn_element_total_pad");
   }
 
   //   linear_index = block_id * threads_per_block + thread_id;
@@ -823,12 +829,10 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   };
 
   const Shape& data_shape = GetShape(pad_to_static.output().front());
-  TF_RETURN_IF_ERROR(
-      ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
-                          {unroll_factor})
-          .EmitLoop(ir_name,
-                    GetIndexTypeForKernel(
-                        pad_to_static, launch_dimensions.launch_bound(), &b_)));
+  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+                                         launch_dimensions, &b_,
+                                         {unroll_factor})
+                         .EmitLoop(ir_name, index_ty));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
   return Status::OK();
 }
@@ -846,6 +850,8 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
                       CalculateLaunchDimensions(
                           input_shape, ir_emitter_context_->gpu_device_info(),
                           {unroll_factor}));
+  llvm::Type* index_ty = GetIndexTypeForKernel(
+      slice_to_dynamic, launch_dimensions.launch_bound(), &b_);
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(auto kernel_thunk,
                       BuildKernelThunk(slice_to_dynamic, GetThunkInfo(op),
@@ -892,7 +898,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //     *dyn_dim0_size = *output[1];
   //     *dyn_dim1_size = *output[2];
   //   }
-  KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
+  KernelSupportLibrary{&b_}.If("is_thread_0", IsBlock0Thread0(&b_), [&] {
     for (int64_t i = 1; i < slice_to_dynamic.args().size(); ++i) {
       const int64_t dim_index = i - 1;
       llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
@@ -906,10 +912,13 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //     int dyn_element_total = 1;
   //     dyn_element_total *= dyn_dim0_size;
   //     dyn_element_total *= dyn_dim1_size;
-  llvm::Value* dyn_element_total = llvm::ConstantInt::get(b_.getInt32Ty(), 1);
+  llvm::Value* dyn_element_total = llvm::ConstantInt::get(index_ty, 1);
   for (llvm::Value* dynamic_dim : dynamic_dims) {
-    dyn_element_total = b_.CreateMul(dyn_element_total, dynamic_dim,
-                                     /*Name=*/"dyn_element_total");
+    dyn_element_total =
+        b_.CreateMul(dyn_element_total,
+                     b_.CreateIntCast(dynamic_dim, dyn_element_total->getType(),
+                                      /*isSigned=*/true),
+                     /*Name=*/"dyn_element_total_slice");
   }
 
   //   linear_index = block_id * threads_per_block + thread_id;
@@ -943,12 +952,10 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
     return Status::OK();
   };
 
-  TF_RETURN_IF_ERROR(
-      ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
-                          {unroll_factor})
-          .EmitLoop(ir_name, GetIndexTypeForKernel(
-                                 slice_to_dynamic,
-                                 launch_dimensions.launch_bound(), &b_)));
+  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+                                         launch_dimensions, &b_,
+                                         {unroll_factor})
+                         .EmitLoop(ir_name, index_ty));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
   return Status::OK();
 }
