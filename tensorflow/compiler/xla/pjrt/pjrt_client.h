@@ -230,6 +230,9 @@ struct CompileOptions {
   // compiled for one device doesn't run on another.
   bool compile_portable_executable = false;
 
+  // XLA compilation profile version.
+  int64_t profile_version = 0;
+
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;

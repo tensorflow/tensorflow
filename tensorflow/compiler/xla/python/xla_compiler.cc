@@ -617,6 +617,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             options.executable_build_options.set_num_partitions(num_partitions);
           })
       .def_property(
+          "profile_version",
+          [](const CompileOptions& options) { return options.profile_version; },
+          [](CompileOptions& options, int64_t profile_version) {
+            options.profile_version = profile_version;
+          })
+      .def_property(
           "device_assignment",
           [](const CompileOptions& options)
               -> absl::optional<DeviceAssignment> {
