@@ -57477,6 +57477,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "tpu_compile_options_proto"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "TPUReplicatedInput"
