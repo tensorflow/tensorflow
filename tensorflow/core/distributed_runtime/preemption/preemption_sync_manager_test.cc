@@ -48,12 +48,20 @@ constexpr char kJobName[] = "test_worker";
 // Send fake preemption notices at any time for testing.
 class FakePreemptionNotifier : public PreemptionNotifier {
  public:
-  void AnnounceDeath(absl::Time death_time) {
+  ~FakePreemptionNotifier() override {
     mutex_lock l(mu_);
-    death_time_ = death_time;
+    NotifyRegisteredListeners(
+        errors::Cancelled("~FakePreemptionNotifier() was called."));
+  }
+
+  void AnnounceDeath(absl::Time death_time) {
     LOG(WARNING) << "Received preemption notice with death time: "
-                 << death_time_;
-    NotifyRegisteredListeners();
+                 << death_time;
+    {
+      mutex_lock l(mu_);
+      death_time_ = death_time;
+      NotifyRegisteredListeners(death_time_);
+    }
   }
 
   void Reset() override {}
