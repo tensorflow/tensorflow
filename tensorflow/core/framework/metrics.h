@@ -123,6 +123,12 @@ void RecordTFDataServiceClientIterators(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
+// Records tf.data service multi-trainer cache queries.
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit);
+
+// Records tf.data service multi-trainer cache memory usage in bytes.
+void RecordTFDataServiceMultiTrainerCacheSizeBytes(size_t bytes);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
@@ -318,6 +324,8 @@ class TestDelta {
   int64 last_value_;
 };
 void UpdateTpuErrorCounter(const string& op, const string& error_type);
+void UpdateEagerClientErrorCounter(const string& error_source,
+                                   const string& error_type);
 
 }  // namespace metrics
 }  // namespace tensorflow

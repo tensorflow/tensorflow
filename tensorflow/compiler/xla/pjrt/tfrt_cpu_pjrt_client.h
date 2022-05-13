@@ -74,6 +74,8 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
@@ -81,6 +83,16 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Returns a semaphore for admission control on inflight computations.
   Semaphore& max_inflight_computations_semaphore() {
     return max_inflight_computations_semaphore_;
+  }
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
   }
 
  private:
@@ -91,6 +103,7 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
 };
 
 class TfrtCpuExecutable;
@@ -440,9 +453,9 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                       std::function<void(Status)> on_ready) override {
-    return Unimplemented("CopyRawToHost not implemented");
+  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                   int64_t transfer_size) override {
+    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
   }
 
   void Delete() override;
@@ -588,17 +601,26 @@ class TfrtCpuExecutable final : public PjRtExecutable {
         cpu_executable_->shared_module()};
   }
 
+  using PjRtExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
+      override;
 
+  using PjRtExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) override;
 
+  using PjRtExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) override;
 
   void Delete() override;
 
@@ -617,11 +639,11 @@ class TfrtCpuExecutable final : public PjRtExecutable {
       absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
           input_buffers) const;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
+  StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
       tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
-      TfrtCpuDevice* device = nullptr);
+      bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
 

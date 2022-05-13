@@ -107,11 +107,26 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
+  std::string ToString() const override;
+
   std::string DebugString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ protected:
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
 
  private:
   const int id_;
@@ -297,10 +312,11 @@ class PjRtStreamExecutorClient : public PjRtClient {
     }
   }
 
-  virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
-                                        int64_t offset, int64_t transfer_size,
-                                        std::function<void(Status)> on_ready) {
-    return Unimplemented("Raw copies to host not implemented.");
+  virtual PjRtFuture<Status> CopyRawSubBufferToHost(PjRtBuffer* buffer,
+                                                    void* dst, int64_t offset,
+                                                    int64_t transfer_size) {
+    return PjRtFuture<Status>(
+        Unimplemented("Raw copies to host not implemented."));
   }
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -562,8 +578,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                       std::function<void(Status)> on_ready) override;
+  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                   int64_t transfer_size) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -733,17 +749,26 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
+  using PjRtExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
+      override;
 
+  using PjRtExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) override;
 
+  using PjRtExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) override;
 
   void Delete() override { executables_.clear(); }
 
@@ -795,10 +820,12 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
       std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
       const;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options,
-      PjRtDevice* device = nullptr) const;
+  StatusOr<Result> ExecuteHelper(absl::Span<PjRtBuffer* const> argument_handles,
+                                 int replica, int partition,
+                                 const RunId& run_id,
+                                 const ExecuteOptions& options,
+                                 bool fill_future,
+                                 PjRtDevice* device = nullptr) const;
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the

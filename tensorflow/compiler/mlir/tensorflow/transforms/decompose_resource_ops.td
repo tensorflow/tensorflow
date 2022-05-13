@@ -17,7 +17,8 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
-def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
+def NonScalarRankedType : Type<And<[Neg<HasAnyRankOfPred<[0]>>, HasRankPred]>,
+                         "Non scalar type">;
 
 def HasSingleElement: Constraint<CPred<"($0.size() == 1)">>;
 
@@ -348,7 +349,7 @@ def DecomposeResourceGather : Pat<
 // tf.TensorScatterAdd, and tf.AssignVariable.
 def DecomposeResourceScatterAdd : Pat<
   (TF_ResourceScatterAddOp:$src_op
-    $resource, $indices, NonScalarType:$updates),
+    $resource, $indices, NonScalarRankedType:$updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterAddOp
@@ -362,10 +363,8 @@ def DecomposeResourceScatterAdd : Pat<
 
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
 // tf.TensorScatterUpdate, and tf.AssignVariable.
-// TODO(b/178725329): Support scalar `updates` during decomposition.
 def DecomposeResourceScatterUpdate : Pat<
-  (TF_ResourceScatterUpdateOp:$src_op
-    $resource, $indices, NonScalarType:$updates),
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterUpdateOp

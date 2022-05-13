@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -73,18 +74,18 @@ class RewriteXlaHostComputeMlir
 
     // Clone the `host_func` in the `host_mlir_module` attribute if it exists
     // and use it for `shape_inference_graph` attribute on XlaHostCompute.
-    FuncOp cloned_func;
+    func::FuncOp cloned_func;
     SymbolTable manager(op->getParentOfType<ModuleOp>());
     StringRef host_module = op.host_mlir_module();
     if (!host_module.empty()) {
       mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
 
-      FuncOp func = op.GetHostFunc(&module_for_func);
+      func::FuncOp func = op.GetHostFunc(&module_for_func);
 
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());
-      cloned_func =
-          llvm::dyn_cast_or_null<FuncOp>(rewriter.clone(*func.getOperation()));
+      rewriter.setInsertionPointAfter(op->getParentOfType<func::FuncOp>());
+      cloned_func = llvm::dyn_cast_or_null<func::FuncOp>(
+          rewriter.clone(*func.getOperation()));
       manager.insert(cloned_func);
       rewriter.setInsertionPointToStart(&cloned_func.getBody().front());
       auto result_type =
@@ -125,7 +126,7 @@ class RewriteXlaHostComputeMlir
   }
 };
 
-void UpdateArgAttributes(mlir::FuncOp func) {
+void UpdateArgAttributes(mlir::func::FuncOp func) {
   OpBuilder builder(func.getBody());
   for (int i = 0; i < func.getNumArguments(); ++i) {
     constexpr char kShardingAttr[] = "mhlo.sharding";
@@ -205,7 +206,7 @@ LogicalResult SetTokenInputAttrs(ModuleOp module) {
     // If the parent is not a FuncOp, then add the parent op containing a region
     // to worklist.
     Operation* parent = region->getParentOp();
-    if (!isa<FuncOp>(parent)) {
+    if (!isa<func::FuncOp>(parent)) {
       if (ops_with_tokens.insert(parent).second) {
         worklist.push_back(parent);
       }
@@ -254,7 +255,7 @@ LogicalResult SetTokenInputAttrs(ModuleOp module) {
 void PrepareTpuComputationForTfExportPass::runOnOperation() {
   ModuleOp module = getOperation();
 
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     UpdateArgAttributes(func);
   }
 

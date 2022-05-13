@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
+#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #endif
 

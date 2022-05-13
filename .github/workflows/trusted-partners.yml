@@ -1,0 +1,51 @@
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+name: Trusted Partner PR
+on:
+  pull_request_target:
+
+jobs:
+  assign-partner-tags:
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to attach tags into the PR
+      issues: write
+      contents: write
+      pull-requests: write
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.sender.type == 'User'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+      - name: Trusted-Partners-PR
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const script = require('./.github/workflows/trusted_partners.js');
+            const username = context.payload.pull_request.user.login;
+            const domain = await script.get_email_domain({github, username});
+            switch(domain) {
+            case "intel.com":
+              console.log(await script.intel({github, context}));
+              break;
+            case "google.com":
+              console.log("Googler. No action necessary");
+              break;
+            default:
+              console.log("Skip Trusted Partner Action");
+            }

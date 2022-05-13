@@ -1,6 +1,6 @@
 // RUN: kernel-gen-opt %s --vectorization --cse --vectorization-cleanup --canonicalize | FileCheck %s
 
-func @Abs(%in: memref<?xf64>) {
+func.func @Abs(%in: memref<?xf64>) {
 linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
                 iterator_types = ["parallel"]}
     ins(%in : memref<?xf64>) outs(%in : memref<?xf64>) {
@@ -8,7 +8,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
     %9 = math.abs %arg1 : f64
     linalg.yield %9 : f64
   }
-  return
+  func.return
 }
 
 // CHECK: #[[$DIFF_MAP:.*]] = affine_map<()[s0, s1] -> (s0 - s1)>
@@ -17,6 +17,8 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-DAG:       %[[CF0:.*]] = arith.constant 0.000000e+00 : f64
 // CHECK-DAG:       %[[C4:.*]] = arith.constant 4 : index
 // CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[FULL_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
+// CHECK-DAG:       %[[STORE_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
 // CHECK-NEXT:      %[[SIZE:.*]] = memref.dim %[[BUF]], %[[C0]] : memref<?xf64>
 // CHECK-NEXT:      %[[REM:.*]] = arith.remui %[[SIZE]], %[[C4]] : index
 // CHECK-NEXT:      %[[SPLIT_POINT:.*]] = arith.subi %[[SIZE]], %[[REM]] : index
@@ -28,8 +30,6 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:      }
 // CHECK-NEXT:      %[[LAST_ITER:.*]] = arith.cmpi ult, %[[SPLIT_POINT]], %[[SIZE]] : index
 // CHECK-NEXT:      scf.if %[[LAST_ITER]] {
-// CHECK-NEXT:        %[[FULL_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
-// CHECK-NEXT:        %[[STORE_BUF:.*]] = memref.alloca() {alignment = 32 : i64} : memref<4xf64>
 // CHECK-NEXT:        %[[TILE_SIZE:.*]] = affine.apply #[[$DIFF_MAP]]()[%[[SIZE]], %[[SPLIT_POINT]]]
 // CHECK-NEXT:        %[[SUBVIEW:.*]] = memref.subview %[[BUF]]{{\[}}%[[SPLIT_POINT]]] {{\[}}%[[TILE_SIZE]]] [1] : memref<?xf64> to memref<?xf64, #map0>
 // CHECK-NEXT:        %[[VAL_20:.*]] = vector.transfer_read %[[SUBVIEW]]{{\[}}%[[C0]]], %[[CF0]] : memref<?xf64, #map0>, vector<4xf64>
@@ -59,7 +59,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NOT:         linalg.generic
 // CHECK:             addf {{.*}}vector<4xf64>
 // CHECK-NOT:     linalg.generic
-func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+func.func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
     %rhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
     %out: memref<?x?xf64>) {
 
@@ -75,5 +75,5 @@ func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s
     %65 = arith.addf %arg2, %arg3 : f64
     linalg.yield %65 : f64
   }
-  return
+  func.return
 }

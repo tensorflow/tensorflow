@@ -116,10 +116,14 @@ TEST(PathTest, CleanPath) {
     EXPECT_GE(u.end(), h.begin());                 \
     EXPECT_LE(u.begin(), h.end());                 \
     EXPECT_GE(u.end(), h.end());                   \
-    EXPECT_LE(u.begin(), p.begin());               \
-    EXPECT_GE(u.end(), p.begin());                 \
-    EXPECT_LE(u.begin(), p.end());                 \
-    EXPECT_GE(u.end(), p.end());                   \
+    if (p.empty()) {                               \
+      EXPECT_EQ(path, "");                         \
+    } else {                                       \
+      EXPECT_LE(u.begin(), p.begin());             \
+      EXPECT_GE(u.end(), p.begin());               \
+      EXPECT_LE(u.begin(), p.end());               \
+      EXPECT_GE(u.end(), p.end());                 \
+    }                                              \
   } while (0)
 
 TEST(PathTest, CreateParseURI) {

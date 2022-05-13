@@ -1,27 +1,27 @@
-# TensorFlow Lite with Google Play Services (BETA)
+# TensorFlow Lite in Google Play services (BETA)
 
-TensorFlow Lite is available in the Google Play Services API as a public beta on
-all Android devices running the current version of Play Services, starting
+TensorFlow Lite is available in the Google Play services API as a public beta on
+all Android devices running the current version of Play services, starting
 February 17, 2022. This API lets you run machine learning models without
 statically bundling TensorFlow Lite libraries into your app, allowing you to:
 
 *   Reduce your app size
 *   Gain improved performance from the latest, stable version of TensorFlow Lite
 
-This page provides a brief overview on how to use the new Google Play Services
-APIs for TensorFlow Lite in your Android app.
+This page provides a brief overview on how to use the new TensorFlow Lite in
+Google Play services APIs in your Android app.
 
 Beta: The functionality described in this page is in beta release. The
 functionality and APIs described here may change in future releases.
 
-For more information about Google Play Services, see the
-[Google Play Services](https://developers.google.com/android/guides/overview)
+For more information about Google Play services, see the
+[Google Play services](https://developers.google.com/android/guides/overview)
 website.
 
 
 ## Add TensorFlow Lite to your app
 
-You can use the Google Play Services API for TensorFlow Lite by making a few
+You can use the TensorFlow Lite in Google Play services API by making a few
 changes to your app module dependencies, initializing the new API, and using a
 specific class as your interpreter object. The following instructions provide
 more details on how to modify your app code.
@@ -38,7 +38,7 @@ Services API for TensorFlow Lite:
 ```
 dependencies {
 ...
-    // Tensorflow Lite dependencies for Google Play Services
+    // Tensorflow Lite dependencies for Google Play services
     implementation 'com.google.android.gms:play-services-tflite-java:16.0.0-beta01'
     // Optional: include Tensorflow Lite Support Library
     implementation 'com.google.android.gms:play-services-tflite-support:16.0.0-beta01'
@@ -60,7 +60,7 @@ Note: You should only include this dependency during the Beta launch period.
 
 ### 2. Add initialization of TensorFlow Lite
 
-Initialize the TensorFlow Lite component of the Google Play Services API
+Initialize the TensorFlow Lite component of the Google Play services API
 *before* using the TensorFlow Lite APIs:
 
 <div>
@@ -87,7 +87,7 @@ shown in the next section.
 ### 3. Create an Interpreter and set runtime option {:#step_3}
 
 Create an interpreter using `InterpreterApi.create()` and configure it to use
-Google Play Services runtime, by calling `InterpreterApi.Options.setRuntime()`,
+Google Play services runtime, by calling `InterpreterApi.Options.setRuntime()`,
 as shown in the following example code:
 
 <div>
@@ -196,15 +196,15 @@ interpreter.run(inputBuffer, outputBuffer);
 Important: While testing your app from a development environment during the Beta
 launch period, you may get an exception when your app attempts to initialize the
 TensorFlow Lite class (`TfLite.intialize(context)`). This means that the Google
-Play Services API is not yet available on your test device. For information on
+Play services API is not yet available on your test device. For information on
 resolving this issue, see the [Testing](#testing) section.
 
 
-## TensorFlow Lite API from Play Services
+## TensorFlow Lite in Google Play services
 
-The Google Play services API for TensorFlow Lite lets you access the actual
+The TensorFlow Lite in Google Play services API lets you access the actual
 [TensorFlow Lite Java API](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/package-summary)
-in your app after you initialize it using a new method in Play Services. This
+in your app after you initialize it using a new method in Play services. This
 approach keeps you keep code changes for existing apps to a minimum, and
 simplifies new implementations. For more information about the API for this
 feature, see the
@@ -214,7 +214,7 @@ feature, see the
 ## Migrating from Standalone TensorFlow Lite {:#migrating}
 
 If you are planning to migrate your app from standalone TensorFlow Lite to the
-play services version, review the following additional guidance for updating
+Play services API, review the following additional guidance for updating
 your app project code:
 
 1.  Review the [Limitations](#limitations) section of this page to ensure your
@@ -223,11 +223,12 @@ your app project code:
     models, particularly if you are using versions of TensorFlow Lite earlier
     than version 2.1, so you have a baseline to compare against the new
     implementation.
-3.  If you have migrated all of your code to use the Play Services API for
+3.  If you have migrated all of your code to use the Play services API for
     TensorFlow Lite, you should remove the existing TensorFlow Lite *runtime
-    library* dependencies (entries with `org.tensorflow:**tensorflow-lite**:\*`)
-    from your build.gradle file so that you can reduce your app size.
-4.  Identify all occurences of `new Interpreter` object creation in your code,
+    library* dependencies (entries with
+    <code>org.tensorflow:**tensorflow-lite**:*</code>) from your build.gradle
+    file so that you can reduce your app size.
+4.  Identify all occurrences of `new Interpreter` object creation in your code,
     and modify it so that it uses the InterpreterApi.create() call. This new API
     is asynchronous, which means in most cases it's not a drop-in replacement,
     and you must register a listener for when the call completes. Refer to the
@@ -243,21 +244,21 @@ your app project code:
 8.  Replace all other occurrences of the `org.tensorflow.lite.Interpreter` class
     with `org.tensorflow.lite.InterpreterApi`.
 
-If you want to use standalone TensorFlow Lite and the Play Services API
+If you want to use standalone TensorFlow Lite and the Play services API
 side-by-side, you must link to the nightly build version of TensorFlow Lite.
 TensorFlow Lite 2.8 and earlier versions are not compatible with the Play
-Services API version.
+services API version.
 
 
 ## Example App
 
-You can review and test an example implementation of TensorFlow Lite with Google
-Play Services in the
+You can review and test an example implementation of TensorFlow Lite in Google
+Play services in the
 [example app](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android_play_services).
 
 ## Testing
 
-After implementing the Google Play Services API for TensorFlow Lite, make sure
+After implementing TensorFlow Lite in Google Play services, make sure
 to test your application and exercise the machine learning model functions of
 your app. If you experience errors or issues you are unable to resolve, please
 report them by using the channels outlined in the
@@ -276,17 +277,17 @@ com.google.android.gms.dynamite.DynamiteModule$LoadingException:
   Local version is 0 and remote version is 0.
 ```
 
-This means that the Google Play Services API for TensorFlow Lite is not yet
-available on your test device. You can resolve this exception by requesting
-access to the access group for the beta API. Fill out the
-[form to request access](https://services.google.com/fb/forms/tflite-play-manual-access/),
-and *be sure to provide the user account that you are using to test your
-device*. Once you have been added to the beta access group, this exception
-should be resolved.
+This error means that the TensorFlow Lite in Google Play services API is not yet
+available on your test device. You can resolve this exception by joining this
+Google group
+[tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access/about)
+with *the user account you are using to test on your device.* Once you have been
+added to the beta access group, this exception should be resolved.
 
-Allow at least one business day for the request to be received and access
-granted. If you continue to experience this error, report it using the channels
-outlined in the [Support and feedback](#support) section below.
+Allow at least one business day after you join this group for access to be
+granted and the error to clear. If you continue to experience this error, report
+it using the channels outlined in the [Support and feedback](#support) section
+below.
 
 Note: This error only occurs when testing this API in a development environment.
 Apps that use this API and are installed or updated on a device through the
@@ -295,17 +296,17 @@ Google Play Store automatically receive the required libraries.
 
 ## Limitations
 
-TensorFlow Lite in Google Play Services is currently at public beta and has the
+TensorFlow Lite in Google Play services is currently at public beta and has the
 following limitations:
 
-*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/performance/nnapi)
-    is currently supported by Google Play Services. Other TensorFlow Lite
+*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/android/delegates/nnapi)
+    is currently supported by Google Play services. Other TensorFlow Lite
     [Delegates](https://www.tensorflow.org/lite/performance/delegates),
     including GPU, XNNPack, and Flex are not currently supported.
 *   Access to TensorFlow Lite via
     [native APIs](https://www.tensorflow.org/lite/guide/inference#load_and_run_a_model_in_c)
     is not supported. Only the TensorFlow Lite Java APIs are available through
-    Google Play Services.
+    Google Play services.
 *   Experimental or deprecated TensorFlow Lite APIs, including custom ops, are
     not supported.
 
@@ -316,33 +317,33 @@ You can provide feedback and get support for this beta release feature, through
 the TensorFlow Issue Tracker. Please report issues and support requests using
 the
 [Issue template](https://github.com/tensorflow/tensorflow/issues/new?assignees=&labels=type%3Aothers&template=100-tflite-in-play-services.md)
-for TensorFlow Lite in Play Services.
+for TensorFlow Lite in Google Play services.
 
 
 ## Terms and Privacy Policy
 
-Use of TensorFlow Lite with Google Play Services is subject to the [Google APIs
+Use of TensorFlow Lite in Google Play services is subject to the [Google APIs
 Terms of Service](https://developers.google.com/terms/).
-Note that TensorFlow Lite with Google Play Services is in beta and, as such, its
+Note that TensorFlow Lite in Google Play services is in beta and, as such, its
 functionality as well as associated APIs may change without advance notice.
 
-When you use TensorFlow Lite with Google Play Services APIs, processing of the
+When you use TensorFlow Lite in Google Play services APIs, processing of the
 input data, such as images, video, text, fully happens on-device, and TensorFlow
-Lite in Google Play Services does not send that data to Google servers. As a
+Lite in Google Play services does not send that data to Google servers. As a
 result, you can use our APIs for processing data that should not leave the
 device.
 
-The TensorFlow Lite with Google Play Services APIs may contact Google servers
+The TensorFlow Lite in Google Play services APIs may contact Google servers
 from time to time in order to receive things like bug fixes, updated models and
-hardware accelerator compatibility information. The TensorFlow Lite with Google
-Play Services APIs also sends metrics about the performance and utilization of
+hardware accelerator compatibility information. The TensorFlow Lite in Google
+Play services APIs also sends metrics about the performance and utilization of
 the APIs in your app to Google. Google uses this metrics data to measure
 performance, debug, maintain and improve the APIs, and detect misuse or abuse,
 as further described in our [Privacy
 Policy](https://policies.google.com/privacy).
 
 **You are responsible for informing users of your app about Google's processing
-of TensorFlow Lite with Google Play Services metrics data as required by
+of TensorFlow Lite in Google Play services metrics data as required by
 applicable law.**
 
 Data we collect includes the following:
@@ -367,5 +368,5 @@ For more information about implementing machine learning in your mobile
 application with TensorFlow Lite, see the
 [TensorFlow Lite Developer Guide](https://www.tensorflow.org/lite/guide). You
 can find additional TensorFlow Lite models for image classification, object
-detection, and other applications on the TensorFlow Lite
-[Model library](https://www.tensorflow.org/lite/guide/hosted_models) page.
+detection, and other applications on the
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite).

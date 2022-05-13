@@ -115,9 +115,9 @@ class Stream {
   // StreamExecutor's platform.
   explicit Stream(StreamExecutor *parent);
 
-  // Test only. Use an externally-populated value (like a mock) for the
-  // platform-specific stream implementation.
-  Stream(StreamExecutor *parent, internal::StreamInterface *implementation);
+  // Create stream for an existing stream handle.
+  Stream(StreamExecutor *parent,
+         std::unique_ptr<internal::StreamInterface> implementation);
 
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed
@@ -462,60 +462,41 @@ class Stream {
                       const dnn::BatchDescriptor &dimensions,
                       DeviceMemory<float> *output_data);
 
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<double> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<double> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
+  template <typename ElementType>
+  port::Status ThenPoolForward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      DeviceMemory<ElementType> *output_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
+                                pooling_dimensions, input_dimensions,
+                                input_data, output_dimensions, *output_data,
+                                workspace_allocator);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<float> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<float> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<Eigen::half> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<Eigen::half> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                          const dnn::BatchDescriptor &input_dimensions,
-                          const DeviceMemory<int8> &input_data,
-                          const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<int8> *output_data,
-                          ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<double> &input_data,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           const DeviceMemory<double> &output_data,
-                           const DeviceMemory<double> &input_diff_data,
-                           DeviceMemory<double> *output_diff_data,
-                           ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<float> &input_data,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           const DeviceMemory<float> &output_data,
-                           const DeviceMemory<float> &input_diff_data,
-                           DeviceMemory<float> *output_diff_data,
-                           ScratchAllocator *workspace_allocator = nullptr);
-
-  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
-                           const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<Eigen::half> &input_data,
-                           const dnn::BatchDescriptor &output_dimensions,
-                           const DeviceMemory<Eigen::half> &output_data,
-                           const DeviceMemory<Eigen::half> &input_diff_data,
-                           DeviceMemory<Eigen::half> *output_diff_data,
-                           ScratchAllocator *workspace_allocator = nullptr);
+  template <typename ElementType>
+  port::Status ThenPoolBackward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      const DeviceMemory<ElementType> &output_data,
+      const DeviceMemory<ElementType> &input_diff_data,
+      DeviceMemory<ElementType> *output_diff_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolBackward(
+          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
+          input_dimensions, input_data, output_dimensions, output_data,
+          input_diff_data, *output_diff_data, workspace_allocator);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   Stream &ThenNormalizeWithDimensions(
       const dnn::NormalizeDescriptor &normalize_descriptor,
@@ -1367,7 +1348,7 @@ class Stream {
                                     &beta_storage);
     port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
         this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, stride_a, lda, b,
+        blas::ToDataType<InputType>::value, lda, stride_a, b,
         blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
         blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
         computation_type, algorithm, output_profile_result);
@@ -2037,6 +2018,9 @@ class Stream {
     return parent()->GetDeviceDescription().cuda_compute_capability();
   }
 
+  RocmComputeCapability GetRocmComputeCapability() const {
+    return parent()->GetDeviceDescription().rocm_compute_capability();
+  }
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();
@@ -2098,13 +2082,7 @@ class Stream {
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_) {
-    if (operation_retcode) {
-      return;
-    }
-    absl::MutexLock lock(&mu_);
-    status_ = port::InternalError("Unknown error");
-  }
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
 
   // Checks the status and logs the error message, if any.
   void CheckStatus(port::Status status) TF_LOCKS_EXCLUDED(mu_);
@@ -2151,6 +2129,10 @@ class Stream {
   // notes when they can be reclaimed -- reclamation is attempted when
   // BlockHostUntilDone() is called.
   internal::TemporaryMemoryManager temporary_memory_manager_;
+
+  // Whether the stream resources are managed externally: that is, whether the
+  // destructor of the stream needs to deallocate it.
+  bool managed_externally_ = false;
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_

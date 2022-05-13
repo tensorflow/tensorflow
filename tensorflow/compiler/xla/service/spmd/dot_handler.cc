@@ -1418,9 +1418,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
 
     auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0,
-        ShapeUtil::MakeTupleShape({lhs_hlo->shape(), rhs_hlo->shape(),
-                                   result_buffer->shape(),
-                                   extra_buffer->shape(), iteration->shape()}),
+        ShapeUtil::MakeTupleShapeWithPtrs(
+            {&lhs_hlo->shape(), &rhs_hlo->shape(), &result_buffer->shape(),
+             &extra_buffer->shape(), &iteration->shape()}),
         "param"));
     auto l = body_b.AddInstruction(
         HloInstruction::CreateGetTupleElement(lhs_hlo->shape(), param, 0));
@@ -1695,9 +1695,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     SpmdBuilder cond_b("windowed_dot_general_cond", original_hlo);
     auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
         /*parameter_number=*/0,
-        ShapeUtil::MakeTupleShape({lhs_hlo->shape(), rhs_hlo->shape(),
-                                   result_buffer->shape(),
-                                   extra_buffer->shape(), iteration->shape()}),
+        ShapeUtil::MakeTupleShapeWithPtrs(
+            {&lhs_hlo->shape(), &rhs_hlo->shape(), &result_buffer->shape(),
+             &extra_buffer->shape(), &iteration->shape()}),
         "param"));
     auto cond_i = cond_b.AddInstruction(HloInstruction::CreateGetTupleElement(
         iteration->shape(), cond_param, 4));

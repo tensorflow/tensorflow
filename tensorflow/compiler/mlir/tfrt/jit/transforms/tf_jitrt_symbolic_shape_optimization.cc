@@ -30,6 +30,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -43,7 +45,6 @@ using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::failure;
-using mlir::FuncOp;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -58,6 +59,7 @@ using mlir::ValueRange;
 using mlir::arith::ConstantIndexOp;
 using mlir::arith::ConstantOp;
 using mlir::arith::IndexCastOp;
+using mlir::func::FuncOp;
 
 namespace linalg = mlir::linalg;
 namespace mhlo = mlir::mhlo;
@@ -69,65 +71,10 @@ namespace tensor = mlir::tensor;
 
 // -------------------------------------------------------------------------- //
 
-// Rewrite shape.cstr_broadcastable with constant witness if can prove that
-// shapes are broadcastable from the symbolic shapes.
 
-class CstrBroadcastableOpLowering
-    : public mlir::OpRewritePattern<shape::CstrBroadcastableOp> {
- public:
-  using Base = OpRewritePattern<shape::CstrBroadcastableOp>;
 
-  explicit CstrBroadcastableOpLowering(MLIRContext* ctx);
 
-  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
-                                mlir::PatternRewriter& rewriter) const override;
-};
 
-CstrBroadcastableOpLowering::CstrBroadcastableOpLowering(MLIRContext* ctx)
-    : Base(ctx) {}
-
-// Returns true if all of bcasted_shapes can be broadcasted with output_shape.
-bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
-                          ValueRange bcasted_shapes, Value output_shape) {
-  auto output_shape_dims = analysis.GetValueInfo(output_shape);
-  if (!output_shape_dims) return false;
-  for (Value shape : bcasted_shapes) {
-    auto shape_dims = analysis.GetValueInfo(shape);
-    if (!shape_dims) return false;
-    // Iterate backwards over the smallest input shape.
-    for (auto zip : llvm::zip(llvm::reverse(*output_shape_dims),
-                              llvm::reverse(*shape_dims))) {
-      const auto& first = std::get<0>(zip);
-      const auto& second = std::get<1>(zip);
-      // TODO(ezhulenev): What to do with dimensions statically known to be
-      // zero?
-      // Numpy can only broadcast [0] with [1], however Tensorflow can broadcast
-      // [0] with any dimension size, and produces dimension of size [0].
-      // Currently we'll conservatively return failure and will not proceed with
-      // a rewrite.
-      if (first.isConstant(0) || second.isConstant(0)) return false;
-      // If either shape has a static one dimension the broadcast will always
-      // succeed.
-      if (first.isConstant(1) || second.isConstant(1)) continue;
-      // Otherwise dims have to be equal.
-      if (first != second) return false;
-    }
-  }
-  return true;
-}
-
-LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
-    shape::CstrBroadcastableOp op, mlir::PatternRewriter& rewriter) const {
-  ShapeComponentAnalysis shape_component_analysis;
-  if (!isKnownBroadcastable(shape_component_analysis, op.getShapes(),
-                            op.getShapes().front()))
-    return failure();
-
-  // Replace constraint with a true witness.
-  rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
-
-  return success();
-}
 
 // Replace shape.broadcast with a shape if it's statically known.
 class BroadcastOpLowering final
@@ -347,8 +294,6 @@ struct SymbolicShapeOptimizationPass
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
-    // Rewrite constraints based on the symbolic shapes.
-    patterns.add<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
     patterns.add<BroadcastOpLowering>(ctx);
 

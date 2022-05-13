@@ -139,7 +139,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 
   Tensor* dst_tensor = nullptr;
   Device* cpu_dev = nullptr;
-  if (to_device->tensorflow_gpu_device_info()) {
+  if (to_device->tensorflow_accelerator_device_info()) {
     // Move the bytes into a CPU tensor then use tensor-to-tensor copy.
     // Use GPU-registered memory for the CPU tensor so the transfer
     // goes faster.
@@ -191,7 +191,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
             return;
           }
 
-          if (to_device->tensorflow_gpu_device_info()) {
+          if (to_device->tensorflow_accelerator_device_info()) {
             AllocatorAttributes cpu_attr;
             cpu_attr.set_gpu_compatible(true);
             CopyTensor::ViaDMA("",  // edge name (non-existent)

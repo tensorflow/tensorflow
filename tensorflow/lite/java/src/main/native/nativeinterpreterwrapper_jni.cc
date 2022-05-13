@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
 #include "tensorflow/lite/core/shims/cc/model_builder.h"
+#include "tensorflow/lite/core/shims/cc/tools/verifier_internal.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #endif
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/java/src/main/native/op_resolver_lazy_delegate_proxy.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
@@ -83,9 +85,8 @@ int getDataType(TfLiteType data_type) {
 }
 
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
-bool VerifyModel(const void* buf, size_t len) {
-  flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  return tflite::VerifyModelBuffer(verifier);
+bool VerifyModel(const void* buf, size_t length) {
+  return tflite_shims::internal::VerifyFlatBufferAndGetModel(buf, length);
 }
 
 // Verifies whether the model is a flatbuffer file.
@@ -94,7 +95,8 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   bool Verify(const char* data, int length,
               tflite::ErrorReporter* reporter) override {
     if (!VerifyModel(data, length)) {
-      reporter->Report("The model is not a valid Flatbuffer file");
+      TF_LITE_REPORT_ERROR(reporter,
+                           "The model is not a valid Flatbuffer file");
       return false;
     }
     return true;
@@ -322,118 +324,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
 }
 
 JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
-    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jint state, jint num_threads) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
-
-  // If not using xnnpack, simply don't apply the delegate.
-  if (state == 0) return 0;
-
-  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
-  if (interpreter == nullptr) return 0;
-
-  BufferErrorReporter* error_reporter =
-      convertLongToErrorReporter(env, error_handle);
-  if (error_reporter == nullptr) return 0;
-
-  TfLiteOpaqueDelegate* delegate = nullptr;
-  void (*delegate_deleter)(TfLiteOpaqueDelegate*) = nullptr;
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  // Construct a FlatBuffer containing
-  //   TFLiteSettings {
-  //     delegate: Delegate.XNNPack
-  //     XNNPackSettings {
-  //       num_threads: <num_threads>
-  //     }
-  //   }
-  flatbuffers::FlatBufferBuilder flatbuffer_builder;
-  tflite::XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder);
-  if (num_threads >= 0) {
-    xnnpack_settings_builder.add_num_threads(num_threads);
-  }
-  flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings =
-      xnnpack_settings_builder.Finish();
-  tflite::TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
-  tflite_settings_builder.add_xnnpack_settings(xnnpack_settings);
-  tflite_settings_builder.add_delegate(tflite::Delegate_XNNPACK);
-  flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings =
-      tflite_settings_builder.Finish();
-  flatbuffer_builder.Finish(tflite_settings);
-  const tflite::TFLiteSettings* tflite_settings_flatbuffer =
-      flatbuffers::GetRoot<tflite::TFLiteSettings>(
-          flatbuffer_builder.GetBufferPointer());
-  // Create an XNNPack delegate plugin using the settings from the flatbuffer.
-  const TfLiteOpaqueDelegatePlugin* delegate_plugin =
-      TfLiteXnnpackDelegatePluginCApi();
-  delegate = delegate_plugin->create(tflite_settings_flatbuffer);
-  delegate_deleter = delegate_plugin->destroy;
-#else
-  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
-  // This allows clients that use trimmed builds to save on binary size.
-  auto xnnpack_options_default =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
-  auto xnnpack_create =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
-  auto xnnpack_delete =
-      reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
-          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
-
-  if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
-    TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
-    if (num_threads > 0) {
-      options.num_threads = num_threads;
-    }
-    delegate = xnnpack_create(&options);
-    delegate_deleter = xnnpack_delete;
-  }
-#endif
-  if (delegate) {
-    jlong delegate_handle = reinterpret_cast<jlong>(delegate);
-    jlong delete_handle = reinterpret_cast<jlong>(delegate_deleter);
-
-    jclass xnnpack_delegate_class =
-        env->FindClass("org/tensorflow/lite/XnnpackDelegate");
-    if (xnnpack_delegate_class == nullptr) {
-      if (!env->ExceptionCheck()) {
-        ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                       "Internal error: "
-                       "Can't find org/tensorflow/lite/XnnpackDelegate class");
-      }
-      return 0;
-    }
-    jmethodID constructor =
-        env->GetMethodID(xnnpack_delegate_class, "<init>", "(JJ)V");
-    if (constructor == nullptr) {
-      if (!env->ExceptionCheck()) {
-        ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                       "Internal error: Can't find "
-                       "org/tensorflow/lite/XnnpackDelegate constructor");
-      }
-      return 0;
-    }
-    jobject xnnpack_delegate = env->NewObject(
-        xnnpack_delegate_class, constructor, delegate_handle, delete_handle);
-    return reinterpret_cast<jlong>(xnnpack_delegate);
-  } else if (state == -1) {
-    // Instead of throwing an exception, we tolerate the missing of such
-    // dependencies because we try to apply XNNPACK delegate by default.
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "WARNING: Missing necessary XNNPACK delegate dependencies to apply it "
-        "by default.\n");
-    return 0;
-  } else {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Failed to load XNNPACK delegate from current runtime. "
-                   "Have you added the necessary dependencies?");
-    return 0;
-  }
-}
-
-JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
@@ -482,8 +372,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "ByteBuffer is not a valid flatbuffer model");
+    ThrowException(
+        env, tflite::jni::kIllegalArgumentException,
+        "ByteBuffer is not a valid TensorFlow Lite model flatbuffer");
     return 0;
   }
 
@@ -501,7 +392,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
-    jint num_threads, jobject delegate_handle_list) {
+    jint num_threads, jboolean useXnnpack, jobject delegate_handle_list) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
   static jclass list_class = env->FindClass("java/util/List");
@@ -557,7 +448,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
 
-  std::unique_ptr<OpResolver> resolver = tflite_shims::CreateOpResolver();
+  std::unique_ptr<OpResolver> resolver =
+      std::make_unique<tflite::jni::OpResolverLazyDelegateProxy>(
+          tflite_shims::CreateOpResolver(), useXnnpack != JNI_FALSE);
 
   InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));
@@ -571,16 +464,20 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     jobject jdelegate_handle =
         env->CallObjectMethod(delegate_handle_list, list_get_method, i);
     if (jdelegate_handle == nullptr) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: null Delegate handle");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: null object in Delegate handle list");
+      }
       return 0;
     }
     // Java: long delegate_handle = jdelegate_handle.longValue();
     jlong delegate_handle =
         env->CallLongMethod(jdelegate_handle, long_value_method);
     if (delegate_handle == 0) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Found invalid handle");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Found invalid handle");
+      }
       return 0;
     }
     auto delegate = reinterpret_cast<TfLiteOpaqueDelegate*>(delegate_handle);
@@ -603,6 +500,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
       const char* error_message = error_reporter->CachedErrorMessage();
       if (std::strcmp(
               error_message,
+              "Restored original execution plan after delegate application "
+              "failure.") == 0 ||
+          std::strcmp(
+              error_message,
+              "Restored original execution plan after delegate application "
+              "failure.\n"
               "Restored original execution plan after delegate application "
               "failure.") == 0) {
         ThrowException(env, tflite::jni::kIllegalArgumentException,

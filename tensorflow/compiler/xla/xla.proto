@@ -378,14 +378,19 @@ message DebugOptions {
   bool xla_gpu_enable_shared_constants = 165;
 
   // Whether to use cuBLASLt for GEMMs on GPUs.
-  // This was rolled back. For compatibility reasons, we should not reuse this
-  // tag for something else.
-  // bool xla_gpu_enable_cublaslt = 166;
+  bool xla_gpu_enable_cublaslt = 166;
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
-  // Next id: 168
+  // Allows all floating-point conversions to be simplified, including those
+  // that affect the numerics. The `BFloat16Normalization` pass inserts many
+  // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
+  // `AlgebraicSimplifier`, as that will only simplify conversions that are
+  // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
+  bool xla_gpu_simplify_all_fp_conversions = 168;
+
+  // Next id: 169
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -444,6 +449,17 @@ message ExecutionOptions {
   // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
   // num_partitions > 1 and XLA is requested to partition the input program.
   bool use_spmd_partitioning = 11;
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning = 15;
+
+  // Device mesh shape used to create the sharding search space when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Device mesh ids compatible with the above mesh_shape used when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.

@@ -231,9 +231,10 @@ Status ResolveDeviceAssignment(
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
       if (lookup_status.ok()) {
         // This is a local device, so include it in the mapping.
-        const DeviceBase::GpuDeviceInfo* gpu_device_info =
-            resolved_device->tensorflow_gpu_device_info();
-        global_device_ids[gpu_device_info->stream->parent()->device_ordinal()] =
+        const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+            resolved_device->tensorflow_accelerator_device_info();
+        global_device_ids[accelerator_device_info->stream->parent()
+                              ->device_ordinal()] =
             device_attributes.xla_global_id();
       }
     }
@@ -242,22 +243,6 @@ Status ResolveDeviceAssignment(
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return Status::OK();
-}
-
-std::string DefinitionLocationMsg(
-    const absl::optional<ManagedStackTrace>& stack_trace) {
-  if (stack_trace) {
-    std::vector<StackFrame> stack_frames =
-        stack_trace->ToStackFrames({}, IsInternalFrameForFilename,
-                                   /*reverse_traversal=*/true,
-                                   /*limit=*/1);
-    if (!stack_frames.empty()) {
-      const StackFrame& last_frame = stack_frames[0];
-      return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
-                          last_frame.line_number, ")");
-    }
-  }
-  return "";
 }
 
 }  // end namespace tensorflow

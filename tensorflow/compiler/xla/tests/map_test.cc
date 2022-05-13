@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -492,6 +493,31 @@ TEST_F(MapTest, MapOperationWithBuildError) {
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::HasSubstr("error from: ErrorAdd: Binary op add with "
                                    "different element types: f32[] and u16[]"));
+}
+
+class MapHloTest : public HloTestBase {};
+
+// TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
+XLA_TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
+  absl::string_view hlo_string = R"(
+  HloModule MapMixedInputTypes
+
+  add {
+    op0 = f32[] parameter(0)
+    op1 = s32[] parameter(1)
+    cop1 = f32[] convert(op1)
+    ROOT result = f32[] add(op0, cop1)
+  }
+
+  ENTRY main {
+    in0 = f32[10,3] parameter(0)
+    in1 = s32[10,3] parameter(1)
+
+    ROOT out = f32[10,3] map(in0, in1), to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all

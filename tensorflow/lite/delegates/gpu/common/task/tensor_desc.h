@@ -44,6 +44,13 @@ enum class TensorStorageType {
   SINGLE_TEXTURE_2D
 };
 
+struct ZeroClampSupport {
+  bool image_buffer = true;
+  bool image2d = true;
+  bool image3d = true;
+  bool image2d_array = true;
+};
+
 struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor() = default;
   TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
@@ -119,6 +126,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   // totally different.
   Layout layout =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+
+  void SetZeroClampSupport(const ZeroClampSupport& new_state) {
+    zero_clamp_support = new_state;
+  }
 
   void SetBHWCShape(const BHWC& new_shape) {
     shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
@@ -237,6 +248,8 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const T* src);
   template <typename T>
   void DownloadData(T* dst);
+
+  ZeroClampSupport zero_clamp_support;
 
   // optional
   BHWDC shape;

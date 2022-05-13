@@ -47,7 +47,7 @@ struct ChloLegalizeToHloPass
   void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
     RewritePatternSet conversionPatterns(&getContext());
-    conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
+    conversionTarget.addIllegalDialect<chlo::ChloDialect>();
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
@@ -78,7 +78,7 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createChloLegalizeToHloPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalize_broadcasts, bool expand_compositions) {
   return std::make_unique<ChloLegalizeToHloPass>(legalize_broadcasts,
                                                  expand_compositions);

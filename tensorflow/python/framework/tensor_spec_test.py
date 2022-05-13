@@ -170,9 +170,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # Check that creating TypeSpecs did not require building new Tensors.
       self.assertLen(g.get_operations(), len(ops_before))
 
-  @parameterized.parameters([True, False])
-  def testEqualTypes(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
+  def testEqualTypes(self):
+    signature_context = trace_type.InternalTracingContext()
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
         None).__tf_tracing_type__(signature_context)
@@ -185,9 +184,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertTrue(type_2.is_subtype_of(type_1))
     self.assertTrue(type_1.is_subtype_of(type_2))
 
-  @parameterized.parameters([True, False])
-  def testDtypeMismatch(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
+  def testDtypeMismatch(self):
+    signature_context = trace_type.InternalTracingContext()
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
         None).__tf_tracing_type__(signature_context)
@@ -198,9 +196,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertFalse(type_2.is_subtype_of(type_1))
     self.assertFalse(type_1.is_subtype_of(type_2))
 
-  @parameterized.parameters([True, False])
-  def testSubtypeOfShapeless(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
+  def testSubtypeOfShapeless(self):
+    signature_context = trace_type.InternalTracingContext()
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape(None), dtypes.float32,
         None).__tf_tracing_type__(signature_context)
@@ -212,7 +209,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertTrue(type_2.is_subtype_of(type_1))
 
   def testSubtypeOfDimlessShape(self):
-    signature_context = trace_type.SignatureContext(False)
+    signature_context = trace_type.InternalTracingContext()
     type_1 = tensor_spec.TensorSpec(
         tensor_shape.TensorShape([None, None, None]), dtypes.float32,
         None).__tf_tracing_type__(signature_context)

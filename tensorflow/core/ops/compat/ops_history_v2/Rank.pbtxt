@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Rank"
   input_arg {
     name: "input"

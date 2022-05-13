@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -61,7 +63,6 @@ using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingLoopType;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
-using mlir::linalg::PaddingValueComputationFunction;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::PadOp;
 
@@ -242,7 +243,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(
           b, nested_loc, input, tile_size_value, identity_1d_map, iv,
-          input_size, tile_sizes);
+          input_size, tile_sizes, /*omitPartialTileCheck=*/false);
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Pad input tile.
@@ -347,13 +348,15 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileReductionPass() {
   return std::make_unique<TileReductionPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass(
-    int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
-    llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileReductionPass(int64_t reduction_vector_size,
+                        int64_t reduction_1d_tile_size,
+                        llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
   return std::make_unique<TileReductionPass>(
       reduction_vector_size, reduction_1d_tile_size, reduction_2d_tile_sizes);
 }

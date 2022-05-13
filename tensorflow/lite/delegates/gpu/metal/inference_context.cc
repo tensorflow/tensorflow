@@ -473,8 +473,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size =
-        descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
+    const size_t element_size = SizeOf(descriptor.data_type);
     size_t buffer_size;
     size_t row_bytes_alignment = [device->device()
         minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(

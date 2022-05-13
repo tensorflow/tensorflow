@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,13 +31,13 @@ def load_from_files(
     globs: Optional[Dict[str, Any]] = None,
     set_up: Optional[Callable[[Any], None]] = None,
     tear_down: Optional[Callable[[Any], None]] = None) -> doctest.DocFileSuite:
-  """Creates a doctest suite from the the files list.
+  """Creates a doctest suite from the files list.
 
   Args:
     files: A list of file paths to test.
     globs: The global namespace the tests are run in.
-    set_up: Run before each test, recieves the test as argument.
-    tear_down: Run after each test, recieves the test as argument.
+    set_up: Run before each test, receives the test as argument.
+    tear_down: Run after each test, receives the test as argument.
 
   Returns:
     A DocFileSuite containing the tests.
@@ -81,7 +80,7 @@ class FencedCellParser(doctest.DocTestParser):
 
   https://docs.python.org/3/library/doctest.html#doctestparser-objects
 
-  The `get_examples` method recieves a string and returns an
+  The `get_examples` method receives a string and returns an
   iterable of `doctest.Example` objects.
   """
   patched = False
@@ -182,7 +181,7 @@ def _patch_compile(source,
 
   To print the last expression, just wrap the last expression in
   `_print_if_not_none(expr)`. To detect the last expression use `AST`.
-  if the last node is an expression modify the ast to to call
+  If the last node is an expression modify the ast to call
   `_print_if_not_none` on it, convert the ast back to source and compile that.
 
   https://docs.python.org/3/library/functions.html#compile

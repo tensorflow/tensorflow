@@ -13,6 +13,7 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -41,7 +42,9 @@ filegroup(
         "tf_tensor.h",
         "tf_tstring.h",
         "//tensorflow/core/platform:ctstring",
-    ],
+    ] + if_tensorrt([
+        "//tensorflow/compiler/tf2tensorrt:headers",
+    ]),
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -185,7 +188,9 @@ tf_cuda_library(
             "//tensorflow/compiler/jit",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_tensorrt([
+        "//tensorflow/compiler/tf2tensorrt:trt_convert_api",
+    ]),
 )
 
 # Check that c_api_no_xla does not depend on xla.
@@ -274,6 +279,7 @@ tf_cuda_library(
         # "//tensorflow/cc/experimental/tf2:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
+        "//tensorflow/core/transforms:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -945,6 +951,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/core:protos_all_cc",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
         "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],

@@ -1,7 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_platform_deps",
+    "tf_proto_library",
+)
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 # TF to TFRT kernels conversion.
 package(
@@ -40,7 +45,7 @@ td_library(
     name = "tf_jitrt_ops_td_files",
     srcs = ["jit/opdefs/tf_jitrt_ops.td"],
     deps = [
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_td_files",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
         "@tf_runtime//:OpBaseTdFiles",
@@ -73,7 +78,7 @@ tfrt_cc_library(
     deps = [
         ":tf_jitrt_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",
@@ -104,13 +109,15 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
-        "//tensorflow/compiler/mlir/hlo:reshape_simplifier",
+        "//tensorflow/compiler/mlir/hlo:lower_index_cast",
+        "//tensorflow/compiler/mlir/hlo:shape_simplification",
+        "//tensorflow/compiler/mlir/hlo:symbolic_shape_optimization",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:Async",
@@ -165,6 +172,18 @@ tfrt_cc_library(
 # copybara:uncomment_end
 
 tfrt_cc_library(
+    name = "tf_jitrt_query_of_death",
+    hdrs = ["jit/tf_jitrt_query_of_death.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core/platform",
+    ] + tf_platform_deps(
+        "tf_jitrt_query_of_death",
+        platform_dir = "//tensorflow/compiler/mlir/tfrt/jit/",
+    ),
+)
+
+tfrt_cc_library(
     name = "tf_jitrt_kernels",
     srcs = ["jit/tf_jitrt_kernels.cc"],
     hdrs = ["jit/tf_jitrt_kernels_registration.h"],
@@ -172,9 +191,11 @@ tfrt_cc_library(
     deps = [
         ":tf_jitrt",
         ":tf_jitrt_pipeline",
+        ":tf_jitrt_query_of_death",
         ":tf_jitrt_request_context",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
@@ -323,8 +344,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_async_opdefs",
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
@@ -379,10 +400,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_clustering",
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:tstring",
-        "//tensorflow/core/runtime_fallback:tfrt_fallback_async_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:distributed_kernels_opdefs",
@@ -518,7 +539,6 @@ cc_library(
         "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
-        "@tf_runtime//:__subpackages__",
     ],
     deps = [
         ":function",
@@ -529,6 +549,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "@llvm-project//mlir:FuncDialect",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -557,6 +578,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -566,6 +588,7 @@ cc_library(
     srcs = ["analysis/test_cost_analysis_pass.cc"],
     deps = [
         ":cost_analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
@@ -577,6 +600,7 @@ cc_library(
     hdrs = ["analysis/tensor_array_side_effect_analysis.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -586,6 +610,7 @@ cc_library(
     srcs = ["analysis/test_tensor_array_side_effect_analysis.cc"],
     deps = [
         ":tensor_array_side_effect_analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
@@ -639,6 +664,7 @@ cc_library(
     hdrs = ["transforms/set_shape_invariant_in_while_ops.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
@@ -652,6 +678,7 @@ tf_cc_binary(
         ":passes",
         ":test_cost_analysis_pass",
         ":test_tensor_array_side_effect_analysis",
+        ":tf_jitrt_opdefs",
         ":tf_to_tfrt",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
@@ -660,12 +687,12 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_sync_opdefs",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/core:lib",
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_async_opdefs",
-        "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Shape",
@@ -690,6 +717,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_tfrt_gpu",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -697,6 +725,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
     ],
 )
 
@@ -730,4 +759,46 @@ tf_cc_binary(
         "@tf_runtime//tools:bef_executor_lib",
         "@tf_runtime//tools:bef_executor_lightweight_kernels",
     ],
+)
+
+cc_library(
+    name = "tfrt_fallback_registration",
+    srcs = [
+        "tfrt_fallback_registration.cc",
+    ],
+    hdrs = [
+        "tfrt_fallback_registration.h",
+    ],
+    visibility = [":friends"] + if_google([
+        "//learning/brain/experimental/tfrt/distributed_runtime:__pkg__",
+        "//learning/brain/experimental/tfrt/visualization:__pkg__",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server:__pkg__",
+    ]),
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_sync_opdefs",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_binary(
+    name = "tfrt_fallback_translate",
+    srcs = [
+        "tfrt_fallback_translate_registration.cc",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "@llvm-project//mlir:Translation",
+        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_fallback_registration",
+        "@tf_runtime//:init_tfrt_dialects",
+        "@tf_runtime//:mlirtobef_translate",
+    ] + if_google(
+        ["//third_party/tf_runtime_llvm:tfrt_translate_main"],
+        ["@tf_runtime//third_party/llvm_derived:tfrt_translate_main"],
+    ),
 )

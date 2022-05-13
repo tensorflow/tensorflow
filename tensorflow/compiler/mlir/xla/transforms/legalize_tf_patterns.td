@@ -64,13 +64,16 @@ def CastElementsToI64Elements : NativeCodeCall<
 // ApproximateEqual op pattern.
 //===----------------------------------------------------------------------===//
 
-// TODO(kramerb): Assert that $x and $y have the same shape.
+class HLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+
+// TODO(b/228291745): Assert that $x and $y have the same shape.
 def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
-          (HLOClient_BroadcastCompareOp
+          (CHLO_BroadcastCompareOp
            (HLO_AbsOp:$abs (HLO_SubOp $x, $y)),
            (CastValueToElementType $result, (HLO_ConstOp $tolerance), $abs),
            (NullDenseIntElementsAttr),
-           HLO_COMPARISON_DIRECTION_LT,
+           HLO_ComparisonDirectionValue<"LT">,
            (HLO_DEFAULT_COMPARISON_TYPE))>;
 
 //===----------------------------------------------------------------------===//
@@ -92,32 +95,32 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
-foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
-                         [TF_Atan2Op, HLOClient_BroadcastAtan2Op],
-                         [TF_ComplexOp, HLOClient_BroadcastComplexOp],
-                         [TF_DivOp, HLOClient_BroadcastDivOp],
-                         [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
-                         [TF_MaximumOp, HLOClient_BroadcastMaxOp],
-                         [TF_MinimumOp, HLOClient_BroadcastMinOp],
-                         [TF_ModOp, HLOClient_BroadcastRemOp],
-                         [TF_MulOp, HLOClient_BroadcastMulOp],
-                         [TF_NextAfterOp, HLOClient_BroadcastNextAfterOp],
-                         [TF_PolygammaOp, HLOClient_BroadcastPolygammaOp],
-                         [TF_PowOp, HLOClient_BroadcastPowOp],
-                         [TF_RealDivOp, HLOClient_BroadcastDivOp],
-                         [TF_SubOp, HLOClient_BroadcastSubOp],
-                         [TF_ZetaOp, HLOClient_BroadcastZetaOp]] in
+foreach fromToBinPair = [[TF_AddV2Op, CHLO_BroadcastAddOp],
+                         [TF_Atan2Op, CHLO_BroadcastAtan2Op],
+                         [TF_ComplexOp, CHLO_BroadcastComplexOp],
+                         [TF_DivOp, CHLO_BroadcastDivOp],
+                         [TF_LeftShiftOp, CHLO_BroadcastShiftLeftOp],
+                         [TF_MaximumOp, CHLO_BroadcastMaxOp],
+                         [TF_MinimumOp, CHLO_BroadcastMinOp],
+                         [TF_ModOp, CHLO_BroadcastRemOp],
+                         [TF_MulOp, CHLO_BroadcastMulOp],
+                         [TF_NextAfterOp, CHLO_BroadcastNextAfterOp],
+                         [TF_PolygammaOp, CHLO_BroadcastPolygammaOp],
+                         [TF_PowOp, CHLO_BroadcastPowOp],
+                         [TF_RealDivOp, CHLO_BroadcastDivOp],
+                         [TF_SubOp, CHLO_BroadcastSubOp],
+                         [TF_ZetaOp, CHLO_BroadcastZetaOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 def LowerRightShiftSigned :
   Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
-      (HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
+      (CHLO_BroadcastShiftRightArithmeticOp $l, $r,
        (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;
 
 def LowerRightShiftUnsigned :
   Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
-      (HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+      (CHLO_BroadcastShiftRightLogicalOp $l, $r,
        (BinBroadcastDimensions $l, $r)),
       [(UnsignedIntTensor $r)]>;
 
@@ -126,7 +129,7 @@ def LowerRightShiftUnsigned :
 //  return floor(div(x, y))
 def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
           (HLO_FloorOp
-           (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
+           (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
           [(IEEEFloatTensor $l)]>;
 
 // Performs a substitution of FloorDiv for integer tensors, which required
@@ -141,34 +144,34 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // without returning the broadcast of 'r' to broadcast('l', 'r').
 def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
       (HLO_SelectOp
-       (HLOClient_BroadcastAndOp
-        (HLOClient_BroadcastCompareOp
-         (HLOClient_BroadcastMulOp:$mul
-          (HLOClient_BroadcastDivOp:$div $l, $r,
+       (CHLO_BroadcastAndOp
+        (CHLO_BroadcastCompareOp
+         (CHLO_BroadcastMulOp:$mul
+          (CHLO_BroadcastDivOp:$div $l, $r,
            (BinBroadcastDimensions $l, $r)),
           $r, (BinBroadcastDimensions $div, $r)),
-         $l, (BinBroadcastDimensions $mul, $l), HLO_COMPARISON_DIRECTION_NE,
+         $l, (BinBroadcastDimensions $mul, $l), HLO_ComparisonDirectionValue<"NE">,
          (HLO_DEFAULT_COMPARISON_TYPE)),
-        (HLOClient_BroadcastCompareOp
-         (HLOClient_BroadcastCompareOp:$l_cmp $l,
+        (CHLO_BroadcastCompareOp
+         (CHLO_BroadcastCompareOp:$l_cmp $l,
           (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
-          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+          (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LT">,
           (HLO_DEFAULT_COMPARISON_TYPE)),
-         (HLOClient_BroadcastCompareOp:$r_cmp $r,
+         (CHLO_BroadcastCompareOp:$r_cmp $r,
           (HLO_ConstOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+          (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LT">,
           (HLO_DEFAULT_COMPARISON_TYPE)),
-         (BinBroadcastDimensions $l_cmp, $r_cmp), HLO_COMPARISON_DIRECTION_NE,
+         (BinBroadcastDimensions $l_cmp, $r_cmp), HLO_ComparisonDirectionValue<"NE">,
          (HLO_DEFAULT_COMPARISON_TYPE)),
         (NullDenseIntElementsAttr)),
-       (HLOClient_BroadcastSubOp $div,
+       (CHLO_BroadcastSubOp $div,
         (HLO_ConstOp:$ones (GetScalarOfType<1> $div)),
         (NullDenseIntElementsAttr)), $div),
       [(SignedIntTensor $l)]>;
 
 // FloorDiv of unsigned is just div.
 def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
-          (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
           [(UnsignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
@@ -179,30 +182,30 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 //                                                     : trunc_mod
 def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
       (HLO_SelectOp
-       (HLOClient_BroadcastAndOp
-        (HLOClient_BroadcastCompareOp
-         (HLOClient_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
+       (CHLO_BroadcastAndOp
+        (CHLO_BroadcastCompareOp
+         (CHLO_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
          (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
-         (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_NE,
+         (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"NE">,
          (HLO_DEFAULT_COMPARISON_TYPE)),
-        (HLOClient_BroadcastCompareOp
-         (HLOClient_BroadcastCompareOp:$r_cmp $r,
+        (CHLO_BroadcastCompareOp
+         (CHLO_BroadcastCompareOp:$r_cmp $r,
           (HLO_ConstOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+          (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LT">,
           (HLO_DEFAULT_COMPARISON_TYPE)),
-         (HLOClient_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
-          (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT,
+         (CHLO_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
+          (BinBroadcastDimensions $rem, $r_zeros), HLO_ComparisonDirectionValue<"LT">,
           (HLO_DEFAULT_COMPARISON_TYPE)),
-         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE,
+         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_ComparisonDirectionValue<"NE">,
          (HLO_DEFAULT_COMPARISON_TYPE)),
         (NullDenseIntElementsAttr)),
-       (HLOClient_BroadcastAddOp $r,
+       (CHLO_BroadcastAddOp $r,
         $rem, (BinBroadcastDimensions $r, $rem)), $rem),
       [(TensorOf<[I8, I16, I32, I64, F16, F32, F64]> $l)]>;
 
 // FloorMod of unsigned is just mod.
 def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
-          (HLOClient_BroadcastRemOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          (CHLO_BroadcastRemOp $l, $r, (BinBroadcastDimensions $l, $r)),
           [(UnsignedIntTensor $l)]>;
 
 def Get2DTransposePerm: NativeCodeCall<
@@ -225,38 +228,38 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r)),
         [(AnyTypeOf<[SignedIntTensor, UnsignedIntTensor]> $l)]>;
 
-foreach fromToBinPair = [[TF_LogicalAndOp, HLOClient_BroadcastAndOp],
-                         [TF_LogicalOrOp, HLOClient_BroadcastOrOp],
-                         [TF_BitwiseAndOp, HLOClient_BroadcastAndOp],
-                         [TF_BitwiseOrOp, HLOClient_BroadcastOrOp],
-                         [TF_BitwiseXorOp, HLOClient_BroadcastXorOp]] in
+foreach fromToBinPair = [[TF_LogicalAndOp, CHLO_BroadcastAndOp],
+                         [TF_LogicalOrOp, CHLO_BroadcastOrOp],
+                         [TF_BitwiseAndOp, CHLO_BroadcastAndOp],
+                         [TF_BitwiseOrOp, CHLO_BroadcastOrOp],
+                         [TF_BitwiseXorOp, CHLO_BroadcastXorOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
 // Compare op patterns.
 //===----------------------------------------------------------------------===//
 
-class DirectComparePat<Op FromOp, StrEnumAttrCase direction>
+class DirectComparePat<Op FromOp, HLO_ComparisonDirectionValue direction>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
-        (HLOClient_BroadcastCompareOp
+        (CHLO_BroadcastCompareOp
            $l, $r, (BinBroadcastDimensions $l, $r), direction,
            (HLO_DEFAULT_COMPARISON_TYPE))>;
 
-def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
-def : DirectComparePat<TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE>;
-def : DirectComparePat<TF_LessOp, HLO_COMPARISON_DIRECTION_LT>;
-def : DirectComparePat<TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE>;
+def : DirectComparePat<TF_GreaterOp, HLO_ComparisonDirectionValue<"GT">>;
+def : DirectComparePat<TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">>;
+def : DirectComparePat<TF_LessOp, HLO_ComparisonDirectionValue<"LT">>;
+def : DirectComparePat<TF_LessEqualOp, HLO_ComparisonDirectionValue<"LE">>;
 
-class EqualityPat<Op FromOp, StrEnumAttrCase direction>
+class EqualityPat<Op FromOp, HLO_ComparisonDirectionValue direction>
     : Pat<(FromOp AnyTensor:$l, AnyTensor:$r,
            TrueBoolAttr:$incompatible_shape_error),
-        (HLOClient_BroadcastCompareOp
+        (CHLO_BroadcastCompareOp
          $l, $r, (BinBroadcastDimensions $l, $r), direction,
          (HLO_DEFAULT_COMPARISON_TYPE)),
         [(HLO_Tensor $l)]>;
 
-def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
-def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;
+def : EqualityPat<TF_EqualOp, HLO_ComparisonDirectionValue<"EQ">>;
+def : EqualityPat<TF_NotEqualOp, HLO_ComparisonDirectionValue<"NE">>;
 
 //===----------------------------------------------------------------------===//
 // Concat op patterns.
@@ -315,6 +318,9 @@ def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (ConstantLikeMatcher ElementsAt
 // FFT op patterns.
 //===----------------------------------------------------------------------===//
 
+class HLO_FftTypeValue<string enumStr> :
+  ConstantAttr<HLO_FftTypeAttr, "::mlir::mhlo::FftType::" # enumStr>;
+
 def GetInnerDimFromValue : NativeCodeCall<
   "GetInnerDimFromValue($0.getType().cast<ShapedType>(), &$_builder)">;
 
@@ -322,11 +328,11 @@ def CheckInnerDimStatic
   : Constraint<CPred<"CheckInnerDimStatic($0.getType().cast<ShapedType>(), &$_builder)">>;
 
 def : Pat<(TF_FFTOp:$res $input),
-          (HLO_FftOp $input, HLO_FFT_TYPE_FFT, (GetInnerDimFromValue $res)),
+          (HLO_FftOp $input, HLO_FftTypeValue<"FFT">, (GetInnerDimFromValue $res)),
           [(CheckInnerDimStatic $input)]>;
 
 def : Pat<(TF_IFFTOp:$res $input),
-          (HLO_FftOp $input, HLO_FFT_TYPE_IFFT, (GetInnerDimFromValue $res)),
+          (HLO_FftOp $input, HLO_FftTypeValue<"IFFT">, (GetInnerDimFromValue $res)),
           [(CheckInnerDimStatic $input)]>;
 
 //===----------------------------------------------------------------------===//
@@ -431,14 +437,14 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           (HLO_SelectOp:$num_lower_or_m
            (HLO_CompareOp
             $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
-            HLO_COMPARISON_DIRECTION_LT, (HLO_DEFAULT_COMPARISON_TYPE)
+            HLO_ComparisonDirectionValue<"LT">, (HLO_DEFAULT_COMPARISON_TYPE)
            ),
            $m_dim,
            $num_lower
           ),
           (HLO_SelectOp:$num_upper_or_n
            (HLO_CompareOp
-            $num_upper, $zero, HLO_COMPARISON_DIRECTION_LT,
+            $num_upper, $zero, HLO_ComparisonDirectionValue<"LT">,
             (HLO_DEFAULT_COMPARISON_TYPE)
            ),
            $n_dim,
@@ -446,17 +452,17 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           ),
           (TF_SelectV2Op
            (HLO_AndOp
-            (HLOClient_BroadcastCompareOp
+            (CHLO_BroadcastCompareOp
              (HLO_NegOp $num_lower_or_m),
              (HLO_SubOp:$offset
               (createIotaOp<"1"> $op, $input, $num_lower),
               (createIotaOp<"0"> $op, $input, $num_lower)
              ),
-             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE,
+             (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LE">,
              (HLO_DEFAULT_COMPARISON_TYPE)
             ),
-            (HLOClient_BroadcastCompareOp $offset, $num_upper_or_n,
-             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE,
+            (CHLO_BroadcastCompareOp $offset, $num_upper_or_n,
+             (NullDenseIntElementsAttr), HLO_ComparisonDirectionValue<"LE">,
              (HLO_DEFAULT_COMPARISON_TYPE)
             )
            ),
@@ -487,21 +493,21 @@ def : Pat<(TF_EluOp AnyTensor:$features),
            (HLO_CompareOp
               $features,
               (HLO_ConstantLike<"0">:$zero $features),
-              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
+              HLO_ComparisonDirectionValue<"GT">, (HLO_DEFAULT_COMPARISON_TYPE)),
            $features,
            (HLO_Expm1Op $features))>;
 
 def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
            (HLO_SelectOp
-            (HLOClient_BroadcastCompareOp
+            (CHLO_BroadcastCompareOp
               $features,
               (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
               (BinBroadcastDimensions $zero, $features),
-              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
+              HLO_ComparisonDirectionValue<"GT">, (HLO_DEFAULT_COMPARISON_TYPE)),
             $gradients,
             (HLO_MulOp
              $gradients,
-             (HLOClient_BroadcastAddOp
+             (CHLO_BroadcastAddOp
                $features,
                (HLO_ConstOp:$one (GetScalarOfType<1> $features)),
                (BinBroadcastDimensions $one, $features))))>;
@@ -515,7 +521,7 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
 
 // TODO(hinsu): Lower quantized types after supporting them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyTensor:$input),
-          (HLOClient_BroadcastMaxOp
+          (CHLO_BroadcastMaxOp
                (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                (BinBroadcastDimensions $zero, $input)),
           [(TF_IntOrFpTensor $input)]>;
@@ -533,7 +539,7 @@ def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
 def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
           (HLO_SelectOp
             (HLO_CompareOp $features, (HLO_ConstantLike<"0">:$zero $features),
-              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
+              HLO_ComparisonDirectionValue<"GT">, (HLO_DEFAULT_COMPARISON_TYPE)),
             $gradients, $zero)>;
 
 //===----------------------------------------------------------------------===//
@@ -553,11 +559,11 @@ def : Pat<(TF_SoftsignOp AnyTensor:$input),
 /// SoftsignGrad(gradient, features) = gradient / ((1 + abs(features)) ^ 2)
 def : Pattern<
         (TF_SoftsignGradOp AnyRankedTensor:$gradients, AnyRankedTensor:$features),
-        [(HLOClient_BroadcastAddOp:$add
+        [(CHLO_BroadcastAddOp:$add
           (HLO_ConstOp:$one (GetScalarOfType<1> $features)), (HLO_AbsOp $features),
           (BinBroadcastDimensions $one, $features)
          ),
-         (HLOClient_BroadcastDivOp
+         (CHLO_BroadcastDivOp
            $gradients,
            (HLO_MulOp $add, $add),
            (BinBroadcastDimensions $gradients, $add)
@@ -592,7 +598,7 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
 
  def : Pat<(TF_SelectV2Op HLO_Tensor:$pred, HLO_Tensor:$on_true,
             HLO_Tensor:$on_false),
-           (HLOClient_BroadcastSelectOp $pred, $on_true, $on_false)>;
+           (CHLO_BroadcastSelectOp $pred, $on_true, $on_false)>;
 
 //===----------------------------------------------------------------------===//
 // PartitionedCall and LegacyCall op patterns.
@@ -630,28 +636,28 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (ConstantLikeMatcher Elements
 
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
-                   [TF_AcosOp, HLOClient_AcosOp],
-                   [TF_AcoshOp, HLOClient_AcoshOp],
-                   [TF_AsinOp, HLOClient_AsinOp],
-                   [TF_AsinhOp, HLOClient_AsinhOp],
-                   [TF_AtanOp, HLOClient_AtanOp],
-                   [TF_AtanhOp, HLOClient_AtanhOp],
+                   [TF_AcosOp, CHLO_AcosOp],
+                   [TF_AcoshOp, CHLO_AcoshOp],
+                   [TF_AsinOp, CHLO_AsinOp],
+                   [TF_AsinhOp, CHLO_AsinhOp],
+                   [TF_AtanOp, CHLO_AtanOp],
+                   [TF_AtanhOp, CHLO_AtanhOp],
                    [TF_CeilOp, HLO_CeilOp],
-                   [TF_CoshOp, HLOClient_CoshOp],
+                   [TF_CoshOp, CHLO_CoshOp],
                    [TF_ComplexAbsOp, HLO_AbsOp],
-                   [TF_ConjOp, HLOClient_ConjOp],
+                   [TF_ConjOp, CHLO_ConjOp],
                    [TF_CosOp, HLO_CosOp],
-                   [TF_DigammaOp, HLOClient_DigammaOp],
+                   [TF_DigammaOp, CHLO_DigammaOp],
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_Expm1Op, HLO_Expm1Op],
-                   [TF_ErfOp, HLOClient_ErfOp],
-                   [TF_ErfcOp, HLOClient_ErfcOp],
+                   [TF_ErfOp, CHLO_ErfOp],
+                   [TF_ErfcOp, CHLO_ErfcOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_InvertOp, HLO_NotOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
-                   [TF_IsInfOp, HLOClient_IsInfOp],
-                   [TF_LgammaOp, HLOClient_LgammaOp],
+                   [TF_IsInfOp, CHLO_IsInfOp],
+                   [TF_LgammaOp, CHLO_LgammaOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_Log1pOp, HLO_Log1pOp],
                    [TF_LogicalNotOp, HLO_NotOp],
@@ -659,11 +665,11 @@ foreach Mapping = [
                    [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SigmoidOp, HLO_LogisticOp],
-                   [TF_SinhOp, HLOClient_SinhOp],
+                   [TF_SinhOp, CHLO_SinhOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
-                   [TF_TanOp, HLOClient_TanOp]
+                   [TF_TanOp, CHLO_TanOp]
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
@@ -690,7 +696,7 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
 }
 
 def : Pat<(TF_ReshapeOp:$res $arg, $shape),
-          (HLOClient_DynamicReshapeOp $arg, $shape)>;
+          (CHLO_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;
@@ -747,26 +753,26 @@ def EpsilonValue : NativeCodeCall<"GetEpsilonValue($0.getType())">;
 def : Pattern<(TF_SoftplusOp AnyTensor:$features),
               [
                 (HLO_ExpOp:$features_exp $features),
-                (HLOClient_BroadcastAddOp:$threshold
+                (CHLO_BroadcastAddOp:$threshold
                  (HLO_LogOp (HLO_ConstOp (EpsilonValue $features))),
                  (HLO_ConstOp (GetScalarOfType<2> $features)),
                  (NullDenseIntElementsAttr)
                 ),
                 (HLO_SelectOp:$output
-                 (HLOClient_BroadcastCompareOp
+                 (CHLO_BroadcastCompareOp
                   $features,
                   (HLO_NegOp $threshold),
                   (NullDenseIntElementsAttr),
-                  HLO_COMPARISON_DIRECTION_GT,
+                  HLO_ComparisonDirectionValue<"GT">,
                   (HLO_DEFAULT_COMPARISON_TYPE)
                  ),
                  $features,
                  (HLO_SelectOp
-                  (HLOClient_BroadcastCompareOp
+                  (CHLO_BroadcastCompareOp
                    $features,
                    $threshold,
                    (NullDenseIntElementsAttr),
-                   HLO_COMPARISON_DIRECTION_LT,
+                   HLO_ComparisonDirectionValue<"LT">,
                    (HLO_DEFAULT_COMPARISON_TYPE)
                   ),
                   $features_exp,

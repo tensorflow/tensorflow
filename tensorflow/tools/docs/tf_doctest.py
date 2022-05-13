@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -151,6 +150,8 @@ def setup_gpu(required_gpus):
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
+    # Enable soft device placement to run distributed doctests.
+    tf.config.set_soft_device_placement(True)
     self.setUp()
 
   def tear_down(self, test):

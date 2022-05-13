@@ -38,8 +38,37 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
+# TODO(b/136040013): Drop support for Defun.
 class Defun(object):
-  """Decorator used to define TensorFlow functions.
+  """Obsolete. Slated for deletion. Please use tf.function instead.
+
+  Known feature gaps while migrating to tf.function (could be outdated):
+  - tf.function doesn’t support Send/Recv capability since it doesn’t share
+    rendezvous with the main graph but always creates a new one.
+  - tf.function doesn’t support custom gradient function directly, instead you
+    need to define the function inside a tf.custom_gradient wrapper together
+    with the gradient function.
+  - Unlike Defun, Keras layers used inside a tf.function need to be created only
+    once to avoid variable recreation.
+  - Defun respects the device assignments and applies them to the function body
+    but tf.function needs it to be done manually.
+  - Defun might prune out unused ops automatically but tf.function doesn't.
+
+  Limitations of Defun:
+  - Original source locations are not preserved so errors do not include
+    full/valid stack traces.
+  - Only supports linear sequence of arguments and return values, putting the
+    burden on the caller to pack/unpack everything across a Defun boundary into
+    tuples (as opposed to passing list and dict-like structures directly).
+  - Does not support overloading or late-bound specializations.
+  - Has its own way for defining gradient overrides which does not follow
+    current conventions.
+  - Cannot support imperative control flow or automatic control dependencies.
+  - Does not reflect statefulness in the graph and has a calling convention that
+    differs from how more modern tools interact.
+  - Is only compatible with graph building mode.
+
+  Decorator used to define TensorFlow functions.
 
   Use this decorator to make a Python function usable directly as a TensorFlow
   function.

@@ -1,36 +1,52 @@
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
 
 // CHECK-LABEL: @types
-func @types() {
-  // CHECK: %{{.*}} = gml_st.point [42] : !gml_st.point
-  %0 = gml_st.point [42] : !gml_st.point
-  // CHECK: %{{.*}} = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
-  %1 = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
-  return
+func.func @types() {
+  // CHECK: %[[ARG:.*]] = gml_st.space [64] : !gml_st.tile<64>
+  %0 = gml_st.space [64] : !gml_st.tile<64>
+  // CHECK: %{{.*}} = gml_st.point %[[ARG]] [42] : !gml_st.tile<64> to !gml_st.point
+  %1 = gml_st.point %0 [42] : !gml_st.tile<64> to !gml_st.point
+  // CHECK: %{{.*}} = gml_st.tile %[[ARG]] [0] [42] [1] : !gml_st.tile<64> to !gml_st.tile<42>
+  %2 = gml_st.tile %0 [0] [42] [1] : !gml_st.tile<64> to !gml_st.tile<42>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: @dynamic_types
+// CHECK-SAME: (%[[SIZE:.*]]: index)
+func.func @dynamic_types(%size : index) {
+  // CHECK: %[[ARG:.*]] = gml_st.space [%[[SIZE]]] : !gml_st.tile<?>
+  %0 = gml_st.space [%size] : !gml_st.tile<?>
+  // CHECK: %{{.*}} = gml_st.point %[[ARG]] [42] : !gml_st.tile<?> to !gml_st.point
+  %1 = gml_st.point %0 [42] : !gml_st.tile<?> to !gml_st.point
+  // CHECK: %{{.*}} = gml_st.tile %[[ARG]] [0] [42] [1] : !gml_st.tile<?> to !gml_st.tile<42>
+  %2 = gml_st.tile %0 [0] [42] [1] : !gml_st.tile<?> to !gml_st.tile<42>
+  func.return
 }
 
 // -----
 
 // CHECK-LABEL: @materialize
 // CHECK-SAME: %[[MEMREF:.*]]: memref<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42>, %[[POINT:.*]]: !gml_st.point
-func @materialize(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
+func.func @materialize(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
   // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]] at %[[TILE]] : memref<?x?xf32> at !gml_st.tile<42>
   %0 = gml_st.materialize %memref at %tile : memref<?x?xf32> at !gml_st.tile<42>
   // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]] at %[[POINT]] : memref<?x?xf32> at !gml_st.point
   %1 = gml_st.materialize %memref at %point : memref<?x?xf32> at !gml_st.point
-  return
+  func.return
 }
 
 // -----
 
 // CHECK-LABEL: @materialize
 // CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42>, %[[POINT:.*]]: !gml_st.point
-func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
+func.func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] at %[[TILE]] : tensor<?x?xf32> at !gml_st.tile<42>
   %0 = gml_st.materialize %tensor at %tile : tensor<?x?xf32> at !gml_st.tile<42>
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] at %[[POINT]] : tensor<?x?xf32> at !gml_st.point
   %1 = gml_st.materialize %tensor at %point : tensor<?x?xf32> at !gml_st.point
-  return
+  func.return
 }
 
 // -----
@@ -44,7 +60,7 @@ func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gm
   iterator_types = ["parallel", "parallel"]
 }
 
-func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
+func.func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
                  %out: tensor<24x64xi8>) -> tensor<24x64xi8> {
  %c0 = arith.constant 0 : index
  %c1 = arith.constant 1 : index
@@ -73,7 +89,7 @@ func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
       : tensor<?x?xi8> into tensor<24x64xi8>
     gml_st.yield %sum_sub : tensor<24x64xi8>
   }
-  return %prod : tensor<24x64xi8>
+  func.return %prod : tensor<24x64xi8>
 }
 // CHECK-LABEL: func @tiled_loop
 // CHECK-NOT: iterators[
@@ -90,7 +106,7 @@ func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
   iterator_types = ["reduction", "parallel", "reduction"]
 }
 
-func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
+func.func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
                            %input_2d: tensor<16x32xf32>,
                            %input_1d: tensor<24xf32>,
                            %output: tensor<24xf32>) -> tensor<24xf32> {
@@ -132,7 +148,7 @@ func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
       : tensor<4xf32> into tensor<24xf32>
     gml_st.yield %sum_sub : tensor<24xf32>
   }
-  return %result : tensor<24xf32>
+  func.return %result : tensor<24xf32>
 }
 // CHECK-LABEL: func @tiled_loop_reduction
 // CHECK: iterators[
@@ -142,7 +158,7 @@ func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
 #map_2 = affine_map<(d0, d1)[s0] -> (d0 * 32 + s0 + d1)>
 #map_3 = affine_map<(d0)[s0] -> (d0 + s0)>
 
-func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
+func.func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
                             %input_2d: memref<16x32xf32>,
                             %input_1d: memref<24xf32>,
                             %output: memref<24xf32>) {
@@ -182,7 +198,7 @@ func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
     }
     gml_st.yield
   }
-  return
+  func.return
 }
 // CHECK-LABEL: func @tiled_loop_on_buffers
 // CHECK: iterators[

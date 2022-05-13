@@ -168,6 +168,127 @@ MLIR_CAPI_EXPORTED int64_t
 mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(MlirAttribute attr,
                                                            intptr_t pos);
 
+//
+// ComparisonDirectionAttr.
+//
+// Creates a new ComparisonDirection attribute with the given
+// 'direction' string parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloComparisonDirectionAttrGet(MlirContext ctx, MlirStringRef direction);
+
+// Returns true if the given attribute is a ComparisonDirection attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAComparisonDirectionAttr(
+    MlirAttribute attr);
+
+// Returns the direction string associated with ComparisonDirection attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloComparisonDirectionAttrGetDirection(MlirAttribute attr);
+
+//
+// ComparisonTypeAttr.
+//
+// Creates a new ComparisonType attribute with the given 'type' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloComparisonTypeAttrGet(MlirContext ctx, MlirStringRef type);
+
+// Returns true if the given attribute is a ComparisonType attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAComparisonTypeAttr(
+    MlirAttribute attr);
+
+// Returns the type string associated with ComparisonType attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloComparisonTypeAttrGetType(MlirAttribute attr);
+
+//
+// PrecisionAttr.
+//
+// Creates a new Precision attribute with the given 'type' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx,
+                                                          MlirStringRef type);
+
+// Returns true if the given attribute is a Precision attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAPrecisionAttr(MlirAttribute attr);
+
+// Returns the type string associated with Precision attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloPrecisionAttrGetPrecision(MlirAttribute attr);
+
+//
+// FftTypeAttr.
+//
+// Creates a new FftType attribute with the given 'type' string parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx,
+                                                        MlirStringRef type);
+
+// Returns true if the given attribute is a FftType attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFftTypeAttr(MlirAttribute attr);
+
+// Returns the type string associated with FftType attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloFftTypeAttrGetFftType(MlirAttribute attr);
+
+//
+// DequantizeModeAttr.
+//
+// Creates a new DequantizeMode attribute with the given 'mode' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloDequantizeModeAttrGet(MlirContext ctx, MlirStringRef mode);
+
+// Returns true if the given attribute is a DequantizeMode attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsADequantizeModeAttr(
+    MlirAttribute attr);
+
+// Returns the mode string associated with DequantizeMode attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloDequantizeModeAttrGetDequantizeMode(MlirAttribute attr);
+
+//
+// TransposeAttr.
+//
+// Creates a new Transpose attribute with the given 'type' string parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx,
+                                                          MlirStringRef type);
+
+// Returns true if the given attribute is a Transpose attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsATransposeAttr(MlirAttribute attr);
+
+// Returns the type string associated with Transpose attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloTransposeAttrGetTranspose(MlirAttribute attr);
+
+//
+// FusionKindAttr.
+//
+// Creates a new FusionKind attribute with the given 'kind' string parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx,
+                                                           MlirStringRef kind);
+
+// Returns true if the given attribute is a FusionKind attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr);
+
+// Returns the fusion-kind string associated with FusionKind attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr);
+
+//
+// RngAlgorithmAttr.
+//
+// Creates a new RngAlgorithm attribute with the given 'algorithm' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloRngAlgorithmAttrGet(MlirContext ctx, MlirStringRef algorithm);
+
+// Returns true if the given attribute is a RngAlgorithm attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsARngAlgorithmAttr(
+    MlirAttribute attr);
+
+// Returns the rng-algorithm string associated with RngAlgorithm attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr);
+
 #ifdef __cplusplus
 }
 #endif

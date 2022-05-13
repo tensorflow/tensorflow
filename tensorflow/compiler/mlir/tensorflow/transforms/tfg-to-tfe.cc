@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+#include "tensorflow/core/transforms/toposort/pass.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -145,8 +145,8 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
     // will be the operations inside the function body rather than representing
     // them in the function signature.
     FunctionType func_type = rewriter.getFunctionType({}, {});
-    FuncOp func = rewriter.create<FuncOp>(loc, kImportModelDefaultGraphFuncName,
-                                          func_type);
+    func::FuncOp func = rewriter.create<func::FuncOp>(
+        loc, kImportModelDefaultGraphFuncName, func_type);
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     auto executor_graph =
         rewriter.create<tf_executor::GraphOp>(loc, func_type.getResults());
@@ -176,12 +176,13 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
       ConversionPatternRewriter &rewriter) const final {
     assert(!graph_func.generic());
     Location loc = graph_func.getLoc();
+    FunctionType ftype = graph_func.getFunctionType();
 
-    FuncOp func = rewriter.create<FuncOp>(
+    func::FuncOp func = rewriter.create<func::FuncOp>(
         graph_func.getLoc(),
         graph_func->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
             .getValue(),
-        graph_func.getType());
+        ftype);
 
     func->setAttrs(graph_func->getAttrs());
 
@@ -189,18 +190,17 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     llvm::SmallVector<Type> res_types;
     llvm::SmallVector<DictionaryAttr> arg_attrs;
     llvm::SmallVector<DictionaryAttr> res_attrs;
-
     if (failed(FilterTfgSpecificArgResultAttributes(
-            getContext(), graph_func.getType().getInputs(),
-            graph_func.getAllArgAttrs(), arg_types, arg_attrs)) ||
+            getContext(), ftype.getInputs(), graph_func.getAllArgAttrs(),
+            arg_types, arg_attrs)) ||
         failed(FilterTfgSpecificArgResultAttributes(
-            getContext(), graph_func.getType().getResults(),
-            graph_func.getAllResultAttrs(), res_types, res_attrs)))
+            getContext(), ftype.getResults(), graph_func.getAllResultAttrs(),
+            res_types, res_attrs)))
       return failure();
 
     // Update the function type which has excluded the control args.
-    func->setAttr(
-        "type", TypeAttr::get(rewriter.getFunctionType(arg_types, res_types)));
+    func->setAttr("function_type", TypeAttr::get(rewriter.getFunctionType(
+                                       arg_types, res_types)));
 
     // Update arg/result attributes.
     func.setAllArgAttrs(arg_attrs);
@@ -209,8 +209,8 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     // In TFE, the function body is inlined in a GraphOp. Create a GraphOp
     // instance and move the regions from GraphFuncOp to GraphOp.
-    auto executor_graph =
-        rewriter.create<tf_executor::GraphOp>(loc, func.getType().getResults());
+    auto executor_graph = rewriter.create<tf_executor::GraphOp>(
+        loc, func.getFunctionType().getResults());
 
     // Replace the uses of block arguments with function arguments. Note that we
     // can't erase the arguments here because the operations may still use them
@@ -451,7 +451,7 @@ class ConvertGeneralOp : public ConversionPattern {
       OperationState state =
           OperationState(loc, tf_op_name, inner_op_operands, new_types, attrs,
                          op->getSuccessors(), new_regions);
-      inner_op = rewriter.createOperation(state);
+      inner_op = rewriter.create(state);
     } else {
       bool disable_call_shape_inference = false;
       if (op->hasAttr("_disable_call_shape_inference")) {
@@ -502,7 +502,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalDialect<tf_executor::TensorFlowExecutorDialect>();
   target.addLegalOp<ModuleOp>();
-  target.addLegalOp<FuncOp>();
+  target.addLegalOp<func::FuncOp>();
   target.addLegalOp<func::ReturnOp>();
 
   RewritePatternSet patterns(&context);

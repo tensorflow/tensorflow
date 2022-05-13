@@ -25,6 +25,16 @@ limitations under the License.
 
 namespace xla {
 
+// Remove Sharding custom-call instruction by folding the sharding attribute
+// to its operand. If the operand already has a different sharding, insert a
+// copy node for reshard.
+// partially_specified will be populated with the converted copies if the custom
+// call is partially specified.
+StatusOr<bool> ProcessShardingInstruction(
+    HloModule* module, bool replace_sharding_with_copy,
+    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
+        unspecified_dims);
+
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
 // a simple local greedy heuristic.

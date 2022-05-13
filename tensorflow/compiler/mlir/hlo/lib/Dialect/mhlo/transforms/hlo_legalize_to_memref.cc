@@ -28,8 +28,6 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
@@ -69,7 +67,7 @@ struct ReshapeOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationState &state) const {
+                          BufferizationState &state) const {
     auto reshape_op = cast<mhlo::ReshapeOp>(op);
     auto unranked_operand_type =
         reshape_op.operand().getType().dyn_cast<UnrankedTensorType>();
@@ -114,7 +112,7 @@ struct DynamicReshapeOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationState &state) const {
+                          BufferizationState &state) const {
     auto reshape_op = cast<mhlo::DynamicReshapeOp>(op);
 
     // The buffer still has the old (pre-reshape) type.
@@ -134,8 +132,31 @@ struct DynamicReshapeOpInterface
                    op_result_type.dyn_cast<UnrankedTensorType>()) {
       result_type = UnrankedMemRefType::get(unranked_type.getElementType(), 0);
     }
+    auto operand = *operand_buffer;
+    // If the operand has a non-identity affine map, we will have to add a copy.
+    if (operand_buffer->getType().isa<MemRefType>() &&
+        !operand_buffer->getType()
+             .cast<MemRefType>()
+             .getLayout()
+             .isIdentity()) {
+      // Do not deallocate the buffer if it may be yielded from the enclosing
+      // block.
+      // Note: Unless OneShotAnalysis was run, `dealloc_buffer` is currently
+      // always `false` and we delegate all buffer deallocations to the
+      // BufferDeallocation pass.
+      bool dealloc_buffer =
+          !state.getAnalysisState().isTensorYielded(reshape_op.result());
+      FailureOr<Value> alloc = state.createAlloc(
+          rewriter, op->getLoc(), *operand_buffer, /*dealloc=*/dealloc_buffer);
+      if (failed(alloc)) return failure();
+
+      operand = *alloc;
+      auto copy_status = state.getOptions().createMemCpy(
+          rewriter, op->getLoc(), *operand_buffer, operand);
+      if (failed(copy_status)) return failure();
+    }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
-        rewriter, op, result_type, *operand_buffer, *output_shape_buffer);
+        rewriter, op, result_type, operand, *output_shape_buffer);
     return success();
   }
 };
@@ -144,7 +165,8 @@ struct DynamicReshapeOpInterface
 // and size of the target dimension if size-1 dimension expansion is
 // necessary.
 memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
-    mhlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder *b) {
+    mhlo::DynamicBroadcastInDimOp op, Value operand, RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
   auto loc = op.getLoc();
   auto operand_type = operand.getType().cast<MemRefType>();
   auto operand_shape = operand_type.getShape();
@@ -153,8 +175,8 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   auto result_type = op.getType().cast<RankedTensorType>();
   auto result_rank = result_type.getRank();
 
-  Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
-  Value one = b->create<arith::ConstantIndexOp>(loc, 1);
+  Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+  Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
 
   // Compute a reversed scan product. Compute the stride for the dimensions so
   // far, working from minor to major dimensions. Additionally, save the
@@ -165,15 +187,15 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   for (int i = operand_rank - 1; i >= 0; --i) {
     Value operand_dim_size =
         ShapedType::isDynamic(operand_shape[i])
-            ? b->create<memref::DimOp>(loc, operand, i).getResult()
-            : b->create<arith::ConstantIndexOp>(loc, operand_shape[i])
+            ? rewriter.create<memref::DimOp>(loc, operand, i).getResult()
+            : rewriter.create<arith::ConstantIndexOp>(loc, operand_shape[i])
                   .getResult();
     operand_sizes[i] = operand_dim_size;
 
     operand_strides[i] = stride_so_far;
     if (i > 0) {
       stride_so_far =
-          b->create<arith::MulIOp>(loc, stride_so_far, operand_dim_size);
+          rewriter.create<arith::MulIOp>(loc, stride_so_far, operand_dim_size);
     }
   }
 
@@ -186,17 +208,19 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
     output_to_input_dim[dim.value().getSExtValue()] = dim.index();
   }
   for (int i = 0; i < result_rank; ++i) {
-    Value i_val = b->create<arith::ConstantIndexOp>(loc, i);
+    Value i_val = rewriter.create<arith::ConstantIndexOp>(loc, i);
+    Value output_dims_buffer =
+        bufferization::lookupBuffer(rewriter, op.output_dimensions(), options);
     Value result_dim_size =
-        b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
+        rewriter.create<memref::LoadOp>(loc, output_dims_buffer, i_val);
     if (!result_dim_size.getType().isIndex()) {
-      result_dim_size = b->create<arith::IndexCastOp>(loc, b->getIndexType(),
-                                                      result_dim_size);
+      result_dim_size = rewriter.create<arith::IndexCastOp>(
+          loc, rewriter.getIndexType(), result_dim_size);
     }
     if (result_type.isDynamicDim(i)) {
       sizes.push_back(result_dim_size);
     } else {
-      sizes.push_back(b->getIndexAttr(result_type.getDimSize(i)));
+      sizes.push_back(rewriter.getIndexAttr(result_type.getDimSize(i)));
     }
 
     auto it = output_to_input_dim.find(i);
@@ -214,10 +238,10 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
     //    => stride flattened buffer stride
     // 2) Operand dim < result dim => expansion is needed => stride := 0.
     int dim = it->second;
-    Value is_expansion = b->create<arith::CmpIOp>(
+    Value is_expansion = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::slt, operand_sizes[dim], result_dim_size);
-    Value select = b->create<mlir::arith::SelectOp>(loc, is_expansion, zero,
-                                                    operand_strides[dim]);
+    Value select = rewriter.create<mlir::arith::SelectOp>(
+        loc, is_expansion, zero, operand_strides[dim]);
     strides.push_back(select);
   }
 
@@ -227,36 +251,12 @@ memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
   auto type_erased_memref_type = MemRefType::get(
       result_type.getShape(), operand_type.getElementType(),
       makeStridedLinearLayoutMap(dynamic_layout,
-                                 /*offset=*/0, b->getContext()));
+                                 /*offset=*/0, rewriter.getContext()));
 
-  auto transformed_operand = b->create<memref::ReinterpretCastOp>(
+  auto transformed_operand = rewriter.create<memref::ReinterpretCastOp>(
       loc, type_erased_memref_type, operand,
-      /*offset=*/b->getI64IntegerAttr(0), sizes, strides);
+      /*offset=*/rewriter.getI64IntegerAttr(0), sizes, strides);
   return transformed_operand;
-}
-
-Value CreateCopy(mhlo::DynamicBroadcastInDimOp op, Value broadcasted,
-                 OpBuilder *b) {
-  MemRefType result_type = broadcasted.getType().cast<MemRefType>();
-  auto loc = op.getLoc();
-  SmallVector<Value, 4> dynamic_operands;
-  for (int i = 0; i < result_type.getRank(); ++i) {
-    if (!result_type.isDynamicDim(i)) continue;
-    auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
-    Value size =
-        b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
-    if (!size.getType().isIndex()) {
-      size = b->create<arith::IndexCastOp>(loc, b->getIndexType(), size);
-    }
-    dynamic_operands.push_back(size);
-  }
-  auto identity_map_memref =
-      MemRefType::get(result_type.getShape(), result_type.getElementType());
-  auto copy = b->create<memref::AllocOp>(op.getLoc(), identity_map_memref,
-                                         dynamic_operands);
-  b->create<memref::CopyOp>(loc, broadcasted, copy);
-
-  return copy;
 }
 
 struct DynamicBroadcastInDimOpInterface
@@ -285,7 +285,7 @@ struct DynamicBroadcastInDimOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationState &state) const {
+                          BufferizationState &state) const {
     auto broadcast_in_dim_op = cast<mhlo::DynamicBroadcastInDimOp>(op);
     auto result_type =
         broadcast_in_dim_op.getType().dyn_cast<RankedTensorType>();
@@ -296,17 +296,8 @@ struct DynamicBroadcastInDimOpInterface
         rewriter, broadcast_in_dim_op->getOpOperand(0) /*operand*/);
     if (failed(operand_buffer)) return failure();
 
-    Value result = InsertDynamicMemrefCastOp(broadcast_in_dim_op,
-                                             *operand_buffer, &rewriter);
-
-    // Evaluate `enforce_identity_map_fn` and maybe create a copy.
-    Optional<const MhloBufferizationState *> dialect_state =
-        state.getDialectState<MhloBufferizationState>(
-            mhlo::MhloDialect::getDialectNamespace());
-    assert(dialect_state.hasValue() && "mhlo dialect state not initialized");
-    if ((*dialect_state)->enforce_identity_map_fn(op)) {
-      result = CreateCopy(broadcast_in_dim_op, result, &rewriter);
-    }
+    Value result = InsertDynamicMemrefCastOp(
+        broadcast_in_dim_op, *operand_buffer, rewriter, state.getOptions());
 
     bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
     return success();
@@ -315,9 +306,9 @@ struct DynamicBroadcastInDimOpInterface
 
 struct HloLegalizeToMemrefPass
     : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
-                    mhlo::MhloDialect, tensor::TensorDialect>();
+                    mhlo::MhloDialect>();
     registerBufferizableOpInterfaceExternalModels(registry);
   }
 
@@ -326,10 +317,6 @@ struct HloLegalizeToMemrefPass
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     options.allowDialectInFilter<mhlo::MhloDialect>();
-    // mhlo dialect state must be explicitly initialized to ease debugging.
-    options.addDialectStateInitializer(
-        mhlo::MhloDialect::getDialectNamespace(),
-        []() { return std::make_unique<MhloBufferizationState>(); });
     if (failed(bufferizeOp(getOperation(), options))) signalPassFailure();
   }
 };
@@ -340,14 +327,14 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
   return std::make_unique<HloLegalizeToMemrefPass>();
 }
 
+void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
+  registry.addExtension(+[](MLIRContext *ctx, MhloDialect * /*dialect*/) {
+    ReshapeOp::attachInterface<ReshapeOpInterface>(*ctx);
+    DynamicReshapeOp::attachInterface<DynamicReshapeOpInterface>(*ctx);
+    DynamicBroadcastInDimOp::attachInterface<DynamicBroadcastInDimOpInterface>(
+        *ctx);
+  });
+}
+
 }  // namespace mhlo
 }  // namespace mlir
-
-void mlir::mhlo::registerBufferizableOpInterfaceExternalModels(
-    mlir::DialectRegistry &registry) {
-  registry.addOpInterface<mlir::mhlo::ReshapeOp, ReshapeOpInterface>();
-  registry.addOpInterface<mlir::mhlo::DynamicReshapeOp,
-                          DynamicReshapeOpInterface>();
-  registry.addOpInterface<mlir::mhlo::DynamicBroadcastInDimOp,
-                          DynamicBroadcastInDimOpInterface>();
-}

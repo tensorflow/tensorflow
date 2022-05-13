@@ -112,6 +112,14 @@ def make_fully_connected_tests(options):
       "constant_filter": [True, False],
       "fully_quantize": [False],
       "quant_16x8": [False]
+  }, {
+      "shape1": [[3, 0]],
+      "shape2": [[0, 3]],
+      "transpose_a": [False],
+      "transpose_b": [False],
+      "constant_filter": [True, False],
+      "fully_quantize": [False],
+      "quant_16x8": [False]
   }]
 
   def build_graph(parameters):

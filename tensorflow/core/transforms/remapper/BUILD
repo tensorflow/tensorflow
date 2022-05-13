@@ -11,13 +11,12 @@ package(
 
 cc_library(
     name = "Pass",
-    srcs = ["remapper_pass.cc"],
-    hdrs = ["remapper_pass.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassDetail",
-        "//tensorflow/core/transforms:Utils",
+        "//tensorflow/core/transforms:utils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",

@@ -211,7 +211,7 @@ LogicalResult TFRFuncOp::verify() {
   // at the end?
   int first_tensor = -1, last_tensor = -1, first_tensor_list = -1,
       last_tensor_list = -1, first_attr = -1;
-  for (auto arg : llvm::enumerate(func.getType().getInputs())) {
+  for (auto arg : llvm::enumerate(func.getFunctionType().getInputs())) {
     Type arg_type = arg.value();
 
     if (auto tensor = arg_type.dyn_cast<TFRTensorType>()) {
@@ -290,7 +290,7 @@ LogicalResult TFRFuncOp::verify() {
   int undefined_input_attrs_number = undefined_attrs.size();
   bool seen_tensor_list = false, has_tensor_list_order_error = false,
        has_multiple_tensor_lists_error = false;
-  for (auto result_type : func.getType().getResults()) {
+  for (auto result_type : func.getFunctionType().getResults()) {
     if (auto tensor = result_type.dyn_cast<TFRTensorType>()) {
       if (seen_tensor_list) {
         has_tensor_list_order_error = true;
@@ -363,10 +363,7 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  FunctionType fn_type = getType();
-  function_interface_impl::printFunctionOp(p, *this, fn_type.getInputs(),
-                                           /*isVariadic=*/false,
-                                           fn_type.getResults());
+  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
 }
 
 }  // namespace TFR
@@ -914,7 +911,7 @@ Region *TFRFuncOp::getCallableRegion() {
 
 // CallableOpInterface
 ArrayRef<Type> TFRFuncOp::getCallableResults() {
-  return getType().getResults();
+  return getFunctionType().getResults();
 }
 
 //===----------------------------------------------------------------------===//

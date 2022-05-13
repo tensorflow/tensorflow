@@ -32,7 +32,15 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ScatterExpanderTest : public HloTestBase {};
+class ScatterExpanderTest : public HloTestBase {
+ protected:
+  // The HLO parser changes all no layout shapes from the input to have a
+  // default layout. Clear the layout of the scatter operand for testing.
+  void ClearInstructionLayout(HloModule* module, absl::string_view inst_name) {
+    HloInstruction* inst = FindInstruction(module, inst_name);
+    inst->mutable_shape()->clear_layout();
+  }
+};
 
 TEST_F(ScatterExpanderTest, ScatterOperandWithoutLayout) {
   const char* kModuleStr = R"(
@@ -56,10 +64,43 @@ TEST_F(ScatterExpanderTest, ScatterOperandWithoutLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  // The HLO parser changes all no layout shapes from the input to have a
-  // default layout. Clear the layout of the scatter operand for testing.
-  HloInstruction* scatter_operand = FindInstruction(module.get(), "operand");
-  scatter_operand->mutable_shape()->clear_layout();
+  ClearInstructionLayout(module.get(), "operand");
+
+  ScatterExpander scatter_expander(ScatterExpander::kEliminateAllScatters);
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&scatter_expander, module.get()));
+  EXPECT_TRUE(result);
+}
+
+TEST_F(ScatterExpanderTest, ScatterMultipleOperandsWithoutLayout) {
+  const char* kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      p0 = s32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = f32[] parameter(3)
+      ROOT tuple = tuple(p2, p3)
+    }
+
+    ENTRY kernel_entry {
+      operand0 = s32[5] iota(), iota_dimension=0
+      operand1 = f32[5] constant({2,4,6,8,10})
+      indices = s32[1] parameter(0)
+      update0 = s32[] constant(0)
+      update1 = f32[] constant(1)
+      ROOT scatter = (s32[5]{0}, f32[5]{0}) scatter(operand0, operand1, indices, update0, update1),
+        update_window_dims={}, inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=0,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ClearInstructionLayout(module.get(), "operand0");
+  ClearInstructionLayout(module.get(), "operand1");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateAllScatters);
   TF_ASSERT_OK_AND_ASSIGN(bool result,
@@ -91,10 +132,46 @@ TEST_F(ScatterExpanderTest, EliminateSimpleScattersSkipsNontrivialScatter) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  // The HLO parser changes all no layout shapes from the input to have a
-  // default layout. Clear the layout of the scatter operand for testing.
-  HloInstruction* scatter_operand = FindInstruction(module.get(), "operand");
-  scatter_operand->mutable_shape()->clear_layout();
+  ClearInstructionLayout(module.get(), "operand");
+
+  ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&scatter_expander, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(ScatterExpanderTest,
+       EliminateSimpleMultioutpuScattersSkipsNontrivialScatter) {
+  const char* kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      p0 = s32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = f32[] parameter(3)
+      ROOT tuple = tuple(p2, p3)
+    }
+
+    ENTRY kernel_entry {
+      operand0 = s32[3,3] parameter(0)
+      operand1 = bf16[3,3] parameter(1)
+      indices = s32[2] parameter(2)
+      update0 = s32[2,3] parameter(3)
+      update1 = bf16[2,3] parameter(4)
+      ROOT scatter = (s32[3,3], bf16[3,3]) scatter(operand0, operand1, indices, update0, update1),
+          to_apply=scatter_computation,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ClearInstructionLayout(module.get(), "operand0");
+  ClearInstructionLayout(module.get(), "operand1");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
   TF_ASSERT_OK_AND_ASSIGN(bool result,
@@ -124,10 +201,44 @@ TEST_F(ScatterExpanderTest, EliminateSimpleScattersRewritesTrivialScatter) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  // The HLO parser changes all no layout shapes from the input to have a
-  // default layout. Clear the layout of the scatter operand for testing.
-  HloInstruction* scatter_operand = FindInstruction(module.get(), "operand");
-  scatter_operand->mutable_shape()->clear_layout();
+  ClearInstructionLayout(module.get(), "operand");
+
+  ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&scatter_expander, module.get()));
+  EXPECT_TRUE(result);
+}
+
+TEST_F(ScatterExpanderTest,
+       EliminateSimpleMultioutputScattersRewritesTrivialScatter) {
+  const char* kModuleStr = R"(
+    HloModule scatter_expander
+
+    scatter_computation {
+      p0 = s32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = f32[] parameter(3)
+      ROOT tuple = tuple(p2, p3)
+    }
+
+    ENTRY kernel_entry {
+      operand0 = s32[5] iota(), iota_dimension=0
+      operand1 = f32[5] iota(), iota_dimension=0
+      indices = s32[1] parameter(0)
+      update0 = s32[] constant(0)
+      update1 = f32[] constant(0)
+      ROOT scatter = (s32[5]{0}, f32[5]{0}) scatter(operand0, operand1, indices, update0, update1),
+        update_window_dims={}, inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=0,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ClearInstructionLayout(module.get(), "operand0");
+  ClearInstructionLayout(module.get(), "operand1");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
   TF_ASSERT_OK_AND_ASSIGN(bool result,

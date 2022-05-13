@@ -4229,7 +4229,7 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
 //
 // Existing graphs and library code would often insert a cast from DT_INT64 to
 // DT_INT32 on the indices and/or segment_ids inputs to "SparseSegment*" ops.
-// Support for for DT_INT64 indices and/or segment_ids now exists, so we can
+// Support for DT_INT64 indices and/or segment_ids now exists, so we can
 // pass the input directly without a cast.
 class RemoveCastIntoSegmentReductionStage : public ArithmeticOptimizerStage {
  public:

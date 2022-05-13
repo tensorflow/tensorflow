@@ -47,8 +47,8 @@ void ConvertNMSPaddedFunc::RewriteFunc() {
   Value max_output_size = func_.getArgument(2);
   Value iou_threshold = func_.getArgument(3);
   Value score_threshold = func_.getArgument(4);
-  auto output_type0 = func_.getType().getResult(0);
-  auto output_type1 = func_.getType().getResult(1);
+  auto output_type0 = func_.getFunctionType().getResult(0);
+  auto output_type1 = func_.getFunctionType().getResult(1);
 
   OpBuilder builder(func_.getBody());
   auto op = builder.create<mlir::TFL::NonMaxSuppressionV4Op>(
@@ -67,14 +67,15 @@ LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
               "non_max_suppression_padded_v2 (need at least 5): "
            << func_.getNumArguments();
   }
-  if (func_.getType().getNumResults() != 2) {
+  if (func_.getFunctionType().getNumResults() != 2) {
     return func_.emitWarning() << "Invalid number of results from "
                                   "non_max_suppression_padded_v2 (need 2): "
-                               << func_.getType().getNumResults();
+                               << func_.getFunctionType().getNumResults();
   }
   // The TFLite fused op does not support batching yet.
   // TODO(b/158709815): Add support for batches with padded NMS.
-  auto boxes_type = func_.getType().getInput(0).dyn_cast<RankedTensorType>();
+  auto boxes_type =
+      func_.getFunctionType().getInput(0).dyn_cast<RankedTensorType>();
   if (boxes_type == nullptr || !boxes_type.hasRank() ||
       boxes_type.getRank() != 2) {
     return func_.emitWarning() << "TFLite does not support batched input for "
@@ -96,15 +97,17 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
     return failure();
   }
   auto op = builder.create<CustomOp>(
-      func_.getLoc(), func_.getType().getResults(), func_.getArguments(),
-      kCustomSSDPostprocessing, CustomOption(&builder, custom_option_buffer));
+      func_.getLoc(), func_.getFunctionType().getResults(),
+      func_.getArguments(), kCustomSSDPostprocessing,
+      CustomOption(&builder, custom_option_buffer));
   builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
 
   return success();
 }
 
 LogicalResult ConvertSSDPostProcessFunc::CreateNMSCustomOptions(
-    FuncOp func, DictionaryAttr attrs, std::string& custom_option_buffer) {
+    func::FuncOp func, DictionaryAttr attrs,
+    std::string& custom_option_buffer) {
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
 
@@ -133,7 +136,7 @@ LogicalResult ConvertSSDPostProcessFunc::CreateNMSCustomOptions(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::AddIntAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute,
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute,
     flexbuffers::Builder* builder) {
   auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
   if (!int_attr) {
@@ -145,7 +148,7 @@ LogicalResult ConvertSSDPostProcessFunc::AddIntAttr(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute,
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute,
     flexbuffers::Builder* builder) {
   auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
   if (!float_attr) {
@@ -157,7 +160,7 @@ LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
   auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
   if (!int_attr) {
     return func.emitWarning()
@@ -167,7 +170,7 @@ LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::HasFloatAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
   auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
   if (!float_attr) {
     return func.emitWarning()
@@ -183,10 +186,10 @@ LogicalResult ConvertSSDPostProcessFunc::VerifySignature() {
            << "Invalid number of arguments to " << kCustomSSDPostprocessing
            << ": " << func_.getNumArguments();
   }
-  if (func_.getType().getNumResults() != 4) {
+  if (func_.getFunctionType().getNumResults() != 4) {
     return func_.emitWarning()
            << "Invalid number of results from " << kCustomSSDPostprocessing
-           << ": " << func_.getType().getNumResults();
+           << ": " << func_.getFunctionType().getNumResults();
   }
 
   auto attrs = attr_.getAttrs();

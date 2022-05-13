@@ -122,7 +122,7 @@ def AnnotateParameterReplicationPass :
   let constructor = "TFDevice::CreateAnnotateParameterReplicationPass()";
 }
 
-def DeviceAttributeToLaunchPass : Pass<"tf-device-attribute-to-launch", "mlir::FuncOp"> {
+def DeviceAttributeToLaunchPass : Pass<"tf-device-attribute-to-launch", "mlir::func::FuncOp"> {
   let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
 
   let description = [{
@@ -191,7 +191,7 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
   let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }
 
-def DecomposeResourceOpsPass : Pass<"tf-device-decompose-resource-ops", "mlir::FuncOp"> {
+def DecomposeResourceOpsPass : Pass<"tf-device-decompose-resource-ops", "mlir::func::FuncOp"> {
   let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation.";
 
   let description = [{
@@ -233,7 +233,7 @@ def DecomposeResourceOpsInClusterPass : Pass<"tf-device-decompose-resource-ops-i
   let constructor = "TFDevice::CreateDecomposeResourceOpsInClusterPass()";
 }
 
-def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::FuncOp"> {
+def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::func::FuncOp"> {
   let summary = "Hoists and annotates device launch inner ops with associated device attribute.";
 
   let description = [{
@@ -274,4 +274,16 @@ def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::F
   }];
 
   let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
+}
+
+def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
+  let summary = "Encapsulate StatefulPartitionedCallOp within a Cluster op";
+  let constructor = "TFDevice::CreateXlaClusterFormationPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+
+def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
+  let summary = "Inline all Cluster op based in the parent region";
+  let constructor = "TFDevice::CreateXlaInlineDeviceOpsPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }

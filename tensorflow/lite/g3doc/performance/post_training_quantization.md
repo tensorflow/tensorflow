@@ -252,12 +252,11 @@ A tutorial for this quantization mode can be found
 
 Since weights are quantized post training, there could be an accuracy loss,
 particularly for smaller networks. Pre-trained fully quantized models are
-provided for specific networks in the
-[TensorFlow Lite model repository](../models/). It is important to check the
-accuracy of the quantized model to verify that any degradation in accuracy is
-within acceptable limits. There are tools to evaluate
+provided for specific networks on
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&q=quantized){:.external}.
+It is important to check the accuracy of the quantized model to verify that any
+degradation in accuracy is within acceptable limits. There are tools to evaluate
 [TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks){:.external}.
-
 
 Alternatively, if the accuracy drop is too high, consider using
 [quantization aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training)
@@ -281,6 +280,6 @@ The representation has two main parts:
     the range [-128, 127], with a zero-point in range [-128, 127].
 
 For a detailed view of our quantization scheme, please see our
-[quantization spec](./quantization_spec.md). Hardware vendors who want to plug
+[quantization spec](./quantization_spec). Hardware vendors who want to plug
 into TensorFlow Lite's delegate interface are encouraged to implement the
 quantization scheme described there.

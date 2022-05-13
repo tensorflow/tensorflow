@@ -31,12 +31,13 @@ class CoordinationClient {
  public:
   virtual ~CoordinationClient() {}
 
-  virtual void RegisterWorkerAsync(CallOptions* call_opts,
-                                   const RegisterWorkerRequest* request,
-                                   RegisterWorkerResponse* response,
-                                   StatusCallback done) = 0;
+  virtual void RegisterTaskAsync(CallOptions* call_opts,
+                                 const RegisterTaskRequest* request,
+                                 RegisterTaskResponse* response,
+                                 StatusCallback done) = 0;
 
-  virtual void HeartbeatAsync(const HeartbeatRequest* request,
+  virtual void HeartbeatAsync(CallOptions* call_opts,
+                              const HeartbeatRequest* request,
                               HeartbeatResponse* response,
                               StatusCallback done) = 0;
 
@@ -44,9 +45,19 @@ class CoordinationClient {
                                     WaitForAllTasksResponse* response,
                                     StatusCallback done) = 0;
 
-  virtual void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                                       ReportErrorToAgentResponse* response,
-                                       StatusCallback done) = 0;
+  virtual void ShutdownTaskAsync(CallOptions* call_opts,
+                                 const ShutdownTaskRequest* request,
+                                 ShutdownTaskResponse* response,
+                                 StatusCallback done) = 0;
+
+  virtual void ResetTaskAsync(const ResetTaskRequest* request,
+                              ResetTaskResponse* response,
+                              StatusCallback done) = 0;
+
+  virtual void ReportErrorToTaskAsync(CallOptions* call_opts,
+                                      const ReportErrorToTaskRequest* request,
+                                      ReportErrorToTaskResponse* response,
+                                      StatusCallback done) = 0;
 
   virtual void ReportErrorToServiceAsync(
       const ReportErrorToServiceRequest* request,
@@ -56,9 +67,14 @@ class CoordinationClient {
                                    InsertKeyValueResponse* response,
                                    StatusCallback done) = 0;
 
-  virtual void GetKeyValueAsync(const GetKeyValueRequest* request,
+  virtual void GetKeyValueAsync(CallOptions* call_opts,
+                                const GetKeyValueRequest* request,
                                 GetKeyValueResponse* response,
                                 StatusCallback done) = 0;
+
+  virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                                   GetKeyValueDirResponse* response,
+                                   StatusCallback done) = 0;
 
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -1092,6 +1093,38 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
   return dataset_store_->Get(key, dataset_def);
+}
+
+DispatcherStateExport DataServiceDispatcherImpl::ExportState() const
+    TF_LOCKS_EXCLUDED(mu_) {
+  DispatcherStateExport dispatcher_state_export;
+  *dispatcher_state_export.mutable_dispatcher_config() = config_;
+  mutex_lock l(mu_);
+  if (!started_) {
+    return dispatcher_state_export;
+  }
+
+  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  for (const auto& worker : workers) {
+    dispatcher_state_export.add_worker_addresses(worker->address);
+  }
+
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  for (const auto& job : jobs) {
+    DispatcherStateExport::Job* job_export = dispatcher_state_export.add_jobs();
+    job_export->set_dataset_id(job->dataset_id);
+    job_export->set_job_id(job->job_id);
+    job_export->mutable_job_key()->set_name(job->job_key.name);
+    job_export->mutable_job_key()->set_iteration(job->job_key.iteration);
+    *job_export->mutable_processing_mode() = job->processing_mode;
+    if (job->num_consumers) {
+      job_export->set_num_consumers(*job->num_consumers);
+    }
+    job_export->set_num_clients(job->num_clients);
+    job_export->set_finished(job->finished);
+    job_export->set_garbage_collected(job->garbage_collected);
+  }
+  return dispatcher_state_export;
 }
 
 }  // namespace data

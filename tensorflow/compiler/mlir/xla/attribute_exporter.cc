@@ -172,6 +172,8 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
       return xla::CustomCallApiVersion::API_VERSION_ORIGINAL;
     case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
       return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED;
     default:
       return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
                              api_version);

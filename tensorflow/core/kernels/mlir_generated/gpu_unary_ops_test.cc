@@ -15,10 +15,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <limits>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 #include "tensorflow/core/kernels/mlir_generated/base_unary_ops_test.h"
 
@@ -59,8 +58,7 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     baseline_abs, test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Abs, DT_INT8, DT_INT8, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Abs, DT_INT16, DT_INT16, baseline_abs,
@@ -196,14 +194,16 @@ DstT baseline_cast(SrcT x) {
           .InputAttribute("SrcT")                                       \
           .OutputAttribute("DstT"))
 
-#define TEST_CAST_TO_NO_UNSIGNED(from_type) \
-  TEST_CAST_FROM_TO(from_type, DT_BOOL)     \
-  TEST_CAST_FROM_TO(from_type, DT_INT8)     \
-  TEST_CAST_FROM_TO(from_type, DT_INT16)    \
-  TEST_CAST_FROM_TO(from_type, DT_INT32)    \
-  TEST_CAST_FROM_TO(from_type, DT_INT64)    \
-  TEST_CAST_FROM_TO(from_type, DT_FLOAT)    \
-  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)
+#define TEST_CAST_TO_NO_UNSIGNED(from_type)  \
+  TEST_CAST_FROM_TO(from_type, DT_BOOL)      \
+  TEST_CAST_FROM_TO(from_type, DT_INT8)      \
+  TEST_CAST_FROM_TO(from_type, DT_INT16)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT32)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT64)     \
+  TEST_CAST_FROM_TO(from_type, DT_FLOAT)     \
+  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)    \
+  TEST_CAST_FROM_TO(from_type, DT_COMPLEX64) \
+  TEST_CAST_FROM_TO(from_type, DT_COMPLEX128)
 
 #define TEST_CAST_TO_UNSIGNED(from_type)  \
   TEST_CAST_FROM_TO(from_type, DT_UINT8)  \
@@ -291,6 +291,17 @@ GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, std::cos,
 GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
                         test::OpsTestConfig())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Cos, DT_COMPLEX64, DT_COMPLEX64, std::cos,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cos, DT_COMPLEX128, DT_COMPLEX128, std::cos,
+                      test::OpsTestConfig())
+
+#endif
+
 /// Test `tf.Cosh`.
 
 GENERATE_DEFAULT_TEST_2(Cosh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cosh,
@@ -301,6 +312,17 @@ GENERATE_DEFAULT_TEST(Cosh, DT_FLOAT, DT_FLOAT, std::cosh,
 
 GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
                       test::OpsTestConfig())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Cosh, DT_COMPLEX64, DT_COMPLEX64, std::cosh,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Cosh, DT_COMPLEX128, DT_COMPLEX128, std::cosh,
+                      test::OpsTestConfig())
+
+#endif
 
 /// Test `tf.Digamma`.
 
@@ -785,8 +807,7 @@ GENERATE_DEFAULT_TEST(OnesLike, DT_INT64, DT_INT64, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT8, DT_INT8, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT16, DT_INT16, baseline_ones_like,
@@ -855,8 +876,7 @@ GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_relu, test::OpsTestConfig())
 
 // Test the JIT-compiled kernels.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Relu, DT_INT8, DT_INT8, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Relu, DT_INT16, DT_INT16, baseline_relu,
@@ -882,8 +902,7 @@ T baseline_rint(T x) {
 }
 
 // Test the JIT-compiled kernel.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_rint,
                         test::OpsTestConfig().ExpectStrictlyEqual())
@@ -1037,8 +1056,7 @@ GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Sign, DT_INT8, DT_INT8, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Sign, DT_INT16, DT_INT16, baseline_sign,
@@ -1055,6 +1073,17 @@ GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, std::sin,
 GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
                         test::OpsTestConfig())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Sin, DT_COMPLEX64, DT_COMPLEX64, std::sin,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sin, DT_COMPLEX128, DT_COMPLEX128, std::sin,
+                      test::OpsTestConfig())
+
+#endif
+
 /// Test `tf.Sinh`.
 
 GENERATE_DEFAULT_TEST_2(Sinh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sinh,
@@ -1065,6 +1094,17 @@ GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
 
 GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
                       test::OpsTestConfig())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Sinh, DT_COMPLEX64, DT_COMPLEX64, std::sinh,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sinh, DT_COMPLEX128, DT_COMPLEX128, std::sinh,
+                      test::OpsTestConfig())
+
+#endif
 
 /// Test `tf.Softplus`.
 
@@ -1126,6 +1166,17 @@ GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, std::tan,
 GENERATE_DEFAULT_TEST_2(Tan, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tan,
                         test::OpsTestConfig())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+GENERATE_DEFAULT_TEST(Tan, DT_COMPLEX64, DT_COMPLEX64, std::tan,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Tan, DT_COMPLEX128, DT_COMPLEX128, std::tan,
+                      test::OpsTestConfig())
+
+#endif
+
 /// Test `tf.Tanh`.
 
 GENERATE_DEFAULT_TEST(Tanh, DT_FLOAT, DT_FLOAT, std::tanh,
@@ -1176,8 +1227,7 @@ GENERATE_DEFAULT_TEST(Square, DT_INT64, DT_INT64, baseline_square,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Square, DT_INT8, DT_INT8, baseline_square,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Square, DT_INT16, DT_INT16, baseline_square,
@@ -1211,8 +1261,7 @@ GENERATE_DEFAULT_TEST(ZerosLike, DT_INT64, DT_INT64, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT8, DT_INT8, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT16, DT_INT16, baseline_zeros_like,

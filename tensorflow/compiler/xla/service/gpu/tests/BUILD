@@ -109,6 +109,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "fusion_logical_index_test",
+    srcs = ["fusion_logical_index_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_fft_test",
     srcs = ["mlir_fft_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -195,7 +206,6 @@ tf_cc_test(
     ],
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
-        "no_bef_thunk",  # complex<fp16> tests fail, see b/187959015.
     ],
     deps = [
         ":gpu_codegen_test",
@@ -538,7 +548,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = ["no_rocm"] + tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
@@ -634,7 +644,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",
@@ -767,14 +777,23 @@ filegroup(
 tf_cc_test(
     name = "kernel_launch_test",
     srcs = ["kernel_launch_test.cc"],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "in_place_op_test",
+    srcs = ["in_place_op_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test_main",
     ],
 )
@@ -788,6 +807,7 @@ py_test(
         "no_oss",
         "notap",
         "requires-gpu-nvidia",
+        "requires-net:external",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

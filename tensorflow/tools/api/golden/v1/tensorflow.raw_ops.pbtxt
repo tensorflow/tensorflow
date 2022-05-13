@@ -205,6 +205,10 @@ tf_module {
     argspec: "args=[\'var\', \'ms\', \'mom\', \'lr\', \'rho\', \'momentum\', \'epsilon\', \'grad\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ApproxTopK"
+    argspec: "args=[\'input\', \'k\', \'reduction_dimension\', \'recall_target\', \'is_max_k\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'True\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "ApproximateEqual"
     argspec: "args=[\'x\', \'y\', \'tolerance\', \'name\'], varargs=None, keywords=None, defaults=[\'1e-05\', \'None\'], "
   }
@@ -790,7 +794,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveAssignGroupV2"
-    argspec: "args=[\'group_assignment\', \'device_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'group_assignment\', \'device_index\', \'base_key\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "CollectiveBcastRecv"
@@ -1307,6 +1311,10 @@ tf_module {
   member_method {
     name: "DirectedInterleaveDataset"
     argspec: "args=[\'selector_input_dataset\', \'data_input_datasets\', \'output_types\', \'output_shapes\', \'stop_on_empty_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "DisableCopyOnRead"
+    argspec: "args=[\'resource\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Div"
@@ -2861,6 +2869,10 @@ tf_module {
     argspec: "args=[\'indices\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ParallelFilterDataset"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'predicate\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
+  }
+  member_method {
     name: "ParallelInterleaveDataset"
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
@@ -3350,7 +3362,7 @@ tf_module {
   }
   member_method {
     name: "RangeDataset"
-    argspec: "args=[\'start\', \'stop\', \'step\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'step\', \'output_types\', \'output_shapes\', \'metadata\', \'replicate_on_split\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'False\', \'None\'], "
   }
   member_method {
     name: "Rank"
@@ -3859,6 +3871,10 @@ tf_module {
   member_method {
     name: "ReverseV2"
     argspec: "args=[\'tensor\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RewriteDataset"
+    argspec: "args=[\'input_dataset\', \'rewrite_name\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "RightShift"
@@ -4693,6 +4709,10 @@ tf_module {
     argspec: "args=[\'image_size\', \'bounding_boxes\', \'min_object_covered\', \'seed\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'[0.75, 1.33]\', \'[0.05, 1]\', \'100\', \'False\', \'None\'], "
   }
   member_method {
+    name: "StatelessShuffle"
+    argspec: "args=[\'value\', \'key\', \'counter\', \'alg\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StatelessTruncatedNormal"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
@@ -5134,7 +5154,7 @@ tf_module {
   }
   member_method {
     name: "TensorSliceDataset"
-    argspec: "args=[\'components\', \'output_shapes\', \'is_files\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'None\'], "
+    argspec: "args=[\'components\', \'output_shapes\', \'is_files\', \'metadata\', \'replicate_on_split\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'\', \'False\', \'None\'], "
   }
   member_method {
     name: "TensorStridedSliceUpdate"

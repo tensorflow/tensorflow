@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/data/service/common.proto";
+import "tensorflow/core/protobuf/data_service.proto";
+import "tensorflow/core/protobuf/service_config.proto";
+
+// State of the dispatcher server, exported to improve debuggability.
+// Next tag: 4
+message DispatcherStateExport {
+  message Job {
+    int64 dataset_id = 1;
+    int64 job_id = 2;
+    JobKeyDef job_key = 3;
+    ProcessingModeDef processing_mode = 4;
+    int64 num_consumers = 6;
+    int64 num_clients = 8;
+    bool finished = 10;
+    bool garbage_collected = 11;
+  }
+
+  experimental.DispatcherConfig dispatcher_config = 1;
+  repeated string worker_addresses = 2;
+  repeated Job jobs = 3;
+}
+
+// State of the worker server, exported to improve debuggability.
+// Next tag: 2
+message WorkerStateExport {
+  experimental.WorkerConfig worker_config = 1;
+}
+
+// State of the tf.data service server, exported to improve debuggability.
+// The dispatcher and worker servers will populate the corresponding fields.
+// Next tag: 3
+message ServerStateExport {
+  DispatcherStateExport dispatcher_state_export = 1;
+  WorkerStateExport worker_state_export = 2;
+}

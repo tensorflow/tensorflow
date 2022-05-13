@@ -23,9 +23,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -754,12 +756,10 @@ TEST(ModelBuilderTest, GetOpsToReplaceMultiplePartitions) {
       context, /*allow_quant_ops=*/false, /*max_delegated_partitions*/ 2);
 
   // As the Dequant op is not pruned and the ADD op could run on GPU, we have
-  // 2 partitions.
-  EXPECT_EQ(ops_to_replace->size, 2);
-  // ADD at index 1.
-  EXPECT_EQ(1, ops_to_replace->data[0]);
-  // ADD at index 3.
-  EXPECT_EQ(3, ops_to_replace->data[1]);
+  // 2 partitions with an ADD each (op #1 and op #3).
+  ASSERT_EQ(ops_to_replace->size, 2);
+  EXPECT_THAT(absl::MakeConstSpan(ops_to_replace->data, 2),
+              testing::UnorderedElementsAre(1, 3));
 
   TfLiteIntArrayFree(ops_to_replace);
 }
@@ -1531,6 +1531,28 @@ TEST(CastOperationParserTest, TestIsSupported) {
   context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCast,
                                                 /*op_version=*/1,
                                                 /*num_inputs=*/1);
+
+  context->tensor(1)->type = kTfLiteFloat32;
+  context->tensor(2)->type = kTfLiteInt32;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  context->tensor(1)->type = kTfLiteInt32;
+  context->tensor(2)->type = kTfLiteFloat32;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  context->tensor(1)->type = kTfLiteInt8;
+  context->tensor(2)->type = kTfLiteFloat32;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
   context->tensor(1)->type = kTfLiteBool;
   EXPECT_FALSE(
       parser

@@ -93,11 +93,13 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
   Status HandleSelect(const HloInstruction* hlo) override;
-  Status HandleTupleSelect(const HloInstruction* hlo) override;
   Status HandleCompare(const HloInstruction* compare) override;
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
   Status HandleConcatenate(const HloInstruction* concatenate) override;
+  Status HandleAsyncStart(const HloInstruction* async_start) override;
+  Status HandleAsyncUpdate(const HloInstruction* async_update) override;
+  Status HandleAsyncDone(const HloInstruction* async_done) override;
   Status HandleCopyStart(const HloInstruction* send) override;
   Status HandleCopyDone(const HloInstruction* send_done) override;
   Status HandleSend(const HloInstruction* send) override;

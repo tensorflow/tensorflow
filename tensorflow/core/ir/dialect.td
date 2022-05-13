@@ -66,6 +66,7 @@ def TFGraphDialect : Dialect {
     NodeDef.device <-> "_mlir_device"
     NodeDef.name <-> "_mlir_name"
     NodeDef.attr <-> "_output_shape"
+    NodeDef.experimental_type <-> "_mlir_fulltype"
   }];
 
   let extraClassDeclaration = [{
@@ -84,14 +85,36 @@ def TFGraphDialect : Dialect {
       return {"_mlir_assigned_device"};
     }
 
+    StringAttr getFullTypeAttrIdentifier() const { return fulltype_key_; }
+    static constexpr StringLiteral getFullTypeAttrKey() {
+      return {"_mlir_fulltype"};
+    }
+
     StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
     static constexpr StringRef getTfgNameAttrKey() { return "tfg.name"; }
 
-    StringAttr getTfgTpuReplicateAttrIdentifier() const {
-      return tfg_tpu_replicate_key_;
+    StringAttr getTfgDescriptionAttrIdentifier() const {
+      return tfg_description_key_;
     }
-    static constexpr StringLiteral getTfgTpuReplicateAttrKey() {
-      return {"tfg.tpu_replicate"};
+    static constexpr StringRef getTfgDescriptionAttrKey() {
+      return {"tfg.description"};
+    }
+
+    StringAttr getTfgIsRefAttrIdentifier() const { return tfg_is_ref_key_; }
+    static constexpr StringRef getTfgIsRefAttrKey() { return {"tfg.is_ref"}; }
+
+    StringAttr getTfgHandleDataAttrIdentifier() const {
+      return tfg_handle_data_key_;
+    }
+    static constexpr StringRef getTfgHandleDataAttrKey() {
+      return {"tfg.handle_data"};
+    }
+
+    StringAttr getTfgFullTypeAttrIdentifier() const {
+      return tfg_full_type_key_;
+    }
+    static constexpr StringRef getTfgFullTypeAttrKey() {
+      return {"tfg.experimental_full_type"};
     }
 
     // Cached accessor for the control type.
@@ -115,11 +138,17 @@ def TFGraphDialect : Dialect {
     TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
 
     // Cached identifier for efficiency purpose.
-    StringAttr name_key_;
-    StringAttr device_key_;
     StringAttr assigned_device_key_;
+    StringAttr device_key_;
+    StringAttr fulltype_key_;
+    StringAttr name_key_;
+    StringAttr tfg_description_key_;
+    StringAttr tfg_full_type_key_;
+    StringAttr tfg_handle_data_key_;
+    StringAttr tfg_is_ref_key_;
     StringAttr tfg_name_key_;
-    StringAttr tfg_tpu_replicate_key_;
+
+    // Cached control type.
     ControlType control_ty_;
   }];
 

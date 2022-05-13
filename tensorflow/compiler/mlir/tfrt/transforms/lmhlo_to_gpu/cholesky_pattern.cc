@@ -28,9 +28,9 @@ namespace tensorflow {
 namespace {
 
 struct CholeskyRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo_gpu::CholeskyOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo_gpu::CholeskyOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo_gpu::CholeskyOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo_gpu::CholeskyOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo_gpu::CholeskyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

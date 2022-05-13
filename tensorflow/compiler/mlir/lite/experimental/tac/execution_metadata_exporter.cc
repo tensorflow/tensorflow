@@ -138,7 +138,8 @@ flatbuffers::Offset<SubgraphMetadata> CreateSubgraphMetadata(
 
 flatbuffers::Offset<tflite::HardwareMetadata>
 CreateHardwareMetadataAndPopulateLookupTable(
-    std::vector<mlir::FuncOp>* funcs, flatbuffers::FlatBufferBuilder* builder,
+    std::vector<mlir::func::FuncOp>* funcs,
+    flatbuffers::FlatBufferBuilder* builder,
     std::map<std::string, uint8_t>* hardware_names) {
   uint8_t index = 0;
   for (auto& func : *funcs) {
@@ -165,13 +166,13 @@ CreateHardwareMetadataAndPopulateLookupTable(
 }  // namespace
 
 llvm::Optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module) {
-  mlir::FuncOp main_fn = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_fn = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_fn) return std::string("");
 
   flatbuffers::FlatBufferBuilder fb_builder;
-  std::vector<mlir::FuncOp> funcs;
+  std::vector<mlir::func::FuncOp> funcs;
   funcs.push_back(main_fn);
-  module.walk([&](mlir::FuncOp fn) {
+  module.walk([&](mlir::func::FuncOp fn) {
     if (fn != main_fn) {
       funcs.push_back(fn);
     }

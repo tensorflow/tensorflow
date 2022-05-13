@@ -657,7 +657,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
         ],
@@ -789,3 +788,9 @@ def if_llvm_system_z_available(then, otherwise = []):
 
 def tf_tpu_dependencies():
     return if_libtpu(["//tensorflow/core/tpu/kernels"])
+
+def tf_dtensor_tpu_dependencies():
+    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
+
+def tf_cuda_libdevice_path_deps():
+    return tf_platform_deps("cuda_libdevice_path")

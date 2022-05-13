@@ -830,14 +830,14 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()
              << "expects " << branch_name(branch.index()) << " ("
              << branch.value() << ") to point to a defined function";
 
-    FunctionType branch_type = branch_func.getType();
+    FunctionType branch_type = branch_func.getFunctionType();
     std::string desc = branch_name(branch.index()) + " input";
     TypeRangeWithDesc branch_input{branch_type.getInputs(), desc};
     if (failed(VerifyTypeRangesAreCompatible(op, branch_input, input)))
@@ -882,8 +882,6 @@ LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) {
     return llvm::formatv("branch #{0}", index).str();
   };
-  // TODO(jpienaar): Remove.
-  if (failed(CaseOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(symbol_table, *this,
                                          branches().getValue(), branch_name);
 }
@@ -1079,7 +1077,7 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
                                     concat_unary_operands.getResult(),
                                     op.getResult().getType(),
                                     ArrayRef<NamedAttribute>());
-  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+  Operation *new_unary_op = rewriter.create(new_unary_op_state);
 
   rewriter.replaceOp(op, new_unary_op->getResults());
 
@@ -1233,35 +1231,46 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
   }
 
-  // New lhs and rhs concatenation axis
-  auto axis_type =
-      mlir::RankedTensorType::get({}, mlir::getElementTypeOrSelf(axis_attr));
-  DenseIntElementsAttr lhs_attr, rhs_attr;
-  if (axis_type.getElementType().isInteger(32)) {
-    lhs_attr = DenseIntElementsAttr::get(
-        axis_type, static_cast<int32_t>(hoist_params->lhs_axis));
-    rhs_attr = DenseIntElementsAttr::get(
-        axis_type, static_cast<int32_t>(hoist_params->rhs_axis));
-  } else {
-    assert(axis_type.getElementType().isInteger(64));
-    lhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis);
-    rhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis);
-  }
-  auto lhs_axis = rewriter.create<TF::ConstOp>(loc, lhs_attr);
-  auto rhs_axis = rewriter.create<TF::ConstOp>(loc, rhs_attr);
+  // Concatenates `args` along `axis`.
+  auto pack_or_concat = [&](bool is_scalar, Type result_type, ValueRange args,
+                            int64_t axis) {
+    // Use `PackOp` for scalar concatenation because `ConcatV2Op` doesn't
+    // support scalar concatenation.
+    if (is_scalar) {
+      auto pack = rewriter.create<PackOp>(loc, result_type, args,
+                                          rewriter.getI64IntegerAttr(axis));
+      return pack.getResult();
+    }
+
+    // New concatenation axis.
+    auto axis_type = RankedTensorType::get({}, getElementTypeOrSelf(axis_attr));
+    DenseIntElementsAttr attr;
+    if (axis_type.getElementType().isInteger(32)) {
+      attr = DenseIntElementsAttr::get(axis_type, static_cast<int32_t>(axis));
+    } else {
+      assert(axis_type.getElementType().isInteger(64));
+      attr = DenseIntElementsAttr::get(axis_type, axis);
+    }
+    auto axis_const = rewriter.create<TF::ConstOp>(loc, attr);
+
+    auto concat =
+        rewriter.create<ConcatV2Op>(loc, result_type, args, axis_const);
+    return concat.getResult();
+  };
 
   // Concatenate binary ops operands on the new axis.
-  auto lhs_concat = rewriter.create<ConcatV2Op>(
-      loc, hoist_params->lhs_concat_type, hoist_params->lhs_args, lhs_axis);
-  auto rhs_concat = rewriter.create<ConcatV2Op>(
-      loc, hoist_params->rhs_concat_type, hoist_params->rhs_args, rhs_axis);
+  Value lhs_concat = pack_or_concat(
+      hoist_params->scalar_operand_idx == 0, hoist_params->lhs_concat_type,
+      hoist_params->lhs_args, hoist_params->lhs_axis);
+  Value rhs_concat = pack_or_concat(
+      hoist_params->scalar_operand_idx == 1, hoist_params->rhs_concat_type,
+      hoist_params->rhs_args, hoist_params->rhs_axis);
 
   // Replace original concat with a binary op.
   OperationState new_binary_op_state(
-      loc, first_arg_op->getName().getStringRef(),
-      {lhs_concat.getResult(), rhs_concat.getResult()},
+      loc, first_arg_op->getName().getStringRef(), {lhs_concat, rhs_concat},
       op.getResult().getType(), ArrayRef<NamedAttribute>());
-  Operation *new_binary_op = rewriter.createOperation(new_binary_op_state);
+  Operation *new_binary_op = rewriter.create(new_binary_op_state);
 
   rewriter.replaceOp(op, new_binary_op->getResults());
 
@@ -1601,6 +1610,65 @@ static LogicalResult Verify(OpT op) {
   int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
   int num_dims = 2 + num_spatial_dims;
 
+  StringRef data_format = op.data_format();
+  tensorflow::TensorFormat format;
+  auto data_format_is_valid = FormatFromString(data_format.str(), &format);
+  if (!data_format_is_valid) {
+    return emitOptionalError(op.getLoc(), "Invalid data format provided");
+  }
+
+  const StringRef paddings = op.padding();
+  tensorflow::Padding padding;
+  auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
+  if (!padding_is_valid.ok()) {
+    return emitOptionalError(op.getLoc(), "Invalid padding format provided");
+  }
+
+  // Verifies that,
+  // * Ranks of operands and result are valid
+  // * Length of explicit_paddings attribute is valid and has non negative
+  //   elements
+  // * strides and dilations attributes have positive elements
+  if (!IsOfRankOrUnranked(op.input(), num_dims) ||
+      !IsOfRankOrUnranked(op.filter(), num_dims))
+    return emitOptionalError(op.getLoc(), "requires operands to be ", num_dims,
+                             "D tensor");
+
+  if (padding == tensorflow::Padding::EXPLICIT) {
+    ArrayRef<Attribute> explicit_padding;
+    ArrayAttr explicit_pad =
+        op->getAttr("explicit_paddings")
+            .template dyn_cast_or_null<::mlir::ArrayAttr>();
+    if (!explicit_pad) {
+      explicit_pad = ::mlir::Builder(op->getContext()).getI64ArrayAttr({});
+    }
+    explicit_padding = explicit_pad.getValue();
+
+    if (explicit_padding.empty()) {
+      return emitOptionalError(op.getLoc(),
+                               "requires attribute 'explicit_paddings' with "
+                               "'EXPLICIT' padding mode");
+    }
+    if (explicit_padding.size() != num_dims * 2) {
+      return emitOptionalError(
+          op.getLoc(), "requires explicit_paddings attribute length to be ",
+          num_dims * 2);
+    }
+    auto is_negative = [](Attribute val) {
+      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
+    };
+    if (llvm::any_of(explicit_padding, is_negative))
+      return emitOptionalError(op.getLoc(),
+                               "requires non negative explicit paddings");
+  }
+
+  ArrayRef<Attribute> strides = op.strides().getValue();
+  ArrayRef<Attribute> dilations = op.dilations().getValue();
+  if (failed(
+          VerifyConvOpAttributes(num_dims, strides, dilations, op.getLoc()))) {
+    return failure();
+  }
+
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
     absl::string_view data_format(op.data_format().data(),
@@ -1652,17 +1720,16 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
 template <typename OpT,
           typename std::enable_if<llvm::is_one_of<
               OpT, Conv2DOpAdaptor, Conv3DOpAdaptor>::value>::type * = nullptr>
-static LogicalResult inferConvReturnTypes(
-    OpT op, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes,
-    llvm::Optional<mlir::Location> location,
-    ArrayRef<Attribute> explicit_padding) {
+static LogicalResult inferConvReturnTypeComponents(
+    llvm::Optional<mlir::Location> location, OpT op,
+    ArrayRef<Attribute> explicit_padding,
+    llvm::SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   const int64_t num_spatial_dims = std::is_same<OpT, Conv2DOpAdaptor>() ? 2 : 3;
   const int64_t num_dims = 2 + num_spatial_dims;
   const Value input = op.input();
   const Value filter = op.filter();
   const TensorType input_ty = input.getType().template cast<TensorType>();
   const TensorType filter_ty = filter.getType().template cast<TensorType>();
-  const StringRef paddings = op.padding();
 
   ArrayRef<Attribute> strides = op.strides().getValue();
   StringRef data_format = op.data_format();
@@ -1670,51 +1737,18 @@ static LogicalResult inferConvReturnTypes(
 
   tensorflow::TensorFormat format;
   auto data_format_is_valid = FormatFromString(data_format.str(), &format);
-  if (!data_format_is_valid) {
-    return emitOptionalError(location, "Invalid data format provided");
-  }
+  assert(data_format_is_valid);
+  (void)data_format_is_valid;
+
   tensorflow::Padding padding;
+  const StringRef paddings = op.padding();
   auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
-  if (!padding_is_valid.ok()) {
-    return emitOptionalError(location, "Invalid padding format provided");
-  }
+  assert(padding_is_valid.ok());
+  (void)padding_is_valid;
+
   auto get_int = [](Attribute attr) {
     return attr.template cast<IntegerAttr>().getInt();
   };
-
-  // Necessary sanity checks.
-  // Verifies that,
-  // * Ranks of operands and result are valid
-  // * Length of explicit_paddings attribute is valid and has non negative
-  //   elements
-  // * strides and dilations attributes have positive elements
-  if (!IsOfRankOrUnranked(input, num_dims) ||
-      !IsOfRankOrUnranked(filter, num_dims))
-    return emitOptionalError(location, "requires operands to be ", num_dims,
-                             "D tensor");
-
-  if (padding == tensorflow::Padding::EXPLICIT) {
-    if (explicit_padding.empty()) {
-      return emitOptionalError(location,
-                               "requires attribute 'explicit_paddings' with "
-                               "'EXPLICIT' padding mode");
-    }
-    if (explicit_padding.size() != num_dims * 2) {
-      return emitOptionalError(
-          location, "requires explicit_paddings attribute length to be ",
-          num_dims * 2);
-    }
-    auto is_negative = [](Attribute val) {
-      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
-    };
-    if (llvm::any_of(explicit_padding, is_negative))
-      return emitOptionalError(location,
-                               "requires non negative explicit paddings");
-  }
-
-  if (failed(VerifyConvOpAttributes(num_dims, strides, dilations, location))) {
-    return failure();
-  }
 
   // Output always have `num_dims` rank. All dimensions are initialized to
   // dynamic size and can be partially inferred.
@@ -1758,17 +1792,15 @@ static LogicalResult inferConvReturnTypes(
     }
   }
 
-  inferredReturnTypes.assign(
-      {RankedTensorType::get(return_shape, input_ty.getElementType())});
+  inferredReturnShapes.emplace_back(return_shape, input_ty.getElementType());
   return success();
 }
 
-LogicalResult Conv2DOp::inferReturnTypes(
-    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
-    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  Conv2DOpAdaptor op(operands, attributes);
+LogicalResult Conv2DOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Conv2DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
       attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
@@ -1777,8 +1809,8 @@ LogicalResult Conv2DOp::inferReturnTypes(
   }
   explicit_padding = explicit_pad.getValue();
 
-  return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding);
+  return inferConvReturnTypeComponents(location, op, explicit_padding,
+                                       inferredReturnShapes);
 }
 
 StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
@@ -1961,12 +1993,11 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 // Conv3DOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Conv3DOp::inferReturnTypes(
-    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
-    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  Conv3DOpAdaptor op(operands, attributes);
+LogicalResult Conv3DOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Conv3DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
       attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
@@ -1975,8 +2006,8 @@ LogicalResult Conv3DOp::inferReturnTypes(
   }
   explicit_padding = explicit_pad.getValue();
 
-  return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding);
+  return inferConvReturnTypeComponents(location, op, explicit_padding,
+                                       inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2489,18 +2520,15 @@ void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 // Expm1Op
 //===----------------------------------------------------------------------===//
-LogicalResult Expm1Op::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+
+LogicalResult Expm1Op::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  if (operands.empty()) {
-    return emitOptionalError(location, "requires at least one operand.");
-  }
-  auto input_ty = operands[0].getType().dyn_cast<TensorType>();
-  if (!input_ty) {
-    return emitOptionalError(location, "requires input to be of Tensor type");
-  }
-  inferredReturnTypes.assign({input_ty});
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  ShapeAdaptor adaptor = operands.getShape(0);
+  ShapedTypeComponents component(adaptor.getElementType());
+  if (adaptor.hasRank()) adaptor.getDims(component);
+  inferredReturnShapes.push_back(component);
   return success();
 }
 
@@ -2828,8 +2856,6 @@ LogicalResult IfOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) -> std::string {
     return index == 0 ? "'then_branch'" : "'else_branch'";
   };
-  // TODO(jpienaar): Remove.
-  if (failed(IfOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(
       symbol_table, *this, {then_branchAttr(), else_branchAttr()}, branch_name);
 }
@@ -2892,7 +2918,7 @@ void IfOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // IfRegionOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult IfRegionOp::verify() {
+LogicalResult IfRegionOp::verifyRegions() {
   IfRegionOp op = *this;
   TypeRange then_types =
       op.then_branch().front().getTerminator()->getOperandTypes();
@@ -3086,6 +3112,15 @@ void MaxOp::build(OpBuilder &builder, OperationState &result, Value input,
                   Value reduction_indices, BoolAttr keep_dims) {
   Type out_ty = InferReductionOpType(input, reduction_indices, keep_dims);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+//===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+void MaximumOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<MaximumOfZeroToRelu>(context);
 }
 
 //===----------------------------------------------------------------------===//

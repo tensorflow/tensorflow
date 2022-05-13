@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -102,7 +104,7 @@ static StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
                                      ::xla::HloProto* hlo_proto,
                                      mlir::MlirToHloConversionOptions options) {
-  mlir::FuncOp main = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 
@@ -146,9 +148,9 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
-          : mlir::ConvertMlirHloToHlo(
-                module, &hloProto, emit_use_tuple_arg, emit_return_tuple,
-                /*shape_representation_fn=*/nullptr, options);
+          : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
+                                      emit_return_tuple,
+                                      /*shape_determination_fns=*/{}, options);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

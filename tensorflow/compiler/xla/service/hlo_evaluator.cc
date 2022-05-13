@@ -1008,6 +1008,9 @@ Status HloEvaluator::EvaluateInternal(
              instruction->opcode() != HloOpcode::kCopy &&
              instruction->opcode() != HloOpcode::kCopyStart &&
              instruction->opcode() != HloOpcode::kCopyDone &&
+             instruction->opcode() != HloOpcode::kAsyncStart &&
+             instruction->opcode() != HloOpcode::kAsyncUpdate &&
+             instruction->opcode() != HloOpcode::kAsyncDone &&
              instruction->opcode() != HloOpcode::kWhile)) {
           evaluated_[instruction] =
               Literal::CreateFromShapeWithUnknownLeafArrays(
@@ -1027,9 +1030,13 @@ Status HloEvaluator::EvaluateInternal(
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   Literal result(bitcast->shape());
-  TF_RET_CHECK(operand_literal.size_bytes() == result.size_bytes());
+  // Bitcast output is allowed to be smaller than the input if the backend-
+  // specific buffer sizes for the input and output are the same. Since the HLO
+  // evaluator doesn't have access to the backend-specific shape size function,
+  // assume it's OK to bitcast if output <= input.
+  TF_RET_CHECK(operand_literal.size_bytes() >= result.size_bytes());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
-         operand_literal.size_bytes());
+         result.size_bytes());
   evaluated_[bitcast] = std::move(result);
   return Status::OK();
 }
@@ -2548,6 +2555,413 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   return Status::OK();
 }
 
+namespace {
+// Reshapes the scatter indices input to have a trailing degenerate `1`
+// dimension if necessary.  Hands over the ownership of the newly created
+// literal (if there is one) to `reshaped_indices`.
+StatusOr<std::reference_wrapper<const Literal>> ReshapedScatterIndices(
+    int64_t index_vector_dim, const Literal& indices,
+    Literal* reshaped_indices) {
+  if (indices.shape().dimensions_size() != index_vector_dim) {
+    return std::cref(indices);
+  }
+
+  std::vector<int64_t> new_shape(indices.shape().dimensions().begin(),
+                                 indices.shape().dimensions().end());
+  new_shape.push_back(1);
+  TF_ASSIGN_OR_RETURN(*reshaped_indices, indices.Reshape(new_shape));
+  return std::cref(*reshaped_indices);
+}
+
+template <bool kForUpdateWindowIndices>
+ShapeUtil::IndexIterationSpace GetIterationSpaceImpl(
+    absl::Span<const int64_t> updates_dims,
+    const ScatterDimensionNumbers& dim_numbers) {
+  int64_t updates_rank = updates_dims.size();
+  std::vector<int64_t> index_base(updates_rank, 0);
+  std::vector<int64_t> index_count(updates_rank, 1);
+  for (int64_t i = 0; i < updates_rank; i++) {
+    // Use if constexpr when we can use c++17 or above.
+    if (kForUpdateWindowIndices) {
+      bool is_update_window_dim =
+          absl::c_binary_search(dim_numbers.update_window_dims(), i);
+      if (is_update_window_dim) {
+        index_count[i] = updates_dims[i];
+      }
+    } else {
+      bool is_update_scatter_dim =
+          !absl::c_binary_search(dim_numbers.update_window_dims(), i);
+      if (is_update_scatter_dim) {
+        index_count[i] = updates_dims[i];
+      }
+    }
+  }
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64_t>(updates_rank, 1)};
+}
+
+// Returns an ShapeUtil::IndexIterationSpace that iterates over the update
+// scatter dimensions while keeping the rest of the update dimensions clamped
+// to 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForUpdateScatterIndices(
+    absl::Span<const int64_t> updates_dims,
+    const ScatterDimensionNumbers& dim_numbers) {
+  return GetIterationSpaceImpl</*kForUpdateWindowIndices=*/false>(updates_dims,
+                                                                  dim_numbers);
+}
+
+// Return an ShapeUtil::IndexIterationSpace that iterates over the update
+// window dimensions while keeping the rest of the update dimensions clamped
+// to 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForUpdateWindowIndices(
+    absl::Span<const int64_t> updates_dims,
+    const ScatterDimensionNumbers& dim_numbers) {
+  return GetIterationSpaceImpl</*kForUpdateWindowIndices=*/true>(updates_dims,
+                                                                 dim_numbers);
+}
+
+// This functor computes the contribution of scatter_indices to an input index
+// corresponding to an update index.  That is, given an update index I, it
+// picks out the scatter indices in I and uses them to look up a scatter
+// index, S, from the scatter indices tensor, and expands S into the input
+// space according to scatter_dims_to_operand_dims.
+//
+// This is similar to the class HloEvaluator::OutputGatherIndexToInputIndex
+// that does the corresponding function for Gather.
+class UpdateScatterIndexToInputIndex {
+ public:
+  // The constructor does some setup work that is amortized across all
+  // iterations.
+  explicit UpdateScatterIndexToInputIndex(
+      const ScatterDimensionNumbers& dim_numbers, int64_t input_rank,
+      int64_t updates_rank, const Literal* scatter_indices)
+      : dim_numbers_(dim_numbers), scatter_indices_(*scatter_indices) {
+    for (int64_t i = 0; i < updates_rank; i++) {
+      update_dim_is_scatter_dims_.push_back(
+          !absl::c_binary_search(dim_numbers_.update_window_dims(), i));
+    }
+
+    for (int64_t i = 0; i < input_rank; i++) {
+      int64_t index_of_input_dim_in_index_vector =
+          FindIndex(dim_numbers_.scatter_dims_to_operand_dims(), i);
+      if (index_of_input_dim_in_index_vector ==
+          dim_numbers_.scatter_dims_to_operand_dims_size()) {
+        input_dim_value_to_index_vector_.push_back(-1);
+      } else {
+        input_dim_value_to_index_vector_.push_back(
+            index_of_input_dim_in_index_vector);
+      }
+    }
+
+    index_vector_index_.resize(scatter_indices_.shape().dimensions_size());
+    input_index_.resize(input_rank);
+    int64_t index_vector_size =
+        scatter_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
+    index_vector_.resize(index_vector_size);
+  }
+
+  // Returns the contribution of scatter_indices to the input index
+  // corresponding to update_index.  See scatter_inner_loop_body.
+  //
+  // This is conceptually  a stateless transformation from update_index to the
+  // scatter input index, but:
+  //
+  //  - Instead of allocating memory to represent the scatter input index on
+  //    every invocation we reuse the same storage for the result
+  //    (input_index_), mutating it in place.
+  //  - Instead of allocating buffers for temporary values like
+  //    index_vector_index_ and index_vector on every invocation, we reuse the
+  //    same storage for all invocations.
+  //
+  // This returns a Span into memory owned by the class.
+  StatusOr<absl::Span<const int64_t>> operator()(
+      absl::Span<const int64_t> update_index) {
+    PropagateUpdateIndexScatterDimsToIndexVectorIndex(update_index);
+    TF_RETURN_IF_ERROR(FetchIndexVector());
+    PropagateIndexVectorToInputIndex();
+    return absl::Span<const int64_t>(input_index_);
+  }
+
+ private:
+  // Propagates the scatter index dimensions from the update index into
+  // index_vector_index_ by mutating index_vector_index_ in place.  Does not
+  // update the dim_numbers.index_vector_dim() dimension -- that's the
+  // dimension we iterate over in FetchIndexVector.
+  void PropagateUpdateIndexScatterDimsToIndexVectorIndex(
+      absl::Span<const int64_t> update_index) {
+    int64_t index_vector_index_i = 0;
+    for (int64_t i = 0, e = update_index.size(); i < e; i++) {
+      if (!update_dim_is_scatter_dims_[i]) {
+        continue;
+      }
+
+      if (index_vector_index_i == dim_numbers_.index_vector_dim()) {
+        index_vector_index_i++;
+      }
+
+      index_vector_index_[index_vector_index_i++] = update_index[i];
+    }
+  }
+
+  // Populates index_vector_ by iterating over scatter_indices_ according to
+  // index_vector_index_.
+  Status FetchIndexVector() {
+    int64_t index_vector_dim = dim_numbers_.index_vector_dim();
+    for (int64_t i = 0, e = index_vector_.size(); i < e; i++) {
+      index_vector_index_[index_vector_dim] = i;
+      index_vector_[i] =
+          *scatter_indices_.GetIntegralAsS64(index_vector_index_);
+    }
+    return Status::OK();
+  }
+
+  // Populates input_index_.
+  void PropagateIndexVectorToInputIndex() {
+    for (int64_t i = 0, e = input_index_.size(); i < e; i++) {
+      if (input_dim_value_to_index_vector_[i] != -1) {
+        input_index_[i] = index_vector_[input_dim_value_to_index_vector_[i]];
+      }
+
+      // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
+      // remains 0, as set by the constructor.
+    }
+  }
+
+  // input_dim_value_to_index_vector_[i] tells us how to compute dimension i
+  // of the input index from the index vector.  See
+  // PropagateIndexVectorToInputIndex.
+  std::vector<int64_t> input_dim_value_to_index_vector_;
+
+  // update_dim_is_scatter_dims_[i] is true iff the update index i is a
+  // scatter dimension.
+  std::vector<bool> update_dim_is_scatter_dims_;
+
+  // The buffer into which we construct an index into scatter_indices_ to
+  // fetch the index vector.
+  std::vector<int64_t> index_vector_index_;
+
+  // The index vector fetched from scatter_indices_.
+  std::vector<int64_t> index_vector_;
+
+  // The result computed by this functor.  operator() returns a Span
+  // into this vector.
+  std::vector<int64_t> input_index_;
+
+  const ScatterDimensionNumbers& dim_numbers_;
+  const Literal& scatter_indices_;
+};
+
+// This functor computes the contribution of the window indices in an update
+// index to an input index.  That is, given an update index I it picks out the
+// update window indices in I and expands it into a window index into the
+// input shape.
+//
+// This is similar to the class HloEvaluator::OutputWindowIndexToInputIndex
+// that does the corresponding function for Gather.
+class UpdateWindowIndexToInputIndex {
+ public:
+  // The constructor does some setup work that is amortized across all
+  // iterations.
+  explicit UpdateWindowIndexToInputIndex(
+      const ScatterDimensionNumbers& dim_numbers, int64_t input_rank,
+      int64_t update_rank) {
+    std::vector<int64_t> window_index_to_update_index;
+    int64_t update_index_count = 0;
+    for (int64_t i = 0; i < update_rank; i++) {
+      if (absl::c_binary_search(dim_numbers.update_window_dims(), i)) {
+        window_index_to_update_index.push_back(update_index_count++);
+      } else {
+        update_index_count++;
+      }
+    }
+
+    int64_t window_dim_count = 0;
+    for (int64_t i = 0; i < input_rank; i++) {
+      if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
+        input_dim_value_to_update_index_.push_back(-1);
+      } else {
+        input_dim_value_to_update_index_.push_back(
+            window_index_to_update_index[window_dim_count++]);
+      }
+    }
+
+    input_index_.resize(input_rank);
+  }
+
+  // Returns the contribution of the window indices to the input index
+  // corresponding to update_index.  See scatter_inner_loop_body.
+  //
+  // This is conceptually a stateless transformation from update_index to the
+  // window input index, but instead of allocating memory to represent the
+  // scatter input index on every invocation we reuse the same storage for the
+  // result (input_index_), mutating it in place.
+  //
+  // This returns a Span into memory owned by the class.
+  StatusOr<absl::Span<const int64_t>> operator()(
+      absl::Span<const int64_t> update_index) {
+    PropagateUpdateIndexWindowDimsToInputIndex(update_index);
+    return absl::Span<const int64_t>(input_index_);
+  }
+
+  // Returns for a given 'input_dim' the corresponding update dimension index,
+  // or -1 if 'input_dim' is an elided window dimension.
+  int64_t input_dim_value_to_update_index(int64_t input_dim) {
+    return input_dim_value_to_update_index_[input_dim];
+  }
+
+ private:
+  // Propagates window dimensions from the update index to input_index_ by
+  // mutating input_index_ in place.
+  void PropagateUpdateIndexWindowDimsToInputIndex(
+      absl::Span<const int64_t> update_index) {
+    for (int64_t i = 0, e = input_index_.size(); i < e; i++) {
+      if (input_dim_value_to_update_index_[i] != -1) {
+        input_index_[i] = update_index[input_dim_value_to_update_index_[i]];
+      }
+
+      // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
+      // remains 0, as set by the constructor.
+    }
+  }
+
+  // input_dim_value_to_index_vector_[i] tells us how to compute dimension i
+  // of the input index from the update index. See
+  // PropagateUpdateIndexWindowDimsToInputIndex.
+  std::vector<int64_t> input_dim_value_to_update_index_;
+
+  // The result computed by this functor.  operator() returns a Span
+  // into this vector.
+  std::vector<int64_t> input_index_;
+};
+}  // namespace
+
+Status HloEvaluator::HandleScatter(HloInstruction* hlo) {
+  auto* scatter = DynCast<HloScatterInstruction>(hlo);
+  const ScatterDimensionNumbers& dim_numbers =
+      scatter->scatter_dimension_numbers();
+  absl::InlinedVector<const Literal*, 1> operands;
+  operands.reserve(scatter->scatter_operand_count());
+  for (HloInstruction* operand_inst : scatter->scatter_operands()) {
+    operands.push_back(&GetEvaluatedLiteralFor(operand_inst));
+  }
+  Literal reshaped_scatter_indices;
+  TF_ASSIGN_OR_RETURN(
+      const Literal& scatter_indices,
+      ReshapedScatterIndices(dim_numbers.index_vector_dim(),
+                             GetEvaluatedLiteralFor(scatter->scatter_indices()),
+                             &reshaped_scatter_indices));
+  absl::InlinedVector<const Literal*, 1> updates;
+  updates.reserve(operands.size());
+  for (HloInstruction* updates_inst : scatter->scatter_updates()) {
+    updates.push_back(&GetEvaluatedLiteralFor(updates_inst));
+  }
+  auto updates_dims = updates[0]->shape().dimensions();
+  auto operand_dims = operands[0]->shape().dimensions();
+
+  ShapeUtil::IndexIterationSpace scatter_indices_iteration_space =
+      IterationSpaceForUpdateScatterIndices(updates_dims, dim_numbers);
+  ShapeUtil::IndexIterationSpace window_indices_iteration_space =
+      IterationSpaceForUpdateWindowIndices(updates_dims, dim_numbers);
+
+  std::vector<int64_t> input_index(operand_dims.size());
+  std::vector<int64_t> update_index(updates_dims.size());
+
+  UpdateScatterIndexToInputIndex update_scatter_index_to_input_index(
+      scatter->scatter_dimension_numbers(),
+      /*input_rank=*/operand_dims.size(), updates_dims.size(),
+      &scatter_indices);
+  UpdateWindowIndexToInputIndex update_window_index_to_input_index(
+      scatter->scatter_dimension_numbers(),
+      /*input_rank=*/operand_dims.size(), updates_dims.size());
+
+  // Initialize the result with the operand. This makes it easier to handle
+  // the updates even when the indices are repeated.
+  Literal result = operands.size() > 1 ? LiteralUtil::MakeTuple(operands)
+                                       : operands[0]->Clone();
+  auto maybe_slice = [](MutableLiteralBase& literal, int idx) {
+    if (literal.shape().IsTuple()) {
+      return MutableBorrowingLiteral(&literal, {idx});
+    }
+    DCHECK_EQ(idx, 0);
+    return MutableBorrowingLiteral(&literal);
+  };
+
+  HloEvaluator embedded_evaluator;
+  auto scatter_inner_loop_body =
+      [&](absl::Span<const int64_t> update_window_index,
+          absl::Span<const int64_t> input_scatter_index,
+          absl::Span<const int64_t> update_scatter_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(
+        absl::Span<const int64_t> input_window_index,
+        update_window_index_to_input_index(update_window_index));
+    for (int i = 0, e = update_index.size(); i < e; i++) {
+      update_index[i] = update_scatter_index[i] + update_window_index[i];
+      DCHECK_LT(update_index[i], updates_dims[i]);
+    }
+    for (int i = 0, e = input_scatter_index.size(); i < e; i++) {
+      int64_t update_dim =
+          update_window_index_to_input_index.input_dim_value_to_update_index(i);
+      // If 'update_dim' is -1, it means 'i' is an elided window dim. This
+      // means we set the iteration index to 0, so for the purpose of the
+      // following calculations we can consider the update dimension size to
+      // be 1.
+      int64_t update_dim_size = update_dim == -1 ? 1 : updates_dims[update_dim];
+      // If any part of the update region is out-of-bounds, then do not
+      // perform any update on the input.
+      if ((input_scatter_index[i] < 0) ||
+          (input_scatter_index[i] > operand_dims[i] - update_dim_size)) {
+        return true;
+      }
+    }
+    for (int i = 0, e = input_index.size(); i < e; i++) {
+      input_index[i] = input_scatter_index[i] + input_window_index[i];
+    }
+
+    absl::InlinedVector<Literal, 2> to_apply_args;
+    to_apply_args.reserve(operands.size() + updates.size());
+    for (int i = 0, n = operands.size(); i < n; ++i) {
+      to_apply_args.push_back(
+          LiteralUtil::GetScalarLiteral(maybe_slice(result, i), input_index));
+    }
+    for (int i = 0, n = operands.size(); i < n; ++i) {
+      to_apply_args.push_back(
+          LiteralUtil::GetScalarLiteral(*updates[i], update_index));
+    }
+    Literal updated_result =
+        embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args)
+            .ConsumeValueOrDie();
+    // Clear visit states so that the we can use the evaluate again on the
+    // same computation.
+    embedded_evaluator.ResetVisitStates();
+    for (int i = 0, n = operands.size(); i < n; ++i) {
+      auto result_slice = maybe_slice(result, i);
+      LiteralUtil::SetScalarLiteral(result_slice, input_index,
+                                    maybe_slice(updated_result, i));
+    }
+    return true;
+  };
+
+  auto scatter_outer_loop_body =
+      [&](absl::Span<const int64_t> update_scatter_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(
+        absl::Span<const int64_t> input_scatter_index,
+        update_scatter_index_to_input_index(update_scatter_index));
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+        updates[0]->shape(), window_indices_iteration_space,
+        [&](absl::Span<const int64_t> update_window_index) {
+          return scatter_inner_loop_body(
+              update_window_index, input_scatter_index, update_scatter_index);
+        }));
+    return true;
+  };
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      updates[0]->shape(), scatter_indices_iteration_space,
+      scatter_outer_loop_body));
+  evaluated_[scatter] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
   TF_RET_CHECK(broadcast->shape().element_type() ==
@@ -2616,6 +3030,56 @@ Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleAsyncStart(HloInstruction* async_start) {
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(async_start->operands().size());
+  for (auto operand : async_start->operands()) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
+  TF_ASSIGN_OR_RETURN(
+      Literal result,
+      embedded_evaluator.Evaluate(*async_start->async_wrapped_computation(),
+                                  arg_literals));
+
+  evaluated_[async_start] = Literal(async_start->shape());
+  // Copy the operand values to the index {0, i} of the output.
+  for (int i = 0; i < arg_literals.size(); ++i) {
+    TF_RETURN_IF_ERROR(evaluated_[async_start].CopyFrom(
+        *arg_literals[i], /*dest_shape_index=*/{0, i},
+        /*src_shape_index=*/{}));
+  }
+  // Move the output value to the index {1} of the output.
+  TF_RETURN_IF_ERROR(evaluated_[async_start].MoveFrom(
+      std::move(result), /*dest_shape_index=*/{1}));
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAsyncUpdate(HloInstruction* async_update) {
+  const Literal& operand_tuple_literal =
+      GetEvaluatedLiteralFor(async_update->operand(0));
+  evaluated_[async_update] = Literal(async_update->shape());
+  TF_RETURN_IF_ERROR(evaluated_[async_update].CopyFrom(operand_tuple_literal,
+                                                       /*dest_shape_index=*/{},
+                                                       /*src_shape_index=*/{}));
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAsyncDone(HloInstruction* async_done) {
+  const Literal& operand_tuple_literal =
+      GetEvaluatedLiteralFor(async_done->operand(0));
+  evaluated_[async_done] = Literal(async_done->shape());
+  TF_RETURN_IF_ERROR(evaluated_[async_done].CopyFrom(operand_tuple_literal,
+                                                     /*dest_shape_index=*/{},
+                                                     /*src_shape_index=*/{1}));
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   if (copy_start->user_count() != 1 ||
       copy_start->users().at(0)->opcode() != HloOpcode::kCopyDone) {
@@ -2664,11 +3128,12 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
     arg_literals.push_back(&arg_literal);
   }
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   TF_ASSIGN_OR_RETURN(Literal result,
-                      embedded_evaluator.Evaluate(*computation, arg_literals));
+                      embedded_evaluator->Evaluate(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -2699,10 +3164,11 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
     arg_literals.push_back(&arg_literal);
   }
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator.Evaluate(
+  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator->Evaluate(
                                           *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
@@ -2724,11 +3190,12 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   const auto& branch_computation_arg =
       GetEvaluatedLiteralFor(conditional->operand(1 + branch_index));
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   TF_ASSIGN_OR_RETURN(Literal result,
-                      embedded_evaluator.Evaluate(
+                      embedded_evaluator->Evaluate(
                           *conditional->branch_computation(branch_index),
                           {&branch_computation_arg}));
 
@@ -2752,19 +3219,6 @@ Status HloEvaluator::HandleSelect(HloInstruction* select) {
   }
 
   return DefaultAction(select);
-}
-
-Status HloEvaluator::HandleTupleSelect(HloInstruction* tuple_select) {
-  const auto& pred = GetEvaluatedLiteralFor(tuple_select->operand(0));
-  const auto& on_true = GetEvaluatedLiteralFor(tuple_select->operand(1));
-  const auto& on_false = GetEvaluatedLiteralFor(tuple_select->operand(2));
-
-  if (pred.Get<bool>({})) {
-    evaluated_[tuple_select] = on_true.Clone();
-  } else {
-    evaluated_[tuple_select] = on_false.Clone();
-  }
-  return Status::OK();
 }
 
 namespace {
@@ -2871,10 +3325,12 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   }
   bool keep_going = true;
   int64_t iteration_count = 0;
-  HloEvaluator cond_evaluator(max_loop_iterations_);
-  cond_evaluator.set_dynamic_dimension_inference(dynamic_dimension_inference_);
-  HloEvaluator loop_body_evaluator(max_loop_iterations_);
-  loop_body_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> cond_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  cond_evaluator->set_dynamic_dimension_inference(dynamic_dimension_inference_);
+  std::unique_ptr<HloEvaluator> loop_body_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  loop_body_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
@@ -2889,15 +3345,15 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       }
     }
     TF_ASSIGN_OR_RETURN(auto cond_val,
-                        cond_evaluator.Evaluate(*cond_comp, {&lcv}));
+                        cond_evaluator->Evaluate(*cond_comp, {&lcv}));
     keep_going = cond_val.GetFirstElement<bool>();
     if (keep_going) {
       TF_ASSIGN_OR_RETURN(auto body_val,
-                          loop_body_evaluator.Evaluate(*body_comp, {&lcv}));
+                          loop_body_evaluator->Evaluate(*body_comp, {&lcv}));
       VLOG(3) << "Loop iteration result: " << body_val.ToString();
       lcv = std::move(body_val);
-      cond_evaluator.ResetVisitStates();
-      loop_body_evaluator.ResetVisitStates();
+      cond_evaluator->ResetVisitStates();
+      loop_body_evaluator->ResetVisitStates();
     }
   }
   evaluated_[while_hlo] = std::move(lcv);
@@ -3026,7 +3482,8 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
       << "Unexpected out-of-bound sort dimension " << sort_dim
       << " accessing increment of size " << increment.size();
   increment[sort_dim] = sort_dim_elements;
-  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
   // Iterate through each dimension except 'sort_dim'.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       key_shape, zero_base, key_shape.dimensions(), increment,
@@ -3048,7 +3505,8 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
         std::vector<int64_t> indices_to_sort(sort_dim_elements);
         std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
         Status compare_status = Status::OK();
-        auto comparator = [sort, &compare_status, &embedded_evaluator,
+        auto comparator = [sort, &compare_status,
+                           embedded_evaluator = embedded_evaluator.get(),
                            &literals_to_sort](int64_t a, int64_t b) {
           std::vector<Literal> literals;
           literals.reserve(2 * sort->operand_count());
@@ -3073,10 +3531,10 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
                             [](const Literal& literal) { return &literal; });
 
           auto computed_result =
-              embedded_evaluator.Evaluate(*sort->to_apply(), literal_ptrs);
+              embedded_evaluator->Evaluate(*sort->to_apply(), literal_ptrs);
           // Clear visit states so that we can use the evaluator again
           // on the same computation.
-          embedded_evaluator.ResetVisitStates();
+          embedded_evaluator->ResetVisitStates();
           if (!computed_result.ok()) {
             compare_status = computed_result.status();
             return false;
@@ -3310,7 +3768,8 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
   absl::InlinedVector<Literal, 1> results(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
     results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
@@ -3320,7 +3779,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
       output_shape, [&](absl::Span<const int64_t> output_index) {
         return GenerateReduceOutputElement(
             is_tuple, output_index, init_values, input_args,
-            absl::Span<Literal>(results), function, &embedded_evaluator,
+            absl::Span<Literal>(results), function, embedded_evaluator.get(),
             arg_dim_steps, arg_dim_counts, result_to_arg_index);
       }));
 

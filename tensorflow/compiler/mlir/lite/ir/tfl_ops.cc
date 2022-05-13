@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
@@ -64,7 +65,7 @@ namespace {
 
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                             OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
   Type type;
   // If the operand list is in-between parentheses, then we have a generic form.
   // (see the fallback in `printOneResultOp`).
@@ -403,11 +404,14 @@ struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
   }
 };
 
-TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
-    : Dialect(/*name=*/"tfl", context, TypeID::get<TensorFlowLiteDialect>()) {
+void TFLDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
@@ -994,7 +998,7 @@ LogicalResult FullyConnectedOp::verify() {
   // Input's element size must be multiple of parameter's z_in dimension.
   const int z_in = filter_type.getDimSize(1);
   const int num_input_elements = input_type.getNumElements();
-  if (num_input_elements % z_in != 0) {
+  if (z_in != 0 && num_input_elements % z_in != 0) {
     return op.emitOpError(llvm::formatv(
                "expect 'input' num_elements % {0} == 0, got input type ", z_in))
            << input_type;
@@ -1017,7 +1021,7 @@ LogicalResult FullyConnectedOp::verify() {
              << output_type;
     }
 
-    if (num_input_elements / z_in != num_output_elements / z_out) {
+    if (z_in != 0 && num_input_elements / z_in != num_output_elements / z_out) {
       return op.emitOpError(
           "num_input_elements / z_in != num_output_elements / z_out");
     }
@@ -3638,16 +3642,6 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   return false;
 }
 
-LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
-  if (ops.empty()) return success();
-
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // LogisticOp
 //===----------------------------------------------------------------------===//
@@ -3814,6 +3808,10 @@ bool NoValueOp::isBuildableWith(Attribute value, Type type) {
 }  // namespace TFL
 }  // namespace mlir
 
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.cc.inc"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
 
@@ -3822,9 +3820,8 @@ namespace TFL {
 
 #include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
-Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
-                                                      Attribute value,
-                                                      Type type, Location loc) {
+Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
   // If this is an opaque elements attribute or the result type doesn't match
   // the attribute type, then generate a tfl.pseudo_const.
   if (value.isa<OpaqueElementsAttr>() ||

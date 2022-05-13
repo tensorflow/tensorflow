@@ -20,9 +20,15 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+namespace func {
+class FuncOp;
+}  // namespace func
+
 namespace mhlo {
 
-std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
 std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
 

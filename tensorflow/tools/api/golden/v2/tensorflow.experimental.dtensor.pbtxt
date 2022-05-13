@@ -1,0 +1,135 @@
+path: "tensorflow.experimental.dtensor"
+tf_module {
+  member {
+    name: "DTensorCheckpoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DVariable"
+    mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
+  }
+  member {
+    name: "Layout"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MATCH"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "Mesh"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UNSHARDED"
+    mtype: "<type \'str\'>"
+  }
+  member_method {
+    name: "call_with_layout"
+    argspec: "args=[\'fn\', \'layout\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "check_layout"
+    argspec: "args=[\'tensor\', \'layout\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "client_id"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "copy_to_mesh"
+    argspec: "args=[\'tensor\', \'layout\', \'source_layout\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "create_distributed_mesh"
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'num_global_devices\', \'num_clients\', \'client_id\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'None\', \'CPU\'], "
+  }
+  member_method {
+    name: "create_mesh"
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "device_name"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_save_as_bf16"
+    argspec: "args=[\'variables\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "fetch_layout"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "full_job_name"
+    argspec: "args=[\'task_id\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "heartbeat_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "initialize_multi_client"
+    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "initialize_tpu_system"
+    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "job_name"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "jobs"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_devices"
+    argspec: "args=[\'device_type\', \'for_client_id\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "name_based_restore"
+    argspec: "args=[\'mesh\', \'checkpoint_prefix\', \'name_tensor_dict\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "name_based_save"
+    argspec: "args=[\'mesh\', \'checkpoint_prefix\', \'name_tensor_dict\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "num_clients"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "num_global_devices"
+    argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "num_local_devices"
+    argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "pack"
+    argspec: "args=[\'tensors\', \'layout\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "relayout"
+    argspec: "args=[\'tensor\', \'layout\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run_on"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
+  member_method {
+    name: "sharded_save"
+    argspec: "args=[\'mesh\', \'file_prefix\', \'tensor_names\', \'shape_and_slices\', \'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "shutdown_tpu_system"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unpack"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+}

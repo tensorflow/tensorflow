@@ -1408,17 +1408,6 @@ class TensorArraySpec(type_spec.TypeSpec):
             self._element_shape.is_compatible_with(other._element_shape) and
             self._dynamic_size == other._dynamic_size)
 
-  # TODO(b/221472813): Migrate logic to most_specific_common_supertype.
-  def most_specific_compatible_type(self, other):
-    """Deprecated. Use most_specific_common_supertype instead."""
-    # pylint: disable=protected-access
-    if not self.is_compatible_with(other):
-      raise ValueError(f"Type `{self}` is not compatible with `{other}`.")
-    infer_shape = self._infer_shape and other._infer_shape
-    return TensorArraySpec(
-        self._element_shape.most_specific_compatible_shape(
-            other._element_shape), self._dtype, self._dynamic_size, infer_shape)
-
   def _serialize(self):
     return (self._element_shape, self._dtype, self._dynamic_size,
             self._infer_shape)

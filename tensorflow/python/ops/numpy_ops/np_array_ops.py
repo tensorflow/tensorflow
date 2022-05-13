@@ -169,6 +169,11 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   if copy:
     result_t = array_ops.identity(result_t)
 
+  max_ndmin = 32
+  if ndmin > max_ndmin:
+    raise ValueError('ndmin bigger than allowable number of dimensions: '
+                     f'{max_ndmin}.')
+
   if ndmin == 0:
     return result_t
 
@@ -1010,6 +1015,11 @@ def _split_on_axis(np_fun_name, axis):
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    if isinstance(indices_or_sections, int):
+      ary_shape = ary.shape[axis]
+      if ary_shape is not None and ary_shape % indices_or_sections:
+        raise ValueError(
+            'array split does not result in an equal division')
     return split(ary, indices_or_sections, axis=axis)
 
   return f

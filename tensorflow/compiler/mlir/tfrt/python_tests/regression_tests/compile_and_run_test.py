@@ -28,16 +28,19 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
-FLAGS = flags.FLAGS
-flags.DEFINE_boolean('compare_with_tensorflow', None,
-                     'Whether the results should be compared to Tensorflow')
-flags.DEFINE_integer('input_data_seed', None,
-                     'The random seed to be used for initializing.')
-flags.DEFINE_string(
+_COMPARE_WITH_TENSORFLOW = flags.DEFINE_boolean(
+    'compare_with_tensorflow', None,
+    'Whether the results should be compared to Tensorflow')
+_INPUT_DATA_SEED = flags.DEFINE_integer(
+    'input_data_seed', None, 'The random seed to be used for initializing.')
+_ONE_SHOT_BUFFERIZE = flags.DEFINE_boolean(
+    'one_shot_bufferize', None,
+    'Whether one-shot bufferization should be enabled')
+_TEST_FILE_NAME = flags.DEFINE_string(
     'test_file_name', None,
     'The filename of the file containing the MLIR IR that should be tested')
-flags.DEFINE_boolean('vectorize', None,
-                     'Whether vectorization should be enabled')
+_VECTORIZE = flags.DEFINE_boolean('vectorize', None,
+                                  'Whether vectorization should be enabled')
 
 jitrt = tf_jitrt.TfJitRtExecutor()
 
@@ -80,7 +83,7 @@ class CompileAndRunTest(test.TestCase):
     raise Exception(f'unknown scalar type: {mlir_type}')
 
   def test_compile_and_run(self):
-    filename = FLAGS.test_file_name
+    filename = _TEST_FILE_NAME.value
     if not os.path.isabs(filename):
       filename = os.path.join(resource_loader.get_data_files_path(), filename)
     with gfile.GFile(filename, mode='r') as f:
@@ -101,10 +104,11 @@ class CompileAndRunTest(test.TestCase):
           mlir_function,
           function_name,
           tf_jitrt.Specialization.ENABLED,
-          vectorize=FLAGS.vectorize)
+          vectorize=_VECTORIZE.value,
+          one_shot_bufferize=_ONE_SHOT_BUFFERIZE.value)
       end = time.perf_counter()
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
-      np.random.seed(FLAGS.input_data_seed)
+      np.random.seed(_INPUT_DATA_SEED.value)
       args = []
       for arg_attr in arg_attrs:
         attr_dict = ir.DictAttr(arg_attr)
@@ -127,7 +131,7 @@ class CompileAndRunTest(test.TestCase):
       result = jitrt.execute(compiled, args)
       end = time.perf_counter()
       logging.info(f'executed {filename} in {end-start:0.4f} seconds')
-      if FLAGS.compare_with_tensorflow:
+      if _COMPARE_WITH_TENSORFLOW.value:
         start = time.perf_counter()
         expected = tfrt_fallback.run_tfrt_fallback(mlir_function, function_name,
                                                    args)
@@ -140,6 +144,7 @@ class CompileAndRunTest(test.TestCase):
 if __name__ == '__main__':
   flags.mark_flag_as_required('compare_with_tensorflow')
   flags.mark_flag_as_required('input_data_seed')
+  flags.mark_flag_as_required('one_shot_bufferize')
   flags.mark_flag_as_required('test_file_name')
   flags.mark_flag_as_required('vectorize')
   test.main()

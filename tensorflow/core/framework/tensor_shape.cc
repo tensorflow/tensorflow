@@ -717,6 +717,13 @@ void TensorShapeBase<Shape>::AsProto(TensorShapeProto* proto) const {
 }
 
 template <class Shape>
+TensorShapeProto TensorShapeBase<Shape>::AsProto() const {
+  TensorShapeProto out;
+  AsProto(&out);
+  return out;
+}
+
+template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
   return TensorShapeIter<Shape>(static_cast<const Shape*>(this), 0);
 }

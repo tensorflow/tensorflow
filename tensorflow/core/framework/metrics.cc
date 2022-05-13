@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <cstdint>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -148,6 +151,18 @@ auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
     "Number of tf.data service client iterators created.", "worker_uid",
     "deployment_mode", "processing_mode", "is_coordinated_read");
 
+auto* tf_data_service_multi_trainer_cache_queries_counter =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/service/multi_trainer_cache_queries",
+        "tf.data service multi-client cache queries counter. The result can be "
+        "hit or miss.",
+        "cache_hit");
+
+auto* tf_data_service_multi_trainer_cache_size_bytes =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/multi_trainer_cache_size_bytes",
+        "tf.data service multi-client cache memory usage in bytes.");
+
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -242,6 +257,11 @@ auto* test_counters =
 auto* tpu_op_error_counter = monitoring::Counter<2>::New(
     "/tensorflow/tpu/op_error_count",
     "Count the tpu related errors by op and error_type.", "op", "error_type");
+
+auto* eager_client_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/core/eager_client_error_count",
+    "Count the errors in eager client as a central place.", "error_source",
+    "error_type");
 
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter =
@@ -361,6 +381,17 @@ void RecordTFDataServiceClientIterators(
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
       ->IncrementBy(1);
+}
+
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit) {
+  std::string cache_hit_str = cache_hit ? "true" : "false";
+  tf_data_service_multi_trainer_cache_queries_counter->GetCell(cache_hit_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceMultiTrainerCacheSizeBytes(size_t bytes) {
+  tf_data_service_multi_trainer_cache_size_bytes->GetCell()->Set(
+      static_cast<int64_t>(bytes));
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {
@@ -524,6 +555,11 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
 
 void UpdateTpuErrorCounter(const string& op, const string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
+}
+
+void UpdateEagerClientErrorCounter(const string& error_source,
+                                   const string& error_type) {
+  eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

@@ -27,6 +27,7 @@ limitations under the License.
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -78,6 +79,10 @@ void PreluTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data,

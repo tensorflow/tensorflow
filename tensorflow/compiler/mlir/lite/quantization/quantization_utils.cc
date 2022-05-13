@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -705,19 +707,52 @@ static bool PreferResultScale(Operation* op) {
   return false;
 }
 
-// The stats op of some of the ops can be redundant. The current implementation
-// only considers the ops with restricted output params.
-static bool IsStatsRedundant(Operation* op,
-                             OpQuantSpecGetter op_quant_spec_getter) {
-  return llvm::isa<FixedOutputRangeInterface>(op);
+std::unique_ptr<OpQuantScaleSpec> GetDefaultQuantScaleSpec(Operation* op) {
+  auto spec = std::make_unique<OpQuantScaleSpec>();
+  if (llvm::isa<SameScalesOpInterface>(op)) {
+    spec->has_same_scale_requirement = true;
+    spec->required_same_scale_func = [op](bool sign, int bit_width) {
+      return llvm::cast<SameScalesOpInterface>(op)
+          .RequiredSameOperandsAndResultsScale(sign, bit_width);
+    };
+    spec->required_same_quantized_axes_func = [op]() {
+      return llvm::cast<SameScalesOpInterface>(op).RequiredSameQuantizedAxes();
+    };
+  }
+  if (llvm::isa<FixedOutputRangeInterface>(op)) {
+    spec->has_fixed_output_range = true;
+    spec->fixed_output_range_func = [op](bool sign, int bit_width) {
+      return llvm::cast<FixedOutputRangeInterface>(op).GetFixedOutputRange(
+          sign, bit_width);
+    };
+  }
+  return spec;
 }
 
-bool RemoveRedundantStatsOps(mlir::FuncOp func,
-                             OpQuantSpecGetter op_quant_spec_getter) {
+// The stats op of some of the ops can be redundant. The current implementation
+// only considers the ops with restricted output params.
+static bool IsStatsRedundant(
+    Operation* op, OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter) {
+  // If it has FixedOutputRangeInterface, no need to manually create spec.
+  return llvm::isa<FixedOutputRangeInterface>(op) ||
+         op_quant_scale_spec_getter(op)->has_fixed_output_range;
+}
+
+static bool IsSameScaleOp(Operation* op,
+                          OpQuantScaleSpecGetter op_quant_scale_spec_getter) {
+  // If it has SameScalesOpInterface, no need to manually create spec.
+  return llvm::dyn_cast<SameScalesOpInterface>(op) ||
+         op_quant_scale_spec_getter(op)->has_same_scale_requirement;
+}
+
+bool RemoveRedundantStatsOps(
+    mlir::func::FuncOp func, OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter) {
   llvm::SmallVector<quant::StatisticsOp, 16> all_stats_ops;
   llvm::DenseSet<Operation*> redundant_stats_ops;
 
-  // Step 0: remove the quant::StatisticsOp which are used by the tfl.quantize
+  // Step 0: remove the quant::StatisticsOp which are used by the quant.qcast
   // op in case it overrides the information from training FakeQuant ops.
   func.walk([&](quant::QuantizeCastOp q) {
     auto input_op = q.arg().getDefiningOp();
@@ -740,7 +775,8 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.arg().getDefiningOp()) {
-      if (IsStatsRedundant(def, op_quant_spec_getter)) {
+      if (IsStatsRedundant(def, op_quant_spec_getter,
+                           op_quant_scale_spec_getter)) {
         redundant_stats_ops.insert(stats_op);
       }
     }
@@ -748,20 +784,20 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     for (auto user : stats_op.getResult().getUsers()) {
       // We don't propagate this parameter down if it has multiple operands.
       // We want to use the result parameter scales instead.
-
-      if (llvm::dyn_cast<SameScalesOpInterface>(user) &&
-          !PreferResultScale(user)) {
-        for (Value res : user->getResults()) {
-          if (res.hasOneUse()) {
-            if (auto next_stats = llvm::dyn_cast<quant::StatisticsOp>(
-                    *res.getUsers().begin())) {
-              // quantization parameters can be propagated to next_stats
-              redundant_stats_ops.insert(next_stats);
-              // add next_stats to the work list so propagation can
-              // continue.
-              all_stats_ops.push_back(next_stats);
-            }
-          }
+      if (!IsSameScaleOp(user, op_quant_scale_spec_getter) ||
+          PreferResultScale(user)) {
+        continue;
+      }
+      for (Value res : user->getResults()) {
+        if (!res.hasOneUse()) {
+          continue;
+        }
+        if (auto next_stats =
+                llvm::dyn_cast<quant::StatisticsOp>(*res.getUsers().begin())) {
+          // quantization parameters can be propagated to next_stats
+          redundant_stats_ops.insert(next_stats);
+          // add next_stats to the work list so propagation can continue.
+          all_stats_ops.push_back(next_stats);
         }
       }
     }
@@ -780,13 +816,14 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.arg().getDefiningOp()) {
-      if (llvm::dyn_cast<SameScalesOpInterface>(def)) {
-        for (auto input : def->getOperands()) {
-          if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
-                  input.getDefiningOp())) {
-            redundant_stats_ops.insert(next_stats);
-            all_stats_ops.push_back(next_stats);
-          }
+      if (!IsSameScaleOp(def, op_quant_scale_spec_getter)) {
+        continue;
+      }
+      for (auto input : def->getOperands()) {
+        if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
+                input.getDefiningOp())) {
+          redundant_stats_ops.insert(next_stats);
+          all_stats_ops.push_back(next_stats);
         }
       }
     }

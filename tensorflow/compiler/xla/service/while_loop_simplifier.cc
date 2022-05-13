@@ -38,14 +38,6 @@ namespace m = match;
 using absl::optional;
 using hlo_query::ContainsInstrWithOpcode;
 
-// A helper function that copy the raw JSON-encoded backend config from the old
-// while op to the new one.
-void CopyBackendConfig(HloInstruction* old_while_op,
-                       HloInstruction* new_while_op) {
-  new_while_op->set_raw_backend_config_string(
-      old_while_op->raw_backend_config_string());
-}
-
 // A helper function that copy the frontend attributes from the old while op to
 // the new one.
 void CopyFrontendAttributes(HloInstruction* old_while_op,
@@ -81,14 +73,14 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   }
 
   // Compute the shape of the while op after we remove the dead indices.
-  std::vector<Shape> new_while_tuple_elem_shapes;
+  std::vector<const Shape*> new_while_tuple_elem_shapes;
   new_while_tuple_elem_shapes.reserve(new_to_old_tuple_idx.size());
   for (int64_t old_idx : new_to_old_tuple_idx) {
     new_while_tuple_elem_shapes.push_back(
-        while_init->shape().tuple_shapes(old_idx));
+        &while_init->shape().tuple_shapes(old_idx));
   }
   Shape new_while_shape =
-      ShapeUtil::MakeTupleShape(new_while_tuple_elem_shapes);
+      ShapeUtil::MakeTupleShapeWithPtrs(new_while_tuple_elem_shapes);
 
   // Returns a map from elements in the computation to new instructions which
   // replace the old instructions after we remove unused elements from the while
@@ -179,7 +171,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       new_while_init));
-  CopyBackendConfig(while_op, new_while_op);
+  new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
@@ -666,13 +658,14 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 
   // OK, we found some constant elements of the while parameter!  Eliminate
   // them.
-  std::vector<Shape> new_while_shape_elems;
+  std::vector<const Shape*> new_while_shape_elems;
   for (int i = 0; i < while_shape.tuple_shapes_size(); ++i) {
     if (!constant_tuple_indices.count(i)) {
-      new_while_shape_elems.push_back(while_shape.tuple_shapes(i));
+      new_while_shape_elems.push_back(&while_shape.tuple_shapes(i));
     }
   }
-  Shape new_while_shape = ShapeUtil::MakeTupleShape(new_while_shape_elems);
+  Shape new_while_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs(new_while_shape_elems);
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -761,7 +754,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       add_new_instr(remove_constant_elems(while_init))));
-  CopyBackendConfig(while_op, new_while_op);
+  new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, add_constant_elems(new_while_op)));
@@ -1020,14 +1013,15 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
     return false;
   }
 
-  std::vector<Shape> flattened_shape_elems;
+  std::vector<const Shape*> flattened_shape_elems;
   ShapeUtil::ForEachSubshape(while_shape,
                              [&](const Shape& s, const ShapeIndex& /*index*/) {
                                if (!s.IsTuple()) {
-                                 flattened_shape_elems.push_back(s);
+                                 flattened_shape_elems.push_back(&s);
                                }
                              });
-  Shape flattened_shape = ShapeUtil::MakeTupleShape(flattened_shape_elems);
+  Shape flattened_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs(flattened_shape_elems);
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -1091,7 +1085,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       computation->AddInstruction(flattened(while_init))));
-  CopyBackendConfig(while_op, new_while_op);
+  new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(while_op, nested(new_while_op)));
@@ -1330,7 +1324,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       get_new_while_init(while_init)));
-  CopyBackendConfig(while_op, new_while);
+  new_while->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, convert_to_old_form(new_while)));

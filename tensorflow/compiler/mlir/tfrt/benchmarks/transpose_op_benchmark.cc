@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* mlir_2d_input = R"(
-func @compute(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {{
+func.func @compute(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {{
     %0 = "tf.Const"()
          {{value = dense<[1, 0]> : tensor<2xi64>,
           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -30,12 +30,12 @@ func @compute(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {{
     %1 = "tf.Transpose"(%arg0, %0)
          {{device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?xf32>, tensor<2xi64>) -> tensor<?x?xf32>
-    return %1 : tensor<?x?xf32>
+    func.return %1 : tensor<?x?xf32>
   }
 )";
 
 static const char* mlir_3d_input = R"(
-func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {{
+func.func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {{
     %0 = "tf.Const"()
          {{value = dense<[{0}, {1}, {2}]> : tensor<3xi64>,
           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -43,7 +43,7 @@ func @compute(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {{
     %1 = "tf.Transpose"(%arg0, %0)
          {{device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-    return %1 : tensor<?x?x?xf32>
+    func.return %1 : tensor<?x?x?xf32>
   }
 )";
 

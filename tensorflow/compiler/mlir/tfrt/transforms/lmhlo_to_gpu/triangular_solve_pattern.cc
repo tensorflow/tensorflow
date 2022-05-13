@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace {
 
 struct TriangularSolveRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::TriangularSolveOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::TriangularSolveOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::TriangularSolveOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::TriangularSolveOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::TriangularSolveOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -42,7 +42,8 @@ struct TriangularSolveRewritePattern
         !has_fortran_layout(op.layout_output()))
       return rewriter.notifyMatchFailure(op, "expected fortran layout");
 
-    auto transpose_or = xla::ConvertTranspose(op.transpose_a());
+    auto transpose_or =
+        xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(op.transpose_a()));
     if (!transpose_or.ok()) {
       return rewriter.notifyMatchFailure(op,
                                          transpose_or.status().error_message());

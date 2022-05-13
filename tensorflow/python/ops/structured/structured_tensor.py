@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -485,7 +484,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       msg = '`StructuredTensor.with_updates` failed'
       if error_prefix:
         msg = '{} for field {}'.format(msg, error_prefix)
-      raise ValueError('{}: {}'.format(msg, e))
+      raise ValueError(msg) from e
 
   def _promote_helper(self, source_path, new_parent_path):
     """Creates a promoted field without adding it to the structure.
@@ -1301,8 +1300,9 @@ def _convert_to_structured_field_value(value):
   else:
     try:
       return ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError('Unexpected type for value in `fields`: %r' % value)
+    except (ValueError, TypeError) as e:
+      raise TypeError('Unexpected type for value in `fields`: %r' %
+                      value) from e
 
 
 def _find_shape_dtype(fields, nrows, row_partitions):
@@ -1380,7 +1380,7 @@ def _merge_row_partitions(row_partitions, value, rank, dtype, validate):
     return tuple(value_row_partitions)
   else:
     return tuple([
-        p1.merge_precomputed_encodings(p2, validate)
+        p1._merge_precomputed_encodings(p2, validate)  # pylint: disable=protected-access
         for (p1, p2) in zip(row_partitions, value_row_partitions)
     ])
 

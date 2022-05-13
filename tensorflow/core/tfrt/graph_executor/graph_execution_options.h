@@ -35,6 +35,13 @@ struct GraphExecutionOptions {
   // also run on the functions.
   bool run_placer_grappler_on_functions = false;
 
+  // If true, the function optimizer in the grappler will be enabled, and
+  // optimizations like function inlining will be applied.
+  bool enable_grappler_function_optimizer = false;
+
+  // Whether to enable TFRT GPU.
+  bool enable_tfrt_gpu = false;
+
   // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
   // more details. It must not be nullptr;
   const tensorflow::tfrt_stub::Runtime* runtime = nullptr;

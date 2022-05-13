@@ -36,6 +36,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import slicing
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import deprecation
@@ -1190,6 +1191,25 @@ class LinearOperator(
     # class `CompositeTensor` can be constructed and passed to the
     # `@make_composite_tensor` decorator.
     pass
+
+  def __getitem__(self, slices):
+    return slicing.batch_slice(self, params_overrides={}, slices=slices)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    """A dict of names to number of dimensions contributing to an operator.
+
+    This is a dictionary of parameter names to `int`s specifying the
+    number of right-most dimensions contributing to the **matrix** shape of the
+    densified operator.
+    If the parameter is a `Tensor`, this is mapped to an `int`.
+    If the parameter is a `LinearOperator` (called `A`), this specifies the
+    number of batch dimensions of `A` contributing to this `LinearOperator`s
+    matrix shape.
+    If the parameter is a structure, this is a structure of the same type of
+    `int`s.
+    """
+    return ()
 
 
 class _LinearOperatorSpec(type_spec.BatchableTypeSpec):

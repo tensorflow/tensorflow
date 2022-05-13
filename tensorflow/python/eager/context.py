@@ -498,6 +498,7 @@ class Context(object):
     self._device_lock = threading.Lock()
     self._physical_devices = None
     self._physical_device_to_index = None
+    self._pluggable_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -1153,6 +1154,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
       config.graph_options.rewrite_options.min_graph_nodes = nodes
@@ -1204,7 +1206,13 @@ class Context(object):
     virtual_devices = []
     gpu_index = -1
     memory_growths = set()
-    for dev in self.list_physical_devices("GPU"):
+    gpu_devices = self.list_physical_devices("GPU")
+    pluggable_devices = self._pluggable_devices
+    compatible_devices = gpu_devices
+    for dev in pluggable_devices:
+      if dev not in gpu_devices:
+        compatible_devices.append(dev)
+    for dev in compatible_devices:
       gpu_index += 1
 
       if dev not in self._visible_device_list:
@@ -1430,10 +1438,19 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
+      # We maintain a seperate list just so we can check whether the device in
+      # _physical_devices is a PluggableDevice.
+      pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+      self._pluggable_devices = [
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in pluggable_devs
+      ]
 
       self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
+          d: None
+          for d in self._physical_devices
+          if d.device_type == "GPU" or d in self._pluggable_devices
       }
 
     # Import device settings that may have been passed into the constructor
@@ -1623,8 +1640,9 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
-    if dev.device_type != "GPU":
-      raise ValueError("Cannot set memory growth on non-GPU devices")
+    if dev.device_type != "GPU" and dev not in self._pluggable_devices:
+      raise ValueError(
+          "Cannot set memory growth on non-GPU and non-Pluggable devices")
 
     if self._memory_growth_map.get(dev) == enable:
       return
@@ -1780,6 +1798,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:
       options["min_graph_nodes"] = rewrite_options.min_graph_nodes

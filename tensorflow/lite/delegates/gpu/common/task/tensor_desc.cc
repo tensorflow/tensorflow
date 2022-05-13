@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -86,123 +87,25 @@ std::string AddressModeToCLSampler(AddressMode address_mode) {
   }
 }
 
-std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type,
-                               int vec_size) {
-  if (gpu_info.IsApiOpenCl()) {
-    return ToCLDataType(data_type, vec_size);
-  } else if (gpu_info.IsApiMetal()) {
-    return ToMetalDataType(data_type, vec_size);
-  } else if (gpu_info.IsGlsl()) {
-    return ToGlslShaderDataType(data_type, vec_size, true,
-                                gpu_info.IsGlslSupportsExplicitFp16());
-  } else {
-    return "";
-  }
-}
-
-std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
-                         int vec_size) {
-  if (gpu_info.IsApiOpenCl()) {
-    return "(" + ToCLDataType(data_type, vec_size) + ")(0)";
-  } else if (gpu_info.IsApiMetal()) {
-    return ToMetalDataType(data_type, vec_size) + "(0)";
-  } else if (gpu_info.IsGlsl()) {
-    return ToGlslShaderDataType(data_type, vec_size, false,
-                                gpu_info.IsGlslSupportsExplicitFp16()) +
-           "(0)";
-  } else {
-    return "";
-  }
-}
-
-std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
-                              DataType dst_type, int vec_size) {
-  if (src_type == dst_type) {
-    return "";
-  }
-  bool need_explicit_conversion = true;
-  switch (dst_type) {
-    case DataType::FLOAT32:
-    case DataType::FLOAT16:
-      if (gpu_info.IsGlslSupportsExplicitFp16()) {
-        if (src_type == dst_type) {
-          need_explicit_conversion = false;
-        }
-      } else {
-        if (src_type == DataType::FLOAT32 || src_type == DataType::FLOAT16) {
-          need_explicit_conversion = false;
-        }
-      }
-      break;
-    case DataType::INT32:
-    case DataType::INT16:
-    case DataType::INT8:
-      if (src_type == DataType::INT32 || src_type == DataType::INT16 ||
-          src_type == DataType::INT8) {
-        need_explicit_conversion = false;
-      }
-      break;
-    case DataType::UINT32:
-    case DataType::UINT16:
-    case DataType::UINT8:
-      if (src_type == DataType::UINT32 || src_type == DataType::UINT16 ||
-          src_type == DataType::UINT8) {
-        need_explicit_conversion = false;
-      }
-      break;
-    default:
-      break;
-  }
-  if (need_explicit_conversion) {
-    return ToGlslShaderDataType(
-        dst_type, vec_size,
-        /*add_precision*/ false,
-        /*explicit_fp16*/ gpu_info.IsGlslSupportsExplicitFp16());
-  } else {
-    return "";
-  }
-}
-
-std::string GetConvertionForBuffer(const GpuInfo& gpu_info, DataType src_type,
-                                   DataType dst_type) {
-  if (src_type != dst_type) {
-    if (gpu_info.IsApiOpenCl()) {
-      return "convert_" + ToCLDataType(dst_type, 4);
-    } else if (gpu_info.IsApiMetal()) {
-      return ToMetalDataType(dst_type, 4);
-    } else if (gpu_info.IsGlsl()) {
-      return GetGlslConversion(gpu_info, src_type, dst_type, 4);
-    }
-  }
-  return "";
-}
-
 std::string GetConvertionForImage(const GpuInfo& gpu_info, DataType src_type,
                                   DataType dst_type) {
+  DataType interm_type = src_type;
   if (gpu_info.IsApiOpenCl()) {
     if (src_type == DataType::FLOAT16 && dst_type == DataType::FLOAT32) {
       return "";
     }
-    DataType interm_type = ToClTextureType(src_type);
-    if (interm_type != dst_type) {
-      return "convert_" + ToCLDataType(dst_type, 4);
-    }
+    interm_type = ToClTextureType(src_type);
   } else if (gpu_info.IsApiMetal()) {
-    DataType interm_type = ToMetalTextureType(src_type);
-    if (interm_type != dst_type) {
-      return ToMetalDataType(dst_type, 4);
-    }
-  } else if (gpu_info.IsGlsl()) {
-    return GetGlslConversion(gpu_info, src_type, dst_type, 4);
+    interm_type = ToMetalTextureType(src_type);
   }
-  return "";
+  return GetTypeConvertion(gpu_info, interm_type, dst_type, 4);
 }
 
 std::string GetConvertion(const GpuInfo& gpu_info,
                           TensorStorageType storage_type, DataType src_type,
                           DataType dst_type) {
   if (storage_type == TensorStorageType::BUFFER) {
-    return GetConvertionForBuffer(gpu_info, src_type, dst_type);
+    return GetTypeConvertion(gpu_info, src_type, dst_type, 4);
   } else {
     return GetConvertionForImage(gpu_info, src_type, dst_type);
   }
@@ -244,6 +147,7 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
           desc.use_buffer_for_write_only_2d_texture),
       use_buffer_for_write_only_image_buffer(
           desc.use_buffer_for_write_only_image_buffer),
+      zero_clamp_support(desc.zero_clamp_support),
       shape(desc.shape),
       data(std::move(desc.data)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
@@ -255,6 +159,7 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
               desc.use_buffer_for_write_only_2d_texture);
     std::swap(use_buffer_for_write_only_image_buffer,
               desc.use_buffer_for_write_only_image_buffer);
+    std::swap(zero_clamp_support, desc.zero_clamp_support);
     std::swap(shape, desc.shape);
     data = std::move(desc.data);
     GPUObjectDescriptor::operator=(std::move(desc));
@@ -825,18 +730,10 @@ std::string TensorDescriptor::Write(
   }
   std::string write_expr = var_name;
   if (write_type != write_required_type) {
-    if (gpu_info.IsApiOpenCl()) {
-      write_expr = "convert_" + ToCLDataType(write_required_type, 4) + "(" +
-                   write_expr + ")";
-    } else if (gpu_info.IsApiMetal()) {
-      write_expr =
-          ToMetalDataType(write_required_type, 4) + "(" + write_expr + ")";
-    } else if (gpu_info.IsGlsl()) {
-      const std::string conversion =
-          GetGlslConversion(gpu_info, write_type, write_required_type, 4);
-      if (!conversion.empty()) {
-        write_expr = conversion + "(" + write_expr + ")";
-      }
+    const std::string conversion =
+        GetTypeConvertion(gpu_info, write_type, write_required_type, 4);
+    if (!conversion.empty()) {
+      write_expr = conversion + "(" + write_expr + ")";
     }
   }
   switch (storage_type) {
@@ -1391,11 +1288,16 @@ bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
     case TensorStorageType::IMAGE_BUFFER:
       return false;
     case TensorStorageType::TEXTURE_ARRAY:
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
+             zero_clamp_support.image2d_array;
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return axis == Axis::WIDTH || axis == Axis::HEIGHT;
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
+             zero_clamp_support.image2d;
     case TensorStorageType::TEXTURE_3D:
-      return axis == Axis::WIDTH || axis == Axis::HEIGHT || axis == Axis::DEPTH;
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT ||
+              axis == Axis::DEPTH) &&
+             zero_clamp_support.image3d;
   }
 }
 
@@ -1420,7 +1322,8 @@ bool TensorDescriptor::IsLinear() const {
 }
 
 bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
-  return storage_type == TensorStorageType::IMAGE_BUFFER;
+  return storage_type == TensorStorageType::IMAGE_BUFFER &&
+         zero_clamp_support.image_buffer;
 }
 
 absl::Status TensorDescriptor::CanCreateTensorWithShape(

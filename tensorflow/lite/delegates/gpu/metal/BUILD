@@ -150,6 +150,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    features = ["-layering_check"],
     sdk_frameworks = ["Metal"],
     deps = [
         ":compute_task",
@@ -240,9 +241,7 @@ objc_library(
         "-ObjC++",
     ],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu/common:gpu_info"],
 )
 
 objc_library(

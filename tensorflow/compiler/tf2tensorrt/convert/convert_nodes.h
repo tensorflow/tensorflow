@@ -385,7 +385,8 @@ class Converter {
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(ITensorProxyPtr input, std::vector<int>* input_dims,
-                       OpConverterParams* params, ITensorProxyPtr* output);
+                       OpConverterParams* params, ITensorProxyPtr* output,
+                       absl::optional<int> op_instance = absl::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -507,27 +508,18 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
-// Map of all supported UnaryOperations
-const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
-// Map of all supported ActivationTypes
-const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
-// Map of all supported BinaryOperations
-const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
-BinaryOperationMap();
-
-constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
-    kBinaryOperations = {{
-        {"Add", nvinfer1::ElementWiseOperation::kSUM},
-        {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
-        {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-        {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-        {"Div", nvinfer1::ElementWiseOperation::kDIV},
-        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
-        {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-        {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-        {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-        {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-    }};
+template <typename T>
+using operationMap = std::unordered_map<std::string, T>;
+// Map of all supported UnaryOperations.
+typedef operationMap<nvinfer1::UnaryOperation> unaryOperationMap;
+const unaryOperationMap* UnaryOperationMap();
+const unaryOperationMap* UnaryBooleanOperationMap();
+// Map of all supported ActivationTypes.
+const operationMap<nvinfer1::ActivationType>* ActivationTypeMap();
+// Map of all supported BinaryOperations.
+typedef operationMap<nvinfer1::ElementWiseOperation> binaryOperationMap;
+const binaryOperationMap* BinaryOperationMap();
+const binaryOperationMap* BinaryBooleanOperationMap();
 
 template <typename T>
 absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {

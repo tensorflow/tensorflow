@@ -17,10 +17,10 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ATTRS_H
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ATTRS_H
 
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
-
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc"
 

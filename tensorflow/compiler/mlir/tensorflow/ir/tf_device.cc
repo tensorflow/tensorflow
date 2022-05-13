@@ -213,10 +213,10 @@ bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
 namespace {
 ParseResult ParseReplicateOpOperands(
     OpAsmParser* parser, OperationState* state,
-    llvm::SmallVectorImpl<llvm::SmallVector<OpAsmParser::OperandType, 8>>*
+    llvm::SmallVectorImpl<llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8>>*
         replicated_inputs,
-    llvm::SmallVectorImpl<OpAsmParser::OperandType>* packed_inputs,
-    llvm::SmallVectorImpl<OpAsmParser::OperandType>* region_args,
+    llvm::SmallVectorImpl<OpAsmParser::UnresolvedOperand>* packed_inputs,
+    llvm::SmallVectorImpl<OpAsmParser::UnresolvedOperand>* region_args,
     llvm::SmallVectorImpl<Type>* region_arg_types) {
   // No operands or empty operand list.
   bool parsed_l_paren = succeeded(parser->parseOptionalLParen());
@@ -230,25 +230,26 @@ ParseResult ParseReplicateOpOperands(
   //     %b as %block_arg1: type
   //
   // Replicated inputs are placed before packed inputs when forming the op.
-  llvm::SmallVector<OpAsmParser::OperandType, 8> replicated_region_args;
-  llvm::SmallVector<OpAsmParser::OperandType, 8> packed_region_args;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> replicated_region_args;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> packed_region_args;
   llvm::SmallVector<Type, 8> replicated_region_arg_types;
   llvm::SmallVector<Type, 8> packed_region_arg_types;
   do {
-    OpAsmParser::OperandType operand_type;
+    OpAsmParser::UnresolvedOperand operand_type;
     if (parser->parseOptionalOperand(operand_type).hasValue()) {
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
-          parser->parseRegionArgument(packed_region_args.emplace_back()) ||
+          parser->parseOperand(packed_region_args.emplace_back(),
+                               /*allowResultNumber=*/false) ||
           parser->parseColonType(packed_region_arg_types.emplace_back()))
         return failure();
     } else if (parser->parseOperandList(replicated_inputs->emplace_back(),
                                         OpAsmParser::Delimiter::Square) ||
                parser->parseKeyword(
                    "as", " between replicated inputs and block argument") ||
-               parser->parseRegionArgument(
-                   replicated_region_args.emplace_back()) ||
+               parser->parseOperand(replicated_region_args.emplace_back(),
+                                    /*allowResultNumber=*/false) ||
                parser->parseColonType(
                    replicated_region_arg_types.emplace_back())) {
       return failure();
@@ -274,9 +275,9 @@ ParseResult ParseReplicateOpOperands(
 
 ParseResult SetReplicateOpOperands(
     llvm::SMLoc loc, OpAsmParser* parser, OperationState* state,
-    llvm::ArrayRef<llvm::SmallVector<OpAsmParser::OperandType, 8>>
+    llvm::ArrayRef<llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8>>
         replicated_inputs,
-    llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
+    llvm::ArrayRef<OpAsmParser::UnresolvedOperand> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
   for (const auto& attr : state->attributes)
     if (attr.getName().strref() == "n")
@@ -326,10 +327,10 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
 
   // Parse operands, attributes, and region of op.
-  llvm::SmallVector<llvm::SmallVector<OpAsmParser::OperandType, 8>, 8>
+  llvm::SmallVector<llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8>, 8>
       replicated_inputs;
-  llvm::SmallVector<OpAsmParser::OperandType, 8> packed_inputs;
-  llvm::SmallVector<OpAsmParser::OperandType, 8> region_args;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> packed_inputs;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> region_args;
   llvm::SmallVector<Type, 8> region_arg_types;
   int32_t n = 0;
   Region& body = *result.addRegion();
@@ -338,9 +339,16 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
                                &region_arg_types) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       SetReplicateOpOperands(loc, &parser, &result, replicated_inputs,
-                             packed_inputs, region_arg_types, &n) ||
-      parser.parseRegion(body, region_args, region_arg_types))
+                             packed_inputs, region_arg_types, &n))
     return failure();
+
+  SmallVector<OpAsmParser::Argument> packed_args;
+  for (auto argAndType : llvm::zip(region_args, region_arg_types)) {
+    auto& arg = packed_args.emplace_back();
+    arg.ssaName = std::get<0>(argAndType);
+    arg.type = std::get<1>(argAndType);
+  }
+  if (parser.parseRegion(body, packed_args)) return failure();
 
   // Add derived `operand_segment_sizes` attribute based on parsed operands.
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {

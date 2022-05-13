@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -170,6 +171,9 @@ class DataServiceDispatcherImpl {
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
 
+  // Exports the dispatcher state for debugging.
+  DispatcherStateExport ExportState() const;
+
  private:
   // Restores split providers from the state in `job` and stores them in
   // `restored`.
@@ -177,7 +181,7 @@ class DataServiceDispatcherImpl {
       const DispatcherState::Job& job,
       std::vector<std::unique_ptr<SplitProvider>>& restored)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Makes split providers for the specified `dataset_id`, and stores thent in
+  // Makes split providers for the specified `dataset_id`, and stores them in
   // `split_providers`.
   Status MakeSplitProviders(
       int64_t dataset_id,
@@ -294,7 +298,7 @@ class DataServiceDispatcherImpl {
   const experimental::DispatcherConfig config_;
   Env* env_;
 
-  mutex mu_;
+  mutable mutex mu_;
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
 

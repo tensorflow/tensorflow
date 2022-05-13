@@ -63,7 +63,10 @@ cc_library(
         "transforms/passes.h.inc",
     ],
     compatible_with = get_compatible_with_cloud(),
-    deps = ["@llvm-project//mlir:Pass"],
+    deps = [
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+    ],
 )
 
 cc_library(
@@ -82,6 +85,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
@@ -212,6 +216,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

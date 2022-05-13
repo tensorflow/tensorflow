@@ -649,6 +649,7 @@ BUILTIN_KERNEL_SRCS = [
     "unidirectional_sequence_rnn.cc",
     "unique.cc",
     "unpack.cc",
+    "unsorted_segment_prod.cc",
     "where.cc",
     "while.cc",
     "zeros_like.cc",
@@ -763,7 +764,6 @@ pybind_extension(
     ],
     additional_exported_symbols = ["VariableOpsRegisterer"],
     link_in_framework = True,
-    module_name = "pywrap_variable_ops",
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
@@ -1185,7 +1185,8 @@ cc_test(
     name = "conv_test",
     size = "small",
     srcs = ["conv_test.cc"],
-    tags = ["tflite_nnapi"],
+    # TODO(b/162870360): Re-enable nnapi test after delegating grouped conv is added.
+    # tags = ["tflite_nnapi"],
     deps = [
         ":test_main",
         ":test_util",
@@ -2441,6 +2442,7 @@ cc_test(
         ":subgraph_test_util",
         ":test_main",
         "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/profiling:memory_info",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2753,7 +2755,24 @@ cc_test(
     ],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
+cc_test(
+    name = "unsorted_segment_prod_test",
+    size = "small",
+    srcs = ["unsorted_segment_prod_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tflite_portable_test_suite_combined(
+    combine_conditions = {"deps": [":test_main"]},
+    # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
+    nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],
+)
 
 # Note this is created mainly for validating external delegates in OSS.
 tflite_combine_cc_tests(

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -22,15 +23,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
@@ -43,8 +42,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
-
-const absl::string_view kAnnotationDelimiter = "::";
 
 XEvent CreateXEvent(const XEventMetadata& metadata, int64_t offset_ps,
                     int64_t duration_ps, int64_t group_id_stat_metadata_id,
@@ -62,13 +59,6 @@ XEvent CreateXEvent(const XEventMetadata& metadata, int64_t offset_ps,
   return event;
 }
 
-int64_t GroupIdOrInvalid(absl::optional<int64_t> group_id) {
-  if (group_id)
-    return *group_id;
-  else
-    return DerivedXLineBuilder::kInvalidGroupId;
-}
-
 }  // namespace
 
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
@@ -82,7 +72,8 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
           ->id();
   TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
   Category category = tf_op.category;
-  int64_t group_id_or_invalid = GroupIdOrInvalid(group_id);
+  int64_t group_id_or_invalid =
+      group_id.value_or(DerivedXLineBuilder::kInvalidGroupId);
   if (category == Category::kTensorFlow || category == Category::kJax) {
     std::vector<XEvent> name_scope_event_per_level;
     for (const auto& tf_name_scope : ParseTfNameScopes(tf_op)) {
@@ -205,45 +196,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   for (const XEventVisitor& event : events) {
     int64_t offset_ps = event.OffsetPs();
     int64_t duration_ps = event.DurationPs();
-    absl::string_view tf_op_full_name;
-    absl::string_view hlo_module_name;
-    absl::optional<uint64_t> program_id;
-    std::vector<absl::string_view> hlo_op_names;
-    absl::optional<int64_t> group_id;
-    bool is_kernel = false;
-    event.ForEachStat([&](const XStatVisitor& stat) {
-      if (!stat.Type().has_value()) return;
-      switch (stat.Type().value()) {
-        case StatType::kGroupId:
-          group_id = stat.IntValue();
-          break;
-        case StatType::kTfOp:
-          tf_op_full_name = stat.StrOrRefValue();
-          break;
-        case StatType::kHloOp:
-          hlo_op_names =
-              absl::StrSplit(stat.StrOrRefValue(), kAnnotationDelimiter);
-          break;
-        case StatType::kHloModule:
-          hlo_module_name = stat.StrOrRefValue();
-          break;
-        case StatType::kProgramId:
-          program_id = stat.IntOrUintValue();
-          break;
-        case StatType::kKernelDetails:
-          is_kernel = true;
-          break;
-        default:
-          break;
-      }
-    });
-    int64_t group_id_or_invalid = GroupIdOrInvalid(group_id);
-    if (group_id) {
+    GpuEventStats stats(&event);
+    int64_t group_id_or_invalid =
+        stats.group_id.value_or(DerivedXLineBuilder::kInvalidGroupId);
+    if (stats.group_id) {
       XEvent step_event = CreateXEvent(
-          *plane.GetOrCreateEventMetadata(absl::StrCat(*group_id)), offset_ps,
-          duration_ps, group_id_stat_metadata_id, group_id);
+          *plane.GetOrCreateEventMetadata(absl::StrCat(*stats.group_id)),
+          offset_ps, duration_ps, group_id_stat_metadata_id, stats.group_id);
       if (auto group_metadata =
-              gtl::FindOrNull(group_metadata_map, *group_id)) {
+              gtl::FindOrNull(group_metadata_map, *stats.group_id)) {
         XStat* stat = step_event.add_stats();
         stat->set_metadata_id(step_name_stat_metadata_id);
         stat->set_str_value(group_metadata->name);
@@ -255,45 +216,46 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
 
     // For HLO/TF op lines, only use kernel events (i.e. excluding memcpy or
     // allocation events).
-    if (!is_kernel) continue;
+    if (!stats.IsKernel()) continue;
 
-    if (!hlo_module_name.empty()) {
-      std::string name(hlo_module_name);
-      if (program_id.has_value()) {
-        absl::StrAppend(&name, "(", program_id.value(), ")");
+    if (!stats.hlo_module_name.empty()) {
+      std::string name(stats.hlo_module_name);
+      if (stats.program_id.has_value()) {
+        absl::StrAppend(&name, "(", stats.program_id.value(), ")");
       }
       hlo_modules.ExpandOrAddEvent(
           CreateXEvent(*plane.GetOrCreateEventMetadata(name), offset_ps,
-                       duration_ps, group_id_stat_metadata_id, group_id));
+                       duration_ps, group_id_stat_metadata_id, stats.group_id));
     }
 
-    if (!hlo_op_names.empty()) {  // GPU kernel compiled by XLA
-      DCHECK(!hlo_module_name.empty());
+    if (stats.IsXlaOp()) {
+      DCHECK(!stats.hlo_module_name.empty());
       std::vector<XEvent> hlo_op_event_per_level;
-      for (absl::string_view hlo_op_name : hlo_op_names) {
+      for (absl::string_view hlo_op_name : stats.hlo_op_names) {
         DCHECK(!hlo_op_name.empty());
         hlo_op_event_per_level.push_back(CreateXEvent(
             *plane.GetOrCreateEventMetadata(hlo_op_name), offset_ps,
-            duration_ps, group_id_stat_metadata_id, group_id));
+            duration_ps, group_id_stat_metadata_id, stats.group_id));
       }
       hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level, group_id_or_invalid);
-      auto symbol =
-          symbol_resolver(program_id, hlo_module_name, hlo_op_names.back());
+      auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
+                                    stats.hlo_op_names.back());
       if (!symbol.tf_op_name.empty()) {
         ProcessTfOpEvent(symbol.tf_op_name,
                          /*low_level_event_name=*/event.Name(), offset_ps,
-                         duration_ps, group_id, &plane, &tf_name_scope,
+                         duration_ps, stats.group_id, &plane, &tf_name_scope,
                          &tf_ops);
       }
       if (!symbol.source_info.empty()) {
         source.ExpandOrAddEvent(CreateXEvent(
             *plane.GetOrCreateEventMetadata(symbol.source_info), offset_ps,
-            duration_ps, group_id_stat_metadata_id, group_id));
+            duration_ps, group_id_stat_metadata_id, stats.group_id));
       }
-    } else if (!tf_op_full_name.empty()) {  // GPU kernel not compiled by XLA
-      ProcessTfOpEvent(tf_op_full_name,
+    } else if (stats.IsTfOp()) {
+      ProcessTfOpEvent(stats.tf_op_fullname,
                        /*low_level_event_name=*/event.Name(), offset_ps,
-                       duration_ps, group_id, &plane, &tf_name_scope, &tf_ops);
+                       duration_ps, stats.group_id, &plane, &tf_name_scope,
+                       &tf_ops);
     }
   }
   RemoveEmptyLines(device_trace);

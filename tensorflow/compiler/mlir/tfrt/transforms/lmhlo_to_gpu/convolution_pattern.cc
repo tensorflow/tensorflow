@@ -728,11 +728,11 @@ FailureOr<Value> LegacyConvolutionRewritePattern(
 
 template <class ConvolutionOpType>
 struct ConvolutionRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<ConvolutionOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<
+    : tfrt::gpu::StreamifyOpConversionPattern<ConvolutionOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<
       ConvolutionOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      ConvolutionOpType>::GpuAsyncOpConversionPattern;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      ConvolutionOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       ConvolutionOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -815,13 +815,14 @@ struct ConvolutionRewritePattern
     // Create a function that returns the convolution plan.
     mlir::SymbolTable symbol_table(
         op->template getParentOfType<mlir::ModuleOp>());
-    rewriter.setInsertionPoint(op->template getParentOfType<mlir::FuncOp>());
+    rewriter.setInsertionPoint(
+        op->template getParentOfType<mlir::func::FuncOp>());
     mlir::Type handle_type = rewriter.getType<tfrt::gpu::DnnHandleType>();
     mlir::Type conv_plan_type =
         rewriter.getType<tfrt::gpu::DnnConvolutionPlanType>();
     std::string function_name =
         absl::StrCat("get_", op->getName().stripDialect().str(), "_plan");
-    mlir::FuncOp conv_plan_func = rewriter.create<mlir::FuncOp>(
+    mlir::func::FuncOp conv_plan_func = rewriter.create<mlir::func::FuncOp>(
         loc, function_name,
         rewriter.getFunctionType(handle_type, conv_plan_type));
     symbol_table.insert(conv_plan_func);
@@ -835,7 +836,7 @@ struct ConvolutionRewritePattern
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     Value handle = rewriter.create<tfrt::gpu::DnnCreateOp>(loc, context);
     auto once_op = rewriter.create<tfrt::compiler::OnceOp>(
-        loc, conv_plan_func.getType().getResults(), handle,
+        loc, conv_plan_func.getFunctionType().getResults(), handle,
         conv_plan_func.getName());
 
     chain = CreateRunConvolutionOp(adaptor, loc, handle, once_op.getResult(0),

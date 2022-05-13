@@ -234,6 +234,9 @@ bool IsFusedBroadcastOfConstantEffectiveScalar(const HloInstruction* instr) {
 //   "return param0 * param1;"      --> "multiply"
 //   "return min(param0, param1);"  --> "min"
 //   "return max(param0, param1);"  --> "max"
+//   "return xor(param0, param1);"  --> "xor"
+//   "return and(param0, param1);"  --> "and"
+//   "return or(param0, param1);"   --> "or"
 //   "return param0 <= param1;"     --> "less-or-equal"
 //   "return param0 >= param1;"     --> "greater-or-equal"
 //   "return param0 >  param1;"     --> "greater-than"
@@ -295,6 +298,12 @@ optional<std::string> MatchTrivialComputation(
       return "min";
     case HloOpcode::kMaximum:
       return "max";
+    case HloOpcode::kXor:
+      return "xor";
+    case HloOpcode::kAnd:
+      return "and";
+    case HloOpcode::kOr:
+      return "or";
     case HloOpcode::kCompare: {
       switch (root->comparison_direction()) {
         case ComparisonDirection::kLe:
@@ -1020,6 +1029,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -1042,7 +1052,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kYellow;
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kTrace:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:
@@ -1067,7 +1076,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReshape:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
       // De-emphasize scalar-shaped data movement ops and all data movement ops
       // inside fusion nodes, both of which are essentially free.
@@ -1083,14 +1091,16 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
         return kWhite;
       }
       return kGreen;
-    case HloOpcode::kScatter:
-      // Do not de-emphasize Scatter, since it involves significant work.
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
       return kGreen;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return GetInstructionColor(instr->async_wrapped_instruction());
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kFft:
@@ -1106,6 +1116,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:  // scatter is a kind of reduction
     case HloOpcode::kSelectAndScatter:
       return kPurple;
     case HloOpcode::kDomain:
@@ -1216,7 +1227,7 @@ ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
 
 static std::vector<std::pair<std::string, std::string>>
 ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
-                              const HloInstruction* instr, bool show_strides) {
+                              const HloInstruction* instr) {
   std::vector<std::pair<std::string, std::string>> props;
   if (primitive_util::IsComplexType(instr->shape().element_type())) {
     if (config.alpha_real() != 1 || config.alpha_imag() != 1) {
@@ -1230,13 +1241,6 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
   }
   if (config.beta() != 0 && config.beta() != 1) {
     props.emplace_back("beta", StrCat(config.beta()));
-  }
-  if (config.batch_size() > 1) {
-    props.emplace_back("batch_size", StrCat(config.batch_size()));
-  }
-  if (show_strides) {
-    props.emplace_back("lhs_stride", StrCat(config.lhs_stride()));
-    props.emplace_back("rhs_stride", StrCat(config.rhs_stride()));
   }
   props.emplace_back(
       "", absl::StrReplaceAll(
@@ -1268,9 +1272,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
       // shape), so we hide them by default.
-      props = ExtractGemmBackendConfigProps(
-          *config, instr,
-          /*show_strides=*/hlo_render_options_.show_backend_config);
+      props = ExtractGemmBackendConfigProps(*config, instr);
     }
   }
 

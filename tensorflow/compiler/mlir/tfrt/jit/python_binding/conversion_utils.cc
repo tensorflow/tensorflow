@@ -83,6 +83,8 @@ DType FromPythonStructFormat(char dtype) {
       return DType::UI16;
     case 'I':
       return DType::UI32;
+    case 'L':
+      return DType::UI64;
     case 'Q':
       return DType::UI64;
     case '?':
@@ -93,6 +95,8 @@ DType FromPythonStructFormat(char dtype) {
       return DType::I16;
     case 'i':
       return DType::I32;
+    case 'l':
+      return DType::I64;
     case 'q':
       return DType::I64;
     case 'f':
@@ -105,8 +109,7 @@ DType FromPythonStructFormat(char dtype) {
 }
 
 // Converts Python array to the Memref Descriptor.
-void ConvertPyArrayMemrefDesc(const pybind11::array& array,
-                              MemrefDesc* memref) {
+MemrefDesc ConvertPyArrayMemrefDesc(const pybind11::array& array) {
   auto py_dtype = [](pybind11::dtype dtype) -> char {
     // np.int64 array for some reason has `i` dtype, however according to the
     // documentation it must be `q`.
@@ -115,18 +118,16 @@ void ConvertPyArrayMemrefDesc(const pybind11::array& array,
     return dtype.char_();
   };
 
-  memref->dtype = DType(FromPythonStructFormat(py_dtype(array.dtype())));
-  memref->data = const_cast<void*>(array.data());
-  memref->offset = 0;
-
   auto rank = array.ndim();
-  memref->sizes.resize(rank);
-  memref->strides.resize(rank);
+  auto dtype = DType(FromPythonStructFormat(py_dtype(array.dtype())));
 
-  for (ssize_t d = 0; d < rank; ++d) {
-    memref->sizes[d] = array.shape(d);
-    memref->strides[d] = array.strides(d) / array.itemsize();
-  }
+  return MemrefDesc(rank, dtype, const_cast<void*>(array.data()), 0,
+                    [&](auto sizes, auto strides) {
+                      for (ssize_t d = 0; d < rank; ++d) {
+                        sizes[d] = array.shape(d);
+                        strides[d] = array.strides(d) / array.itemsize();
+                      }
+                    });
 }
 
 }  // namespace tensorflow

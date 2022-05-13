@@ -56,6 +56,10 @@ class GetScalarOfType<int value> : NativeCodeCall<
 def IdentityBroadcastDims : AttrConstraint<
     CPred<"hlo::IsSequenceStartingWith0($_self)">>;
 
+def ComplexElementType : Type<
+  CPred<"$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,
+  "Complex element type">;
+
 def NonComplexElementType : Type<
   CPred<"!$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,
   "Non-complex element type">;

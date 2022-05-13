@@ -1,0 +1,66 @@
+op 	 {
+  name: "ApproxTopK"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  attr {
+    name: "k"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "reduction_dimension"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "recall_target"
+    type: "float"
+    default_value {
+      f: 0.95
+    }
+  }
+  attr {
+    name: "is_max_k"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "reduction_input_size_override"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "aggregate_to_topk"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+      }
+    }
+  }
+}

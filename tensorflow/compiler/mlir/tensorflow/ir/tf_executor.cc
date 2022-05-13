@@ -223,7 +223,7 @@ ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse the body region.
   Region &body = *result.addRegion();
-  if (parser.parseRegion(body, llvm::None, llvm::None)) return failure();
+  if (parser.parseRegion(body)) return failure();
 
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
@@ -341,7 +341,7 @@ ParseResult IslandOp::parse(OpAsmParser &parser, OperationState &result) {
   Type control_type = ControlType::get(parser.getBuilder().getContext());
 
   // Parse optional argument list (control dependencies only).
-  SmallVector<OpAsmParser::OperandType, 4> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> op_infos;
   if (parser.parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
   if (!op_infos.empty()) {
@@ -364,7 +364,7 @@ ParseResult IslandOp::parse(OpAsmParser &parser, OperationState &result) {
     builder.setInsertionPointToEnd(&block);
     builder.create<YieldOp>(wrapped_op->getLoc(), wrapped_op->getResults());
     result.location = wrapped_op->getLoc();
-  } else if (parser.parseRegion(body, llvm::None, llvm::None)) {
+  } else if (parser.parseRegion(body)) {
     return failure();
   }
 
@@ -390,7 +390,7 @@ ParseResult IslandOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 ParseResult SwitchOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> op_infos;
   SmallVector<Type, 1> types;
   if (parser.parseOperandList(op_infos) || parser.parseColonTypeList(types))
     return failure();
@@ -525,7 +525,7 @@ ParseResult SwitchNOp::parse(OpAsmParser &parser, OperationState &result) {
   // Where the first operand is the data to replicate, the second is an i32
   // indicating which output to populate, followed by the keyword `of` and the
   // number of outputs (+1 for the control token).
-  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> op_infos;
   SmallVector<Type, 1> types;
   llvm::SMLoc loc = parser.getCurrentLocation();
   IntegerAttr num_outs;
@@ -647,7 +647,7 @@ void MergeOp::print(OpAsmPrinter &p) {
 }
 
 ParseResult MergeOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> op_infos;
   SmallVector<Type, 1> types;
   llvm::SMLoc loc = parser.getCurrentLocation();
   if (parser.parseOperandList(op_infos) || parser.parseColonTypeList(types))
@@ -712,7 +712,7 @@ void EnterOp::print(OpAsmPrinter &p) {
 }
 
 ParseResult EnterOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> op_infos;
   llvm::SMLoc loc = parser.getCurrentLocation();
   MLIRContext *context = parser.getBuilder().getContext();
   if (parser.parseOperandList(op_infos)) return failure();
@@ -821,7 +821,7 @@ void ExitOp::print(OpAsmPrinter &p) {
 }
 
 ParseResult ExitOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> op_infos;
   SmallVector<Type, 1> types;
 
   if (parser.parseOperandList(op_infos) || parser.parseColonTypeList(types))
@@ -861,7 +861,7 @@ void LoopCondOp::print(OpAsmPrinter &p) {
 }
 
 ParseResult LoopCondOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> op_infos;
 
   if (parser.parseOperandList(op_infos)) return failure();
   if (op_infos.empty())

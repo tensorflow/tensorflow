@@ -181,10 +181,9 @@ const AttrValue* AttrSlice::FindByString(const string& attr_name) const {
   }
 }
 
-Status AttrSlice::Find(StringPiece attr_name,
-                       const AttrValue** attr_value) const {
-  *attr_value = Find(attr_name);
-  if (*attr_value != nullptr) {
+Status AttrSlice::CheckFind(StringPiece attr_name,
+                            const AttrValue* attr_value) const {
+  if (attr_value != nullptr) {
     return Status::OK();
   }
   Status s = errors::NotFound("No attr named '", attr_name, "' in NodeDef:");
@@ -195,6 +194,18 @@ Status AttrSlice::Find(StringPiece attr_name,
     s = AttachDef(s, *ndef_);
   }
   return s;
+}
+
+Status AttrSlice::Find(StringPiece attr_name,
+                       const AttrValue** attr_value) const {
+  *attr_value = Find(attr_name);
+  return CheckFind(attr_name, *attr_value);
+}
+
+Status AttrSlice::FindByString(const string& attr_name,
+                               const AttrValue** attr_value) const {
+  *attr_value = FindByString(attr_name);
+  return CheckFind(attr_name, *attr_value);
 }
 
 bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
@@ -483,13 +494,14 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
-    TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs).Find(arg_def.type_attr(), &attr_value));
+    TF_RETURN_IF_ERROR(AttrSlice(node_or_attrs)
+                           .FindByString(arg_def.type_attr(), &attr_value));
     sig->push_back(attr_value->type());
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs).Find(arg_def.type_list_attr(), &attr_value));
+        AttrSlice(node_or_attrs)
+            .FindByString(arg_def.type_list_attr(), &attr_value));
     for (int dtype : attr_value->list().type()) {
       sig->push_back(static_cast<DataType>(dtype));
     }

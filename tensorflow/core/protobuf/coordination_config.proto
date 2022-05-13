@@ -22,11 +22,25 @@ message CoordinationServiceConfig {
   // Maximum wait time for all members in the cluster to be registered.
   int64 cluster_register_timeout_in_ms = 4;
 
-  // Heartbeat timeout, if a worker does not record heartbeat in this time
+  // Heartbeat timeout, if a task does not record heartbeat in this time
   // window, it will be considered disconnected.
+  // Note: This is also used as a grace period to accept any heartbeats after
+  // the agent has disconnected, to account for the lag time between the service
+  // recording the state change and the agent stopping heartbeats.
   int64 heartbeat_timeout_in_ms = 5;
 
   // The list of jobs that partipate in the coordination service. If empty, all
   // jobs will be included in the coordination service by default.
   repeated string coordinated_jobs = 6;
+
+  // Denotes how long to wait for all coordination agents to reach the barriers
+  // (after the first shutdown request) before disconnecting together. If
+  // set to 0, no barrier is imposed upon shutdown and each worker can
+  // disconnect individually.
+  int64 shutdown_barrier_timeout_in_ms = 7;
+
+  // If set, agents do not make an explicit Shutdown() call. Service will only
+  // find out about the disconnecte agent via stale heartbeats. Used for
+  // testing.
+  bool agent_destruction_without_shutdown = 8;
 }

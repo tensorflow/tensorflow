@@ -19,8 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/ThreadPool.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -31,13 +34,13 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
-#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
+#include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/transforms/pass_registration.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
@@ -45,21 +48,28 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 
-// The default pipeline is empty.
-void DefaultGrapplerPipeline(PassManager& mgr) {}
-
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.
 class TFGGrapplerOptimizer::Impl {
  public:
-  // Builds the pass pipeline. The context is initialized without threading.
-  // Creating and destroying the threadpool each time Grappler is invoked is
-  // prohibitively expensive.
-  // TODO(jeffniu): Some passes may run in parallel on functions. Find a way to
-  // hold and re-use a threadpool.
-  explicit Impl(TFGPassPipelineBuilder builder)
+  // Builds the pass pipeline. The context is initialized with threading
+  // disabled. If the user specifies to run the optimizer with more than zero
+  // threads, a threadpool is initialized and passed to the MLIR context.
+  explicit Impl(TFGPassPipelineBuilder builder, unsigned num_tfg_threads)
       : ctx_(MLIRContext::Threading::DISABLED), mgr_(&ctx_) {
+    DialectRegistry registry;
+    // Register the TF op registry interface so that passes can query it.
+    registry.addExtension(+[](MLIRContext* ctx, TFGraphDialect* dialect) {
+      dialect->addInterfaces<TensorFlowOpRegistryInterface>();
+    });
+    ctx_.appendDialectRegistry(registry);
     builder(mgr_);
+    if (num_tfg_threads) {
+      llvm::ThreadPoolStrategy strategy;
+      strategy.ThreadsRequested = num_tfg_threads;
+      threadpool_ = std::make_unique<llvm::ThreadPool>(strategy);
+      ctx_.setThreadPool(*threadpool_);
+    }
   }
 
   // Runs the pass manager.
@@ -77,14 +87,18 @@ class TFGGrapplerOptimizer::Impl {
   }
 
  private:
+  // An optional threadpool for running MLIR with threading. Use an external
+  // threadpool so the number of threads can be controlled.
+  std::unique_ptr<llvm::ThreadPool> threadpool_;
   // The MLIR context.
   MLIRContext ctx_;
   // The pass manager containing the loaded TFG pass pipeline.
   PassManager mgr_;
 };
 
-TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder)
-    : impl_(std::make_unique<Impl>(std::move(builder))) {}
+TFGGrapplerOptimizer::TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
+                                           unsigned num_tfg_threads)
+    : impl_(std::make_unique<Impl>(std::move(builder), num_tfg_threads)) {}
 
 TFGGrapplerOptimizer::~TFGGrapplerOptimizer() = default;
 
@@ -104,7 +118,7 @@ Status TFGGrapplerOptimizer::Optimize(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {"TfgOptimizer", "convert_graphdef_to_tfg"});
   auto error_or_module =
-      ImportGraphDefToMlir(impl_->GetContext(), debug_info, item.graph);
+      ImportGraphDef(impl_->GetContext(), debug_info, item.graph);
   if (!error_or_module.ok()) {
     auto status = error_or_module.status();
     tensorflow::errors::AppendToMessage(
@@ -120,14 +134,26 @@ Status TFGGrapplerOptimizer::Optimize(
   if (failed(impl_->RunPipeline(module)))
     return error_handler.Combine(
         InvalidArgument("MLIR Graph Optimizer failed: "));
+  // While pass execution, it may use emitError to return a failure status, this
+  // will be caught by the error_handler. As a result, even if the pass left
+  // without failure, there may still have some message cached in the handler.
+  tensorflow::Status status = error_handler.ConsumeStatus();
+  if (!status.ok()) {
+    VLOG(4) << "Pass execution leftover diagnostics: " << status.error_message()
+            << "\n These message doesn't imply any failure of the pipeline "
+               "execution. They are cached because certain error diagnostics "
+               "were used to pass the internal execution result. Use warning "
+               "diagnostic when possible if you want to avoid this.";
+  }
 
   // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;
-  *graphdef.mutable_library() = item.graph.library();
   metrics.Reset({"TfgOptimizer", "convert_tfg_to_graphdef"});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::ExportMlirToGraphdef(module, &graphdef),
+      ConvertToGraphDef(module, &graphdef),
       "when exporting MLIR module to GraphDef in GrapplerHook");
+  // Ensure that an empty library is instantiated.
+  (void)graphdef.mutable_library();
   metrics.ReportAndStop();
   *optimized_graph = std::move(graphdef);
 

@@ -69,8 +69,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   // CHECK-NEXT: ^bb0(%[[$ARG0:.*]]: tensor<{{.*}}>, %[[$ARG1:.*]]: tensor<{{.*}}>, %[[$ARG2:.*]]: !tf_type.control, %[[$ARG3:.*]]: !tf_type.control):
   // CHECK-NEXT:   %[[$FWD:.*]]:2, %[[$CTL_0:.*]] = Fwd(%[[$ARG0]], %[[$ARG1]]) [%[[$ARG2]]]
   // CHECK-NEXT:   yield(%[[$FWD]]#0, %[[$FWD]]#1) [%[[$CTL_0]], %[[$ARG3]]] : tensor<{{.*}}>, tensor<{{.*}}>
-  // CHECK-NEXT: }
-  // CHECK-SAME: {parallel_iterations = 10 : i64} : tensor<*xf32>, tensor<*xi32>
+  // CHECK-NEXT: } {parallel_iterations = 10 : i64} : (tensor<*xf32>, tensor<*xi32>) -> (tensor<f32>, tensor<i32>)
   %WhileRegion:2, %ctl_0 = WhileRegion(%Op#0, %Op#1) [%ctl] {
   ^bb0(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>,
        %arg2: !tf_type.control, %arg3: !tf_type.control):
@@ -81,7 +80,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
        %arg2: !tf_type.control, %arg3: !tf_type.control):
     %Fwd:2, %ctl_0 = Fwd(%arg0, %arg1) [%arg2] : (tensor<*xf32>, tensor<*xi32>) -> (tensor<*xf32>, tensor<*xi32>)
     yield(%Fwd#0, %Fwd#1) [%ctl_0, %arg3] : tensor<*xf32>, tensor<*xi32>
-  } {parallel_iterations = 10 : i64} : tensor<*xf32>, tensor<*xi32>
+  } {parallel_iterations = 10 : i64} : (tensor<*xf32>, tensor<*xi32>) -> (tensor<f32>, tensor<i32>)
 }
 
 //===----------------------------------------------------------------------===//
@@ -95,11 +94,11 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Arg, %ctl_0 = Arg : () -> (tensor<*xf32>)
   // CHECK-NEXT: %[[OUTS:.*]], %[[CTL_1:.*]] = ForRegion(%[[ARG]]) [%[[CTL]]]
   // CHECK-SAME: from %[[INDEX]]#0 to %[[INDEX]]#1 by %[[INDEX]]#2  {
-  // CHECK-NEXT: ^bb0(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<{{.*}}>, %[[ARG2:.*]]: !tf_type.control, %[[ARG3:.*]]: !tf_type.control):
+  // CHECK-NEXT: ^bb0(%[[ARG0:.*]]: tensor<*xi32>, %[[ARG1:.*]]: tensor<{{.*}}>, %[[ARG2:.*]]: !tf_type.control, %[[ARG3:.*]]: !tf_type.control):
   // CHECK-NEXT:   yield(%[[ARG1]]) [%[[ARG3]]] : tensor<{{.*}}>
-  // CHECK-NEXT: } : tensor<{{.*}}>
+  // CHECK-NEXT: } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<f32>)
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index#0 to %Index#1 by %Index#2 {
-  ^bb0(%arg0: tensor<i32>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
+  ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     yield(%arg1) [%arg3] : tensor<*xf32>
-  } : tensor<*xf32>
+  } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<f32>)
 }

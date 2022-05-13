@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <limits>
+#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
@@ -64,22 +68,32 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
         }
         break;
       case HloOpcode::kBitcast:
-        return LooksLikeAnActivation(user);
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kTranspose:
+        if (LooksLikeAnActivation(user)) {
+          return true;
+        }
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kDynamicSlice:
         if (std::find(user->operands().begin() + 1, user->operands().end(),
                       inst) != user->operands().end()) {
           return true;
         }
-        // TODO(b/222538192): This workaround is needed when the embedding table
-        // is further spliced and reduced and used elsewhere in the program.
-        // Remove this workaround once we better understand what's causing it
-        // and fix it on the model side.
-        if (absl::c_all_of(user->users(), [](const HloInstruction* ds_user) {
-              return ds_user->opcode() == HloOpcode::kReduce;
-            })) {
-          continue;
+        if (LooksLikeAnActivation(user)) {
+          return true;
         }
-        return LooksLikeAnActivation(user);
+        break;
+      case HloOpcode::kReduce:
+        // Check init operands.
+        if (std::find(user->operands().begin() + user->operand_count() / 2,
+                      user->operands().end(), inst) != user->operands().end()) {
+          return true;
+        }
+        if (LooksLikeAnActivation(user)) {
+          return true;
+        }
+        break;
       default:
         return true;
     }
@@ -212,6 +226,18 @@ Status InsertInstructionAndEnsureOperandsInserted(
   new_sequence->push_back(new_instruction);
   TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
   return Status::OK();
+}
+
+std::string UsesToString(const std::vector<HloUse>& uses) {
+  if (uses.empty()) {
+    return "none";
+  }
+  std::vector<std::string> uses_str;
+  uses_str.reserve(uses.size());
+  for (const auto& use : uses) {
+    uses_str.push_back(use.ToString());
+  }
+  return absl::StrJoin(uses_str, ",");
 }
 
 }  // namespace
@@ -2073,11 +2099,13 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
       absl::c_max_element(uses, use_schedule_compare)->instruction);
   for (const HloValue* colocation : prefetch_candidate->colocations) {
     auto colocation_uses = colocation->GetUses();
-    last_use_time =
-        std::max(last_use_time,
-                 instruction_schedule.at(
-                     absl::c_max_element(colocation_uses, use_schedule_compare)
-                         ->instruction));
+    if (!colocation_uses.empty()) {
+      last_use_time = std::max(
+          last_use_time,
+          instruction_schedule.at(
+              absl::c_max_element(colocation_uses, use_schedule_compare)
+                  ->instruction));
+    }
   }
 
   int64_t end_of_program_prefetch_end_time = instruction_schedule.size();
@@ -2122,7 +2150,14 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
                latest_prefetch_time, &allocations, /*aliased_offset=*/nullptr,
                /*resource=*/0.0,
                /*is_cross_program_prefetch=*/true);
-  absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
+
+  HloInstruction* root_instruction =
+      module->entry_computation()->root_instruction();
+  absl::c_for_each(uses, [&](auto& use) {
+    if (use.instruction != root_instruction) {
+      allocations.back()->AddUse(use);
+    }
+  });
   AliasedOffset* cross_program_prefetch_offset =
       GetAliasedOffset(*allocations.back());
 
@@ -3641,7 +3676,9 @@ std::string MemorySpaceAssignment::Allocation::ToString() const {
   }
   return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
                       "Allocation in ", memory_space_str, " defined at ",
-                      defining_position_.ToString());
+                      defining_position_.ToString(),
+                      ", start_time:", start_time(), ", end_time:", end_time(),
+                      ", uses: ", UsesToString(uses()));
 }
 
 std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
@@ -3649,7 +3686,11 @@ std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
   if (memory_space_ == MemorySpace::kAlternate) {
     memory_space_str = absl::StrCat("alt (off: ", chunk_->offset, ")");
   }
-  return absl::StrCat("Copy Allocation in ", memory_space_str, " from ",
+  return absl::StrCat("Copy Allocation in ", memory_space_str,
+                      ", start_time:", start_time(), ", end_time:", end_time(),
+                      ", copy_start_after_time: ", copy_start_schedule_after(),
+                      ", copy_done_before_time: ", copy_done_schedule_before(),
+                      ", uses: ", UsesToString(uses()), ", from ",
                       prev_allocation_.ToString());
 }
 
@@ -3675,7 +3716,7 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
   VLOG(4) << "Created " << copy_start_->name()
-          << " for position: " << defining_position().ToString();
+          << " for copy allocation: " << ToString();
   // Update the allocation position with the copy done instruction so that if
   // there are further copies from it, it can find the correct position.
   defining_position_ = HloPosition{copy_done_, {}};
@@ -3914,14 +3955,23 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
 
 void MemorySpaceAssignment::RemoveAssignmentForInstruction(
     const HloInstruction* instruction) {
-  for (auto& position_and_chunk : alternate_memory_assignments_) {
-    const HloPosition& position = position_and_chunk.first;
+  auto it = alternate_memory_assignments_.begin();
+  auto end = alternate_memory_assignments_.end();
+  while (it != end) {
+    const HloPosition& position = it->first;
     if (position.instruction == instruction) {
       VLOG(3) << "Removing instruction from alternate memory assignments.";
-      // Swap the removed position and chunk with the back and pop back.
-      position_and_chunk = alternate_memory_assignments_.back();
-      alternate_memory_assignments_.pop_back();
-      break;
+      if (std::next(it) == end) {
+        alternate_memory_assignments_.pop_back();
+        break;
+      } else {
+        // Swap the removed position and chunk with the back and pop back.
+        *it = alternate_memory_assignments_.back();
+        alternate_memory_assignments_.pop_back();
+        end = alternate_memory_assignments_.end();
+      }
+    } else {
+      ++it;
     }
   }
 }

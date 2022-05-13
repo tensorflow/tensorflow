@@ -16,10 +16,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/importexport/savedmodel_export.h"
+#include "tensorflow/core/ir/importexport/savedmodel_import.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
@@ -51,8 +50,8 @@ void RunRoundTrip(const std::string& input_file) {
       std::move(module_ref_status.ValueOrDie());
 
   tensorflow::SavedModel final_model;
-  auto status = tensorflow::ExportMlirToSavedModel(*module_ref, original_model,
-                                                   &final_model);
+  auto status = mlir::tfg::ExportMlirToSavedModel(*module_ref, original_model,
+                                                  &final_model);
   if (!status.ok()) {
     LOG(ERROR) << "Export failed: " << status.ToString();
   }
@@ -66,8 +65,10 @@ void RunRoundTrip(const std::string& input_file) {
   // In order to compare graph defs, make sure that both original and
   // final graph defs are normalized, e.g, control input are alphabetically
   // sorted.
-  tensorflow::NormalizeTensorData(*original_metagraph->mutable_graph_def());
-  tensorflow::NormalizeTensorData(*final_metagraph->mutable_graph_def());
+  tensorflow::NormalizeTensorData(*original_metagraph->mutable_graph_def(),
+                                  /*add_fulltype=*/true);
+  tensorflow::NormalizeTensorData(*final_metagraph->mutable_graph_def(),
+                                  /*add_fulltype=*/false);
 
   if (!tensorflow::protobuf::util::MessageDifferencer::Equivalent(
           original_model, final_model)) {

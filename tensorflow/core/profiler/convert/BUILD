@@ -77,7 +77,6 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
-        "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -342,6 +341,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
+        "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:step_intersection",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
@@ -350,6 +350,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -521,15 +522,13 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:gpu_event_stats",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:trace_utils",
-        "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -764,6 +763,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:gpu_event_stats",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -795,5 +795,42 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "xla_op_utils",
+    hdrs = ["xla_op_utils.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "op_profile_builder",
+    srcs = ["op_profile_builder.cc"],
+    hdrs = ["op_profile_builder.h"],
+    deps = [
+        ":op_metrics_db_combiner",
+        ":op_metrics_to_record",
+        ":xla_op_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_op_utils_test",
+    size = "small",
+    srcs = ["xla_op_utils_test.cc"],
+    deps = [
+        ":xla_op_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

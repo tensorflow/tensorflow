@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -57,6 +58,8 @@ class TpuDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
@@ -82,11 +85,22 @@ class TpuDevice : public PjRtDevice {
     return Unimplemented("Outfeed not yet implemented via this API");
   }
 
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   const int id_;
   const int process_index_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
   // Index of the core of the same chip.
   int core_on_chip_;
   PyTpuClient* tpu_client_;

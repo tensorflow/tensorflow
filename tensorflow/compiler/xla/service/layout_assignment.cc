@@ -1915,6 +1915,13 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   XLA_VLOG_LINES(2, ToString(constraints));
 
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kBitcast) {
+      // bitcasts are inherently layout sensitive and so a bitcast instruction
+      // present in the IR before layout assignment is a bug.
+      return InternalError(
+          "Unexpected bitcast operation seen during layout assignment: %s.",
+          instruction->ToString());
+    }
     LayoutUtil::ClearLayout(instruction->mutable_shape());
 
     // Set the layouts of the array shapes this instruction defines as indicated
@@ -2060,19 +2067,19 @@ Status LayoutAssignment::CalculateComputationLayout(
         conditional_mismatch_.count(callee->computation()) > 0) {
       if (conditional_mismatch_.count(callee->computation()) == 0 &&
           UpdateLayout(result, callee_layout.mutable_result_layout())) {
-        VLOG(5) << "Setting result layout from : " << result->ToString()
+        VLOG(2) << "Setting result layout from : " << result->ToString()
                 << "\n";
       }
       int64_t operand_no = 0;
       for (auto* operand : operands) {
         if (UpdateLayout(operand,
                          callee_layout.mutable_parameter_layout(operand_no))) {
-          VLOG(5) << "Setting callee parameter: " << operand->ToString()
+          VLOG(2) << "Setting callee parameter: " << operand->ToString()
                   << "\n";
         }
         ++operand_no;
       }
-      VLOG(5) << "Set callee layout: " << callee->computation()->name() << ":"
+      VLOG(2) << "Set callee layout: " << callee->computation()->name() << ":"
               << callee_layout.ToString()
               << "; original priority = " << callee_constraint->priority()
               << "\n";
@@ -2135,12 +2142,15 @@ Status LayoutAssignment::CalculateComputationLayout(
     }
   }
   // Reset the layout of the current computation from its body.
-  TF_RETURN_IF_ERROR(
-      SetCalleeLayout(constraints->computation()->root_instruction(),
-                      constraints->computation()->parameter_instructions(),
-                      constraints, current_priority_ + 1));
-  if (constraints->computation()->IsEntryComputation()) {
-    *entry_computation_layout_ = constraints->computation_layout();
+  if (current_priority_ == 0 ||
+      conditional_mismatch_.count(constraints->computation()) > 0) {
+    TF_RETURN_IF_ERROR(SetCalleeLayout(
+        constraints->computation()->root_instruction(),
+        constraints->computation()->parameter_instructions(), constraints,
+        current_priority_ + kNumberOfPropagationRounds));
+    if (constraints->computation()->IsEntryComputation()) {
+      *entry_computation_layout_ = constraints->computation_layout();
+    }
   }
   return Status::OK();
 }
@@ -2441,9 +2451,6 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
                             entry_computation_layout_->LayoutIsSet()
                                 ? LayoutConstraint::kGivenPriority
                                 : LayoutConstraint::kDefaultPriority));
-  for (auto* computation : computations_to_work) {
-    TF_RETURN_IF_ERROR(ClearComputationLayouts(computation));
-  }
   for (int64_t i = 0; i < kNumberOfPropagationRounds; ++i) {
     VLOG(1) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     TF_RETURN_IF_ERROR(ClearPreviousPassSideEffects(module));
@@ -2527,6 +2534,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -2545,7 +2553,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
     case HloOpcode::kSetDimensionSize:
     // AllReduce is variadic so it needs to be careful to assign the same layout
@@ -2555,6 +2562,9 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
       return false;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -2592,7 +2602,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kGetDimensionSize:

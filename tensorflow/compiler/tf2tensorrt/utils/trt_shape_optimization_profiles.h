@@ -224,6 +224,8 @@ class TrtShapeOptimizationProfile {
   void InitProfiles(const std::vector<PartialTensorShape>& input_partial_shapes,
                     ProfileStrategy strategy);
 
+  void InitCalibProfile(const std::vector<TensorShape>& shapes);
+
   // Returns number of created profiles.
   int GetNumProfiles() const;
 
@@ -262,6 +264,9 @@ class TrtShapeOptimizationProfile {
 
   // The optimization profiles generated from input_shapes_.
   std::vector<OptimizationProfileConfig> profiles_;
+
+  // The optimization profile for calibration.
+  OptimizationProfileConfig calib_profiles_;
 
   // Whether the network has any shape tensors. Initially we assume that the
   // network might have a shape value input. This will be updated when the

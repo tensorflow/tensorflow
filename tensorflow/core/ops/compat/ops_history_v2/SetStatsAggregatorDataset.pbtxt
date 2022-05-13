@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SetStatsAggregatorDataset"
   input_arg {
     name: "input_dataset"

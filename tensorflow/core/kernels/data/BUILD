@@ -35,13 +35,16 @@ tf_cc_test(
         ":batch_dataset_op",
         ":iterator_ops",
         ":range_dataset_op",
+        "//tensorflow/core",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:session_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:forward_type_inference",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
     ],
@@ -432,6 +435,32 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "iterator_ops_test",
+    size = "small",
+    srcs = ["iterator_ops_test.cc"],
+    deps = [
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
 tf_kernel_library(
     name = "map_dataset_op",
     srcs = ["map_dataset_op.cc"],
@@ -803,6 +832,52 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "parallel_filter_dataset_op",
+    srcs = ["parallel_filter_dataset_op.cc"],
+    hdrs = ["parallel_filter_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:stats_utils",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_filter_dataset_op_test",
+    size = "small",
+    srcs = ["parallel_filter_dataset_op_test.cc"],
+    deps = [
+        ":iterator_ops",
+        ":parallel_filter_dataset_op",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:stats_utils",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:unique_op",
+    ],
+)
+
 cc_library(
     name = "prefetch_autotuner",
     srcs = ["prefetch_autotuner.cc"],
@@ -981,6 +1056,43 @@ tf_cc_test(
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:serialization_utils",
+    ],
+)
+
+tf_kernel_library(
+    name = "rewrite_dataset_op",
+    srcs = ["rewrite_dataset_op.cc"],
+    hdrs = ["rewrite_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:rewrite_utils",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "rewrite_dataset_op_test",
+    size = "small",
+    srcs = ["rewrite_dataset_op_test.cc"],
+    deps = [
+        ":iterator_ops",
+        ":range_dataset_op",
+        ":rewrite_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -1441,12 +1553,14 @@ tf_kernel_library(
         ":options_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_batch_dataset_op",
+        ":parallel_filter_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
         ":range_dataset_op",
         ":reduce_dataset_op",
         ":repeat_dataset_op",
+        ":rewrite_dataset_op",
         ":shard_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",

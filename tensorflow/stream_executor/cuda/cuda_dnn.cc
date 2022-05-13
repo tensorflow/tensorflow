@@ -211,14 +211,30 @@ class CudnnAccess {
     mutex_.AssertHeld();
     gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
-    const auto status = cudnnSetStream(handle_, cu_stream);
-    CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
+    if (!current_stream_ || cu_stream != *current_stream_) {
+      current_stream_ = cu_stream;
+      const auto status = cudnnSetStream(handle_, cu_stream);
+      CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
+    }
     return CudnnHandle(std::move(context), std::move(lock), handle_);
   }
 
+  void NotifyStreamDestroyed(Stream* stream) {
+    CUstream cu_stream = AsGpuStreamValue(stream);
+    absl::MutexLock lock(&mutex_);
+    if (current_stream_ && cu_stream == *current_stream_) {
+      current_stream_.reset();
+    }
+  }
+
  private:
-  // Guards the enqueueing of cuDNN operations via the handle_ below.
+  // Guards current_stream_ and the enqueueing of cuDNN operations via the
+  // handle_ below.
   absl::Mutex mutex_;
+
+  // If set, indicates the stream currently active on handle_, to avoid the
+  // overhead of re-setting the same stream unnecessarily.
+  absl::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
   cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
@@ -387,6 +403,10 @@ port::Status CudnnSupport::Init() {
   return port::Status(port::error::INTERNAL,
                       absl::StrCat("cudnn library could not create a handle: ",
                                    CudnnStatusToString(status)));
+}
+
+void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
+  cudnn_->NotifyStreamDestroyed(stream);
 }
 
 port::StatusOr<perftools::gputools::dnn::VersionInfo>
@@ -5989,194 +6009,82 @@ bool CudnnSupport::DoActivate(Stream* stream,
   return IsStatusOk(status, /*report_error=*/true);
 }
 
-bool CudnnSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<double>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<double>* output_data, ScratchAllocator* workspace_allocator) {
-  // Alpha is the scaling factor for input.
-  double alpha = 1.0;
-  // Beta is the scaling factor for output.
-  double beta = 0.0;
-
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_DOUBLE);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_DOUBLE);
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
-    RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-        input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
-    return port::Status::OK();
-  }();
-  return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<float>* output_data, ScratchAllocator* workspace_allocator) {
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_FLOAT);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_FLOAT);
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
-    RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-        input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
-    return port::Status::OK();
-  }();
-  return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<Eigen::half>* output_data,
+port::Status CudnnSupport::DoPoolForward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  const float alpha_f = 1.0f;
+  const double alpha_d = 1.0;
+  const void* alpha = element_type == dnn::DataType::kDouble
+                          ? static_cast<const void*>(&alpha_d)
+                          : static_cast<const void*>(&alpha_f);
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  const float beta_f = 0.0f;
+  const double beta_d = 0.0;
+  const void* beta = element_type == dnn::DataType::kDouble
+                         ? static_cast<const void*>(&beta_d)
+                         : static_cast<const void*>(&beta_f);
 
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_HALF);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_HALF);
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
-    RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-        input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
-    return port::Status::OK();
-  }();
-  return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<int8>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<int8>* output_data, ScratchAllocator* workspace_allocator) {
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_INT8);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_INT8);
+  cudnnDataType_t cudnn_input_type =
+      ToCudnnDataType(element_type, input_dimensions.layout());
+  cudnnDataType_t cudnn_output_type =
+      ToCudnnDataType(element_type, output_dimensions.layout());
+  CudnnTensorDescriptor src_desc(input_dimensions, cudnn_input_type);
+  CudnnTensorDescriptor dest_desc(output_dimensions, cudnn_output_type);
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
+  auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-        input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
+        cudnn.handle(), pooling_desc.handle(), alpha, src_desc.handle(),
+        input_data.opaque(), beta, dest_desc.handle(), output_data.opaque()));
     return port::Status::OK();
   }();
-  return IsStatusOk(status, /*report_error=*/true);
+  return status;
 }
 
-bool CudnnSupport::DoPoolBackward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<double>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<double>& output_data,
-    const DeviceMemory<double>& input_diff_data,
-    DeviceMemory<double>* output_diff_data,
+port::Status CudnnSupport::DoPoolBackward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   // Alpha is the scaling factor for input.
-  double alpha = 1.0;
+  const float alpha_f = 1.0f;
+  const double alpha_d = 1.0;
+  const void* alpha = element_type == dnn::DataType::kDouble
+                          ? static_cast<const void*>(&alpha_d)
+                          : static_cast<const void*>(&alpha_f);
   // Beta is the scaling factor for output.
-  double beta = 0.0;
+  const float beta_f = 0.0f;
+  const double beta_d = 0.0;
+  const void* beta = element_type == dnn::DataType::kDouble
+                         ? static_cast<const void*>(&beta_d)
+                         : static_cast<const void*>(&beta_f);
 
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_DOUBLE);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_DOUBLE);
+  cudnnDataType_t cudnn_input_type =
+      ToCudnnDataType(element_type, input_dimensions.layout());
+  cudnnDataType_t cudnn_output_type =
+      ToCudnnDataType(element_type, output_dimensions.layout());
+
+  CudnnTensorDescriptor src_desc(input_dimensions, cudnn_input_type);
+  CudnnTensorDescriptor dest_desc(output_dimensions, cudnn_output_type);
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
+  auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
+        cudnn.handle(), pooling_desc.handle(), alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
-        src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
-        output_diff_data->opaque()));
+        src_desc.handle(), input_data.opaque(), beta, src_desc.handle(),
+        output_diff_data.opaque()));
     return port::Status::OK();
   }();
-  return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoPoolBackward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<float>& output_data,
-    const DeviceMemory<float>& input_diff_data,
-    DeviceMemory<float>* output_diff_data,
-    ScratchAllocator* workspace_allocator) {
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_FLOAT);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_FLOAT);
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
-    RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
-        output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
-        src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
-        output_diff_data->opaque()));
-    return port::Status::OK();
-  }();
-  return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoPoolBackward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<Eigen::half>& output_data,
-    const DeviceMemory<Eigen::half>& input_diff_data,
-    DeviceMemory<Eigen::half>* output_diff_data,
-    ScratchAllocator* workspace_allocator) {
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_HALF);
-  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_HALF);
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-  const auto status = [&] {
-    RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
-        cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
-        output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
-        src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
-        output_diff_data->opaque()));
-    return port::Status::OK();
-  }();
-  return IsStatusOk(status, /*report_error=*/true);
+  return status;
 }
 
 bool CudnnSupport::DoNormalizeWithDimensions(

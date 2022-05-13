@@ -15,7 +15,6 @@
 """Type specifications for TensorFlow APIs."""
 
 import abc
-import collections
 import functools
 import re
 from typing import List, Optional, Sequence, Any
@@ -185,9 +184,21 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     return self._deserialize(serialized_supertype) if has_supertype else None
 
-  # TODO(b/202447704): Reduce internal usages.
+  # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
+  def _placeholder_value(self) -> "TypeSpec":
+    """Value used for tracing a function signature with this TraceType."""
+    return self
+
+  # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
-    """Returns true if `spec_or_value` is compatible with this TypeSpec."""
+    """Returns true if `spec_or_value` is compatible with this TypeSpec.
+
+    Prefer using "is_subtype_of" and "most_specific_common_supertype" wherever
+    possible.
+
+    Args:
+      spec_or_value: A TypeSpec or TypeSpec associated value to compare against.
+    """
     # === Subclassing ===
     # If not overridden by subclasses, the default behavior is to convert
     # `spec_or_value` to a `TypeSpec` (if it isn't already); and then to
@@ -222,6 +233,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
                        (self, other))
     return result
 
+  # TODO(b/226395276): Delete after removing usages.
   def _with_tensor_ranks_only(self) -> "TypeSpec":
     """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
 
@@ -419,7 +431,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
     Returns:
       A `TypeSpec` of type `cls`.
     """
-    return cls(*serialization)
+    return cls(*serialization)  # pytype: disable=not-instantiable  # trace-all-classes
 
   # === Operators ===
 
@@ -457,14 +469,11 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
   # === Private Helper Methods ===
 
-  # TODO(b/216206374): Currently this usage is used to represent a Tensor
+  # TODO(b/154541175): Currently this usage is used to represent a Tensor
   # argument not a TensorSpec argument as it should be.
   def __tf_tracing_type__(self,
                           context: trace.TracingContext) -> trace.TraceType:
-    if context.include_tensor_ranks_only:
-      return self._with_tensor_ranks_only()
-    else:
-      return self
+    return self
 
   def __check_tensor_list(self, tensor_list):
     """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""
@@ -558,101 +567,6 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
     if isinstance(a, (tensor_shape.TensorShape, dtypes.DType)):
       return a.is_compatible_with(b)
     return a == b
-
-  # TODO(b/221459366): Remove after usages are removed.
-  @staticmethod
-  def __most_specific_compatible_type_serialization(a, b):
-    """Helper for most_specific_compatible_type.
-
-    Combines two type serializations as follows:
-
-    * If they are both tuples of the same length, then recursively combine
-      the respective tuple elements.
-    * If they are both dicts with the same keys, then recursively combine
-      the respective dict elements.
-    * If they are both TypeSpecs, then combine using
-      TypeSpec.most_specific_compatible_type.
-    * If they are both TensorShapes, then combine using
-      TensorShape.most_specific_compatible_shape.
-    * If they are both TensorSpecs with the same dtype, then combine using
-      TensorShape.most_specific_compatible_shape to combine shapes.
-    * If they are equal, then return a.
-    * If none of the above, then raise a ValueError.
-
-    Args:
-      a: A serialized TypeSpec or nested component from a serialized TypeSpec.
-      b: A serialized TypeSpec or nested component from a serialized TypeSpec.
-
-    Returns:
-      A value with the same type and structure as `a` and `b`.
-
-    Raises:
-      ValueError: If `a` and `b` are incompatible.
-    """
-    if not TypeSpec.__same_types(a, b):
-      raise ValueError(
-          f"Encountered incompatible types while determining the most specific "
-          f"compatible type. "
-          f"The Python type structures of `a` and `b` are different. "
-          f"`a` : {a!r} `b` : {b!r}")
-    if nest.is_namedtuple(a):
-      assert a._fields == b._fields  # Implied by __same_types(a, b).
-      return type(a)(*[
-          TypeSpec.__most_specific_compatible_type_serialization(x, y)
-          for (x, y) in zip(a, b)
-      ])
-    if isinstance(a, (list, tuple)):
-      if len(a) != len(b):
-        raise ValueError(
-            f"Encountered incompatible types while determining the most specific "
-            f"compatible type. "
-            f"Type spec structure `a` has a length of {len(a)} and "
-            f"type spec structure `b` has a different length of {len(b)}."
-            f"`a` : {a!r} `b` : {b!r}")
-      return tuple(
-          TypeSpec.__most_specific_compatible_type_serialization(x, y)
-          for (x, y) in zip(a, b))
-    if isinstance(a, collections.OrderedDict):
-      a_keys, b_keys = a.keys(), b.keys()
-      if len(a) != len(b) or a_keys != b_keys:
-        raise ValueError(
-            f"Encountered incompatible types while determining the most specific "
-            f"compatible type. "
-            f"Type spec structure `a` has keys {a_keys} and "
-            f"type spec structure `b` has different keys {b_keys}."
-            f"`a` : {a!r} `b` : {b!r}")
-      return collections.OrderedDict([
-          (k,
-           TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k]))
-          for k in a_keys
-      ])
-    if isinstance(a, dict):
-      a_keys, b_keys = sorted(a.keys()), sorted(b.keys())
-      if len(a) != len(b) or a_keys != b_keys:
-        raise ValueError(
-            f"Encountered incompatible types while determining the most specific "
-            f"compatible type. "
-            f"Type spec structure `a` has keys {a_keys} and "
-            f"type spec structure `b` has different keys {b_keys}."
-            f"`a` : {a!r} `b` : {b!r}")
-      return {
-          k: TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k])
-          for k in a_keys
-      }
-    if isinstance(a, tensor_shape.TensorShape):
-      return a.most_specific_compatible_shape(b)
-    if isinstance(a, list):
-      raise AssertionError(
-          f"{type(a).__name__}._serialize() should not return list values.")
-    if isinstance(a, TypeSpec):
-      return a.most_specific_compatible_type(b)
-    if a != b:
-      raise ValueError(
-          f"Encountered incompatible types while determining the most specific "
-          f"compatible type. "
-          f"Type spec structure `a` and `b` are different. "
-          f"`a` : {a!r} `b` : {b!r}")
-    return a
 
 
 class TypeSpecBatchEncoder(object, metaclass=abc.ABCMeta):
@@ -993,13 +907,9 @@ def _type_spec_from_value(value) -> TypeSpec:
   if isinstance(value, list) and value:
     subspecs = [_type_spec_from_value(v) for v in value]
     if isinstance(subspecs[0], BatchableTypeSpec):
-      merged_subspec = subspecs[0]
-      try:
-        for subspec in subspecs[1:]:
-          merged_subspec = merged_subspec.most_specific_compatible_type(subspec)
+      merged_subspec = subspecs[0].most_specific_common_supertype(subspecs[1:])
+      if merged_subspec is not None:
         return merged_subspec._batch(len(subspecs))  # pylint: disable=protected-access
-      except (ValueError, TypeError):
-        pass  # incompatible subspecs
 
   for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
     type_object, converter_fn, allow_subclass = entry

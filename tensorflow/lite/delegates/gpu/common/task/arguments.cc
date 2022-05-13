@@ -553,6 +553,7 @@ absl::Status Arguments::ResolveSelector(
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
+      RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
       RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));
       if (selector == "Linking") {
         return absl::OkStatus();

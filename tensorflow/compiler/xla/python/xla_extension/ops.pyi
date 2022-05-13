@@ -58,6 +58,7 @@ class CustomCallSchedule(enum.IntEnum):
 class CustomCallApiVersion(enum.IntEnum):
   API_VERSION_ORIGINAL: int
   API_VERSION_STATUS_RETURNING: int
+  API_VERSION_STATUS_RETURNING_UNIFIED: int
 
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
@@ -75,6 +76,16 @@ def AllReduce(
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
 def ApproxTopK(
+    builder: XlaBuilder,
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
+    top_k: int,
+    reduction_dim: int,
+    comparator: XlaComputation,
+    recall_target: Optional[float],
+    aggregate_to_topk: Optional[bool],
+    reduction_input_size_override: Optional[int]) -> XlaOp: ...
+def ApproxTopKFallback(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
     init_values: Sequence[XlaOp],

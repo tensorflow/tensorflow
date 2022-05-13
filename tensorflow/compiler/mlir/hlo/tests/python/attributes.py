@@ -112,3 +112,83 @@ def test_conv_dimension_numbers():
   assert attr.output_batch_dimension == 1
   assert attr.output_feature_dimension == 3
   assert attr.output_spatial_dimensions == [0, 2]
+
+
+@run
+def test_comparison_direction():
+  """Check that ComparisonDirection attribute is available and usable."""
+
+  attr = ComparisonDirectionAttr.get("EQ")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"comparison_direction EQ\">")
+  assert attr.comparison_direction == "EQ"
+
+
+@run
+def test_comparison_type():
+  """Check that ComparisonType attribute is available and usable."""
+
+  attr = ComparisonTypeAttr.get("TOTALORDER")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"comparison_type TOTALORDER\">")
+  assert attr.comparison_type == "TOTALORDER"
+
+
+@run
+def test_precision():
+  """Check that Precision attribute is available and usable."""
+
+  attr = PrecisionAttr.get("DEFAULT")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"precision DEFAULT\">")
+  assert attr.precision_type == "DEFAULT"
+
+
+@run
+def test_fft_type():
+  """Check that FftType attribute is available and usable."""
+
+  attr = FftTypeAttr.get("FFT")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"fft_type FFT\">")
+  assert attr.fft_type == "FFT"
+
+
+@run
+def test_dequantize_mode():
+  """Check that DequantizeMode attribute is available and usable."""
+
+  attr = DequantizeModeAttr.get("MIN_COMBINED")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"dequantize_mode MIN_COMBINED\">")
+  assert attr.dequantize_mode == "MIN_COMBINED"
+
+
+@run
+def test_transpose_type():
+  """Check that Transpose attribute is available and usable."""
+
+  attr = TransposeAttr.get("TRANSPOSE")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"transpose TRANSPOSE\">")
+  assert attr.transpose_type == "TRANSPOSE"
+
+
+@run
+def test_fusion_kind():
+  """Check that FusionKind attribute is available and usable."""
+
+  attr = FusionKindAttr.get("kLoop")
+  assert attr is not None
+  assert str(attr) == ("#mhlo<\"fusion_kind kLoop\">")
+  assert attr.fusion_kind == "kLoop"
+
+
+@run
+def test_rng_algorithm():
+  """Check that RngAlgorithm attribute is available and usable."""
+
+  attr = RngAlgorithmAttr.get("DEFAULT")
+  assert attr is not None
+  assert str(attr) == ("#mhlo.rng_algorithm<DEFAULT>")
+  assert attr.rng_algorithm == "DEFAULT"

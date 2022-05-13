@@ -86,7 +86,7 @@ class MergeTfIfOpsPass
     for (int i = 0; i < kMaxIter && changed; ++i) {
       changed = false;
       for (auto func_op :
-           llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
+           llvm::make_early_inc_range(module.getOps<mlir::func::FuncOp>())) {
         changed |= ProcessFunction(func_op, i);
       }
 
@@ -107,7 +107,7 @@ class MergeTfIfOpsPass
     }
   }
 
-  bool ProcessFunction(mlir::FuncOp op, int iteration) {
+  bool ProcessFunction(mlir::func::FuncOp op, int iteration) {
     // Use a hash map to group tf.If ops with the same operands.
     llvm::SmallDenseMap<mlir::Operation *, llvm::SmallVector<mlir::TF::IfOp, 2>,
                         2, OpWithSameArgsInfo>
@@ -209,9 +209,9 @@ class MergeTfIfOpsPass
       llvm::ArrayRef<mlir::TF::IfOp> if_ops,
       llvm::function_ref<mlir::FlatSymbolRefAttr(mlir::TF::IfOp)> get_branch) {
     std::string branch_name = absl::StrCat(branch_prefix, branch_suffix);
-    auto branch =
-        builder.create<mlir::FuncOp>(loc, branch_name, branch_function_type);
-    branch.setVisibility(mlir::FuncOp::Visibility::Private);
+    auto branch = builder.create<mlir::func::FuncOp>(loc, branch_name,
+                                                     branch_function_type);
+    branch.setVisibility(mlir::func::FuncOp::Visibility::Private);
 
     mlir::OpBuilder::InsertionGuard guard(builder);
 
@@ -240,6 +240,9 @@ class MergeTfIfOpsPass
 
     return branch.getSymName();
   }
+
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MergeTfIfOpsPass)
 };
 
 }  // namespace

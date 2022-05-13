@@ -29,8 +29,6 @@ LogicalBuffer::LogicalBuffer(HloInstruction* instruction,
       instruction_(instruction),
       index_(index) {}
 
-LogicalBuffer::~LogicalBuffer() {}
-
 std::string LogicalBuffer::ToString() const {
   std::string color_string;
   if (has_color()) {

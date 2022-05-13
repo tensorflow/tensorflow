@@ -29,8 +29,7 @@ const char* ToPythonStructFormat(tfrt::DType dtype_kind);
 tfrt::DType FromPythonStructFormat(char dtype);
 
 // Converts Python array to the Memref Descriptor.
-void ConvertPyArrayMemrefDesc(const pybind11::array& array,
-                              tfrt::jitrt::MemrefDesc* memref);
+tfrt::jitrt::MemrefDesc ConvertPyArrayMemrefDesc(const pybind11::array& array);
 
 }  // namespace tensorflow
 

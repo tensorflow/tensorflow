@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -492,6 +493,19 @@ Status GrpcServer::SetCoordinationServiceAgentInstance(
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceAgentInstance(agent);
+  return Status::OK();
+}
+
+Status GrpcServer::StopCoordinationService() {
+  // Note: the sequence of events is important here.
+  // 1. Agent must be torn down before the service as it needs to notify the
+  // service.
+  // 2. Remove RPC handlers' access to agent/service first before destructing
+  // them within the session manager to prevent data races.
+  TF_RETURN_IF_ERROR(SetCoordinationServiceAgentInstance(nullptr));
+  worker_env()->session_mgr->TeardownCoordinationServiceAgent();
+  coordination_service_->Shutdown();
+  worker_env()->session_mgr->TeardownCoordinationService();
   return Status::OK();
 }
 

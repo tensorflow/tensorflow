@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
 
+#include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/functional/function_ref.h"
@@ -113,25 +115,34 @@ class NoncopyableBuffer {
     memcpy(clone.data_.get(), buf_, size_);
     return clone;
   }
+  // Returns a copy of the object that owns its buffer. It uses `allocator` to
+  // allocate the new buffer, which can have custom properties like special
+  // alignment.
+  NoncopyableBuffer Clone(BufferAllocator allocator) const {
+    NoncopyableBuffer clone(size_, allocator);
+    memcpy(clone.data_.get(), buf_, size_);
+    return clone;
+  }
 
   // Ensure that the buffer owns the data.
-  void EnsureDataOwned() {
+  void EnsureDataOwned(BufferAllocator allocator = DefaultAllocator) {
     if (data_ == nullptr) {
-      data_ = OwnedDataPtr(static_cast<uint8_t*>(malloc(size_)), free);
+      data_ = allocator(size_);
       memcpy(data_.get(), buf_, size_);
       buf_ = data_.get();
     }
   }
-
- private:
-  NoncopyableBuffer(OwnedDataPtr data, size_t size)
-      : data_(std::move(data)), buf_(data_.get()), size_(size) {}
 
   static OwnedDataPtr AlignedAlloc(size_t size, size_t alignment) {
     return OwnedDataPtr(
         static_cast<uint8_t*>(port::AlignedMalloc(size, alignment)),
         port::AlignedFree);
   }
+
+ private:
+  NoncopyableBuffer(OwnedDataPtr data, size_t size)
+      : data_(std::move(data)), buf_(data_.get()), size_(size) {}
+
   // If data_ != nullptr then buf_ == data_.get()
   OwnedDataPtr data_{nullptr, free};  // Owning data pointer.
   const void* buf_;                   // Non-owning data pointer.

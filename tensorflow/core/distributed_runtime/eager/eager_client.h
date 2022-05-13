@@ -64,7 +64,8 @@ class EagerClient : public core::RefCounted {
   // is invoked and keeps it open until some error condition.
   // Similarly to the methods above, the request can be deleted as soon as
   // StreamingEnqueueAsync returns.
-  virtual void StreamingEnqueueAsync(CallOptions* call_opts,
+  virtual void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                                     CallOptions* call_opts,
                                      const EnqueueRequest* request,
                                      EnqueueResponse* response,
                                      StatusCallback done) = 0;

@@ -294,9 +294,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   ConversionTarget target(*context);
   if (legalize_chlo) {
-    target.addIllegalDialect<chlo::HloClientDialect>();
+    target.addIllegalDialect<chlo::ChloDialect>();
   } else {
-    target.addLegalDialect<chlo::HloClientDialect>();
+    target.addLegalDialect<chlo::ChloDialect>();
   }
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<arith::ArithmeticDialect>();
@@ -307,7 +307,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::func::ReturnOp>();
+    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -338,7 +338,7 @@ void LegalizeTF::runOnOperation() {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
     llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,

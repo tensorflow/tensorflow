@@ -96,21 +96,21 @@ TEST(CombineHashes, TestHashOutputsDifferent) {
 }
 
 TEST(GetOpNameByRegistration, ValidBuiltinCode) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.builtin_code = tflite::BuiltinOperator_ADD;
   const auto op_name = GetOpNameByRegistration(registration);
   EXPECT_EQ("ADD", op_name);
 }
 
 TEST(GetOpNameByRegistration, InvalidBuiltinCode) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.builtin_code = -1;
   const auto op_name = GetOpNameByRegistration(registration);
   EXPECT_EQ("", op_name);
 }
 
 TEST(GetOpNameByRegistration, CustomName) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.builtin_code = tflite::BuiltinOperator_CUSTOM;
   registration.custom_name = "TestOp";
   auto op_name = GetOpNameByRegistration(registration);

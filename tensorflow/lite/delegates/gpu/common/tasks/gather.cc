@@ -43,7 +43,7 @@ std::string GetGatherCode(const OperationDef& op_def) {
   c += "  } \n";
   c += "  int src_x;\n";
   c += "  args.indices.ReadPerChannel<int>(src_x, 0, 0, X);\n";
-  c += "  FLT4 result = args.src_tensor.Read(src_x, Y, S);\n";
+  c += "  args.src_tensor::type result = args.src_tensor.Read(src_x, Y, S);\n";
   c += "  args.dst_tensor.Write(result, X, Y, S);\n";
   c += "}\n";
   return c;

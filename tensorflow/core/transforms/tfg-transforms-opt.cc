@@ -24,11 +24,14 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerCanonicalizerPass();
   mlir::registerPrintOpStatsPass();
+  mlir::registerViewOpGraphPass();
   mlir::tfg::registerTFGraphPasses();
   registry.insert<mlir::tfg::TFGraphDialect, mlir::tf_type::TFTypeDialect>();
   // Inject the op registry.
-  registry.addDialectInterface<mlir::tfg::TFGraphDialect,
-                               mlir::tfg::TensorFlowOpRegistryInterface>();
+  registry.addExtension(
+      +[](mlir::MLIRContext *ctx, mlir::tfg::TFGraphDialect *dialect) {
+        dialect->addInterfaces<mlir::tfg::TensorFlowOpRegistryInterface>();
+      });
   return failed(
       mlir::MlirOptMain(argc, argv, "TFGraph Transforms Driver", registry));
 }

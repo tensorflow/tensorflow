@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/c/c_api_types.h"
@@ -192,14 +193,15 @@ TfLiteStatus PopulateInputValueFiles(
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   std::vector<std::string> value_files = Split(value_files_string, ',');
   for (const auto& val : value_files) {
-    std::vector<std::string> name_file = Split(val, ':');
-    if (name_file.size() != 2) {
+    std::pair<std::string, std::string> name_file_pair;
+    if (SplitInputLayerNameAndValueFile(val, name_file_pair) == kTfLiteError) {
       TFLITE_LOG(ERROR) << "Wrong input value file item specified: " << val;
       return kTfLiteError;
     }
 
     // Ensure the specific input layer name exists.
-    int layer_info_idx = FindLayerInfoIndex(info, name_file[0], names_string);
+    int layer_info_idx =
+        FindLayerInfoIndex(info, name_file_pair.first, names_string);
     if (info->at(layer_info_idx).has_value_range) {
       TFLITE_LOG(WARN)
           << "The input_name:" << info->at(layer_info_idx).name
@@ -207,7 +209,7 @@ TfLiteStatus PopulateInputValueFiles(
              "input_layer_value_range. The input_layer_value_range of the "
              "input_name will be ignored.";
     }
-    info->at(layer_info_idx).input_file_path = name_file[1];
+    info->at(layer_info_idx).input_file_path = name_file_pair.second;
   }
   return kTfLiteOk;
 }
@@ -271,6 +273,35 @@ CreateProfileSummaryFormatter(bool format_as_csv) {
 
 }  // namespace
 
+TfLiteStatus SplitInputLayerNameAndValueFile(
+    const std::string& name_and_value_file,
+    std::pair<std::string, std::string>& name_file_pair) {
+  // 1. split the string by ':' and ignore escaped characters
+  int delim_index = -1;
+  for (int i = 1; i < name_and_value_file.length(); ++i) {
+    if (name_and_value_file[i] == ':' && name_and_value_file[i - 1] != '\\') {
+      if (delim_index == -1) {
+        delim_index = i;
+      } else {
+        TFLITE_LOG(ERROR) << name_and_value_file
+                          << " contains more than one delimiter.";
+        return kTfLiteError;
+      }
+    }
+  }
+  if (delim_index == -1) {
+    TFLITE_LOG(ERROR) << name_and_value_file
+                      << " doesn't contain any delimiter.";
+    return kTfLiteError;
+  }
+  // 2. replace escaped "\:" string to ":"
+  name_file_pair.first = absl::StrReplaceAll(
+      name_and_value_file.substr(0, delim_index), {{"\\:", ":"}});
+  name_file_pair.second = absl::StrReplaceAll(
+      name_and_value_file.substr(delim_index + 1), {{"\\:", ":"}});
+  return kTfLiteOk;
+}
+
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   BenchmarkParams default_params = BenchmarkModel::DefaultParams();
   default_params.AddParam("graph", BenchmarkParam::Create<std::string>(""));
@@ -301,7 +332,7 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("release_dynamic_tensors",
                           BenchmarkParam::Create<bool>(false));
-  default_params.AddParam("use_dynamic_tensors_for_large_tensors",
+  default_params.AddParam("optimize_memory_for_large_tensors",
                           BenchmarkParam::Create<int32_t>(0));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
@@ -347,11 +378,12 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "A map-like string representing value file. Each item is separated "
           "by ',', and the item value consists "
           "of input layer name and value file path separated by ':', e.g. "
-          "input1:file_path1,input2:file_path2. If the input_name appears both "
-          "in input_layer_value_range and input_layer_value_files, "
-          "input_layer_value_range of the input_name will be ignored. The file "
-          "format is binary and it should be array format or null separated "
-          "strings format."),
+          "input1:file_path1,input2:file_path2. In case the input layer name "
+          "contains ':' e.g. \"input:0\", escape it with \"\\:\". If the "
+          "input_name appears both in input_layer_value_range and "
+          "input_layer_value_files, input_layer_value_range of the input_name "
+          "will be ignored. The file format is binary and it should be array "
+          "format or null separated strings format."),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
@@ -377,8 +409,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "Ensure dynamic tensor's memory is released when they "
                        "are not used."),
       CreateFlag<int32_t>(
-          "use_dynamic_tensors_for_large_tensors", &params_,
-          "Use dynamic tensor for large tensors to optimize memory usage.")};
+          "optimize_memory_for_large_tensors", &params_,
+          "Optimize memory usage for large tensors with sacrificing latency.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -419,8 +451,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print post-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
                       "Release dynamic tensor memory", verbose);
-  LOG_BENCHMARK_PARAM(int32_t, "use_dynamic_tensors_for_large_tensors",
-                      "Use dynamic tensor for large tensors", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
+                      "Optimize memory usage for large tensors", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -631,9 +663,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   InterpreterOptions options;
-  options.SetPreserveAllTensors(params_.Get<bool>("release_dynamic_tensors"));
-  options.SetDynamicAllocationForLargeTensors(
-      params_.Get<int32_t>("use_dynamic_tensors_for_large_tensors"));
+  options.SetEnsureDynamicTensorsAreReleased(
+      params_.Get<bool>("release_dynamic_tensors"));
+  options.OptimizeMemoryForLargeTensors(
+      params_.Get<int32_t>("optimize_memory_for_large_tensors"));
   interpreter_->ApplyOptions(&options);
 
   owned_delegates_.clear();

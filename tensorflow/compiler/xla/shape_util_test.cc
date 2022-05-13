@@ -348,6 +348,24 @@ TEST(ShapeUtilTest, NestedTuple) {
       {ShapeUtil::MakeTupleShape({}), ShapeUtil::MakeTupleShape({})})));
 }
 
+TEST(ShapeUtilTest, NestedTupleWithPtrs) {
+  const Shape nil = ShapeUtil::MakeNil();
+  const Shape s32 = ShapeUtil::MakeShape(S32, {});
+  EXPECT_FALSE(ShapeUtil::IsNestedTuple(nil));
+  EXPECT_FALSE(
+      ShapeUtil::IsNestedTuple(ShapeUtil::MakeTupleShapeWithPtrs({&s32})));
+  EXPECT_TRUE(
+      ShapeUtil::IsNestedTuple(ShapeUtil::MakeTupleShapeWithPtrs({&nil})));
+  EXPECT_FALSE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&s32, &s32})));
+  EXPECT_TRUE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&s32, &nil})));
+  EXPECT_TRUE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&nil, &s32})));
+  EXPECT_TRUE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&nil, &nil})));
+}
+
 TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(1, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {})));
   EXPECT_EQ(0, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {0})));
@@ -613,7 +631,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
   int init = 5;
-  auto set_func = [&](absl::Span<const int64_t> indexes) {
+  auto set_func = [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 

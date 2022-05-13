@@ -322,11 +322,11 @@ StatusOr<absl::optional<int64_t>> GetDominantDevice(
 }
 
 HloSharding TransposeSharding(const HloSharding& sharding,
-                              const std::vector<int64_t>& dimensions) {
+                              absl::Span<const int64_t> dimensions) {
   if (sharding.IsTileMaximal()) {
     return sharding;
   }
-  auto perm_dimensions = dimensions;
+  DimensionVector perm_dimensions(dimensions.begin(), dimensions.end());
   // Add subgroup dims if missing.
   if (sharding.TiledDataRank() == dimensions.size()) {
     for (int64_t i = sharding.TiledDataRank();
@@ -1225,8 +1225,7 @@ void DevicesForShardingInternal(
 }  // namespace
 
 std::vector<int64_t> DevicesForSharding(
-    const HloSharding& sharding,
-    const std::vector<int64_t>& available_devices) {
+    const HloSharding& sharding, absl::Span<const int64_t> available_devices) {
   absl::flat_hash_set<int64_t> available_set;
   for (int64_t device : available_devices) {
     available_set.insert(device);
@@ -1335,7 +1334,7 @@ HloSharding ReplicateAllDataDims(const HloSharding& sharding,
 }
 
 HloSharding RemoveShapeDimensions(const HloSharding& sharding,
-                                  const std::vector<int64_t>& dims_to_remove) {
+                                  absl::Span<const int64_t> dims_to_remove) {
   if (sharding.IsTileMaximal() || dims_to_remove.empty()) {
     return sharding;
   }

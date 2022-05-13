@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -160,7 +161,7 @@ void PrepareForExportPass::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareForExport() {
   return std::make_unique<PrepareForExportPass>();
 }
 

@@ -146,24 +146,6 @@ TEST_F(HloComputationTest, PostOrderSimple) {
               ElementsAre(constant, negate1, negate2));
 }
 
-TEST_F(HloComputationTest, PostOrderTrace) {
-  // Test GetInstructionPostOrder for a computation with a trace instruction.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto negate1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
-  auto trace =
-      builder.AddInstruction(HloInstruction::CreateTrace("foobar", negate1));
-  auto negate2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  // Trace instructions should be at the end of the sort.
-  EXPECT_THAT(computation->MakeInstructionPostOrder(),
-              ElementsAre(constant, negate1, negate2, trace));
-}
-
 TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   // Test GetInstructionPostOrder for a computation with multiple instructions
   // which are not connected.

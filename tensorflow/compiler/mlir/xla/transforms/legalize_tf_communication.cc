@@ -45,6 +45,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/side_effect_util.h"
 
 namespace mlir {
+
+using func::FuncOp;
+
 namespace mhlo {
 
 namespace {
@@ -78,11 +81,11 @@ LogicalResult GetControlFlowAncestors(
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
   Block* block = op->getBlock();
   Operation* parent = block->getParentOp();
-  while (block && parent && !isa<FuncOp>(parent)) {
+  while (block && parent && !isa<func::FuncOp>(parent)) {
     if (!IsControlFlowOp(parent))
       return op->emitOpError()
              << "expects ancestor(s) to be of ['" << IfOp::getOperationName()
-             << "', '" << FuncOp::getOperationName() << "']";
+             << "', '" << func::FuncOp::getOperationName() << "']";
 
     if (!llvm::hasSingleElement(block->getParent()->getBlocks()))
       return op->emitOpError() << "expects single block region ancestor(s)";
@@ -100,7 +103,7 @@ LogicalResult GetControlFlowAncestors(
 // `control_flow_blocks` will be populated with control flow op ancestors for
 // every communication op.
 LogicalResult FindCommunicationOps(
-    FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    func::FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks,
     bool& has_communication_ops) {
   auto result = func.walk([&](Operation* op) {
@@ -119,10 +122,10 @@ LogicalResult FindCommunicationOps(
 // (transitively), and an optional clone of itself. If `clone` is set, function
 // calls to `original` will be replaced with `clone`.
 struct FuncToRewrite {
-  FuncOp original;
+  func::FuncOp original;
   llvm::SmallPtrSet<Operation*, 4> control_flow_ops;
   llvm::SmallPtrSet<Block*, 4> control_flow_blocks;
-  FuncOp clone;
+  func::FuncOp clone;
 };
 
 // Finds all functions that need to be rewritten with communication ops and
@@ -131,8 +134,8 @@ LogicalResult GetFunctionsToRewrite(
     ModuleOp module,
     llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
   // Find functions containing communication ops.
-  SmallVector<FuncOp, 4> funcs_to_visit;
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  SmallVector<func::FuncOp, 4> funcs_to_visit;
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     FuncToRewrite func_to_rewrite{/*original=*/func, /*control_flow_ops=*/{},
                                   /*control_flow_blocks=*/{},
                                   /*clone=*/nullptr};
@@ -149,15 +152,16 @@ LogicalResult GetFunctionsToRewrite(
 
   // Find functions that call functions with communication ops, transitively.
   while (!funcs_to_visit.empty()) {
-    SmallVector<FuncOp, 4> new_funcs_to_visit;
-    for (FuncOp& func : funcs_to_visit) {
+    SmallVector<func::FuncOp, 4> new_funcs_to_visit;
+    for (func::FuncOp& func : funcs_to_visit) {
       auto uses = func.getSymbolUses(module);
       if (!uses) continue;
       for (auto& use : *uses) {
         // Only `mlir::func::CallOp` is supported as this requires knowing how
         // to rewrite arguments and results to a function.
         if (!isa<mlir::func::CallOp>(use.getUser())) continue;
-        auto caller_parent_func = use.getUser()->getParentOfType<FuncOp>();
+        auto caller_parent_func =
+            use.getUser()->getParentOfType<func::FuncOp>();
         if (!caller_parent_func) continue;
 
         FuncToRewrite func_to_rewrite{/*original=*/caller_parent_func,
@@ -759,10 +763,12 @@ bool ProcessRegionWhileOp(
   }
 
   if (*region_idx < region_while.getNumRegions()) {
-    SmallVector<Type> arg_types;
-    for (auto arg : region_while.arg()) arg_types.push_back(arg.getType());
-    RewriteControlFlowOpRegion(builder, region_while, *region_idx, arg_types,
-                               ops_to_visit, control_flow_blocks, token);
+    SmallVector<Type> operand_types;
+    for (auto operand : region_while.operand())
+      operand_types.push_back(operand.getType());
+    RewriteControlFlowOpRegion(builder, region_while, *region_idx,
+                               operand_types, ops_to_visit, control_flow_blocks,
+                               token);
     return true;
   }
 
@@ -771,7 +777,8 @@ bool ProcessRegionWhileOp(
 
 // Updates function type based on current function body block arguments and
 // terminator operand types.
-void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
+void UpdateFunctionType(OpBuilder& builder, func::FuncOp func,
+                        Block& func_body) {
   auto new_argument_types = llvm::to_vector(func_body.getArgumentTypes());
   auto new_result_types =
       llvm::to_vector(func_body.getTerminator()->getOperandTypes());
@@ -842,7 +849,7 @@ LogicalResult RewriteFunction(
       // rewrite arguments and results to a function.
       auto it = funcs.find(call.getCallee());
       if (it != funcs.end()) {
-        FuncOp clone = it->getSecond().clone;
+        func::FuncOp clone = it->getSecond().clone;
         Optional<StringRef> symbol_name =
             clone ? Optional<StringRef>(clone.getName()) : llvm::None;
         // If the function being called is to be cloned, update the call to also
@@ -908,7 +915,7 @@ bool IsFunctionCallWithCommunication(
 // Collects all control flow op ancestors of communication ops or function calls
 // with communication ops (transitively).
 void GetCommunicationControlFlowOps(
-    FuncOp func,
+    func::FuncOp func,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite,
     llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
@@ -934,7 +941,7 @@ void LegalizeTFCommunication::runOnOperation() {
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {
     const auto& func_to_rewrite = func_and_name.getSecond();
-    FuncOp func = func_to_rewrite.original;
+    func::FuncOp func = func_to_rewrite.original;
     if (failed(RewriteFunction(builder, channel_id, module, func,
                                funcs_to_rewrite,
                                func_to_rewrite.control_flow_ops,
@@ -942,7 +949,7 @@ void LegalizeTFCommunication::runOnOperation() {
                                /*is_clone=*/false)))
       return signalPassFailure();
 
-    FuncOp clone = func_and_name.getSecond().clone;
+    func::FuncOp clone = func_and_name.getSecond().clone;
     if (!clone) continue;
     llvm::SmallPtrSet<Operation*, 4> clone_control_flow_ops;
     llvm::SmallPtrSet<Block*, 4> clone_control_flow_blocks;

@@ -15,16 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 
+#include <memory>
 #include <numeric>
+#include <string>
+#include <utility>
+#include <variant>
 
 #include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -32,21 +39,33 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/debug_event.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
@@ -57,6 +76,8 @@ namespace tensorflow {
 namespace {
 
 using TensorTypeAndShape = XlaCompilationCache::Signature::TensorTypeAndShape;
+
+constexpr char kXlaSerializedCacheKeySeparator[] = "__";
 
 // Functor that converts a Signature's arg to a human readable string.
 struct SignatureHumanStringAppender {
@@ -114,6 +135,14 @@ struct SignatureHashCombiner {
   }
 };
 
+std::string XlaSerializedCacheKeyToString(const XlaSerializedCacheKey& key) {
+  return absl::StrCat(
+      key.prefix(), key.prefix().empty() ? "" : kXlaSerializedCacheKeySeparator,
+      key.signature_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.cluster_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.device_type());
+}
+
 }  // namespace
 
 constexpr int64_t XlaCompilationCache::kDefaultCompilationThreshold;
@@ -122,9 +151,14 @@ constexpr int64_t
 constexpr int64_t
     XlaCompilationCache::AsyncCompilationState::kMaxNumOngoingCompilations;
 
-XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
+XlaCompilationCache::XlaCompilationCache(Config config,
+                                         xla::LocalClient* client,
                                          DeviceType device_type)
-    : client_(client), device_type_(std::move(device_type)) {}
+    : client_(client),
+      device_type_(std::move(device_type)),
+      disable_strict_signature_checks_(config.disable_strict_signature_checks),
+      persistance_prefix_(config.persistance_prefix),
+      persistent_cache_directory_(config.persistent_cache_directory) {}
 
 XlaCompilationCache::~XlaCompilationCache() {
   // Ensure any use of our programs have completed by waiting for all stream
@@ -210,7 +244,7 @@ StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
   return std::move(signature);
 }
 
-std::vector<const xla::Shape*> GetShapePointers(
+static std::vector<const xla::Shape*> GetShapePointers(
     absl::Span<const xla::Shape> shapes) {
   std::vector<const xla::Shape*> shape_ptrs;
   shape_ptrs.reserve(shapes.size());
@@ -259,6 +293,36 @@ Status XlaCompilationCache::BuildExecutable(
   return Status::OK();
 }
 
+StatusOr<std::unique_ptr<xla::AotCompilationResult>>
+XlaCompilationCache::BuildSerializedExecutable(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result) {
+  VLOG(2) << "Compiling to local executable";
+
+  std::vector<const xla::Shape*> argument_layouts =
+      GetShapePointers(result.xla_input_shapes);
+  xla::ExecutableBuildOptions build_options =
+      GetBuildOptions(options, result, client_->default_device_ordinal());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_results,
+      client_->CompileAheadOfTime(*result.computation, argument_layouts,
+                                  build_options));
+  TF_RET_CHECK(aot_results.size() == 1);
+  return std::move(aot_results[0]);
+}
+
+StatusOr<std::unique_ptr<xla::LocalExecutable>>
+XlaCompilationCache::LoadExecutable(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result,
+    const std::string& serialized_aot_result) {
+  VLOG(2) << "Loading local executable using BEF.";
+
+  xla::ExecutableBuildOptions build_options =
+      GetBuildOptions(options, result, client_->default_device_ordinal());
+  return client_->Load(serialized_aot_result, build_options);
+}
+
 Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
@@ -266,8 +330,8 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  return CompileImpl(compile_options, options, function, args, /*ctx=*/nullptr,
-                     CompileScope::kFunction, compile_mode,
+  return CompileImpl(compile_options, options, function, args,
+                     /*ctx=*/nullptr, CompileScope::kFunction, compile_mode,
                      out_compilation_result, out_executable);
 }
 
@@ -325,19 +389,18 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   return graph;
 }
 
-Status XlaSingleOpToHlo(XlaCompiler* compiler,
-                        const XlaCompiler::Options& options,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        OpKernelContext* ctx,
-                        const XlaCompiler::CompileOptions& compile_options,
-                        XlaCompiler::CompilationResult* compilation_result) {
-  std::vector<DataType> result_dtypes(ctx->num_outputs());
-  for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
-    result_dtypes[i] = ctx->expected_output_dtype(i);
-  }
-
-  const NodeDef& node_def = ctx->op_kernel().def();
-  TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
+Status XlaSingleOpToHlo(
+    XlaCompiler* compiler, const XlaCompiler::Options& options,
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
+    const XlaCompiler::CompileOptions& compile_options,
+    XlaCompiler::CompilationResult* compilation_result) {
+  const std::vector<DataType>& result_dtypes =
+      single_op_compile_argument.output_dtypes;
+  const NodeDef& node_def = single_op_compile_argument.node_def;
+  TF_ASSIGN_OR_RETURN(
+      auto graph,
+      CreateGraph(node_def, args, single_op_compile_argument.output_dtypes));
 
   auto compile_with_old_bridge = [&]() {
     *compilation_result = {};
@@ -345,7 +408,7 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
                                   std::move(graph), args, compilation_result);
   };
 
-  const ConfigProto* config = ctx->function_library()->config_proto();
+  const ConfigProto* config = &(single_op_compile_argument.config_proto);
   auto bridge_rollout = GetMlirBridgeRolloutState(
       config ? absl::optional<ConfigProto>(*config) : absl::nullopt);
   if (bridge_rollout ==
@@ -371,8 +434,7 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
       *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
       options.device_type.type_string(), compile_options.use_tuple_arg,
       /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-      options.shape_determination_fns.shape_representation_fn,
-      compilation_result);
+      options.shape_determination_fns, compilation_result);
 
   if (mlir_result.ok() || mlir_enabled) {
     return mlir_result;
@@ -418,7 +480,8 @@ void LogOnceXlaCompiledFirstCluster() {
 }  // namespace
 
 Status XlaCompilationCache::CompileStrict(
-    Entry* entry, const XlaCompiler::CompileOptions& compile_options,
+    const Signature& sig, Entry* entry,
+    const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
@@ -429,8 +492,19 @@ Status XlaCompilationCache::CompileStrict(
   entry->compile_state = CompileState::kCompiled;
   entry->compilation_status = [&] {
     if (scope == CompileScope::kOp) {
-      return XlaSingleOpToHlo(&compiler, options, args, ctx, compile_options,
-                              &entry->compilation_result);
+      XlaCompiler::SingleOpCompileArgument single_op_arg;
+      std::vector<DataType> output_dtypes(ctx->num_outputs());
+      for (int i = 0; i < output_dtypes.size(); ++i) {
+        output_dtypes[i] = ctx->expected_output_dtype(i);
+      }
+      single_op_arg.output_dtypes = std::move(output_dtypes);
+      single_op_arg.node_def = ctx->op_kernel().def();
+      auto* config_proto = ctx->function_library()->config_proto();
+      if (config_proto != nullptr) {
+        single_op_arg.config_proto = *config_proto;
+      }
+      return XlaSingleOpToHlo(&compiler, options, args, single_op_arg,
+                              compile_options, &entry->compilation_result);
 
     } else {
       CHECK(scope == CompileScope::kFunction);  // Crash OK
@@ -440,8 +514,49 @@ Status XlaCompilationCache::CompileStrict(
   }();
   TF_RETURN_IF_ERROR(entry->compilation_status);
   TF_RET_CHECK(entry->executable.get() == nullptr);
-  entry->compilation_status =
-      BuildExecutable(options, entry->compilation_result, &entry->executable);
+  TF_RET_CHECK(entry->compilation_result.computation != nullptr);
+
+  absl::optional<XlaSerializedCacheEntry> serialized_entry;
+  if (!persistent_cache_directory_.empty()) {
+    const xla::HloModuleProto& hlo_module =
+        entry->compilation_result.computation->proto();
+
+    XlaSerializedCacheKey cache_key = BuildSerializedCacheKey(sig, hlo_module);
+
+    {
+      XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+          "Try loading serialized cache entry:", sig.HumanString()));
+      TF_ASSIGN_OR_RETURN(serialized_entry, TryLoadSerializedEntry(cache_key));
+    }
+
+    if (serialized_entry.has_value()) {
+      TF_RETURN_IF_ERROR(
+          VerifyLoadedCacheEntry(cache_key, hlo_module, *serialized_entry));
+    }
+  }
+
+  if (serialized_entry.has_value()) {
+    VLOG(1) << "Loading cached entry for: " << sig.HumanString();
+    StatusOr<std::unique_ptr<xla::LocalExecutable>> executable = LoadExecutable(
+        options, entry->compilation_result, serialized_entry->executable());
+    entry->compilation_status = executable.status();
+    if (executable.ok()) {
+      entry->executable = *std::move(executable);
+    }
+  } else {
+    entry->compilation_status =
+        BuildExecutable(options, entry->compilation_result, &entry->executable);
+
+    // Caching is done regardless of the entry->compilation_status. To take
+    // advantage of newer compilation code, a cache flush is required.
+    if (!persistent_cache_directory_.empty()) {
+      XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+          "Serializing and saving cache entry: ", sig.HumanString()));
+      TF_ASSIGN_OR_RETURN(XlaSerializedCacheEntry serialized_entry,
+                          SerializeEntry(options, sig, *entry));
+      TF_RETURN_IF_ERROR(SaveSerializedEntry(std::move(serialized_entry)));
+    }
+  }
 
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
@@ -470,13 +585,16 @@ Status XlaCompilationCache::CompileStrict(
   jit_compilation_activity.set_compile_time_us(compile_time_us);
   jit_compilation_activity.set_cumulative_compile_time_us(
       it->second.cumulative_compile_time_us);
+  jit_compilation_activity.set_used_persistent_cache(
+      serialized_entry.has_value());
   TF_RETURN_IF_ERROR(BroadcastXlaActivity(std::move(jit_compilation_activity)));
 
   return Status::OK();
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
-    Entry* entry, const XlaCompiler::CompileOptions& compile_options,
+    const Signature& signature, Entry* entry,
+    const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const NameAttrList& function, OpKernelContext* ctx, CompileScope scope) {
@@ -503,8 +621,8 @@ Status XlaCompilationCache::CompileAsynchronous(
     // We don't need to lock local_entry.mu, but do it anyway to satisfy
     // thread safety analysis.
     mutex_lock entry_lock(local_entry.mu);
-    Status s = CompileStrict(&local_entry, compile_options, options, args,
-                             function, ctx, scope);
+    Status s = CompileStrict(signature, &local_entry, compile_options, options,
+                             args, function, ctx, scope);
     VLOG(2) << "Finished asynchronous compililation of cluster "
             << function_name << '.';
     {
@@ -685,13 +803,14 @@ Status XlaCompilationCache::CompileImpl(
     } else if (compile_mode == CompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
-      TF_RETURN_IF_ERROR(CompileAsynchronous(entry, compile_options, options,
-                                             args, function, ctx, scope));
+      TF_RETURN_IF_ERROR(CompileAsynchronous(signature, entry, compile_options,
+                                             options, args, function, ctx,
+                                             scope));
       return Status::OK();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
-      TF_RETURN_IF_ERROR(CompileStrict(entry, compile_options, options, args,
-                                       function, ctx, scope));
+      TF_RETURN_IF_ERROR(CompileStrict(signature, entry, compile_options,
+                                       options, args, function, ctx, scope));
     }
   } else if (state == CompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
@@ -705,6 +824,112 @@ Status XlaCompilationCache::CompileImpl(
   *out_compilation_result = &entry->compilation_result;
   *out_executable = entry->executable.get();
   return Status::OK();
+}
+
+XlaSerializedCacheKey XlaCompilationCache::BuildSerializedCacheKey(
+    const Signature& sig, const xla::HloModuleProto& hlo_module) const {
+  XlaSerializedCacheKey serialized_cache_key;
+  serialized_cache_key.set_signature_fingerprint(Signature::Hash()(sig));
+  serialized_cache_key.set_cluster_fingerprint(
+      DeterministicProtoHash64(hlo_module));
+  serialized_cache_key.set_device_type(device_type_.type_string());
+  serialized_cache_key.set_prefix(persistance_prefix_);
+  return serialized_cache_key;
+}
+
+Status XlaCompilationCache::VerifyLoadedCacheEntry(
+    const XlaSerializedCacheKey& key, const xla::HloModuleProto& hlo_module,
+    const XlaSerializedCacheEntry& entry) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat("Verifying loaded cache entry: ",
+                                        hlo_module.entry_computation_name()));
+
+  if (!AreSerializedProtosEqual(key, entry.key())) {
+    VLOG(2) << "Serialized cache key does not match:\n"
+            << "got:\n"
+            << entry.key().DebugString() << "\nexpected:\n"
+            << key.DebugString() << "\n";
+    return errors::InvalidArgument("Serialized cache key does not match.");
+  }
+
+  // Perform a stricter (slower) check of the snapshot to verify that they
+  // match exactly.
+  if (!disable_strict_signature_checks_) {
+    if (!AreSerializedProtosEqual(hlo_module, entry.hlo_module())) {
+      VLOG(2) << "HLOs do not match:\n"
+              << "got:\n"
+              << hlo_module.DebugString() << "\nexpected:\n"
+              << entry.hlo_module().DebugString() << "\n";
+      return errors::InvalidArgument("Serialized HLO does not match.");
+    }
+  }
+
+  if (entry.executable().empty()) {
+    return errors::InvalidArgument("No binary found in serialized entry.");
+  }
+  return Status::OK();
+}
+
+StatusOr<XlaSerializedCacheEntry> XlaCompilationCache::SerializeEntry(
+    const XlaCompiler::Options& options, const Signature& sig,
+    const Entry& entry) {
+  if (entry.compile_state != CompileState::kCompiled) {
+    return errors::FailedPrecondition(
+        "Cache entry to serialize is not compiled.");
+  }
+  if (entry.executable == nullptr) {
+    return errors::FailedPrecondition(
+        "LocalExecutable not found for cache entry to serialize.");
+  }
+  if (entry.executable->executable() == nullptr) {
+    return errors::FailedPrecondition(
+        "Executable not found for cache entry to serialize.");
+  }
+
+  XlaSerializedCacheEntry serialized_entry;
+  const xla::HloModuleProto& hlo_module =
+      entry.compilation_result.computation->proto();
+  *serialized_entry.mutable_key() = BuildSerializedCacheKey(sig, hlo_module);
+  *serialized_entry.mutable_hlo_module() = hlo_module;
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
+      BuildSerializedExecutable(options, entry.compilation_result));
+  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
+  serialized_entry.set_executable(std::move(serialized));
+  return serialized_entry;
+}
+
+namespace {
+
+std::string GetFilePath(const XlaSerializedCacheKey& key,
+                        absl::string_view persistent_cache_directory) {
+  const std::string file_name =
+      absl::StrCat(XlaSerializedCacheKeyToString(key), ".pb");
+  return io::JoinPath(persistent_cache_directory, file_name);
+}
+
+}  // namespace
+
+Status XlaCompilationCache::SaveSerializedEntry(
+    const XlaSerializedCacheEntry& entry) {
+  Env* env = Env::Default();
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(persistent_cache_directory_));
+  const std::string file_path =
+      GetFilePath(entry.key(), persistent_cache_directory_);
+  return WriteBinaryProto(env, file_path, entry);
+}
+
+StatusOr<absl::optional<XlaSerializedCacheEntry>>
+XlaCompilationCache::TryLoadSerializedEntry(const XlaSerializedCacheKey& key) {
+  Env* env = Env::Default();
+  const std::string file_path = GetFilePath(key, persistent_cache_directory_);
+  if (!env->FileExists(file_path).ok()) {
+    return StatusOr<absl::optional<XlaSerializedCacheEntry>>(absl::nullopt);
+  }
+
+  XlaSerializedCacheEntry entry;
+  TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
+  return StatusOr<absl::optional<XlaSerializedCacheEntry>>(entry);
 }
 
 }  // namespace tensorflow

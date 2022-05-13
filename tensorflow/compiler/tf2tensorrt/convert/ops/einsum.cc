@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/einsum_op_util.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 #if IS_TRT_VERSION_GE(7, 1, 3, 0)
@@ -62,7 +62,7 @@ Status FindIndicesoOfAllValuesInSrc(absl::Span<const T> values,
 // Example: adbc,adce -> adbe. The first tensor has layout BFC, the second BCF.
 enum class EinsumLayout { BFC, BCF, MIX };
 
-using DimType = EinsumHelper::DimensionType;
+using DimType = EinsumDimensionType;
 constexpr auto kBatch = DimType::kBatch;
 constexpr auto kFree = DimType::kFree;
 constexpr auto kContract = DimType::kContract;
@@ -74,7 +74,7 @@ class EinsumDescriptor {
  private:
   // Checks whether input_labels[offset:offset+m] matches labels from other.
   static bool OrderMatches(const Labels& input_labels, int offset, int m,
-                           EinsumHelper::DimensionType dim_type,
+                           EinsumDimensionType dim_type,
                            const std::unique_ptr<EinsumDescriptor>& other) {
     if (other == nullptr) {
       return true;
@@ -90,18 +90,16 @@ class EinsumDescriptor {
                       other->permuted_labels.begin() + offset_other);
   }
 
-  using label_t_iterator =
-      std::vector<EinsumHelper::DimensionType>::const_iterator;
+  using label_t_iterator = std::vector<EinsumDimensionType>::const_iterator;
   static int32_t CountLabels(label_t_iterator begin, label_t_iterator end,
-                             EinsumHelper::DimensionType val) {
+                             EinsumDimensionType val) {
     return static_cast<int32_t>(std::count_if(
-        begin, end, [val](EinsumHelper::DimensionType t) { return t == val; }));
+        begin, end, [val](EinsumDimensionType t) { return t == val; }));
   }
 
   // Appends indices to the "permute" vector where types maches value.
   void AppendMatchingIndicesToPermute(
-      const std::vector<EinsumHelper::DimensionType>& types,
-      EinsumHelper::DimensionType val) {
+      const std::vector<EinsumDimensionType>& types, EinsumDimensionType val) {
     for (int i = 0; i < types.size(); i++) {
       if (types[i] == val) {
         permute.push_back(i);
@@ -110,7 +108,7 @@ class EinsumDescriptor {
   }
 
   Status DetermineLayout(const Labels& input_labels,
-                         const std::vector<EinsumHelper::DimensionType>& types,
+                         const std::vector<EinsumDimensionType>& types,
                          const std::unique_ptr<EinsumDescriptor>& other) {
     // Check if the current layout is BFC or BCF. In that case we could avoid
     // transpose.
@@ -141,7 +139,7 @@ class EinsumDescriptor {
 
   Status CalculateMixedLayoutPermutation(
       const EinsumLayout preferred_layout, const Labels& input_labels,
-      const std::vector<EinsumHelper::DimensionType>& types,
+      const std::vector<EinsumDimensionType>& types,
       const std::unique_ptr<EinsumDescriptor>& other) {
     // Input label types are mixed. Calculate a permutation that maps them
     // to the preferred layout (BCF or BFC).
@@ -187,14 +185,14 @@ class EinsumDescriptor {
   }
 
   Status Initialize(const TRT_TensorOrWeights& operand, Labels input_labels,
-                    std::vector<EinsumHelper::DimensionType>& label_types,
+                    std::vector<EinsumDimensionType>& label_types,
                     EinsumLayout preferred_layout,
                     const std::unique_ptr<EinsumDescriptor>& other = nullptr) {
     if (preferred_layout == EinsumLayout::MIX) {
       return errors::Internal("Preferred einsum layout cannot be MIX");
     }
     // Map label indices to label types.
-    std::vector<EinsumHelper::DimensionType> types;  // Input label types.
+    std::vector<EinsumDimensionType> types;  // Input label types.
     std::transform(input_labels.begin(), input_labels.end(),
                    std::back_inserter(types),
                    [&label_types](int i) { return label_types.at(i); });
@@ -252,7 +250,7 @@ class EinsumDescriptor {
   // that layout.
   static StatusOr<std::unique_ptr<EinsumDescriptor>> Create(
       const TRT_TensorOrWeights& operand, Labels input_labels,
-      std::vector<EinsumHelper::DimensionType>& label_types,
+      std::vector<EinsumDimensionType>& label_types,
       EinsumLayout preferred_layout,
       const std::unique_ptr<EinsumDescriptor>& other = nullptr) {
     auto desc = std::make_unique<EinsumDescriptor>();
@@ -465,8 +463,9 @@ Status ConditionEinsumOperand(TRTNetworkBuilder* builder,
                               const EinsumDescriptor& desc) {
   bool need_reshape = (desc.f != 1 || desc.c != 1);
   bool need_transpose = !desc.permute.empty();
-  LOG(INFO) << "Condition operand. Need reshape " << need_reshape
-            << " nned transpose " << need_transpose;
+
+  VLOG(2) << "Condition operand. Need reshape: " << need_reshape
+          << ". Need transpose: " << need_transpose;
 
   if ((*operand)->is_weights()) {
     StatusOr<TRT_TensorOrWeights> result =
@@ -600,15 +599,15 @@ Status ParseEquation(const std::string& equation,
   VLOG(2) << "Einsum equation " << equation;
   OperandLabels input_labels;
   Labels output_labels;
-  std::vector<EinsumHelper::DimensionType> label_types;
+  std::vector<EinsumDimensionType> label_types;
   OperandLabelCounts input_label_counts;
   LabelCounts output_label_counts;
   absl::InlinedVector<bool, 2> input_has_ellipsis;
   bool output_has_ellipsis;
-  TF_RETURN_IF_ERROR(EinsumHelper::ParseEquation(
-      equation, &input_labels, &output_labels, &label_types,
-      &input_label_counts, &output_label_counts, &input_has_ellipsis,
-      &output_has_ellipsis));
+  TF_RETURN_IF_ERROR(
+      ParseEinsumEquation(equation, &input_labels, &output_labels, &label_types,
+                          &input_label_counts, &output_label_counts,
+                          &input_has_ellipsis, &output_has_ellipsis));
 
   if (input_has_ellipsis[0] || input_has_ellipsis[1] || output_has_ellipsis) {
     // TODO(tfeher): Handle ellipsis like EinsumHelper::ProcessDimensions.
@@ -619,8 +618,8 @@ Status ParseEquation(const std::string& equation,
   }
 
   if (absl::c_any_of(label_types, [](auto l) {
-        return l == EinsumHelper::DimensionType::kReduce ||
-               l == EinsumHelper::DimensionType::kBroadcasting;
+        return l == EinsumDimensionType::kReduce ||
+               l == EinsumDimensionType::kBroadcasting;
       })) {
     VLOG(2) << "Einsum reductions not implemented";
     return errors::Unimplemented("No conversion for einsum equation.");

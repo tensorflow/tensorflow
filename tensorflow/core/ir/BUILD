@@ -91,6 +91,22 @@ gentbl_cc_library(
             ],
             "dialect.cc.inc",
         ),
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect",
+                "tfg",
+            ],
+            "attributes.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect",
+                "tfg",
+            ],
+            "attributes.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ops.td",
@@ -101,37 +117,24 @@ gentbl_cc_library(
     ],
 )
 
-# This library defines the interfaces of the TFG dialect. Importantly, the
-# TensorFlowRegistryInterface is a default model that does not query the
-# op registry. The op registry must be injected as a dependency by users. A
-# concrete implementation is available under `:tf_op_registry`.
-cc_library(
-    name = "interfaces",
-    srcs = ["interfaces.cc"],
-    hdrs = ["interfaces.h"],
-    deps = [
-        ":InterfacesIncGen",
-        "//tensorflow/core/ir/types:Dialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 cc_library(
     name = "Dialect",
     srcs = [
+        "interfaces.cc",
         "ops.cc",
         "tf_op_wrapper.cc",
         "utility.cc",
     ],
     hdrs = [
         "dialect.h",
+        "interfaces.h",
         "ops.h",
         "tf_op_wrapper.h",
         "utility.h",
     ],
     deps = [
         ":DialectIncGen",
-        ":interfaces",
+        ":InterfacesIncGen",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -147,7 +150,6 @@ cc_library(
     hdrs = ["tf_op_registry.h"],
     deps = [
         ":Dialect",
-        ":interfaces",
         "//tensorflow/core:framework",
     ],
 )
@@ -159,11 +161,10 @@ cc_library(
     deps = [
         ":Dialect",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:convert_types",
-        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:types",
         "@llvm-project//llvm:Support",
@@ -209,6 +210,7 @@ tf_cc_test(
         ":Dialect",
         ":shape_inference_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
@@ -238,7 +240,6 @@ tf_cc_test(
     srcs = ["interfaces_test.cc"],
     deps = [
         ":Dialect",
-        ":interfaces",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
@@ -252,7 +253,6 @@ tf_cc_test(
     srcs = ["tf_op_registry_test.cc"],
     deps = [
         ":Dialect",
-        ":interfaces",
         ":tf_op_registry",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",

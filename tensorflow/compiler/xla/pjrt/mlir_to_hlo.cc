@@ -37,12 +37,13 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
-    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
-        /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createChloLegalizeToHloPass(
+            /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createSinkConstantsToControlFlowPass());
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
@@ -62,7 +63,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   options.legalize_node_names = false;
   TF_RETURN_IF_ERROR(
       ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple,
-                          /*shape_representation_fn=*/nullptr, options));
+                          /*shape_determination_fns=*/{}, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return Status::OK();
@@ -73,9 +74,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::HloClientDialect>();
+  context.loadDialect<mlir::chlo::ChloDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  module = mlir::parseSourceString(
+  module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -39,6 +40,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
+
+struct TfLiteXNNPackDelegateWeightsCache;
 
 namespace tflite {
 namespace xnnpack {
@@ -102,6 +105,14 @@ class Delegate {
 #else
     return threadpool_.get();
 #endif
+  }
+
+  xnn_weights_cache_t weights_cache() const {
+    if (options_.weights_cache == nullptr) {
+      return nullptr;
+    } else {
+      return reinterpret_cast<xnn_weights_cache_t>(options_.weights_cache);
+    }
   }
 
  private:
@@ -587,8 +598,11 @@ class Subgraph {
         }
       }
     }
-    status = xnn_create_runtime_v2(subgraph.get(), delegate.threadpool(), flags,
-                                   &runtime_ptr);
+    if (context->profiler) {
+      flags |= XNN_FLAG_BASIC_PROFILING;
+    }
+    status = xnn_create_runtime_v3(subgraph.get(), delegate.weights_cache(),
+                                   delegate.threadpool(), flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -637,12 +651,77 @@ class Subgraph {
       }
     }
 
-    const xnn_status status = xnn_invoke_runtime(runtime_.get());
+    xnn_status status = xnn_invoke_runtime(runtime_.get());
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to invoke XNNPACK runtime");
       return kTfLiteError;
     }
 
+    if (context->profiler) {
+      if (AddEventsToProfiler(reinterpret_cast<Profiler*>(context->profiler),
+                              runtime_.get()) != kTfLiteOk) {
+        TF_LITE_KERNEL_LOG(context,
+                           "failed to get XNNPACK profile information.");
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  // Fetch the profile information from XNNPACK and add the events to TfLite's
+  // profiler.
+  static TfLiteStatus AddEventsToProfiler(Profiler* profiler,
+                                          const xnn_runtime_t runtime) {
+    size_t required_size = 0;
+
+    // xnn_get_runtime_profiling_info is called twice. The first time it sets
+    // required_size to the required size of the buffer to store the result and
+    // returns xnn_status_out_of_memory. The second time it writes the result to
+    // the buffer provided that the buffer is large enough and returns
+    // xnn_status_success.
+    xnn_status status = xnn_get_runtime_profiling_info(
+        runtime, xnn_profile_info_operator_name, /*param_value_size*/ 0,
+        /*param_value*/ nullptr, &required_size);
+    std::vector<char> operator_names;
+    if (status == xnn_status_out_of_memory) {
+      operator_names.resize(required_size);
+      status = xnn_get_runtime_profiling_info(
+          runtime, xnn_profile_info_operator_name, operator_names.size(),
+          operator_names.data(), &required_size);
+    }
+    if (status != xnn_status_success) {
+      return kTfLiteError;
+    }
+    size_t num_operators;
+    status = xnn_get_runtime_profiling_info(
+        runtime, xnn_profile_info_num_operators, sizeof(num_operators),
+        &num_operators, &required_size);
+    if (status != xnn_status_success) {
+      return kTfLiteError;
+    }
+    status = xnn_get_runtime_profiling_info(
+        runtime, xnn_profile_info_operator_timing, /*param_value_size*/ 0,
+        /*param_value*/ nullptr, &required_size);
+    std::vector<uint64_t> operator_timings;
+    if (status == xnn_status_out_of_memory) {
+      operator_timings.resize(required_size / sizeof(uint64_t));
+      status = xnn_get_runtime_profiling_info(
+          runtime, xnn_profile_info_operator_timing,
+          operator_timings.size() * sizeof(uint64_t), operator_timings.data(),
+          &required_size);
+    }
+    if (status != xnn_status_success) {
+      return kTfLiteError;
+    }
+    const char* operator_name = nullptr;
+    size_t name_len = 0;
+    for (size_t node_index = 0; node_index < num_operators; ++node_index) {
+      operator_name = &operator_names[name_len];
+      name_len += strlen(operator_name) + 1;
+      profiler->AddEvent(operator_name,
+                         Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT,
+                         operator_timings[node_index], node_index);
+    }
     return kTfLiteOk;
   }
 
@@ -2061,8 +2140,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, split_dim_tensor,
                                           kTfLiteInt32, split_dim_idx,
                                           node_index));
-    TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
-        logging_context, split_dim_tensor, split_dim_idx, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, split_dim_tensor, split_dim_idx, node_index));
 
@@ -2323,6 +2400,7 @@ class Subgraph {
     const int kernel_height = SizeOfDimension(&filter_tensor, 1);
     const int kernel_width = SizeOfDimension(&filter_tensor, 2);
     const int input_channels = SizeOfDimension(&filter_tensor, 3);
+    const int groups = SizeOfDimension(&input_tensor, 3) / input_channels;
 
     uint32_t flags;
     TF_LITE_ENSURE_STATUS(CalculatePadding(
@@ -2345,9 +2423,9 @@ class Subgraph {
           static_cast<uint32_t>(conv_params->stride_height),
           static_cast<uint32_t>(conv_params->stride_width),
           static_cast<uint32_t>(conv_params->dilation_height_factor),
-          static_cast<uint32_t>(conv_params->dilation_width_factor),
-          /*groups=*/1, static_cast<size_t>(input_channels),
-          static_cast<size_t>(output_channels), output_min, output_max,
+          static_cast<uint32_t>(conv_params->dilation_width_factor), groups,
+          static_cast<size_t>(input_channels),
+          static_cast<size_t>(output_channels) / groups, output_min, output_max,
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
@@ -4218,6 +4296,15 @@ class Subgraph {
           "doesn't match output shape channel dimension (%d) in node #%d: "
           "4 dimensions expected",
           output_channels, output_tensor_channels, node_index);
+      return kTfLiteError;
+    }
+    if (input_channels != input_tensor_dims[3]) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "transpose convolution kernel input channel dimension (%d) "
+          "doesn't match filter input channel (%d) in node #%d",
+          input_channels, input_tensor_dims[3]);
+      return kTfLiteError;
     }
 
     int padding_top = 0;
@@ -4713,6 +4800,43 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace
 }  // namespace xnnpack
 }  // namespace tflite
+
+TfLiteXNNPackDelegateWeightsCache* TfLiteXNNPackDelegateWeightsCacheCreate() {
+  xnn_status status = xnn_initialize(/*allocator=*/nullptr);
+  if (status != xnn_status_success) {
+    return nullptr;
+  }
+
+  xnn_weights_cache_t weights_cache;
+  xnn_create_weights_cache(&weights_cache);
+  return reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(weights_cache);
+}
+
+bool TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_status status = xnn_finalize_weights_cache(
+      weights_cache, xnn_weights_cache_finalization_kind_soft);
+  return status == xnn_status_success;
+}
+
+bool TfLiteXNNPackDelegateWeightsCacheFinalizeHard(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_status status = xnn_finalize_weights_cache(
+      weights_cache, xnn_weights_cache_finalization_kind_hard);
+  return status == xnn_status_success;
+}
+
+void TfLiteXNNPackDelegateWeightsCacheDelete(
+    TfLiteXNNPackDelegateWeightsCache* cache) {
+  if (cache == nullptr) {
+    return;
+  }
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_delete_weights_cache(weights_cache);
+  xnn_deinitialize();
+}
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};

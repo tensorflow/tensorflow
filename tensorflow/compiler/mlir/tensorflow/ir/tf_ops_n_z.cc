@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -467,14 +468,14 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
-      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
+      dyn_cast_or_null<func::FuncOp>(SymbolTable::lookupSymbolIn(module, func));
 
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
            << func;
   }
 
-  FunctionType function_ty = function.getType();
+  FunctionType function_ty = function.getFunctionType();
   int func_arg_count = function_ty.getNumInputs();
   int arg_count = op.args().size();
 
@@ -724,6 +725,15 @@ void RealDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
+}
+
+//===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+void ReluOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<ReluOfMinimum6ToRelu6>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2298,6 +2308,43 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// TensorListGetItemOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// If the input of TensorListGetItemOp is TensorListFromTensorOp and the
+// TensorListFromTensorOp is only used by TensorListGetItemOp (not modified by
+// other TensorList ops), we can convert it to a GatherOp.
+class ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather
+    : public OpRewritePattern<TensorListGetItemOp> {
+  using OpRewritePattern<TensorListGetItemOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TensorListGetItemOp op,
+                                PatternRewriter &rewriter) const override {
+    // Checks that the input is created by TensorListFromTensorOp and the input
+    // is only used by TensorListGetItemOp.
+    auto tensor_list_from_tensor_op = dyn_cast_or_null<TensorListFromTensorOp>(
+        op.input_handle().getDefiningOp());
+    if (!tensor_list_from_tensor_op ||
+        llvm::any_of(
+            tensor_list_from_tensor_op->getUsers(),
+            [](Operation *user) { return !isa<TensorListGetItemOp>(user); })) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<GatherOp>(
+        op, op.getType(), tensor_list_from_tensor_op.tensor(), op.index());
+    return success();
+  }
+};
+}  // namespace
+
+void TensorListGetItemOp::getCanonicalizationPatterns(
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather>(
+      context);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2359,9 +2406,6 @@ LogicalResult TensorScatterUpdateOp::verify() {
   if (!HasRankAtLeast(op.indices(), 1))
     return op.emitOpError(
         "requires indices operand to have at least 1 dimension");
-  if (!HasRankAtLeast(op.updates(), 1))
-    return op.emitOpError(
-        "requires updates operand to have at least 1 dimension");
 
   auto tensor_ty = op.tensor().getType().dyn_cast<RankedTensorType>();
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
@@ -2748,7 +2792,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
                              tf_fused_batch_norm_op->getAttrs());
-    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.create(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
                        tf_fused_batch_norm_op_v3->getResults().drop_back());
@@ -2827,7 +2871,7 @@ LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
   OperationState new_unary_op_state(loc, first_user->getName().getStringRef(),
                                     op.getOperand(), op.getOperand().getType(),
                                     ArrayRef<NamedAttribute>());
-  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+  Operation *new_unary_op = rewriter.create(new_unary_op_state);
 
   // Unpack results after applying unary operation.
   auto unpack_unary_op = rewriter.create<UnpackOp>(
@@ -3068,13 +3112,10 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
 }
 
 LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
-  // TODO(jpienaar): Remove.
-  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
-
   auto cond_fn =
-      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
+      symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
   auto body_fn =
-      symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
+      symbol_table.lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
   if (!cond_fn) {
     return emitOpError("cond refers to an undefined function : ") << cond();
   }
@@ -3082,8 +3123,8 @@ LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
     return emitOpError("body refers to an undefined function : ") << body();
   }
 
-  auto cond_fn_type = cond_fn.getType();
-  auto body_fn_type = body_fn.getType();
+  auto cond_fn_type = cond_fn.getFunctionType();
+  auto body_fn_type = body_fn.getFunctionType();
 
   // Verify that the cond function has exactly one result.
   if (cond_fn_type.getNumResults() != 1)
@@ -3127,23 +3168,6 @@ LogicalResult WhileRegionOp::verify() {
 //===----------------------------------------------------------------------===//
 
 Region &WhileRegionOp::getLoopBody() { return body(); }
-
-bool WhileRegionOp::isDefinedOutsideOfLoop(Value value) {
-  // If the Op defining the value exists and the defining op is outside the
-  // scope of this WhileRegion, then we can infer that its defined outside.
-  // The defining Op is outside the scope of this WhileRegion if this
-  // WhileRegionOp is not an ancestor of the defining op in the parent chain.
-  Operation *def_op = value.getDefiningOp();
-  return def_op && !getOperation()->isAncestor(def_op);
-}
-
-LogicalResult WhileRegionOp::moveOutOfLoop(
-    llvm::ArrayRef<mlir::Operation *> ops) {
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-  return success();
-}
 
 //===----------------------------------------------------------------------===//
 // WhileRegionOp canonicalization
@@ -3268,23 +3292,16 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // XlaBroadcastHelperOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto loc = location ? *location : mlir::UnknownLoc::get(context);
-  XlaBroadcastHelperOpAdaptor op(operands, attributes);
-  if (failed(op.verify(loc))) {
-    return failure();
-  }
-
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.lhs();
   Value rhs = op.rhs();
   auto set_unranked_results = [&]() {
-    auto unranked_lhs = UnrankedTensorType::get(getElementTypeOrSelf(lhs));
-    inferredReturnTypes.push_back(unranked_lhs);
-    auto unranked_rhs = UnrankedTensorType::get(getElementTypeOrSelf(rhs));
-    inferredReturnTypes.push_back(unranked_rhs);
+    inferredReturnShapes.emplace_back(getElementTypeOrSelf(lhs));
+    inferredReturnShapes.emplace_back(getElementTypeOrSelf(rhs));
     return success();
   };
 
@@ -3307,8 +3324,8 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
           "if broadcast_dims is empty, both arguments must have equal rank or "
           "at least one argument must be a scalar");
     }
-    inferredReturnTypes.push_back(lhs_ty);
-    inferredReturnTypes.push_back(rhs_ty);
+    inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
+    inferredReturnShapes.emplace_back(rhs_ty.cast<ShapedType>());
     return success();
   }
 
@@ -3339,13 +3356,11 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
   }
 
   if (broadcast_lhs) {
-    inferredReturnTypes.push_back(
-        RankedTensorType::get(broadcast_shape, lhs_ty.getElementType()));
-    inferredReturnTypes.push_back(rhs_ty);
+    inferredReturnShapes.emplace_back(broadcast_shape, lhs_ty.getElementType());
+    inferredReturnShapes.emplace_back(rhs_ty.cast<ShapedType>());
   } else {
-    inferredReturnTypes.push_back(lhs_ty);
-    inferredReturnTypes.push_back(
-        RankedTensorType::get(broadcast_shape, rhs_ty.getElementType()));
+    inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
+    inferredReturnShapes.emplace_back(broadcast_shape, rhs_ty.getElementType());
   }
   return success();
 }
@@ -3354,13 +3369,11 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
 // XlaSetDynamicDimensionSizeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto loc = location ? *location : mlir::UnknownLoc::get(context);
-  XlaSetDynamicDimensionSizeOpAdaptor op(operands, attributes);
-  if (failed(op.verify(loc))) return failure();
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
   TensorType operand_ty = op.input().getType().cast<TensorType>();
   Type element_ty = operand_ty.getElementType();
@@ -3387,7 +3400,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
     result_ty = UnrankedTensorType::get(element_ty);
   }
 
-  inferredReturnTypes.push_back(result_ty);
+  inferredReturnShapes.emplace_back(result_ty.cast<ShapedType>());
   return success();
 }
 
@@ -3467,13 +3480,13 @@ LogicalResult XlaReduceWindowOp::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto func = dyn_cast_or_null<mlir::FuncOp>(
+  auto func = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.computation()));
   if (!func) {
     return op.emitOpError() << "has no reduction function specified";
   }
 
-  auto func_type = func.getType();
+  auto func_type = func.getFunctionType();
 
   if (func_type.getNumInputs() != 2) {
     return op.emitOpError()
@@ -3524,12 +3537,12 @@ LogicalResult XlaSelectAndScatterOp::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto select_func = dyn_cast_or_null<mlir::FuncOp>(
+  auto select_func = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.select()));
   if (!select_func) {
     return op.emitOpError() << "has no select function specified";
   }
-  auto select_func_type = select_func.getType();
+  auto select_func_type = select_func.getFunctionType();
   if (select_func_type.getNumInputs() != 2) {
     return op.emitOpError()
            << "expects select function to take 2 parameters, but has "
@@ -3541,12 +3554,12 @@ LogicalResult XlaSelectAndScatterOp::verify() {
                                "boolean result but got "
                             << select_func_type.getResult(0);
   }
-  auto scatter_func = dyn_cast_or_null<mlir::FuncOp>(
+  auto scatter_func = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.scatter()));
   if (!scatter_func) {
     return op.emitOpError() << "has no scatter function specified";
   }
-  auto scatter_func_type = scatter_func.getType();
+  auto scatter_func_type = scatter_func.getFunctionType();
   if (scatter_func_type.getNumInputs() != 2) {
     return op.emitOpError()
            << "expects scatter function to take 2 parameters, but has "
@@ -3642,7 +3655,7 @@ LogicalResult XlaVariadicReduceV2Op::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto function = dyn_cast_or_null<mlir::FuncOp>(
+  auto function = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.reducer()));
   if (!function) return op.emitOpError() << "No reducer";
   if (!function.getBody().hasOneBlock())
@@ -3681,7 +3694,7 @@ LogicalResult XlaVariadicSortOp::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto function = dyn_cast_or_null<mlir::FuncOp>(
+  auto function = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.comparator()));
   if (!function) return op.emitOpError() << "No comparator";
   if (!function.getBody().hasOneBlock())

@@ -255,6 +255,10 @@ int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
 }
 
+bool StreamExecutor::SupportsBlasPlans() const {
+  return implementation_->SupportsBlasPlans();
+}
+
 bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
@@ -362,12 +366,12 @@ bool StreamExecutor::GetRnnAlgorithms(
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(
-    std::vector<blas::AlgorithmType>* out_algorithms) {
+    Stream* stream, std::vector<blas::AlgorithmType>* out_algorithms) {
   blas::BlasSupport* blas_support = AsBlas();
   if (!blas_support) {
     return false;
   }
-  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
+  return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
 port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
@@ -798,6 +802,14 @@ bool StreamExecutor::AllocateStream(Stream* stream) {
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
+  dnn::DnnSupport* dnn;
+  {
+    absl::MutexLock lock(&mu_);
+    dnn = dnn_.get();
+  }
+  if (dnn) {
+    dnn->NotifyStreamDestroyed(stream);
+  }
   implementation_->DeallocateStream(stream);
   CHECK_GE(live_stream_count_.fetch_sub(1), 0)
       << "live stream count should not dip below zero";

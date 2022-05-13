@@ -33,6 +33,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -101,7 +102,7 @@ struct ShardArgResult {
 // `arg`: The object to shard across `devices`. If a `ShardedDeviceArray`,
 //   a fast-path will be executed if it's already correctly sharded.
 //
-// Returns a failure Status when an unrecoverable error occured, so we don't
+// Returns a failure Status when an unrecoverable error occurred, so we don't
 // need to fallback to Python.
 //
 // Both `devices` and `sharding_spec` has the same length.
@@ -295,7 +296,7 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
 
   py::tuple pmap_data = py::cast<py::tuple>(out_and_fastpath_data[1]);
   if (py::cast<int>(pmap_data.attr("version")) != 1) {
-    throw std::runtime_error(absl::StrCat(
+    throw xla::XlaRuntimeError(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (pmap cpp version 1 "
         "expected, but got ",
         py::cast<int>(pmap_data.attr("version")),
