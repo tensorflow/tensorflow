@@ -1814,32 +1814,60 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
-/// Converts mhlo.pad operation to linalg.pad_tensor op.
+/// Converts mhlo.pad operation to tensor.pad or tensor.insert_slice.
 struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   using OpConversionPattern<mhlo::PadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       mhlo::PadOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    if (llvm::any_of(
-            op.interior_padding().getValues<APInt>(),
-            [](const APInt& int_val) { return int_val.getZExtValue() != 0; })) {
-      return rewriter.notifyMatchFailure(op, "expected no interior padding");
-    }
-
     auto loc = op.getLoc();
+    auto result_type = typeConverter->convertType(op.getResult().getType());
     Value padding_val =
         rewriter.createOrFold<tensor::ExtractOp>(loc, adaptor.padding_value());
 
     SmallVector<OpFoldResult, 4> low(
         op.edge_padding_low().getValues<IntegerAttr>());
-    SmallVector<OpFoldResult, 4> high(
-        op.edge_padding_high().getValues<IntegerAttr>());
-    Type result_type = op.getResult().getType();
-    auto pad_tensor_op = tensor::createPadScalarOp(
-        result_type, adaptor.operand(), padding_val, low, high,
-        /*nofold=*/false, loc, rewriter);
-    rewriter.replaceOp(op, pad_tensor_op.getResult());
+
+    // If there is no interior padding lower to tensor.pad directly.
+    if (llvm::all_of(op.interior_padding().getValues<APInt>(),
+                     [](const APInt& int_val) { return int_val.isZero(); })) {
+      SmallVector<OpFoldResult, 4> high(
+          op.edge_padding_high().getValues<IntegerAttr>());
+      auto pad_tensor_op = tensor::createPadScalarOp(
+          result_type, adaptor.operand(), padding_val, low, high,
+          /*nofold=*/false, loc, rewriter);
+      rewriter.replaceOp(op, pad_tensor_op.getResult());
+      return success();
+    }
+
+    // We have interior padding, which can be lowered to tensor.insert_slice.
+    // Start by filling a result-sized tensor with the pad value.
+    auto init_tensor =
+        GetInitTensorFor(rewriter, loc, result_type, op, adaptor.getOperands());
+    auto fill =
+        rewriter.create<linalg::FillOp>(loc, padding_val, init_tensor).result();
+
+    // Get sizes of the original operand.
+    auto operand_type = adaptor.operand().getType().cast<ShapedType>();
+    auto sizes = llvm::to_vector<4>(llvm::map_range(
+        llvm::seq<int64_t>(0, operand_type.getRank()),
+        [&](int64_t dim) -> OpFoldResult {
+          if (!operand_type.isDynamicDim(dim))
+            return rewriter.getIndexAttr(operand_type.getDimSize(dim));
+          return rewriter.create<tensor::DimOp>(loc, adaptor.operand(), dim)
+              .result();
+        }));
+    // Map interior padding to strides.
+    auto strides = llvm::to_vector<4>(
+        llvm::map_range(op.interior_padding().getValues<IntegerAttr>(),
+                        [&](IntegerAttr stride) -> OpFoldResult {
+                          return rewriter.getIntegerAttr(stride.getType(),
+                                                         stride.getValue() + 1);
+                        }));
+
+    rewriter.replaceOpWithNewOp<tensor::InsertSliceOp>(
+        op, adaptor.operand(), fill, low, sizes, strides);
     return success();
   }
 };
