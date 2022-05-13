@@ -223,7 +223,7 @@ def foldl_v2(fn,
   Example:
     ```python
     elems = tf.constant([1, 2, 3, 4, 5, 6])
-    sum = foldl(lambda a, x: a + x, elems)
+    sum = tf.foldl(lambda a, x: a + x, elems)
     # sum == 21
     ```
   """
@@ -420,7 +420,7 @@ def foldr_v2(fn,
   Example:
     ```python
     elems = [1, 2, 3, 4, 5, 6]
-    sum = foldr(lambda a, x: a + x, elems)
+    sum = tf.foldr(lambda a, x: a + x, elems)
     # sum == 21
     ```
   """
