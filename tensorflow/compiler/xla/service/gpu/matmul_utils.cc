@@ -172,6 +172,27 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
   return MatrixLayout::For(batch_row_col_shape);
 }
 
+/*static*/ StatusOr<MatrixLayout> MatrixLayout::For(const Shape& shape,
+                                                    size_t lhs_num_batch_dims,
+                                                    size_t lhs_num_row_dims,
+                                                    size_t rhs_num_batch_dims,
+                                                    size_t rhs_num_col_dims) {
+  size_t num_batch_dims = std::max(lhs_num_batch_dims, rhs_num_batch_dims);
+
+  TF_RET_CHECK(shape.rank() ==
+               num_batch_dims + lhs_num_row_dims + rhs_num_col_dims);
+
+  std::vector<int64_t> dims(shape.rank());
+  absl::c_iota(dims, 0);
+
+  auto batch_dims = absl::Span<const int64_t>(dims).first(num_batch_dims);
+  auto row_dims =
+      absl::Span<const int64_t>(dims).subspan(num_batch_dims, lhs_num_row_dims);
+  auto col_dims = absl::Span<const int64_t>(dims).last(rhs_num_col_dims);
+
+  return MatrixLayout::For(shape, batch_dims, row_dims, col_dims);
+}
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);

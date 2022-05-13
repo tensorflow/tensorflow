@@ -47,10 +47,17 @@ struct MatrixLayout {
 
   // Returns the matrix layout for a logical shape (batch, rows, columns).
   static StatusOr<MatrixLayout> For(const Shape& shape);
+  // Returns the matrix layout with the given batch, row, col dimensions.
   static StatusOr<MatrixLayout> For(const Shape& shape,
                                     absl::Span<const int64_t> batch_dims,
                                     absl::Span<const int64_t> row_dims,
                                     absl::Span<const int64_t> col_dims);
+  // Returns the matrix layout for the output.
+  static StatusOr<MatrixLayout> For(const Shape& shape,
+                                    size_t lhs_num_batch_dims,
+                                    size_t lhs_num_row_dims,
+                                    size_t rhs_num_batch_dims,
+                                    size_t rhs_num_col_dims);
 
   PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:

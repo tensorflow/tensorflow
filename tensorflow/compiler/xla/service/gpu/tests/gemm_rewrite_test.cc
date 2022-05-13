@@ -269,6 +269,56 @@ ENTRY AddDotsFunc {
       )");
 }
 
+TEST_F(GemmRewriteTest, BatchedInstrLayoutTransposed) {
+  const char* hlo_text = R"(
+HloModule BatchedInstrLayoutCheck
+
+ENTRY AddDotsFunc {
+  x = f32[5,2,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  dot_a = f32[5,2,4] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  ROOT out = f32[2,5,4] transpose(dot_a), dimensions={1, 0, 2}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,5,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,0,1} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5,4]{2,1,0} bitcast([[GEMM]])
+      )");
+}
+
+TEST_F(GemmRewriteTest, BatchedInstrLayoutBatchNotInMinorDim) {
+  const char* hlo_text = R"(
+HloModule BatchedInstrLayoutBatchNotInMinorDim
+
+ENTRY AddDotsFunc {
+  x = f32[5,2,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  dot_a = f32[5,2,4] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  ROOT out = f32[2,4,5] transpose(dot_a), dimensions={1, 2, 0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,4,5] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"2\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4,5]{2,1,0} [[OP:[^ ]+]]([[GEMM]])
+      )");
+}
+
 TEST_F(GemmRewriteTest, AlphaSimpleRewrite) {
   const char* hlo_text = R"(
 HloModule AlphaSimpleRewrite
