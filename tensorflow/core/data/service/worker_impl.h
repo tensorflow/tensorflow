@@ -146,14 +146,15 @@ class DataServiceWorkerImpl {
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Whether the worker has registered with the dispatcher yet.
   bool registered_ TF_GUARDED_BY(mu_) = false;
-  // A thread for notifying the dispatcher when tasks complete.
-  std::unique_ptr<Thread> task_completion_thread_;
   condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
-  // A thread for performing regular heartbeats to the dispatcher.
-  std::unique_ptr<Thread> heartbeat_thread_;
   condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
   int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;
+
+  // A thread for notifying the dispatcher when tasks complete.
+  std::unique_ptr<Thread> task_completion_thread_;
+  // A thread for performing regular heartbeats to the dispatcher.
+  std::unique_ptr<Thread> heartbeat_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);
 };
