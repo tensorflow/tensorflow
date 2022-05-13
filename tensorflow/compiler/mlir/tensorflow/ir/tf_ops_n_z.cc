@@ -2406,9 +2406,6 @@ LogicalResult TensorScatterUpdateOp::verify() {
   if (!HasRankAtLeast(op.indices(), 1))
     return op.emitOpError(
         "requires indices operand to have at least 1 dimension");
-  if (!HasRankAtLeast(op.updates(), 1))
-    return op.emitOpError(
-        "requires updates operand to have at least 1 dimension");
 
   auto tensor_ty = op.tensor().getType().dyn_cast<RankedTensorType>();
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();

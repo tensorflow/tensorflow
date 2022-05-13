@@ -4473,9 +4473,55 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     int64_t num_index_dims = indices_ty.getShape().back();
     if (ShapedType::isDynamic(num_index_dims)) return failure();
 
+    auto updates = op.updates();
+
+    // Broadcast scalar `updates` in into expected shape as following shape:
+    // updates.shape == indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+    if (updates_ty.getRank() == 0 &&
+        std::is_same<OpTy, TF::TensorScatterUpdateOp>::value) {
+      if (!tensor_ty.hasStaticShape()) {
+        return failure();
+      }
+
+      if (!indices_ty.hasStaticShape()) {
+        return failure();
+      }
+
+      auto tensor_shape = tensor_ty.getShape();
+      auto indices_shape = indices_ty.getShape();
+      auto index_depth = indices_shape.back();
+      llvm::SmallVector<int64_t> expected_update_shape;
+
+      // create the expected update shape which scalar update is broadcasted to
+      expected_update_shape.append(indices_shape.begin(),
+                                   std::prev(indices_shape.end()));
+
+      expected_update_shape.append(std::next(tensor_shape.begin(), index_depth),
+                                   tensor_shape.end());
+
+      auto const_type = RankedTensorType::get(
+          {static_cast<int>(expected_update_shape.size())},
+          rewriter.getIntegerType(64));
+
+      auto const_attr = GetI64ElementsAttr(expected_update_shape, &rewriter);
+
+      auto const_op =
+          rewriter.create<TF::ConstOp>(op->getLoc(), const_type, const_attr);
+
+      auto broadcast_to_type = RankedTensorType::get(
+          llvm::makeArrayRef<int64_t>(expected_update_shape),
+          updates_ty.getElementType());
+
+      updates = rewriter.create<TF::BroadcastToOp>(
+          op->getLoc(), broadcast_to_type, op.updates(), const_op);
+
+      updates_ty = updates.getType().template dyn_cast<RankedTensorType>();
+    }
+
     int64_t tensor_rank = tensor_ty.getRank();
     int64_t indices_rank = indices_ty.getRank();
-    int64_t updates_rank = updates_ty.getRank();
+    int64_t updates_rank =
+        updates.getType().template dyn_cast<RankedTensorType>().getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
     auto dims_attr = ScatterDimensionNumbersAttr::get(
@@ -4487,8 +4533,8 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         indices_rank - 1);
 
     Location loc = op.getLoc();
-    auto scatter = rewriter.create<ScatterOp>(
-        loc, op.getType(), op.tensor(), op.indices(), op.updates(), dims_attr);
+    auto scatter = rewriter.create<ScatterOp>(loc, op.getType(), op.tensor(),
+                                              op.indices(), updates, dims_attr);
     Derived::BuildScatterBody(tensor_ty.getElementType(),
                               &scatter.update_computation(), loc, rewriter);
 
