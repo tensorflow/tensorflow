@@ -1842,7 +1842,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
  public:
   template <typename S>
   void RunTests(
-      const string& testName, const operationMap<S>& map,
+      const string& testName, const OperationMap<S>& map,
       std::map<std::string,
                std::pair<std::function<NodeDef(DataType)>, T (*)(T)>>& op_map,
       const std::vector<T> input_values, const std::string input_name = "input",
@@ -1924,7 +1924,7 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
  public:
   template <typename S>
   void RunTests(
-      const operationMap<S>& map,
+      const OperationMap<S>& map,
       std::map<std::string,
                std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
           op_test_info,
