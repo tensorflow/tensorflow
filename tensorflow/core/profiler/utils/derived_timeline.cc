@@ -95,6 +95,8 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
       group_id_or_invalid, low_level_event_name);
 }
 
+/* static */ constexpr int64_t DerivedXLineBuilder::kInvalidGroupId;
+
 DerivedXLineBuilder::DerivedXLineBuilder(
     XPlaneBuilder* plane, int64_t line_id, absl::string_view name,
     int64_t timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
