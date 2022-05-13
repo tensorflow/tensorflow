@@ -332,6 +332,14 @@ class HloModuleConfig {
     analysis_allowance_map_[pass_name] = allowance;
   }
 
+  PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return matrix_unit_operand_precision_;
+  }
+  void set_matrix_unit_operand_precision(
+      PrecisionConfig::Precision matrix_unit_operand_precision) {
+    matrix_unit_operand_precision_ = matrix_unit_operand_precision;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -435,6 +443,9 @@ class HloModuleConfig {
   // Each Hlo analysis is allowed at least a constant number of
   // abstract cost units, before it is considered for early termination.
   absl::flat_hash_map<absl::string_view, int64_t> analysis_allowance_map_;
+
+  PrecisionConfig::Precision matrix_unit_operand_precision_ =
+      PrecisionConfig::DEFAULT;
 };
 
 }  // namespace xla

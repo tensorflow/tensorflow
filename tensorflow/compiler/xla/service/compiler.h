@@ -98,6 +98,9 @@ class AotCompilationOptions {
     return {};
   }
   virtual bool deduplicate_hlo() const { return false; }
+  virtual PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return PrecisionConfig::DEFAULT;
+  }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
