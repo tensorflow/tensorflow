@@ -148,6 +148,21 @@ Value GetInitTensorFor(OpBuilder& b, Location loc, ShapedType result_type,
                    : GetInitTensor(b, loc, result_type, sizes);
 }
 
+Value fillTensorWithZeros(OpBuilder& builder, Location loc, Value tensor) {
+  auto type = tensor.getType().cast<ShapedType>();
+  Value zero;
+  // Complex numbers are a special case.
+  if (auto complex_type = type.getElementType().dyn_cast<ComplexType>()) {
+    auto zero_element = builder.getZeroAttr(complex_type.getElementType());
+    auto zero_attr = builder.getArrayAttr({zero_element, zero_element});
+    zero = builder.create<complex::ConstantOp>(loc, complex_type, zero_attr);
+  } else {
+    auto zero_attr = builder.getZeroAttr(type.getElementType());
+    zero = builder.create<arith::ConstantOp>(loc, zero_attr);
+  }
+  return builder.create<linalg::FillOp>(loc, zero, tensor).result();
+}
+
 SmallVector<int64_t, 4> Extract1DVector(DenseIntElementsAttr elements) {
   SmallVector<int64_t, 4> ret;
   for (const APInt& element : elements) {
@@ -500,9 +515,7 @@ class EinsumToLinalgConverter : public OpConversionPattern<mhlo::EinsumOp> {
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), lhs_ein, rhs_ein, out_ein);
     Value output = GetInitTensor(rewriter, loc, result_ty, dyn_sizes);
     if (!reduction_axe.empty()) {
-      auto zero_attr = rewriter.getZeroAttr(result_ty.getElementType());
-      Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
-      output = rewriter.create<linalg::FillOp>(loc, zero, output).getResult(0);
+      output = fillTensorWithZeros(rewriter, loc, output);
     }
 
     // Create indexing maps.
@@ -1583,14 +1596,10 @@ class DotOpConversion : public OpConversionPattern<mhlo::DotOp> {
     // integer matmul is the same operation in two's complement.
     auto output_type =
         typeConverter->convertType(op.getType()).cast<ShapedType>();
-    auto output_el_type = output_type.getElementType();
-    auto zero_attr = rewriter.getZeroAttr(output_el_type);
-    Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
     SmallVector<Value, 2> dyn_shape = GetDotOpInitTensorDynSizes(
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), op_type);
     auto init_tensor = GetInitTensor(rewriter, loc, output_type, dyn_shape);
-    Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+    Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
     rewriter.replaceOpWithNewOp<LinalgOp>(
         op, TypeRange{output_type}, ValueRange{adaptor.lhs(), adaptor.rhs()},
         ValueRange{zero_tensor}, PruneAttributeList(op));
@@ -1636,13 +1645,9 @@ class DotGeneralBatchMatMulOpConversion
     // integer matmul is the same operation in two's complement.
     auto output_type =
         typeConverter->convertType(op.getType()).cast<ShapedType>();
-    auto output_el_type = output_type.getElementType();
-    auto zero_attr = rewriter.getZeroAttr(output_el_type);
-    Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
     auto init_tensor =
         GetInitTensorFor(rewriter, loc, output_type, op, adaptor.getOperands());
-    Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+    Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
     Operation* linalg_op = rewriter.create<linalg::BatchMatmulOp>(
         loc, /*resultTensorTypes=*/TypeRange{output_type},
         /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
@@ -1902,10 +1907,7 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     }
     Value init_tensor = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
-    auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
-    Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
-    Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+    Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
     linalg::LinalgOp res;
     Attribute strides = op.window_stridesAttr();
     // TODO(ataei): Only support dilated kernel right now. We need to consider
@@ -1925,6 +1927,7 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
 
       // Pad the given input using `zero_attr` according to the low and high
       // values in the `pad`.
+      auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
       input = applyPad(loc, input, pad, zero_attr, rewriter);
     }
 
@@ -2065,9 +2068,7 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
 
       Value init_tensor = rewriter.create<linalg::InitTensorOp>(
           loc, reshaped_output_dims, result_type.getElementType());
-      Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
-      Value zero_tensor =
-          rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+      Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
 
       auto reshaped_output_type = RankedTensorType::get(
           reshaped_output_dims, result_type.getElementType());
@@ -2089,9 +2090,7 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
       // For cases where channel multiplier == 1
       Value init_tensor = rewriter.create<linalg::InitTensorOp>(
           loc, result_type.getShape(), result_type.getElementType());
-      Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
-      Value zero_tensor =
-          rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+      Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
 
       // Create a Linalg reshape op that converts the filter from 4 dimensions
       // into 3 dimensions (by droping the unit dimension). This is needed
@@ -2905,13 +2904,9 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
     auto rhs_rank = adaptor.rhs().getType().cast<ShapedType>().getRank();
 
     Location loc = op.getLoc();
-    auto output_el_type = output_type.getElementType();
-    auto zero_attr = rewriter.getZeroAttr(output_el_type);
-    Value zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
     auto init_tensor =
         GetInitTensorFor(rewriter, loc, output_type, op, adaptor.getOperands());
-    Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
+    Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
     SmallVector<AffineMap, 3> indexing_maps;
 
     auto get_map = [&](int64_t rank, ArrayRef<int64_t> batching_dims,
@@ -2954,11 +2949,9 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
         GetParallelAndReductionIterators(
             /*nLoops=*/total_loop_count,
             /*nReduction=*/num_contracting),
-        [&](OpBuilder& b, Location loc, ValueRange args) {
-          mlir::ArithBuilder ab(b, loc);
-          mlir::Value mul = ab.mul(args[0], args[1]);
-          mlir::Value add = ab.add(mul, args[2]);
-          b.create<mlir::linalg::YieldOp>(loc, add);
+        [](OpBuilder& b, Location loc, ValueRange) {
+          ImplicitLocOpBuilder builder(loc, b);
+          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {});
         },
         PruneAttributeList(op));
 

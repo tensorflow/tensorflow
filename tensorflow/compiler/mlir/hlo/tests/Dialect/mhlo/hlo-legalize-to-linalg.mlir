@@ -1753,6 +1753,27 @@ func.func @dot_matmul(%arg0: tensor<2x3xf32>,
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xf32>, tensor<3x?xf32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<2x?xf32>)
 
+// -----
+
+func.func @dot_matmul_complex(%arg0: tensor<2x3xcomplex<f32>>,
+                 %arg1: tensor<3x?xcomplex<f32>>) -> tensor<2x?xcomplex<f32>> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {someattr}
+           : (tensor<2x3xcomplex<f32>>, tensor<3x?xcomplex<f32>>) -> tensor<2x?xcomplex<f32>>
+  func.return %0 : tensor<2x?xcomplex<f32>>
+}
+// CHECK-LABEL: func @dot_matmul_complex(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xcomplex<f32>>, %[[ARG1:.*]]: tensor<3x?xcomplex<f32>>)
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
+// CHECK: linalg.matmul
+// CHECK-SAME: {someattr}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xcomplex<f32>>, tensor<3x?xcomplex<f32>>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<2x?xcomplex<f32>>)
+
+// -----
+
 func.func @dot_matmul_i8_i8_i32(%arg0: tensor<2x3xi8>,
                  %arg1: tensor<3x?xi8>) -> tensor<2x?xi32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xi8>,
@@ -4451,7 +4472,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK-SAME: {someattr}
 // CHECK:   ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
 // CHECK:     %[[MUL:.*]] = arith.mulf %[[ARG2]], %[[ARG3]] : f32
-// CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
+// CHECK:     %[[SUM:.*]] = arith.addf %[[ARG4]], %[[MUL]] : f32
 // CHECK:     linalg.yield %[[SUM]] : f32
 // CHECK: } -> tensor<?x?x?xf32>
 
@@ -4476,6 +4497,28 @@ func.func @dot_general_unsigned(%arg0: tensor<?x?x?xui32>,
 // CHECK: linalg.generic
 // CHECK-SAME: ins({{.*}} : tensor<?x?x?xi32>, tensor<?x?x?xi32>)
 // CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
+
+// -----
+
+func.func @dot_general_complex(%arg0: tensor<?x?x?xcomplex<f32>>,
+                  %arg1: tensor<?x?x?xcomplex<f32>>) -> tensor<?x?x?xcomplex<f32>> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x?xcomplex<f32>>, tensor<?x?x?xcomplex<f32>>) -> tensor<?x?x?xcomplex<f32>>
+  func.return %0 : tensor<?x?x?xcomplex<f32>>
+}
+
+// CHECK-LABEL: func @dot_general_complex(
+// CHECK: linalg.generic
+// CHECK: complex.mul
+// CHECK: complex.add
 
 // -----
 
