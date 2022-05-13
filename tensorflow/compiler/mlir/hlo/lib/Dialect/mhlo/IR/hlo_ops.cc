@@ -1770,7 +1770,10 @@ LogicalResult AbsOp::inferReturnTypes(
   }
 
   Type result_ty;
-  if (operand_ty.hasRank()) {
+  if (auto ranked_operand_ty = operand_ty.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(operand_ty.getShape(), element_ty,
+                                      ranked_operand_ty.getEncoding());
+  } else if (operand_ty.hasRank()) {
     result_ty = RankedTensorType::get(operand_ty.getShape(), element_ty);
   } else {
     result_ty = UnrankedTensorType::get(element_ty);
@@ -2698,7 +2701,8 @@ LogicalResult ComplexOp::inferReturnTypes(
   auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
   Type result_ty;
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
-    result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
+    result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty,
+                                      ranked_type.getEncoding());
   } else if (type.isa<UnrankedTensorType>()) {
     result_ty = UnrankedTensorType::get(element_ty);
   } else {
@@ -2730,7 +2734,8 @@ Type CreateRealType(Type type) {
   }
 
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
-    return RankedTensorType::get(ranked_type.getShape(), element_ty);
+    return RankedTensorType::get(ranked_type.getShape(), element_ty,
+                                 ranked_type.getEncoding());
   }
   if (type.dyn_cast<UnrankedTensorType>()) {
     return UnrankedTensorType::get(element_ty);

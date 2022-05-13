@@ -124,3 +124,63 @@ func.func @tanh_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> 
 // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
+
+// -----
+
+#CSR = #sparse_tensor.encoding<{
+  dimLevelType = ["dense", "compressed"]
+}>
+
+// CHECK-LABEL: @abs_sparsity
+func.func @abs_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
+  %0 = "mhlo.abs"(%arg0) : (tensor<10x10xf32, #CSR>) -> tensor<10x10xf32>
+  %1 = "mhlo_test.get_return_types"(%0)
+      : (tensor<10x10xf32>) -> tensor<10x10xindex>
+// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  func.return %1 : tensor<10x10xindex>
+}
+
+// -----
+
+#CSR = #sparse_tensor.encoding<{
+  dimLevelType = ["dense", "compressed"]
+}>
+
+// CHECK-LABEL: @real_sparsity
+func.func @real_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xindex> {
+  %0 = "mhlo.real"(%arg0) : (tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xf32>
+  %1 = "mhlo_test.get_return_types"(%0)
+      : (tensor<10x10xf32>) -> tensor<10x10xindex>
+// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  func.return %1 : tensor<10x10xindex>
+}
+
+// -----
+
+#CSR = #sparse_tensor.encoding<{
+  dimLevelType = ["dense", "compressed"]
+}>
+
+// CHECK-LABEL: @imag_sparsity
+func.func @imag_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xindex> {
+  %0 = "mhlo.imag"(%arg0) : (tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xf32>
+  %1 = "mhlo_test.get_return_types"(%0)
+      : (tensor<10x10xf32>) -> tensor<10x10xindex>
+// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  func.return %1 : tensor<10x10xindex>
+}
+
+// -----
+
+#CSR = #sparse_tensor.encoding<{
+  dimLevelType = ["dense", "compressed"]
+}>
+
+// CHECK-LABEL: @complex_sparsity
+func.func @complex_sparsity(%arg0: tensor<10x10xf32, #CSR>, %arg1: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
+  %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<10x10xf32, #CSR>, tensor<10x10xf32, #CSR>) -> tensor<10x10xcomplex<f32>>
+  %1 = "mhlo_test.get_return_types"(%0)
+      : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
+// CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xcomplex<f32>, {{.*}}>} : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
+  func.return %1 : tensor<10x10xindex>
+}
