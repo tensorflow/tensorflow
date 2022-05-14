@@ -234,7 +234,7 @@ Status DataServiceDispatcherImpl::Start() {
 
 size_t DataServiceDispatcherImpl::NumActiveJobs() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  int64 count = 0;
+  size_t count = 0;
   for (const auto& job : state_.ListJobs()) {
     if (!job->finished) {
       count++;
