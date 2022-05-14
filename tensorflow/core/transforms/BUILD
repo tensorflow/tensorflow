@@ -77,8 +77,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:str_util",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

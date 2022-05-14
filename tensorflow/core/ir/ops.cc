@@ -114,6 +114,10 @@ void TFGraphDialect::initialize() {
   // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
 
+  // Initialized the cached operation names.
+#define GET_OP_NAME_DEFS
+#include "tensorflow/core/ir/tf_op_names.inc"
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());

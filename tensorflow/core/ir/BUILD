@@ -122,6 +122,8 @@ cc_library(
     srcs = [
         "interfaces.cc",
         "ops.cc",
+        "tf_op_names.cc",
+        "tf_op_names.inc",
         "tf_op_wrapper.cc",
         "utility.cc",
     ],
