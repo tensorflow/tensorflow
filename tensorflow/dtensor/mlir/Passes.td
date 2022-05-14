@@ -248,10 +248,10 @@ def DTensorEmbeddingV2
   ];
 }
 
-def DTensorEmbeddingLoad
-    : Pass<"dtensor-embedding-load", "mlir::ModuleOp"> {
-  let summary = "Load TPU embeddings and slot variables.";
-  let constructor = "CreateDTensorEmbeddingLoadPass()";
+def DTensorEmbeddingCheckpoint
+    : Pass<"dtensor-embedding-checkpoint", "mlir::ModuleOp"> {
+  let summary = "Checkpoint pass to save or load TPU embeddings variables.";
+  let constructor = "CreateDTensorEmbeddingCheckpointPass()";
   let dependentDialects = [
   ];
 }
