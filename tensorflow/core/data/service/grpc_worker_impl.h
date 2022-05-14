@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_GRPC_WORKER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_GRPC_WORKER_IMPL_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 
