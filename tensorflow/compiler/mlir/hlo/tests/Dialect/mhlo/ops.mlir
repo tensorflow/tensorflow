@@ -2541,13 +2541,13 @@ module attributes { mhlo.conv = #mhlo.conv<raw
 // CHECK: mhlo.convolution
 // CHECK-SAME: dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]
 // CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
-func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x2x4x3xf32>) -> tensor<2x1x1x3xf32> {
   %0 = mhlo.convolution(%arg0, %arg1)
      dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f],
      window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
      { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
-  func.return %0 : tensor<3x5x5x4xf32>
+  : (tensor<2x2x3x4xf32>, tensor<3x2x4x3xf32>) -> tensor<2x1x1x3xf32>
+  func.return %0 : tensor<2x1x1x3xf32>
 }
 
 // -----

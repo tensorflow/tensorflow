@@ -1535,6 +1535,7 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
 
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 
   code extraClassDeclaration = [{
     bool hasWindowReversal() {

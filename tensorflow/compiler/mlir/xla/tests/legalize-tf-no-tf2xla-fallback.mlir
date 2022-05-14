@@ -4346,7 +4346,7 @@ func.func @conv3d_backprop_input(%filter: tensor<3x3x3x1x6xf32>, %out_backprop: 
 func.func @conv2d_backprop_filter(
     %input: tensor<100x28x28x1xf32>,
     %out_backprop: tensor<100x26x26x32xf32>
-  ) -> tensor<100x28x28x1xf32> {
+  ) -> tensor<3x3x1x32xf32> {
   // CHECK: %[[RESULT:.*]] = mhlo.convolution(%arg0, %arg1)
   // CHECK-SAME: dim_numbers = [f, 0, 1, b]x[i, 0, 1, o]->[0, 1, b, f]
   // CHECK-SAME{LITERAL}: window = {stride = [1, 1], pad = [[0, 0], [0, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
@@ -4361,8 +4361,8 @@ func.func @conv2d_backprop_filter(
     padding = "VALID",
     strides = [1, 1, 1, 1],
     use_cudnn_on_gpu = true
-  } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
-  func.return %result : tensor<100x28x28x1xf32>
+  } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<3x3x1x32xf32>
+  func.return %result : tensor<3x3x1x32xf32>
 }
 
 // -----
@@ -4391,7 +4391,7 @@ func.func @conv2d_backprop_filter_grouped(
 
 
 // CHECK-LABEL: @conv3d_backprop_filter
-func.func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
+func.func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<3x3x3x1x6xf32> {
   // CHECK: %[[RESULT:.*]] = mhlo.convolution(%arg0, %arg1)
   // CHECK-SAME: dim_numbers = [f, 0, 1, 2, b]x[i, 0, 1, 2, o]->[0, 1, 2, b, f]
   // CHECK-SAME{LITERAL}: window = {stride = [1, 1, 1], pad = [[1, 1], [1, 1], [1, 1]], lhs_dilate = [1, 1, 1], rhs_dilate = [1, 1, 1]}
@@ -4399,8 +4399,8 @@ func.func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: 
   // CHECK-SAME: feature_group_count = 1 : i64
   // CHECK: return %[[RESULT]]
   %filter_sizes = "tf.Const"() {value = dense<[3, 3, 3, 1, 6]> : tensor<5xi32>} : () -> tensor<5xi32>
-  %result = "tf.Conv3DBackpropFilterV2"(%input, %filter_sizes, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<2x8x8x8x1xf32>, tensor<5xi32>, tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32>
-  func.return %result : tensor<2x8x8x8x1xf32>
+  %result = "tf.Conv3DBackpropFilterV2"(%input, %filter_sizes, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<2x8x8x8x1xf32>, tensor<5xi32>, tensor<2x8x8x8x6xf32>) -> tensor<3x3x3x1x6xf32>
+  func.return %result : tensor<3x3x3x1x6xf32>
 }
 
 // -----
