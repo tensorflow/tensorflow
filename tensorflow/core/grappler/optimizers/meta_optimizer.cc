@@ -1243,7 +1243,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
 #ifndef __Fuchsia__
-  if (!is_tpu_graph) {
+  {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
