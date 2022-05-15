@@ -180,18 +180,42 @@ func.func @batch_multilhs_einsum(%arg0: tensor<2x1x1x11xf32>, %arg1: tensor<2x11
 // CHECK: return %[[v2]] : tensor<2x1x1x2xf32>
 }
 
-func.func @einsum_no_match_on_invalid_reshape_op_1(%arg0 : tensor<?x36x32xf32>, %arg1 : tensor<?x36x?x32xf32>) -> tensor<?x36x?xf32> {
+func.func @einsum_with_runtime_outputshape1(%arg0 : tensor<?x36x32xf32>, %arg1 : tensor<?x36x?x32xf32>) -> tensor<?x36x?xf32> {
   %0 = "tf.Einsum"(%arg0, %arg1) {device = "", equation = "bij,binj->bin"} : (tensor<?x36x32xf32>, tensor<?x36x?x32xf32>) -> tensor<?x36x?xf32>
   func.return %0 : tensor<?x36x?xf32>
-// CHECK-LABEL: einsum_no_match_on_invalid_reshape_op_1
-// CHECK: "tf.Einsum"
+// CHECK-LABEL: einsum_with_runtime_outputshape1
+// CHECK-DAG: %[[cst:.*]] = arith.constant dense<[0, 1, 3, 2]> : tensor<4xi32>
+// CHECK-DAG: %[[cst_0:.*]] = arith.constant dense<[-1, 36, 1, 32]> : tensor<4xi64>
+// CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<[0, 1]> : tensor<2xi32>
+// CHECK-DAG: %[[cst_2:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK-DAG: %[[cst_3:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[v0:.*]] = "tf.Transpose"(%arg1, %cst) : (tensor<?x36x?x32xf32>, tensor<4xi32>) -> tensor<?x36x32x?xf32>
+// CHECK: %[[v1:.*]] = "tf.Reshape"(%arg0, %cst_0) : (tensor<?x36x32xf32>, tensor<4xi64>) -> tensor<?x36x1x32xf32>
+// CHECK: %[[v2:.*]] = "tf.BatchMatMulV2"(%1, %0) {adj_x = false, adj_y = false} : (tensor<?x36x1x32xf32>, tensor<?x36x32x?xf32>) -> tensor<?x36x1x?xf32>
+// CHECK: %[[v3:.*]] = "tf.Shape"(%arg0) : (tensor<?x36x32xf32>) -> tensor<3xi32>
+// CHECK: %[[v4:.*]] = "tf.Shape"(%arg1) : (tensor<?x36x?x32xf32>) -> tensor<4xi32>
+// CHECK: %[[v5:.*]] = "tf.Gather"(%3, %cst_1) {validate_indices = true} : (tensor<3xi32>, tensor<2xi32>) -> tensor<2xi32>
+// CHECK: %[[v6:.*]] = "tf.Gather"(%4, %cst_2) {validate_indices = true} : (tensor<4xi32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK: %[[v7:.*]] = "tf.Concat"(%cst_3, %5, %6) : (tensor<i32>, tensor<2xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK: %[[v8:.*]] = "tf.Reshape"(%2, %7) : (tensor<?x36x1x?xf32>, tensor<3xi32>) -> tensor<?x36x?xf32>
+// CHECK: return %[[v8]] : tensor<?x36x?xf32>
 }
 
-func.func @einsum_no_match_on_invalid_reshape_op_2(%arg0 : tensor<?x?x1024xf32>, %arg1 : tensor<1024x8x128xf32>) -> tensor<?x?x8x128xf32> {
+func.func @einsum_with_runtime_outputshape2(%arg0 : tensor<?x?x1024xf32>, %arg1 : tensor<1024x8x128xf32>) -> tensor<?x?x8x128xf32> {
   %0 = "tf.Einsum"(%arg0, %arg1) {device = "", equation = "ABD,DNH->ABNH"} : (tensor<?x?x1024xf32>, tensor<1024x8x128xf32>) -> tensor<?x?x8x128xf32>
   func.return %0 : tensor<?x?x8x128xf32>
-// CHECK-LABEL: einsum_no_match_on_invalid_reshape_op_2
-// CHECK: "tf.Einsum"
+// CHECK-LABEL: einsum_with_runtime_outputshape2
+// CHECK-DAG: %[[cst:.*]] = arith.constant dense<1024> : tensor<2xi64>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() {value = dense<[8, 128]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<[0, 1]> : tensor<2xi32>
+// CHECK-DAG: %[[cst_2:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[v0:.*]] = "tf.Reshape"(%arg1, %cst) : (tensor<1024x8x128xf32>, tensor<2xi64>) -> tensor<1024x1024xf32>
+// CHECK: %[[v1:.*]] = "tf.BatchMatMulV2"(%arg0, %0) {adj_x = false, adj_y = false} : (tensor<?x?x1024xf32>, tensor<1024x1024xf32>) -> tensor<?x?x1024xf32>
+// CHECK: %[[v2:.*]] = "tf.Shape"(%arg0) : (tensor<?x?x1024xf32>) -> tensor<3xi32>
+// CHECK: %[[v3:.*]] = "tf.Gather"(%2, %cst_1) {validate_indices = true} : (tensor<3xi32>, tensor<2xi32>) -> tensor<2xi32>
+// CHECK: %[[v4:.*]] = "tf.Concat"(%cst_2, %3, %cst_0) : (tensor<i32>, tensor<2xi32>, tensor<2xi32>) -> tensor<4xi32>
+// CHECK: %[[v5:.*]] = "tf.Reshape"(%1, %4) : (tensor<?x?x1024xf32>, tensor<4xi32>) -> tensor<?x?x8x128xf32>
+// CHECK: return %[[v5]] : tensor<?x?x8x128xf32>
 }
 
 func.func @einsum_with_runtime_shape1(%arg0 : tensor<?x36x?xf32>, %arg1 : tensor<?x36x?x32xf32>) -> tensor<?x36x32xf32> {

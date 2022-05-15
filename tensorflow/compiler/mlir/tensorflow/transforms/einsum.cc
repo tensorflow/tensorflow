@@ -56,15 +56,37 @@ namespace TF {
 
 namespace {
 
+// Creates ConstOp for int32_t value.
+ConstOp createI32ConstOp(int32_t value, Location loc,
+                         PatternRewriter* rewriter) {
+  auto int_attr = IntegerAttr::get(rewriter->getIntegerType(32), value);
+  return rewriter->create<ConstOp>(loc, int_attr);
+}
+
+// Creates ConstantOp for array of int32_t.
+arith::ConstantOp createI32ConstantOp(llvm::ArrayRef<int32_t> values,
+                                      Location loc, PatternRewriter* rewriter) {
+  auto values_type = RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, rewriter->getIntegerType(32));
+  auto constant_attr = rewriter->getI32TensorAttr(values);
+  return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
+}
+
+// Creates ConstantOp for array of int64_t.
+arith::ConstantOp createI64ConstantOp(llvm::ArrayRef<int64_t> values,
+                                      Location loc, PatternRewriter* rewriter) {
+  auto values_type = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, rewriter->getIntegerType(64));
+  auto constant_attr = rewriter->getI64TensorAttr(values);
+  return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
+}
+
 TF::TransposeOp createTransposeOp(Value value, Location loc,
                                   llvm::ArrayRef<int32_t> permutation,
                                   PatternRewriter* rewriter) {
+  auto perm_op = createI32ConstantOp(permutation, loc, rewriter);
   auto value_type = value.getType().cast<RankedTensorType>();
   auto shape = value_type.getShape();
-  auto perm_type = RankedTensorType::get(
-      {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
-  auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
-  auto perm_op = rewriter->create<arith::ConstantOp>(loc, perm_type, perm_attr);
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
@@ -78,13 +100,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  int64_t shape_rank = shape.size();
-  auto shape_spec_type =
-      RankedTensorType::get({shape_rank}, rewriter->getIntegerType(64));
+  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
-  auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
-  auto shape_tensor =
-      rewriter->create<arith::ConstantOp>(loc, shape_spec_type, constant_attr);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
 }
@@ -105,16 +122,9 @@ TF::ReshapeOp createReshapeOpForDynamic(Value value, ArrayRef<int64_t> shape,
   // Build UnsortedSegmentProdOp
   Type segProdresultType =
       RankedTensorType::get(num_reshape_segids, rewriter->getIntegerType(32));
-  int64_t segids_rank = reshape_segids.size();
-  auto segids_type =
-      RankedTensorType::get({segids_rank}, rewriter->getIntegerType(32));
-  auto constant_attr = DenseElementsAttr::get(segids_type, reshape_segids);
-  auto segids_tensor =
-      rewriter->create<arith::ConstantOp>(loc, segids_type, constant_attr);
-  auto num_reshape_segids_tensor_attr =
-      IntegerAttr::get(rewriter->getIntegerType(32), num_reshape_segids);
+  auto segids_tensor = createI32ConstantOp(reshape_segids, loc, rewriter);
   auto num_reshape_segids_tensor =
-      rewriter->create<ConstOp>(loc, num_reshape_segids_tensor_attr);
+      createI32ConstOp(num_reshape_segids, loc, rewriter);
   auto segprod = rewriter->create<TF::UnsortedSegmentProdOp>(
       loc, segProdresultType, input_shape->getResults()[0], segids_tensor,
       num_reshape_segids_tensor);
@@ -139,6 +149,59 @@ struct EinsumDimensionNumbers {
   std::vector<std::tuple<int64_t, int64_t>> rhs_out;
   std::vector<std::tuple<int64_t, int64_t, int64_t>> lhs_rhs_out;
 };
+
+TF::ReshapeOp createOutputReshapeOpForDynamic(
+    Value value, ArrayRef<int64_t> shape, Value org_lhs, Value org_rhs,
+    EinsumDimensionNumbers& dnums, Location loc, PatternRewriter* rewriter) {
+  BoolAttr true_attr = rewriter->getBoolAttr(true);
+  // Build ShapeOp
+  auto shape_lhs = rewriter->create<TF::ShapeOp>(loc, org_lhs, true_attr);
+  auto shape_rhs = rewriter->create<TF::ShapeOp>(loc, org_rhs, true_attr);
+
+  std::vector<int32_t> bl_index;  // Indexes of B0,...,Bn and L0,...,Ln
+  bl_index.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size());
+  for (auto i : dnums.lhs_rhs_out) {
+    bl_index.push_back(std::get<0>(i));
+  }
+  for (auto i : dnums.lhs_out) {
+    bl_index.push_back(std::get<0>(i));
+  }
+  std::vector<int32_t> r_index;  // Indexes of R0,...,Rn
+  r_index.reserve(dnums.rhs_out.size());
+  for (auto i : dnums.rhs_out) {
+    r_index.push_back(std::get<0>(i));
+  }
+
+  auto lhs_index_tensor = createI32ConstantOp(bl_index, loc, rewriter);
+  auto gather_lhs = rewriter->create<TF::GatherOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(bl_index.size())},
+                            rewriter->getIntegerType(32)),
+      shape_lhs->getResults()[0], lhs_index_tensor->getResults()[0], true_attr);
+  auto rhs_index_tensor = createI32ConstantOp(r_index, loc, rewriter);
+  auto gather_rhs = rewriter->create<TF::GatherOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(r_index.size())},
+                            rewriter->getIntegerType(32)),
+      shape_rhs->getResults()[0], rhs_index_tensor->getResults()[0], true_attr);
+  Value zero_value = createI32ConstOp(0, loc, rewriter);
+  auto concat_out_shape = rewriter->create<TF::ConcatOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(bl_index.size()) +
+                             static_cast<int>(r_index.size())},
+                            rewriter->getIntegerType(32)),
+      zero_value,
+      ArrayRef<Value>(
+          {gather_lhs->getResults()[0], gather_rhs->getResults()[0]}));
+
+  // Build ReshapeOp with the calculated output shape.
+  Type out_type =
+      RankedTensorType::get(shape, getElementTypeOrSelf(value.getType()));
+  return rewriter->create<TF::ReshapeOp>(
+      loc, out_type,
+      /*tensor=*/value,
+      /*shape=*/concat_out_shape->getResults()[0]);
+}
 
 llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
     llvm::StringRef equation) {
@@ -571,6 +634,11 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   if (inputs.size() != 2) return failure();
   Value lhs = inputs.front();
   Value rhs = inputs.back();
+  // Back original values for the later output shape calculation in
+  // `createOutputReshapeOpForDynamic`.
+  Value original_lhs = lhs;
+  Value original_rhs = rhs;
+  EinsumDimensionNumbers original_dnums = dnums;
 
   RankedTensorType original_type =
       op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
@@ -588,11 +656,6 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 
   std::vector<int64_t> reshape_shape =
       inverseTransposeVector(original_type.getShape(), out_transpose);
-  bool out_reshape_need = (reshape_shape.size() != matmul_shape.size() ||
-                           original_type.getRank() != matmul_shape.size());
-  // TODO(b/185825380): Support when reshape is needed with dynamic shapes.
-  if (out_reshape_need && failed(VerifyShapeOfReshapeOp(reshape_shape)))
-    return failure();
 
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());
@@ -600,9 +663,16 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
       op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
       rewriter.getBoolAttr(false));
 
-  if (out_reshape_need) {
+  bool out_reshape_need = (reshape_shape.size() != matmul_shape.size() ||
+                           original_type.getRank() != matmul_shape.size());
+  // Always add reshape for concrete output shapes.
+  if (succeeded(VerifyShapeOfReshapeOp(reshape_shape))) {
     out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
                           op.getLoc(), &rewriter);
+  } else if (out_reshape_need) {
+    out = createOutputReshapeOpForDynamic(out, reshape_shape, original_lhs,
+                                          original_rhs, original_dnums,
+                                          op.getLoc(), &rewriter);
   }
   out = createTransposeOp(out, op.getLoc(), out_transpose, &rewriter);
 
