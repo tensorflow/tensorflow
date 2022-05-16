@@ -2026,12 +2026,31 @@ func.func @pad_negative_fold() -> tensor<4x4xi32> {
   // CHECK: "mhlo.pad"
 }
 
+// CHECK-LABEL: @pad_fold_zero_elements
 func.func @pad_fold_zero_elements() -> tensor<3xi32> {
   %0 = mhlo.constant dense<> : tensor<0xi32>
   %1 = mhlo.constant dense<7> : tensor<i32>
   %2 = "mhlo.pad"(%0, %1) {edge_padding_high = dense<3> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<0> : tensor<1xi64>} : (tensor<0xi32>, tensor<i32>) -> tensor<3xi32>
   func.return %2 : tensor<3xi32>
   // CHECK: mhlo.constant dense<7> : tensor<3xi32>
+}
+
+// CHECK-LABEL: @pad_float_fold
+func.func @pad_float_fold() -> tensor<2xf32> {
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<1xf32>
+  %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  %2 = "mhlo.pad"(%0, %1) {edge_padding_high = dense<1> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<0> : tensor<1xi64>} : (tensor<1xf32>, tensor<f32>) -> tensor<2xf32>
+  return %2 : tensor<2xf32>
+  // CHECK: mhlo.constant dense<[2.000000e+00, 1.000000e+00]> : tensor<2xf32>
+}
+
+// CHECK-LABEL: @pad_complex_fold
+func.func @pad_complex_fold() -> tensor<2xcomplex<f32>> {
+  %0 = mhlo.constant dense<(2.000000e+00,0.000000e+00)> : tensor<1xcomplex<f32>>
+  %1 = mhlo.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+  %2 = "mhlo.pad"(%0, %1) {edge_padding_high = dense<1> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<0> : tensor<1xi64>} : (tensor<1xcomplex<f32>>, tensor<complex<f32>>) -> tensor<2xcomplex<f32>>
+  return %2 : tensor<2xcomplex<f32>>
+  // CHECK: mhlo.constant dense<[(2.000000e+00,0.000000e+00), (1.000000e+00,0.000000e+00)]> : tensor<2xcomplex<f32>>
 }
 
 // CHECK-LABEL: @identity_broadcast_reshape

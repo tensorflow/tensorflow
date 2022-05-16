@@ -5191,6 +5191,45 @@ LogicalResult PadOp::inferReturnTypeComponents(
   return success();
 }
 
+template <typename T>
+OpFoldResult PadOpFoldHelper(DenseElementsAttr input, DenseElementsAttr padding,
+                             RankedTensorType return_type,
+                             DenseIntElementsAttr edge_padding_low,
+                             DenseIntElementsAttr edge_padding_high,
+                             DenseIntElementsAttr interior_padding) {
+  // Fill the full result tensor with the padding value.
+  llvm::SmallVector<T, 4> result(return_type.getNumElements(),
+                                 padding.getValues<T>()[0]);
+
+  auto next_index = [](llvm::SmallVector<uint64_t, 8>& index,
+                       llvm::ArrayRef<int64_t> shape) {
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      ++index[i];
+      if (index[i] < shape[i]) return;
+      index[i] = 0;
+    }
+  };
+
+  // Iterate over all elements of the input tensor and copy it to the correct
+  // location in the output tensor.
+  llvm::SmallVector<uint64_t, 8> index(input.getType().getRank(), 0);
+  uint64_t num_elements = input.getNumElements();
+  for (uint64_t operand_idx = 0; operand_idx < num_elements; operand_idx++) {
+    uint64_t result_idx = 0;
+    uint64_t idx_multiplyer = 1;
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      result_idx +=
+          (edge_padding_low.getValues<int64_t>()[i] +
+           index[i] * (interior_padding.getValues<int64_t>()[i] + 1)) *
+          idx_multiplyer;
+      idx_multiplyer *= return_type.getDimSize(i);
+    }
+    result[result_idx] = input.getValues<T>()[index];
+    next_index(index, input.getType().getShape());
+  }
+  return DenseElementsAttr::get(return_type, result);
+}
+
 OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
   // If all padding is zero then it is an identity pad.
   auto is_zero = [](const APInt& i) { return i == 0; };
@@ -5213,37 +5252,23 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
       !return_type.hasStaticShape())
     return {};
 
-  // Fill the full result tensor with the padding value.
-  llvm::SmallVector<Attribute, 4> result(return_type.getNumElements(),
-                                         padding.getValues<Attribute>()[0]);
-
-  auto next_index = [](llvm::SmallVector<uint64_t, 8>& index,
-                       llvm::ArrayRef<int64_t> shape) {
-    for (int64_t i = index.size() - 1; i >= 0; --i) {
-      ++index[i];
-      if (index[i] < shape[i]) return;
-      index[i] = 0;
-    }
-  };
-
-  // Iterate over all elements of the input tensor and copy it to the correct
-  // location in the output tensor.
-  llvm::SmallVector<uint64_t, 8> index(input.getType().getRank(), 0);
-  uint64_t num_elements = input.getNumElements();
-  for (uint64_t operand_idx = 0; operand_idx < num_elements; operand_idx++) {
-    uint64_t result_idx = 0;
-    uint64_t idx_multiplyer = 1;
-    for (int64_t i = index.size() - 1; i >= 0; --i) {
-      result_idx +=
-          (edge_padding_low().getValues<int64_t>()[i] +
-           index[i] * (interior_padding().getValues<int64_t>()[i] + 1)) *
-          idx_multiplyer;
-      idx_multiplyer *= return_type.getDimSize(i);
-    }
-    result[result_idx] = input.getValues<Attribute>()[index];
-    next_index(index, input.getType().getShape());
+  if (return_type.getElementType().isa<IntegerType>())
+    return PadOpFoldHelper<APInt>(input, padding, return_type,
+                                  edge_padding_low(), edge_padding_high(),
+                                  interior_padding());
+  if (return_type.getElementType().isa<FloatType>())
+    return PadOpFoldHelper<APFloat>(input, padding, return_type,
+                                    edge_padding_low(), edge_padding_high(),
+                                    interior_padding());
+  if (ComplexType complex =
+          return_type.getElementType().dyn_cast_or_null<ComplexType>()) {
+    // TODO(atondwal): Allow int types in HLO_complex
+    if (complex.getElementType().isa<FloatType>())
+      return PadOpFoldHelper<std::complex<APFloat>>(
+          input, padding, return_type, edge_padding_low(), edge_padding_high(),
+          interior_padding());
   }
-  return DenseElementsAttr::get(return_type, result);
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
