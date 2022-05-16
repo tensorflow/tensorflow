@@ -128,7 +128,7 @@ class ControlFlowTransformer(converter.Base):
           symbol_name=gast.Constant(s.ssf(), kind=None))
     return assignments
 
-  def _get_block_basic_vars(self, modified, live_in, live_out):
+  def _get_block_basic_vars(self, modified, live_in, live_out, iter_var):
     nonlocals = self.state[_Function].scope.nonlocals
     basic_scope_vars = []
     for s in modified:
@@ -137,7 +137,7 @@ class ControlFlowTransformer(converter.Base):
         continue
       # Variables not live into or out of the scope are considered local to the
       # scope.
-      if s in live_in or s in live_out or s in nonlocals:
+      if s in live_in or s in live_out or s in nonlocals or (s in iter_var):
         basic_scope_vars.append(s)
       continue
     return frozenset(basic_scope_vars)
@@ -167,17 +167,17 @@ class ControlFlowTransformer(converter.Base):
       composite_scope_vars.append(s)
     return frozenset(composite_scope_vars)
 
-  def _get_block_vars(self, node, modified):
+  def _get_block_vars(self, node, modified, iter_var=[]):
     """Determines the variables affected inside a control flow statement."""
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
     fn_scope = self.state[_Function].scope
-
     basic_scope_vars = self._get_block_basic_vars(
         modified,
         live_in,
-        live_out)
+        live_out,
+        iter_var)
     composite_scope_vars = self._get_block_composite_vars(modified, live_in)
     scope_vars = tuple(basic_scope_vars | composite_scope_vars)
 
@@ -309,9 +309,8 @@ class ControlFlowTransformer(converter.Base):
     node = self.generic_visit(node)
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
     iter_scope = anno.getanno(node, annos.NodeAnno.ITERATE_SCOPE)
-
     loop_vars, undefined, _ = self._get_block_vars(
-        node, body_scope.bound | iter_scope.bound)
+        node, body_scope.bound | iter_scope.bound, iter_scope.bound)
 
     undefined_assigns = self._create_undefined_assigns(undefined)
 
