@@ -2276,6 +2276,21 @@ func.func @reduce_add_complex(%arg0: tensor<5x4xcomplex<f32>>) -> tensor<5xcompl
 
 // -----
 
+func.func @reduce_minimum_unsigned(%arg0: tensor<5x4xui32>, %arg1: tensor<ui32>) -> tensor<5xui32> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<ui32>, %arg4 : tensor<ui32>):
+    %1 = mhlo.minimum %arg3, %arg4 : tensor<ui32>
+    "mhlo.return"(%1) : (tensor<ui32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<5x4xui32>, tensor<ui32>) -> tensor<5xui32>
+  func.return %0 : tensor<5xui32>
+}
+// CHECK-LABEL: @reduce_minimum_unsigned
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb{{.}}(%[[ARG2:.+]]: i32, %[[ARG3:.+]]: i32)
+// CHECK-NEXT: arith.minui %[[ARG2]], %[[ARG3]] : i32
+
+// -----
+
 func.func @reduce_minimum(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):

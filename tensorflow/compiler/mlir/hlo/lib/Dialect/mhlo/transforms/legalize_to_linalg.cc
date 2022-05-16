@@ -1721,9 +1721,20 @@ struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
         })) {
       return failure();
     }
+    // RemoveSignTypeConverter would give us a tensor. We also have to scalarize
+    // so do it manually.
+    Type result_type = getElementTypeOrSelf(op.getType());
+    if (result_type.isUnsignedInteger()) {
+      result_type = IntegerType::get(result_type.getContext(),
+                                     result_type.getIntOrFloatBitWidth());
+    }
+    // The scalar mapper has to know the original type. At this point the
+    // operands have been converted from `tensor<ui32>` to `i32` so recreate
+    // `ui32` from the original operands.
+    auto operand_types = llvm::to_vector(llvm::map_range(
+        op.getOperandTypes(), [](Type t) { return getElementTypeOrSelf(t); }));
     Value result = mhlo::MhloOpToStdScalarOp::map<OpTy>(
-        op, getElementTypeOrSelf(op.getType()), adaptor.getOperands(),
-        &rewriter);
+        op, result_type, operand_types, adaptor.getOperands(), &rewriter);
     rewriter.replaceOp(op, result);
     return success();
   }
@@ -1789,19 +1800,22 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
 
     SmallVector<int64_t, 4> reduction_dims = Extract1DVector(op.dimensions());
 
+    SmallVector<Type> result_types;
+    if (failed(typeConverter->convertTypes(op.getResultTypes(), result_types)))
+      return failure();
+
     SmallVector<Value> operands, outputs;
     SmallVector<AffineMap, 3> indexing_maps;
-    for (auto values : llvm::zip(adaptor.operands(), adaptor.init_values(),
-                                 op.getResults())) {
+    for (auto values :
+         llvm::zip(adaptor.operands(), adaptor.init_values(), result_types)) {
       // Check if init_value is constant. If so, inline the value into the
       // region.
       Value operand = std::get<0>(values);
       Value init_value = std::get<1>(values);
-      Value result = std::get<2>(values);
+      Type result_type = std::get<2>(values);
       init_value = rewriter.createOrFold<tensor::ExtractOp>(loc, init_value);
 
       operands.push_back(operand);
-      auto result_type = result.getType().cast<ShapedType>();
       SmallVector<Value, 8> dyn_shape = GetReduceOpInitTensorDynSizes(
           rewriter, loc, operand, result_type, reduction_dims);
       auto init_tensor = GetInitTensor(rewriter, loc, result_type, dyn_shape);
@@ -1830,7 +1844,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
                                         rewriter.getContext()));
 
     auto linalg_op = rewriter.create<linalg::GenericOp>(
-        loc, /*resultTensorTypes=*/op.getResultTypes(), operands,
+        loc, /*resultTensorTypes=*/result_types, operands,
         /*outputBuffers=*/ValueRange{outputs}, indexing_maps,
         GetParallelAndReductionIterators(src_rank, reduction_dims.size()),
         /*bodyBuild=*/nullptr, PruneAttributeList(op));
@@ -1847,7 +1861,9 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     // map operand and init values's types
     for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
       signature_converter.addInputs(
-          it.index(), it.value().getType().cast<ShapedType>().getElementType());
+          it.index(),
+          typeConverter->convertType(
+              it.value().getType().cast<ShapedType>().getElementType()));
     }
 
     rewriter.applySignatureConversion(&region, signature_converter);
