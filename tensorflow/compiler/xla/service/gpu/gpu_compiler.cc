@@ -282,6 +282,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
 using OwnedBefBuffer = GpuExecutable::OwnedBefBuffer;
+using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
 
 StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
     Compiler* compiler, se::StreamExecutor* executor) const {
@@ -867,6 +868,25 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
   std::copy(bef.begin(), bef.end(), ptr);
   return OwnedBefBuffer(ptr, {bef.size()});
 }
+
+static StatusOr<OwnedJitRtProgram> LowerToJitRt(
+    mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
+    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+  // Lower LMHLO operations to the JitRt compatible custom calls.
+  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
+      mlir_module, {entry_function_name.data(), entry_function_name.size()},
+      buffer_sizes));
+  // Serialize module to pass it to GpuExecutable for compilation.
+  std::string serialized_module;
+  llvm::raw_string_ostream os(serialized_module);
+  mlir_module.print(os);
+
+  // TODO(b/232033540): Pass MLIR module directly to JitRt to instantiate an
+  // executable, without forcing serialization.
+  return std::make_unique<GpuExecutable::JitRtProgram>(
+      entry_function_name.str(), os.str(), buffer_sizes.vec(),
+      hlo_module->config().debug_options());
+}
 #endif  // XLA_ENABLE_XLIR
 
 using OutputInfoMap =
@@ -902,7 +922,8 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
+  absl::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
+      executable;
   GpuExecutable::OwnedGpuContextCache gpu_ctx_cache;
   EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
@@ -1022,11 +1043,11 @@ static Status CompileModuleToLlvmIrImpl(
     llvm::transform(
         results->allocations, std::back_inserter(buffer_sizes),
         [](const BufferAllocation& allocation) { return allocation.size(); });
-    TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
+    TF_ASSIGN_OR_RETURN(results->executable,
                         LowerToBef(*mlir_module, entry_function.getName(),
                                    buffer_sizes, hlo_module));
     if (stream_exec) {
-      auto& bef_buffer = absl::get<OwnedBefBuffer>(results->thunks_or_bef);
+      auto& bef_buffer = absl::get<OwnedBefBuffer>(results->executable);
       llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
                                         bef_buffer.get_deleter().size);
       TF_ASSIGN_OR_RETURN(results->gpu_ctx_cache,
@@ -1035,9 +1056,20 @@ static Status CompileModuleToLlvmIrImpl(
     }
     return Status::OK();
   }
+
+  if (IsJitRtExecutableEnabled(hlo_module->config())) {
+    std::vector<int64_t> buffer_sizes;
+    llvm::transform(
+        results->allocations, std::back_inserter(buffer_sizes),
+        [](const BufferAllocation& allocation) { return allocation.size(); });
+    TF_ASSIGN_OR_RETURN(results->executable,
+                        LowerToJitRt(*mlir_module, entry_function.getName(),
+                                     buffer_sizes, hlo_module));
+    return Status::OK();
+  }
 #endif  // XLA_ENABLE_XLIR
 
-  results->thunks_or_bef =
+  results->executable =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
   return Status::OK();
 }
@@ -1313,9 +1345,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             stream_exec, options, module.get()));
   if (DumpingEnabledForHloModule(*module) &&
       absl::holds_alternative<OwnedThunkSchedule>(
-          compile_module_results.thunks_or_bef)) {
+          compile_module_results.executable)) {
     const ThunkSchedule& thunk_schedule =
-        *absl::get<OwnedThunkSchedule>(compile_module_results.thunks_or_bef);
+        *absl::get<OwnedThunkSchedule>(compile_module_results.executable);
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule.ToString());
   }
@@ -1332,7 +1364,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       auto gpu_executable,
       GpuExecutable::Create(
           {std::move(backend_result.first), std::move(backend_result.second),
-           gpu_version, std::move(compile_module_results.thunks_or_bef),
+           gpu_version, std::move(compile_module_results.executable),
            compile_module_results.entry_func_attrs,
            std::move(compile_module_results.constants),
            std::move(compile_module_results.output_info),
@@ -1460,11 +1492,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
     if (!absl::holds_alternative<OwnedBefBuffer>(
-            compile_module_results.thunks_or_bef)) {
+            compile_module_results.executable)) {
       return FailedPrecondition("Expected BefBuffer is not supplied.");
     }
     const auto& bef_buffer =
-        absl::get<OwnedBefBuffer>(compile_module_results.thunks_or_bef);
+        absl::get<OwnedBefBuffer>(compile_module_results.executable);
     const std::string bef(reinterpret_cast<char*>(bef_buffer.get()),
                           bef_buffer.get_deleter().size);
 

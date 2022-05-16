@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -57,11 +58,14 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/bef_to_mlir.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -93,6 +97,14 @@ bool IsBefThunkEnabled(const HloModuleConfig& config) {
       << "Failed to enable BEF backend, because it was not compiled.";
 #endif  // !XLA_ENABLE_XLIR
   return config.debug_options().xla_gpu_bef_thunk();
+}
+
+bool IsJitRtExecutableEnabled(const HloModuleConfig& config) {
+#if !XLA_ENABLE_XLIR
+  CHECK(!config.debug_options().xla_gpu_jitrt_executable())
+      << "Failed to enable JitRt backend, because it was not compiled.";
+#endif  // !XLA_ENABLE_XLIR
+  return config.debug_options().xla_gpu_jitrt_executable();
 }
 
 namespace {
@@ -201,29 +213,111 @@ struct GpuExecutable::BefExecutable {
   const tfrt::Function* function;
   OwnedGpuContextCache gpu_ctx_cache;
 };
+
+namespace jitrt = ::tfrt::jitrt;
+
+class GpuExecutable::JitRtExecutable {
+ public:
+  static StatusOr<JitRtExecutable*> Create(OwnedJitRtProgram program) {
+    // Options for the default JitRt compilation pipeline.
+    jitrt::CompilationPipelineOptions copts;
+    // We do not expect any parallel loops on the GPU program, so we disable
+    // all concurrency (async parallel for loops).
+    copts.num_worker_threads = 1;
+
+    // Options for constructing JitRt JitExecutable.
+    jitrt::CompilationOptions opts;
+    opts.specialization = jitrt::CompilationOptions::Specialization::kDisabled;
+    opts.register_dialects = jitrt::RegisterDefaultJitRtDialects;
+
+    // Register JitRt Gpu runtime custom calls with the linker.
+    opts.runtime_symbol_map = JitRtCustomCallsSymbolMap;
+
+    // We just use the default compilation pipeline provided by the JitRt.
+    // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
+    // JitRt dialects), we can assemble a pipeline that will compile starting
+    // from the LMHLO dialect. However this intermediate step helps with
+    // debugging, by materializing IR with XLA runtime custom calls.
+    opts.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
+      jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
+    };
+
+    // Instantiate new JitExecutable from the MLIR source.
+    auto jit_executable = jitrt::JitExecutable::Instantiate(
+        program->module, program->entry_point, opts);
+    if (auto err = jit_executable.takeError())
+      return InternalError("Failed to compile JitRt program: %s",
+                           tfrt::StrCat(err));
+
+    // Pass ownership to the GpuExecutable.
+    return new JitRtExecutable(std::move(program->buffer_sizes),
+                               std::move(*jit_executable),
+                               std::move(program->debug_options));
+  }
+
+  jitrt::JitExecutable& jit_executable() { return jit_executable_; }
+  jitrt::Executable& default_executable() { return *default_executable_; }
+  JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
+  JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
+
+  // We pass a pointer to the buffer size to the compiled function, so we return
+  // a reference to a stable memory location.
+  const int64_t& buffer_size(size_t offset) const {
+    return buffer_sizes_[offset];
+  }
+
+  const DebugOptions& debug_options() const { return debug_options_; }
+
+ private:
+  explicit JitRtExecutable(std::vector<int64_t> buffer_sizes,
+                           jitrt::JitExecutable jit_executable,
+                           DebugOptions debug_options)
+      : buffer_sizes_(std::move(buffer_sizes)),
+        jit_executable_(std::move(jit_executable)),
+        default_executable_(&jit_executable_.DefaultExecutable().get()),
+        debug_options_(std::move(debug_options)) {}
+
+  std::vector<int64_t> buffer_sizes_;
+  jitrt::JitExecutable jit_executable_;
+  jitrt::Executable* default_executable_;  // owned by `jit_executable`
+  DebugOptions debug_options_;
+
+  // Keep a cache of kernels instantiated by this executable.
+  JitRtKernelsCache kernels_cache_;
+
+  // Keep a cache of gemm configs for all gemm operation in the program.
+  JitRtGemmConfigCache gemm_configs_cache_;
+};
 #endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
-  auto thunks_or_bef = std::move(params.thunks_or_bef);
+  auto executable = std::move(params.executable);
   auto gpu_ctx_cache = std::move(params.gpu_ctx_cache);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
-  if (absl::holds_alternative<OwnedThunkSchedule>(thunks_or_bef)) {
-    result->thunks_ = std::move(absl::get<OwnedThunkSchedule>(thunks_or_bef));
+  if (absl::holds_alternative<OwnedThunkSchedule>(executable)) {
+    result->thunks_ = std::move(absl::get<OwnedThunkSchedule>(executable));
     return result;
   }
 
 #if XLA_ENABLE_XLIR
-  if (absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef)) {
-    auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef);
+  if (absl::holds_alternative<OwnedBefBuffer>(executable)) {
+    auto& bef_buffer = absl::get<OwnedBefBuffer>(executable);
     TF_ASSIGN_OR_RETURN(
         result->bef_executable_,
         BefExecutable::Create(std::move(bef_buffer), std::move(gpu_ctx_cache)));
     return result;
   }
+
+  if (absl::holds_alternative<OwnedJitRtProgram>(executable)) {
+    auto& program = absl::get<OwnedJitRtProgram>(executable);
+    TF_ASSIGN_OR_RETURN(result->jitrt_executable_,
+                        JitRtExecutable::Create(std::move(program)));
+    return result;
+  }
 #endif  // XLA_ENABLE_XLIR
 
-  return InternalError("No thunk or bef provided");
+  return InternalError("No XLA gpu executable was provided");
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -287,6 +381,7 @@ GpuExecutable::~GpuExecutable() {
 
 #if XLA_ENABLE_XLIR
   delete bef_executable_;
+  delete jitrt_executable_;
 #endif
 }
 
@@ -724,6 +819,92 @@ static Status ExecuteBef(const std::string& module_name,
       run_options, start_micros,
       block_host_until_done ? run_options->stream() : nullptr);
 }
+
+static Status ExecuteJitRt(const std::string& module_name,
+                           GpuExecutable::JitRtExecutable* jitrt_executable,
+                           const ServiceExecutableRunOptions* run_options,
+                           const BufferAllocations& buffer_allocations,
+                           size_t num_allocations, bool block_host_until_done) {
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+
+  ScopedAnnotation annotation(
+      []() -> std::string { return "JitRtExecutable"; });
+
+  // TODO(ezhulenev): Here we rely on implementation details of passing memrefs
+  // to the compiled kernel. We should have a nicer API to do this, without
+  // creating a vector of temporary MemrefDesc for passing operands.
+
+  // Pack buffer allocations as executable arguments. It is guaranteed that
+  // compiled function will make a copy of all arguments and will write all
+  // results after the call to `Execute` completes, so it is safe to keep in on
+  // the stack.
+  jitrt::Executable::CallFrame call_frame;
+
+  // Each buffer allocation pased as 1d memref to the compiled kernel:
+  //   {basePtr, dataPtr, offset, [sizes, ...], [strides, ...]}
+  size_t num_args_ptrs = 1 + num_allocations * 5;
+  call_frame.args.resize_for_overwrite(num_args_ptrs);
+
+  // Pass pointers to these constants as a memref offset and stride.
+  int64_t zero = 0;
+  int64_t one = 1;
+  void* offset = &zero;
+  void* stride = &one;
+
+  // Add a placeholder for the kernel context as the first argument.
+  call_frame.args[0] = nullptr;
+
+  // Storage for data pointers.
+  llvm::SmallVector<void*, 16> ptrs;
+  ptrs.resize_for_overwrite(num_allocations);
+
+  // Initialize arguments for the buffer operands.
+  for (unsigned i = 0; i < num_allocations; ++i) {
+    void* data = &(ptrs[i] = buffer_allocations.GetDeviceAddress(i).opaque());
+    void* size = const_cast<int64_t*>(&jitrt_executable->buffer_size(i));
+    unsigned idx = 1 + i * 5;
+    call_frame.args[idx + 0] = data;
+    call_frame.args[idx + 1] = data;
+    call_frame.args[idx + 2] = offset;
+    call_frame.args[idx + 3] = size;
+    call_frame.args[idx + 4] = stride;
+  }
+
+  // JitRt executables do not return any values.
+  jitrt::NoOpReturnValueConverter converter;
+
+  // Prepare options for executing JitRt program.
+  jitrt::Executable::ExecuteOpts opts;
+
+  // We don't expect to see any async tasks in the JitRt executable.
+  opts.async_task_runner =
+      reinterpret_cast<jitrt::AsyncTaskRunner*>(0XDEADBEEF);
+
+  // Pass auxiliary data to the custom call handlers.
+  jitrt::CustomCall::UserData user_data;
+  user_data.insert_all(run_options, &jitrt_executable->debug_options(),
+                       &jitrt_executable->kernels_cache(),
+                       &jitrt_executable->gemm_configs_cache());
+  opts.custom_call_data = &user_data;
+
+  // Get the default executable. We do not support specialization because
+  // all shapes are static. Default executable is guaranteed to be available.
+  jitrt::Executable& executable = jitrt_executable->default_executable();
+
+  // Execute with the prepared call frame.
+  executable.Execute(call_frame, opts);
+  if (auto err = executable.ReturnResults(converter, &call_frame))
+    return InternalError("Failed to execute JitRt executable: %s.",
+                         tfrt::StrCat(err));
+
+  return MaybeSyncAndProfile(
+      run_options, start_micros,
+      block_host_until_done ? run_options->stream() : nullptr);
+}
 #endif  // XLA_ENABLE_XLIR
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
@@ -908,9 +1089,15 @@ Status GpuExecutable::ExecuteThunksOrBef(
                       buffer_allocations, allocations_.size(),
                       block_host_until_done);
   }
+
+  if (jitrt_executable_) {
+    return ExecuteJitRt(module_name_, jitrt_executable_, run_options,
+                        buffer_allocations, allocations_.size(),
+                        block_host_until_done);
+  }
 #endif  // XLA_ENABLE_XLIR
 
-  return FailedPrecondition("Expected thunk or bef is not supplied.");
+  return FailedPrecondition("Expected XLA gpu executable is not supplied.");
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
