@@ -5,12 +5,10 @@ load("//tensorflow:tensorflow.bzl", "py_strict_test")
 _ALWAYS_EXCLUDE = ["*.disabled.mlir"]
 _default_test_file_exts = ["mlir"]
 
-def _run_regression_test(name, compare_with_tensorflow, vectorize, one_shot_bufferize, data):
+def _run_regression_test(name, compare_with_tensorflow, vectorize, data):
     suffix = ".test"
     if vectorize:
         suffix = ".vectorized" + suffix
-    if one_shot_bufferize:
-        suffix = ".one_shot" + suffix
     py_strict_test(
         name = name + suffix,
         srcs = ["compile_and_run_test.py"],
@@ -19,7 +17,7 @@ def _run_regression_test(name, compare_with_tensorflow, vectorize, one_shot_buff
             "--input_data_seed=1",
             "--test_file_name=" + name,
             "--vectorize=" + str(vectorize),
-            "--one_shot_bufferize=" + str(one_shot_bufferize),
+            "--one_shot_bufferize=" + str(vectorize),
         ],
         data = data,
         python_version = "PY3",
@@ -42,7 +40,6 @@ def _run_regression_test(name, compare_with_tensorflow, vectorize, one_shot_buff
 def regression_test(
         name,
         vectorize,
-        one_shot_bufferize,
         exclude = [],
         comparison_disabled = [],
         test_file_exts = _default_test_file_exts,
@@ -52,7 +49,6 @@ def regression_test(
     Args:
       name: The name of the test suite.
       vectorize: Whether vectorization should be enabled.
-      one_shot_bufferize: Whether one-shot bufferization should be enabled.
       exclude: The file patterns which should be excluded.
       comparison_disabled: The files for which comparison with tensorflow should be disabled.
       test_file_exts: The file extensions to be considered as tests.
@@ -72,6 +68,5 @@ def regression_test(
             compare_with_tensorflow = curr_test not in comparison_disabled,
             name = curr_test,
             vectorize = vectorize,
-            one_shot_bufferize = one_shot_bufferize,
             data = data + [curr_test],
         )
