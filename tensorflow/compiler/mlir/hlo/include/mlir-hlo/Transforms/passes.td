@@ -112,4 +112,13 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   ];
 }
 
+def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleOp"> {
+  let summary = "Pass to rewrite statically shaped kernel arguments to a pointer.";
+  let constructor = "CreatePropagateStaticShapesToKernelPass()";
+  let options = [
+      Option<"ptr_type_opt", "convert_pointer_args", "std::string",
+             /*default=*/"", "Pointer type to convert pointer arguments to">,
+  ];
+}
+
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

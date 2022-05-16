@@ -1658,6 +1658,7 @@ cc_library(
         ":mhlo_canonicalize_reduction",
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
+        ":propagate_static_shapes_to_kernel",
         ":rank_specialization",
         ":shape_reification_pass",
         ":shape_simplification",
@@ -1979,6 +1980,30 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorOps",
         "@llvm-project//mlir:VectorTransforms",
+    ],
+)
+
+cc_library(
+    name = "propagate_static_shapes_to_kernel",
+    srcs = [
+        "lib/Transforms/propagate_static_shapes_to_kernel.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
