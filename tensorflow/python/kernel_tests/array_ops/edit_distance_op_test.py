@@ -222,8 +222,8 @@ class EditDistanceTest(test.TestCase):
         normalize=False,
         expected_output=expected_output,
         expected_err_re=(r"inner product -\d+ which would require writing "
-                         "to outside of the buffer for the output tensor")
-    )
+                         "to outside of the buffer for the output tensor|"
+                         r"Dimension -\d+ must be >= 0"))
 
 
 if __name__ == "__main__":
