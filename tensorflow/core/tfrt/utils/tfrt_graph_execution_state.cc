@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/utils/graph_partition.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -313,8 +313,11 @@ bool IsTpuGraph(const Graph* graph) {
 // This is done by partitioning `graph` and add Send/Recv ops on the edges
 // across devices.
 StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
-    const FallbackState& fallback_state, const std::vector<std::string>& inputs,
-    const std::vector<std::string>& outputs, std::unique_ptr<Graph> graph) {
+    const std::string& graph_func_name, const FallbackState& fallback_state,
+    const std::vector<std::string>& inputs,
+    const std::vector<std::string>& outputs,
+    const std::vector<std::string>& control_outputs,
+    std::unique_ptr<Graph> graph) {
   // Skip inserting transfer ops if this is a TPU graph.
   // Our stack currently cannot run the old bridge on TPU graphs, as it will
   // generate ops that are not supported by the subsequent MLIR passes.
@@ -353,7 +356,9 @@ StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
   // Insert send/recv ops to the graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Graph> new_graph,
-      InsertTransferOps(fallback_state.device_set(), std::move(graph)));
+      InsertTransferOps(graph_func_name, fallback_state.device_set(),
+                        cpu_device, inputs, outputs, control_outputs,
+                        std::move(graph)));
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_transfer_ops_insertion", *new_graph);
   }
@@ -429,10 +434,12 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   result.grappler_duration = absl::Now() - grappler_start_time;
 
   if (options_.enable_tfrt_gpu) {
-    TF_ASSIGN_OR_RETURN(result.graph,
-                        MaybeInsertTransferOps(fallback_state_, inputs,
-                                               graph_import_config.outputs,
-                                               std::move(result.graph)));
+    TF_ASSIGN_OR_RETURN(
+        result.graph,
+        MaybeInsertTransferOps(
+            graph_import_config.graph_func_name, fallback_state_, inputs,
+            graph_import_config.outputs, graph_import_config.control_outputs,
+            std::move(result.graph)));
 
     // Update `control_outputs` as there might be newly added Send ops.
     for (const Node* node : result.graph->nodes()) {
