@@ -197,6 +197,12 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
                                  const GpuInfo& gpu_info,
                                  const GraphFloat32& graph,
                                  TensorReserver* tensor_reserver) {
+  ZeroClampSupport zero_clamp_support;
+  zero_clamp_support.image_buffer = gpu_info.SupportsZeroClampForImageBuffer();
+  zero_clamp_support.image2d = gpu_info.SupportsZeroClampForImages();
+  zero_clamp_support.image2d_array = gpu_info.SupportsZeroClampForImages();
+  zero_clamp_support.image3d = gpu_info.SupportsZeroClampForImages();
+
   ValueId max_id = 0;
   auto tensors = graph.values();
   for (auto& t : tensors) {
@@ -261,6 +267,7 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
       }
     }
     tensor_desc.SetBHWCShape(shape);
+    tensor_desc.SetZeroClampSupport(zero_clamp_support);
     tensor_reserver->Add(t->id, tensor_desc);
     max_id = std::max(max_id, t->id);
   }
