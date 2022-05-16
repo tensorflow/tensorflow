@@ -873,21 +873,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   }
 
 #if GOOGLE_CUDA
-<<<<<<< HEAD
-  // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
-  // in NHWC data layout. In all other configurations it's more efficient to
-  // run computation in NCHW data format.
-  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
-                               stream->GetCudaComputeCapability().IsAtLeast(
-                                   se::CudaComputeCapability::VOLTA);
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
+                                                    stream, /*is_conv2d=*/true);
 #elif TENSORFLOW_USE_ROCM
   // AMD MI100+ allows for efficient FP16 NHWC convolutions
   const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
                                UseNhwcLayoutForConvOnRocm(stream);
-=======
-  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
-                                                    stream, /*is_conv2d=*/true);
->>>>>>> upstream/master
 #else
   // fast NHWC implementation is a CUDA/ROCM only feature
   const bool compute_in_nhwc = false;
