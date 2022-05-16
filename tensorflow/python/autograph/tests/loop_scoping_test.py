@@ -143,7 +143,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       ([1, 2],),
   )
   def test_for_initializes_local_var_illegal_cases(self, l):
-    self.skipTest("(TODO): Check")
+    self.skipTest("TODO(mdanatg): Check")
     l = tf.constant(l)
     with self.assertRaisesRegex(ValueError, '"x" must be defined'):
       tf.function(for_initializes_local_var)(l)
@@ -162,7 +162,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       2,
   )
   def test_while_initializes_local_var_illegal_cases(self, x):
-    self.skipTest("(TODO): check")
+    self.skipTest("TODO(mdanatg): check")
     x = tf.constant(x)
     with self.assertRaisesRegex(ValueError, '"y" must be defined'):
       tf.function(while_initializes_local_var)(x)
@@ -182,7 +182,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       ([1, 2],),
   )
   def test_for_defines_var_illegal_cases(self, l):
-    self.skipTest("(TODO): check")
+    self.skipTest("TODO(mdanatg): check")
     l = tf.constant(l)
     with self.assertRaisesRegex(ValueError, '"x" must be defined'):
       tf.function(for_defines_var)(l)
@@ -202,7 +202,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       (2,),
   )
   def test_while_defines_var_illegal_cases(self, x):
-    self.skipTest("(TODO): check")
+    self.skipTest("TODO(mdanatg): check")
     x = tf.constant(x)
     with self.assertRaisesRegex(ValueError, '"y" must be defined'):
       tf.function(while_defines_var)(x)
