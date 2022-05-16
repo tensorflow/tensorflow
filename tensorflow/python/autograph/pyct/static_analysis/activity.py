@@ -634,11 +634,6 @@ class ActivityAnalyzer(transformer.Base):
       lambda_scope = self.scope
       self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
 
-      # Exception: lambdas are assumed to be used in the place where
-      # they are defined. Therefore, their activity is passed on to the
-      # calling statement.
-      self.scope.read.update(lambda_scope.read - lambda_scope.bound)
-
       return node
 
   def visit_With(self, node):

@@ -65,10 +65,6 @@ class Analyzer(cfg.GraphVisitor):
       reaching_functions = anno.getanno(
           node.ast_node, anno.Static.DEFINED_FNS_IN)
       for fn_ast_node in reaching_functions:
-        if isinstance(fn_ast_node, gast.Lambda):
-          # Exception: lambda functions are assumed to be used only in the
-          # place where they are defined, and not later.
-          continue
         fn_scope = anno.getanno(fn_ast_node, annos.NodeAnno.ARGS_AND_BODY_SCOPE)
         # Any closure of a reaching function definition is conservatively
         # considered live.
