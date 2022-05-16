@@ -268,7 +268,6 @@ TEST(DataServiceTest, DispatcherStateExport) {
   DatasetClient<tstring> dataset_client(cluster);
   TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
 
-  DispatcherStateExport::Job job;
   ServerStateExport server_state_export = cluster.ExportDispatcherState();
   EXPECT_THAT(server_state_export.dispatcher_state_export().worker_addresses(),
               ElementsAre(HasSubstr("localhost")));
@@ -290,12 +289,14 @@ TEST(DataServiceTest, WorkerStateExport) {
   DatasetClient<tstring> dataset_client(cluster);
   TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
 
-  DispatcherStateExport::Job job;
   ServerStateExport server_state_export = cluster.ExportWorkerState(0);
   EXPECT_THAT(server_state_export.worker_state_export()
                   .worker_config()
                   .dispatcher_address(),
               HasSubstr("localhost"));
+  ASSERT_THAT(server_state_export.worker_state_export().tasks(), SizeIs(1));
+  EXPECT_THAT(server_state_export.worker_state_export().tasks(0).path(),
+              HasSubstr("In-memory dataset graphs are omitted for brevity."));
 }
 
 }  // namespace
