@@ -9754,6 +9754,14 @@ func DataServiceDatasetTargetWorkers(value string) DataServiceDatasetAttr {
 	}
 }
 
+// DataServiceDatasetCrossTrainerCacheOptions sets the optional cross_trainer_cache_options attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetCrossTrainerCacheOptions(value string) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["cross_trainer_cache_options"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
 func DataServiceDataset(scope *Scope, dataset_id tf.Output, processing_mode tf.Output, address tf.Output, protocol tf.Output, job_name tf.Output, max_outstanding_requests tf.Output, iteration_counter tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -9798,6 +9806,14 @@ func DataServiceDatasetV2DataTransferProtocol(value string) DataServiceDatasetV2
 func DataServiceDatasetV2TargetWorkers(value string) DataServiceDatasetV2Attr {
 	return func(m optionalAttr) {
 		m["target_workers"] = value
+	}
+}
+
+// DataServiceDatasetV2CrossTrainerCacheOptions sets the optional cross_trainer_cache_options attribute to value.
+// If not specified, defaults to ""
+func DataServiceDatasetV2CrossTrainerCacheOptions(value string) DataServiceDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["cross_trainer_cache_options"] = value
 	}
 }
 
