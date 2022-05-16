@@ -700,8 +700,13 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
   // Check whether a type list attribute is specified.
   if (!arg_def.type_list_attr().empty()) {
     if (auto v = attrs.get(arg_def.type_list_attr()).dyn_cast<ArrayAttr>()) {
-      for (Type dtype : v.getAsValueRange<TypeAttr>()) {
-        types.push_back(UnrankedTensorType::get(dtype));
+      for (Attribute attr : v) {
+        if (auto dtype = attr.dyn_cast<TypeAttr>()) {
+          types.push_back(UnrankedTensorType::get(dtype.getValue()));
+        } else {
+          return InvalidArgument("Expected '", arg_def.type_list_attr(),
+                                 "' to be a list of types");
+        }
       }
       return v.size();
     }
