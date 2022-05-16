@@ -24,6 +24,7 @@ add_mlir_library(MLIRBufferTransforms
   lower_index_cast_pass.cc
   symbolic_shape_optimization.cc
   shape_simplification.cc
+  tile_loops_pass.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen

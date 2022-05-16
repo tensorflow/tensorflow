@@ -31,24 +31,16 @@ limitations under the License.
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
-#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/Utils/Utils.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -56,20 +48,16 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -134,70 +122,6 @@ struct CollapseParallelLoopsTo1D
       mlir::collapseParallelLoops(op, {combinedLoops});
     });
   }
-};
-
-class TileLoops
-    : public mlir::PassWrapper<TileLoops, mlir::OperationPass<FuncOp>> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TileLoops)
-
-  explicit TileLoops(llvm::ArrayRef<int64_t> tile_sizes,
-                     llvm::ArrayRef<int64_t> unroll_factors) {
-    tile_sizes_ = llvm::to_vector<4>(tile_sizes);
-    outer_tile_ = tile_sizes_;
-
-    // We have to anticipate later unrolling in tiling to make sure that we get
-    // the requested tiling after unrolling.
-    if (unroll_factors.size() == tile_sizes.size()) {
-      inner_tile_ = llvm::to_vector<4>(unroll_factors);
-      for (auto en : llvm::enumerate(unroll_factors)) {
-        outer_tile_[en.index()] *= en.value();
-      }
-    }
-  }
-
-  void runOnOperation() override {
-    llvm::SmallVector<ParallelOp, 2> innermostPloops;
-    mlir::getInnermostParallelLoops(this->getOperation().getOperation(),
-                                    innermostPloops);
-    auto is_simple_access_pattern = [](ParallelOp ploop) {
-      for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {
-        if (auto load_op = llvm::dyn_cast<mlir::memref::LoadOp>(nested)) {
-          if (!load_op.getMemRefType().getLayout().isIdentity() ||
-              (!load_op.getIndices().empty() &&
-               load_op.getIndices() != ploop.getInductionVars())) {
-            return false;
-          }
-        }
-      }
-      return true;
-    };
-
-    for (ParallelOp ploop : innermostPloops) {
-      // Support unrolling only for simple memory access patterns (that result
-      // from same shape operands, scalar operands, and/or constant operands).
-      if (!is_simple_access_pattern(ploop)) {
-        tileParallelLoop(ploop, tile_sizes_, /*noMinMaxBounds=*/false);
-        continue;
-      }
-      auto tiled_loops =
-          tileParallelLoop(ploop, outer_tile_, /*noMinMaxBounds=*/false);
-      // Tile twice if the inner_tile is non-empty.
-      if (!inner_tile_.empty()) {
-        tileParallelLoop(tiled_loops.second, inner_tile_,
-                         /*noMinMaxBounds=*/false);
-      }
-    }
-  }
-
- private:
-  // Outer tile size = unroll_factor.empty() ? tile_sizes : tile_sizes *
-  // unroll_factors.
-  llvm::SmallVector<int64_t, 4> outer_tile_;
-  // Inner tile size if the unrolling factors were specified.
-  llvm::SmallVector<int64_t, 4> inner_tile_;
-  // Original tile sizes.
-  llvm::SmallVector<int64_t, 4> tile_sizes_;
 };
 
 Status LowerTFToJITInvocation(mlir::ModuleOp module,
@@ -328,7 +252,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
     // provide benefits to CPU and tiling is handled by vectorization.
     pm.addNestedPass<FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
     pm.addNestedPass<FuncOp>(
-        std::make_unique<TileLoops>(tile_sizes, unroll_factors));
+        mlir::CreateTileLoopsPass(tile_sizes, unroll_factors));
   }
 
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());

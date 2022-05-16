@@ -95,6 +95,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreatePropagateStaticShapesToKernelPass(Type pointer_type = {});
 
+// Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
+// and unroll factors provided through `unroll_factors`.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTileLoopsPass(
+    ArrayRef<int64_t> tile_sizes = {}, ArrayRef<int64_t> unroll_factors = {});
+
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass();
 }  // namespace hlo
