@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dump.h"
 
+#include <functional>
 #include <memory>
 #include <queue>
 #include <utility>
