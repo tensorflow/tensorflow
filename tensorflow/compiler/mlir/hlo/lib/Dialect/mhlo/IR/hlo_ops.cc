@@ -4403,7 +4403,7 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
       !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
       !HasSameOperandAndResultTypes(innerOp) ||
       !innerOp.hasTrait<mlir::OpTrait::IsCommutative>() ||
-      !innerOp.hasTrait<mlir::OpTrait::ZeroRegion>())
+      !innerOp.hasTrait<mlir::OpTrait::ZeroRegions>())
     return false;
 
   // Check E3.
@@ -4499,7 +4499,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   SmallVector<OpAsmParser::UnresolvedOperand, 2> operands;
   SmallVector<OpAsmParser::UnresolvedOperand, 2> initOperands;
   do {
-    parser.parseOptionalComma();
+    (void)parser.parseOptionalComma();
     if (parser.parseOptionalLParen()) break;
     OpAsmParser::UnresolvedOperand operand, initOperand;
     if (parser.parseOperand(operand) || parser.parseKeyword("init") ||
@@ -4601,7 +4601,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
       !innerOpNameInfo->hasTrait<mlir::OpTrait::NOperands<2>::Impl>() ||
       !innerOpNameInfo->hasTrait<mlir::OpTrait::OneResult>() ||
       !innerOpNameInfo->hasTrait<mlir::OpTrait::IsCommutative>() ||
-      !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegion>()) {
+      !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegions>()) {
     parser.emitError(loc,
                      "expected the inner-op to be a commutative binary-op from "
                      "mhlo dialect, zero region, producing single result");
@@ -7456,7 +7456,7 @@ ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
     iterArgs.push_back(iterArg);
     operands.push_back(operand);
     if (succeeded(parser.parseOptionalRParen())) break;
-    parser.parseComma();
+    if (failed(parser.parseComma())) return failure();
   } while (true);
   if (!operands.empty()) {
     if (parser.parseColon() || parser.parseTypeList(result.types))
@@ -7643,7 +7643,7 @@ static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
   while (failed(parser.parseOptionalRSquare())) {
     dims.emplace_back();
     if (parser.parseInteger(dims.back())) return failure();
-    parser.parseOptionalComma();
+    (void)parser.parseOptionalComma();
   }
   return success();
 }

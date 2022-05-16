@@ -242,13 +242,14 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
   }
 
   // Parse variable 'args'
-  parser.parseCommaSeparatedList(
+  if (parser.parseCommaSeparatedList(
       AsmParser::Delimiter::OptionalLessGreater, [&]() {
         FailureOr<tf_type::FullTypeAttr> arg = RawFullTypeAttrParser(parser);
         if (failed(arg)) return failure();
         args.push_back(*arg);
         return success();
-      });
+      }))
+    return failure();
 
   // Parse variable 'attr'
   Attribute attr;
