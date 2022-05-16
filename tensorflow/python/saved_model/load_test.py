@@ -20,6 +20,7 @@ import functools
 import gc
 import io
 import os
+import subprocess
 import pathlib
 import sys
 import tempfile
@@ -37,6 +38,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -47,6 +49,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
+from tensorflow.python.keras import Model
+from tensorflow.python.keras import models
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import Layer
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
@@ -2546,6 +2552,64 @@ class DeferredInitModuleVariablesTest(test.TestCase):
         options=load_options.LoadOptions(experimental_skip_checkpoint=True))
     self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
                         [3, 1])
+
+class _Embedding(Layer):
+  def __init__(self, input_dim, output_dim, trainable=True):
+    super(_Embedding, self).__init__(dtype=dtypes.float32)
+    self.input_dim = input_dim
+    self.output_dim = output_dim
+    self.embedding_table = None
+    self.trainable = trainable
+
+  def build(self, input_shape):
+    self.embedding_table = self.add_weight(
+        "embedding_table", shape=[self.input_dim, self.output_dim],
+        dtype=dtypes.float32, trainable=self.trainable)
+
+  def call(self, indices):
+    return array_ops.gather(params=self.embedding_table, indices=indices)
+
+class _TestModel(Model):
+  def __init__(self, rows, cols):
+    super().__init__()
+    self.embedding = _Embedding(input_dim=rows, output_dim=cols)
+
+  def call(self, x):
+    with ops.device('/cpu:0'):
+      x = self.embedding(x)
+    with ops.device('/gpu:0'):
+      x = math_ops.reduce_sum(x, axis=1)
+    return x
+
+class SavedModelLoadMemoryTests(test.TestCase):
+
+  def get_gpu_memory(self):
+    command = "nvidia-smi --query-gpu=memory.total --format=csv"
+    memory_free_info = subprocess.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    if isinstance(memory_free_values, list):
+        return int(memory_free_values[0] / 1024)
+    return int(memory_free_values)
+
+  @test_util.run_gpu_only
+  def test_no_oom_loading_large_tenor(self):
+    if not config.get_soft_device_placement():
+      self.skipTest("This test only works for soft device placement is on")
+    max_gpu_memory_in_Gb = self.get_gpu_memory()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    ncols = 128
+    nrows = (max_gpu_memory_in_Gb + 1) * 2**30 // ncols // 4
+    model = _TestModel(rows=nrows, cols=ncols)
+    x = array_ops.zeros(shape=(65536, 1), dtype=dtypes.int32)
+    y = model(x)
+    models.save_model(
+        model=model, filepath=save_dir, overwrite=True,
+        options=save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy.SAVE_VARIABLE_DEVICES))
+    loaded = models.load_model(
+        save_dir,
+        options=save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy.SAVE_VARIABLE_DEVICES))
 
 
 if __name__ == "__main__":
