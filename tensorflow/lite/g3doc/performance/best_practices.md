@@ -25,9 +25,8 @@ vision applications.
 models that have been optimized specifically for mobile and embedded devices.
 
 You can retrain the listed models on your own dataset by using transfer
-learning. Check out the transfer learning tutorial for
-[image classification](../tutorials/model_maker_image_classification.ipynb) and
-[object detection](https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193).
+learning. Check out the transfer learning tutorials using TensorFlow Lite
+[Model Maker](../models/modify/model_maker/).
 
 ## Profile your model
 
