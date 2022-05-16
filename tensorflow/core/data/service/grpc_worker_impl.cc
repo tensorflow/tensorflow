@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -50,6 +51,10 @@ Status GrpcWorkerImpl::Start(const std::string& worker_address,
 void GrpcWorkerImpl::Stop() {
   LocalWorkers::Remove(worker_address_);
   impl_->Stop();
+}
+
+WorkerStateExport GrpcWorkerImpl::ExportState() const {
+  return impl_->ExportState();
 }
 
 #define HANDLER(method)                                                 \

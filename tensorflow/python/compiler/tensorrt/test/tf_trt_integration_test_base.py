@@ -155,6 +155,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       self.skipTest("Test requires TensorRT")
 
+  def tearDown(self):
+    """Making sure to clean artifact."""
+    idx = 0
+    while gc.garbage:
+      gc.collect()  # Force GC to destroy the TRT engine cache.
+      idx += 1
+      if idx >= 10:  # After 10 iterations, break to avoid infinite collect.
+        break
+
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
     assert len(shape) == len(mask)

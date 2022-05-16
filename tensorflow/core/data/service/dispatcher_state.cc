@@ -304,7 +304,7 @@ DispatcherState::ListWorkers() const {
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
-DispatcherState::ListJobs() {
+DispatcherState::ListJobs() const {
   std::vector<std::shared_ptr<const DispatcherState::Job>> jobs;
   jobs.reserve(jobs_.size());
   for (const auto& it : jobs_) {

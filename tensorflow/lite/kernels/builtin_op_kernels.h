@@ -176,6 +176,7 @@ TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_RNN();
 TfLiteRegistration* Register_UNIQUE();
 TfLiteRegistration* Register_UNPACK();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD();
 TfLiteRegistration* Register_VAR_HANDLE();
 TfLiteRegistration* Register_WHERE();
 TfLiteRegistration* Register_WHILE();

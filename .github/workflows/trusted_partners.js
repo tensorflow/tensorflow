@@ -51,7 +51,7 @@ const get_email_domain = async ({github, username}) => {
 */
 const intel_action = async ({github, context}) => {
   const labels = ['kokoro:force-run', 'ready to pull'];
-  const assignees = ['mihaimaruseac'];
+  const assignees = ['mihaimaruseac', 'nitins17', 'learning-to-play'];
   const resp_label = await github.rest.issues.addLabels({
     issue_number: context.issue.number,
     owner: context.repo.owner,

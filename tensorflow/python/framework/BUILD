@@ -1230,6 +1230,9 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
+        # TODO(b/232002704) remove `:type_utils` import when used internally (by non-tests)
+        # elsewhere
+        ":type_utils",
         "//tensorflow/python:composite_tensor_ops",
     ],
 )
@@ -1281,6 +1284,23 @@ pytype_library(
         "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_library(
+    name = "type_utils",
+    srcs = ["type_utils.py"],
+    srcs_version = "PY3",
+    visibility = [
+        # Limit the exposure of fulltype (which is a graph/C++ concept) to Python.
+        "//tensorflow/python/data/ops:__pkg__",
+        "//tensorflow/python/ops/ragged:__pkg__",
+        "//tensorflow/python/ops/structured:__pkg__",
+    ],
+    deps = [
+        ":type_spec",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/structured:structured_tensor",
     ],
 )
 
@@ -1795,6 +1815,7 @@ tf_py_test(
     deps = [
         ":extension_type",
         ":test_lib",
+        ":type_utils",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1851,6 +1872,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         ":type_spec",
+        ":type_utils",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
@@ -1866,6 +1888,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":tensor_spec",
         ":test_lib",
+        ":type_utils",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
@@ -1881,6 +1904,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":framework",
         ":test_lib",
+        ":type_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",

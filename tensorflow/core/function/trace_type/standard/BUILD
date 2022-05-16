@@ -12,8 +12,14 @@ cc_library(
 
 cc_library(
     name = "primitive_types",
+    srcs = ["primitive_types.cc"],
     hdrs = ["primitive_types.h"],
-    deps = [":trace_type"],
+    deps = [
+        ":trace_type",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 tf_cc_test(

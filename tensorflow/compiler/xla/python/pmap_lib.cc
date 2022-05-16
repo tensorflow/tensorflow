@@ -102,7 +102,7 @@ struct ShardArgResult {
 // `arg`: The object to shard across `devices`. If a `ShardedDeviceArray`,
 //   a fast-path will be executed if it's already correctly sharded.
 //
-// Returns a failure Status when an unrecoverable error occured, so we don't
+// Returns a failure Status when an unrecoverable error occurred, so we don't
 // need to fallback to Python.
 //
 // Both `devices` and `sharding_spec` has the same length.

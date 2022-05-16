@@ -58,8 +58,9 @@ class TestCoordinationClient : public CoordinationClient {
   TestCoordinationClient() = default;
   // MOCK_METHOD does not work on Windows build, using deprecated MOCK_METHOD3
   // instead.
-  MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
-                                      GetKeyValueResponse*, StatusCallback));
+  MOCK_METHOD4(GetKeyValueAsync,
+               void(CallOptions* call_opts, const GetKeyValueRequest*,
+                    GetKeyValueResponse*, StatusCallback));
   MOCK_METHOD3(GetKeyValueDirAsync,
                void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
                     StatusCallback));
@@ -146,9 +147,9 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   auto kv = mocked_response.mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
-      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(Status::OK())));
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
+                           InvokeArgument<3>(Status::OK())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -166,9 +167,9 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   auto kv = mocked_response.mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
-      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(Status::OK())));
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
+                           InvokeArgument<3>(Status::OK())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -180,11 +181,20 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
 
 TEST_F(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
   const std::string& test_key = "test_key";
+  StatusCallback owned_done;
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(WithArgs<3>([&](StatusCallback done) {
+        // Copy method argument to prevent de-allocation.
+        owned_done = done;
+      }));
   InitializeAgent();
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
 
   EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
+  // Needed to tear down test safely since agent dtor would cancel pending
+  // calls, which would reference deallocated call_opts.
+  owned_done(errors::Cancelled("error"));
 }
 
 TEST_F(CoordinationServiceAgentTest,
@@ -194,8 +204,8 @@ TEST_F(CoordinationServiceAgentTest,
   auto client = std::make_unique<TestCoordinationClient>();
   GetKeyValueResponse* owned_response;
   StatusCallback owned_done;
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
-      .WillByDefault(WithArgs<1, 2>(
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
+      .WillByDefault(WithArgs<2, 3>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
             // Copy method arguments to prevent de-allocation before mocking the
             // server callback beyond timeout.
@@ -227,10 +237,10 @@ TEST_F(CoordinationServiceAgentTest,
   std::unique_ptr<Thread> async_thread;
   GetKeyValueResponse* owned_response;
   StatusCallback owned_done;
-  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _))
+  ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       // Setup async callback to insert key-value after a brief delay (5s)
       // before timeout (10s).
-      .WillByDefault(WithArgs<1, 2>(
+      .WillByDefault(WithArgs<2, 3>(
           [&](GetKeyValueResponse* response, StatusCallback done) {
             // Copy method arguments to prevent de-allocation before
             //  triggering this async callback.

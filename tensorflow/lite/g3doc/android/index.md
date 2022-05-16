@@ -78,7 +78,7 @@ to the Android app so it can take action, such as showing the result to a user
 or executing additional business logic.
 
 ![Functional execution flow for TensorFlow Lite models in Android
-apps](../images/android/tf_execution_flow_android.png)
+apps](../../images/lite/android/tf_execution_flow_android.png)
 
 **Figure 1.** Functional execution flow for TensorFlow Lite models in Android
 apps.

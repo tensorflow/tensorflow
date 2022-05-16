@@ -191,7 +191,7 @@ struct AllToAllParticipantData : xla::ParticipantData {
   xla::GlobalDeviceId device_id;
 
   // Replica ids participating in AllToAll, concatenation happens in the order
-  // of appearence.
+  // of appearance.
   std::vector<xla::GlobalDeviceId> devices_to_copy_to;
 
   std::string ToString() const override {

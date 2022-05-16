@@ -212,6 +212,7 @@ class CompileOptions:
   tuple_arguments: bool
   num_replicas: int
   num_partitions: int
+  profile_version: int
   device_assignment: Optional[DeviceAssignment]
 
 def register_custom_call_target(fn_name: str, capsule: Any, platform: str) -> _Status: ...
@@ -494,6 +495,8 @@ class DistributedRuntimeService:
 class DistributedRuntimeClient:
   def connect(self) -> _Status: ...
   def shutdown(self) -> _Status: ...
+  def blocking_key_value_get(self, key: str, timeout_in_ms: int) -> _Status: ...
+  def key_value_set(self, key: str, value: str) -> _Status: ...
 
 def get_distributed_runtime_service(
     address: str,

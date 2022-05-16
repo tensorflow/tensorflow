@@ -7,6 +7,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "tf_cuda_library",
 )
 
@@ -163,10 +164,15 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":conv_op_helpers",
-        ":gpu_tf_kernel_custom_call",
         ":if_op",
         ":tensor_list_utils",
         ":while_op",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
         "//tensorflow/compiler/tf2xla:common",
@@ -223,13 +229,10 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + if_libtpu(
+        if_false = [":gpu_tf_kernel_custom_call"],
+        if_true = [],
+    ),
 )
 
 tf_cuda_library(

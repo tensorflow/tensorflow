@@ -133,9 +133,17 @@ def TFGraphDialect : Dialect {
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
+    // Functions for checking operation categories.
+    #define GET_OP_CATEGORIES
+    #include "tensorflow/core/ir/tf_op_names.inc"
+
   private:
     // Fallback implementation of OpAsmOpInterface.
     TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
+
+    // Cached TensorFlow operation names.
+    #define GET_OP_NAME_DECLS
+    #include "tensorflow/core/ir/tf_op_names.inc"
 
     // Cached identifier for efficiency purpose.
     StringAttr assigned_device_key_;

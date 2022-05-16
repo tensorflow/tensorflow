@@ -69,7 +69,9 @@ tf_proto_library(
     srcs = ["export.proto"],
     cc_api_version = 2,
     create_java_proto = False,
-    protodeps = tf_additional_all_protos(),
+    protodeps = tf_additional_all_protos() + [
+        ":common_proto",
+    ],
 )
 
 cc_library(
@@ -471,6 +473,7 @@ cc_library(
     srcs = ["grpc_worker_impl.cc"],
     hdrs = ["grpc_worker_impl.h"],
     deps = [
+        ":export_proto_cc",
         ":worker_cc_grpc_proto",
         ":worker_impl",
         ":worker_proto_cc",
@@ -957,6 +960,7 @@ cc_library(
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_client",
         ":dispatcher_proto_cc",
+        ":export_proto_cc",
         ":grpc_util",
         ":split_provider",
         ":task_runner",

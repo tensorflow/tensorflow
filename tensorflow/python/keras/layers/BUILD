@@ -1,9 +1,6 @@
 # Description:
 #   Contains the Keras layers (internal TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
 package(
     # TODO(scottzhu): Remove non-keras deps from TF.
     default_visibility = [
@@ -307,6 +304,7 @@ py_library(
         "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
     ],
 )
+<<<<<<< HEAD
 
 tf_py_test(
     name = "advanced_activations_test",
@@ -665,3 +663,5 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+=======
+>>>>>>> upstream/master

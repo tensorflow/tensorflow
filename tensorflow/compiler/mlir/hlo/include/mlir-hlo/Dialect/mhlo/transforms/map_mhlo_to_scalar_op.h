@@ -66,6 +66,11 @@ struct MhloToScalarOp<mhlo::CeilOp> {
   using FOp = ::mlir::math::CeilOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::ClzOp> {
+  using IOp = ::mlir::math::CountLeadingZerosOp;
+  using UOp = ::mlir::math::CountLeadingZerosOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::CosOp> {
   using FOp = ::mlir::math::CosOp;
   using COp = ::mlir::complex::CosOp;
@@ -939,20 +944,32 @@ struct MhloOpToStdScalarOp {
                                    MhloOpTy, mhlo::CompareOp>::value>>
   static Value map(MhloOpTy op, ArrayRef<Type> result_types, ValueRange args,
                    OpBuilder* b) {
-    return impl::MapMhloOpToStdScalarOp<MhloOpTy>(
-        op.getLoc(), result_types, llvm::to_vector<4>(op->getOperandTypes()),
-        args, b);
+    return map<MhloOpTy>(op, result_types,
+                         llvm::to_vector<4>(op->getOperandTypes()), args, b);
   }
-
   // Implementation for mhlo::CompareOp.
   template <typename MhloOpTy, typename = std::enable_if_t<std::is_same<
                                    MhloOpTy, mhlo::CompareOp>::value>>
   static Value map(mhlo::CompareOp op, ArrayRef<Type> result_types,
                    ValueRange args, OpBuilder* b) {
+    return map<mhlo::CompareOp>(
+        op, result_types, llvm::to_vector<4>(op->getOperandTypes()), args, b);
+  }
+
+  // Overloads that allow passing in the original arg_types.
+  template <typename MhloOpTy, typename = std::enable_if_t<!std::is_same<
+                                   MhloOpTy, mhlo::CompareOp>::value>>
+  static Value map(MhloOpTy op, ArrayRef<Type> result_types,
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b) {
+    return map<MhloOpTy>(op.getLoc(), result_types, arg_types, args, b);
+  }
+  template <typename MhloOpTy, typename = std::enable_if_t<std::is_same<
+                                   MhloOpTy, mhlo::CompareOp>::value>>
+  static Value map(mhlo::CompareOp op, ArrayRef<Type> result_types,
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b) {
     auto comparison_direction = op.comparison_direction();
-    return impl::MapCompareOpToStdScalarOp<mhlo::CompareOp>(
-        op.getLoc(), comparison_direction, result_types,
-        llvm::to_vector<4>(op->getOperandTypes()), args, b);
+    return map<mhlo::CompareOp>(op.getLoc(), comparison_direction, result_types,
+                                arg_types, args, b);
   }
 
   // Implementation for HLO ops except mhlo::CompareOp.
@@ -963,8 +980,7 @@ struct MhloOpToStdScalarOp {
     return impl::MapMhloOpToStdScalarOp<MhloOpTy>(loc, result_types, arg_types,
                                                   args, b);
   }
-
-  // Implementation for lmhlo::CompareOp.
+  // Implementation for mhlo::CompareOp.
   template <typename MhloOpTy, typename = std::enable_if_t<std::is_same<
                                    MhloOpTy, mhlo::CompareOp>::value>>
   static Value map(Location loc, ComparisonDirection comparison_direction,

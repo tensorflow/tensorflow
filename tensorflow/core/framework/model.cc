@@ -2347,6 +2347,12 @@ const ModelTiming::NodeTiming* ModelTiming::GetTiming(Node* node) const {
 void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
   for (const auto& node : bfs_nodes) {
     auto& node_timing = timing_nodes_[node.get()];
+    node_timing.self_time_nsec = node->ComputeSelfTime();
+    if (!node->autotune()) {
+      // These are inactive nodes marked by parallel interleave transformations.
+      node_timing.pipeline_ratio = 0.0;
+      continue;
+    }
     double parent_pipeline_ratio = 1.0;
     double parent_ratio = 1.0;
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
@@ -2359,7 +2365,6 @@ void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
       }
     }
     node_timing.pipeline_ratio = parent_pipeline_ratio * parent_ratio;
-    node_timing.self_time_nsec = node->ComputeSelfTime();
   }
 }
 

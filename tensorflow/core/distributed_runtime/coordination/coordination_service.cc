@@ -49,6 +49,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+constexpr absl::Duration kDevicePropagationTimeout = absl::Hours(1);
 constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
 constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
@@ -545,7 +546,7 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     mutex_lock l(state_mu_);
     cluster_devices_.MergeFrom(devices);
   }
-  BarrierAsync(device_propagation_barrier_id_, absl::InfiniteDuration(), task,
+  BarrierAsync(device_propagation_barrier_id_, kDevicePropagationTimeout, task,
                {}, std::move(done));
 }
 

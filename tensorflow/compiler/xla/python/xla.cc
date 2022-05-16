@@ -386,7 +386,17 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<DistributedRuntimeClient>>
       distributed_runtime_client(m, "DistributedRuntimeClient");
   distributed_runtime_client.def("connect", &DistributedRuntimeClient::Connect)
-      .def("shutdown", &DistributedRuntimeClient::Shutdown);
+      .def("shutdown", &DistributedRuntimeClient::Shutdown)
+      .def(
+          "blocking_key_value_get",
+          [](DistributedRuntimeClient& client, std::string key,
+             int64_t timeout_in_ms) {
+            return client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms));
+          },
+          py::arg("key"), py::arg("timeout_in_ms"))
+      .def("key_value_set", &DistributedRuntimeClient::KeyValueSet,
+           py::arg("key"), py::arg("value"));
 
   m.def(
       "get_distributed_runtime_service",

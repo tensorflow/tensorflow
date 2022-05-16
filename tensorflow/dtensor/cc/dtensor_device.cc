@@ -1441,6 +1441,11 @@ void DTensorDevice::LowerToSPMDFunction(
   }
   VLOG(4) << tensorflow::DumpGraphToFile("after_mlir_spmd_lowering", *graph,
                                          flib_def);
+  if (flib_def->Contains(kLoadEmbeddingFn)) {
+    Status s = InsertFunctionForTPUEmbeddingCheckpoint(
+        status, graph.get(), inputs, kLoadEmbeddingFn);
+    RETURN_C_STATUS_IF_NOT_OK(s, status);
+  }
 
   // After MLIR transformations, exactly one StatefulPartitionedCall op is
   // returned for mesh cluster in computation. Identity all functions to execute
@@ -1548,7 +1553,7 @@ void DTensorDevice::ExecuteRegularOperation(
   std::map<std::string, const MeshWithParallelDevice*>
       function_name_and_mesh_mapping;
   absl::flat_hash_set<std::string> excluded_fn_names;
-  std::unique_ptr<const TranslatedFunction> epu_fn_ptr;
+  std::unique_ptr<const TranslatedFunction> epu_fn_ptr, load_embedding_ptr;
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
     StatusOr<Mesh> maybe_converted_mesh = function.function_mesh;
@@ -1584,6 +1589,14 @@ void DTensorDevice::ExecuteRegularOperation(
       epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
       excluded_fn_names.insert(function.translated_function_name);
     }
+    if (absl::StartsWith(function.translated_function_name, kLoadEmbeddingFn)) {
+      if (load_embedding_ptr != nullptr) {
+        RETURN_STATUS(status, TF_INTERNAL,
+                      "There are more than one function defined on EPU mesh.");
+      }
+      load_embedding_ptr = std::make_unique<const TranslatedFunction>(function);
+      excluded_fn_names.insert(function.translated_function_name);
+    }
   }
 
   // Compute the step_id based on the function_mesh_fingerprint and the
@@ -1610,6 +1623,23 @@ void DTensorDevice::ExecuteRegularOperation(
         function_name_and_mesh_mapping[epu_fn_ptr->translated_function_name],
         /*parallel_inputs=*/{}, /*step_id=*/step_id, /*attributes=*/attributes,
         /*status=*/status);
+  }
+
+  if (load_embedding_ptr != nullptr) {
+    StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
+        PrepareEmbeddingInputs(inputs);
+    if (!parallel_inputs.ok()) {
+      RETURN_STATUS(status, TF_INTERNAL,
+                    parallel_inputs.status().error_message().c_str());
+    }
+    ExecuteFunctionAndWait(
+        context,
+        /*function_ptr=*/load_embedding_ptr.get(),
+        /*parallel_device_mesh=*/
+        function_name_and_mesh_mapping[load_embedding_ptr
+                                           ->translated_function_name],
+        /*parallel_inputs=*/*parallel_inputs, /*step_id=*/step_id,
+        /*attributes=*/attributes, /*status=*/status);
   }
 
   // Execute all functions in parallel.
@@ -1686,6 +1716,10 @@ void DTensorDevice::ExecuteRegularOperation(
       TF_NewStatus(), TF_DeleteStatus);
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
+    // Skip execution for a function when it's excluded.
+    if (excluded_fn_names.contains(function.translated_function_name)) {
+      continue;
+    }
     const Mesh& mesh = function.function_mesh;
     // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
     // object. Ideally we'd just use a fingerprinted int64_t as a unique

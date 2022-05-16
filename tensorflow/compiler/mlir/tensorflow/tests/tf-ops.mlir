@@ -3607,7 +3607,7 @@ func.func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<i3
 // -----
 
 func.func @tensor_scatter_update(%tensor: tensor<4x4x4xf32>, %indices: tensor<4x2xi32>, %updates: tensor<f32>) -> tensor<4x4x4xf32> {
-  // expected-error @+1 {{op requires updates operand to have at least 1 dimension}}
+  // CHECK: TensorScatterUpdate
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<4x4x4xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<4x4x4xf32>
   func.return %0 : tensor<4x4x4xf32>
 }

@@ -4296,6 +4296,15 @@ class Subgraph {
           "doesn't match output shape channel dimension (%d) in node #%d: "
           "4 dimensions expected",
           output_channels, output_tensor_channels, node_index);
+      return kTfLiteError;
+    }
+    if (input_channels != input_tensor_dims[3]) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "transpose convolution kernel input channel dimension (%d) "
+          "doesn't match filter input channel (%d) in node #%d",
+          input_channels, input_tensor_dims[3]);
+      return kTfLiteError;
     }
 
     int padding_top = 0;

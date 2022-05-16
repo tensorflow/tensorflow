@@ -333,10 +333,6 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_d9m_test.py"],
     shard_count = 8,
-    tags = [
-        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-        "notap",  # TODO(b/231615784): Re-enable this test once fixed.
-    ],
     deps = [
         ":depthwise_conv_op_base",
         "//tensorflow/python:random_ops",
@@ -350,10 +346,6 @@ cuda_py_test(
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 8,
-    tags = [
-        "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-        "notap",  # TODO(b/231615784): Re-enable this test once fixed.
-    ],
     deps = [
         ":depthwise_conv_op_base",
     ],

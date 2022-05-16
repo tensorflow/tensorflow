@@ -356,7 +356,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;
@@ -364,6 +363,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
       return false;
   }
 }
+
+/*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -92,23 +92,23 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
-  UNIMPLEMENTED(GetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
-  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
-                      HeartbeatResponse* response,
-                      StatusCallback done) override {
-    done(errors::Unimplemented("HeartbeatAsync"));
+
+#define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
+  void method##Async(CallOptions* call_opts, const method##Request* request, \
+                     method##Response* response, StatusCallback done)        \
+      override {                                                             \
+    done(errors::Unimplemented(#method "Async"));                            \
   }
-  void ShutdownTaskAsync(CallOptions* call_opts,
-                         const ShutdownTaskRequest* request,
-                         ShutdownTaskResponse* response,
-                         StatusCallback done) override {
-    done(errors::Unimplemented("ShutdownTaskAsync"));
-  }
+
+  UNIMPLEMENTED_WITH_CALL_OPTS(GetKeyValue);
+  UNIMPLEMENTED_WITH_CALL_OPTS(Heartbeat);
+  UNIMPLEMENTED_WITH_CALL_OPTS(ShutdownTask);
+#undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
   mutex mu_;

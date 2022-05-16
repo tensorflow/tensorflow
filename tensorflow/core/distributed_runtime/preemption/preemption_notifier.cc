@@ -18,59 +18,76 @@ limitations under the License.
 #include <csignal>
 #include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
 namespace {
 constexpr absl::Duration kListenInterval = absl::Seconds(1);
+constexpr absl::Time kUnsetDeathTime = absl::InfinitePast();
 static std::atomic_bool sigterm_received(false);
 
 class SigtermNotifier : public PreemptionNotifier {
  public:
   explicit SigtermNotifier(Env* env);
-  ~SigtermNotifier() override = default;
+  ~SigtermNotifier() override {
+    // Trigger shutdown logic in listener thread.
+    shutdown_notification_.Notify();
+  }
   void Reset() override;
 
  private:
   void StartListenerThread();
+  absl::Notification shutdown_notification_;
   std::unique_ptr<Thread> preempt_listener_thread_;
 };
 
 SigtermNotifier::SigtermNotifier(Env* env) {
   env_ = env;
-  StartListenerThread();
+  Reset();
   std::signal(SIGTERM, [](int signal) { sigterm_received.store(true); });
 }
 
 void SigtermNotifier::StartListenerThread() {
   preempt_listener_thread_.reset(
       env_->StartThread({}, "PreemptionNotifier_Listen", [this]() {
-        int64_t listen_interval_micros =
-            absl::ToInt64Microseconds(kListenInterval);
-
         // Poll for SIGTERM receipt every kListenInterval.
         while (!sigterm_received.load()) {
-          env_->SleepForMicroseconds(listen_interval_micros);
+          if (shutdown_notification_.WaitForNotificationWithTimeout(
+                  kListenInterval)) {
+            // Shutdown:
+            // 1) Cancel any pending callbacks and blocking WillBePreemptedAt()
+            // calls.
+            mutex_lock l(mu_);
+            NotifyRegisteredListeners(
+                errors::Cancelled("Preemption notifier is shutting down."));
+            // 2) Exit listener thread.
+            return;
+          }
         }
-
-        mutex_lock l(mu_);
-        death_time_ = absl::Now();
-        LOG(WARNING) << "SIGTERM caught at " << death_time_;
-        // Notify registered listeners.
-        NotifyRegisteredListeners();
+        absl::Time death_time = absl::Now();
+        LOG(WARNING) << "SIGTERM caught at " << death_time;
+        {
+          mutex_lock l(mu_);
+          death_time_ = death_time;
+          // Notify registered listeners.
+          NotifyRegisteredListeners(death_time_);
+        }
       }));
 }
 
 void SigtermNotifier::Reset() {
   {
     mutex_lock l(mu_);
-    death_time_ = absl::InfinitePast();
+    death_time_ = kUnsetDeathTime;
     callbacks_.clear();
   }
   sigterm_received.store(false);
@@ -78,32 +95,32 @@ void SigtermNotifier::Reset() {
 }
 }  // namespace
 
-absl::Time PreemptionNotifier::WillBePreemptedAt() {
+StatusOr<absl::Time> PreemptionNotifier::WillBePreemptedAt() {
   absl::Notification n;
-  absl::Time death_time;
-  WillBePreemptedAtAsync([&n, &death_time](absl::Time time) {
-    death_time = time;
+  StatusOr<absl::Time> result;
+  WillBePreemptedAtAsync([&n, &result](StatusOr<absl::Time> async_result) {
+    result = async_result;
     n.Notify();
   });
   n.WaitForNotification();
-  return death_time;
+  return result;
 }
 
 void PreemptionNotifier::WillBePreemptedAtAsync(PreemptTimeCallback callback) {
   mutex_lock l(mu_);
-  if (death_time_ == absl::InfinitePast()) {
+  if (death_time_ == kUnsetDeathTime) {
     // Did not receive preemption notice yet.
-    callbacks_.push_back(callback);
+    callbacks_.push_back(std::move(callback));
   } else {
     // Already received preemption notice, respond immediately.
     callback(death_time_);
   }
 }
 
-void PreemptionNotifier::NotifyRegisteredListeners() {
+void PreemptionNotifier::NotifyRegisteredListeners(
+    StatusOr<absl::Time> death_time) {
   for (const auto& callback : callbacks_) {
-    env_->SchedClosure(
-        [callback, death_time = death_time_]() { callback(death_time); });
+    callback(death_time);
   }
   callbacks_.clear();
 }

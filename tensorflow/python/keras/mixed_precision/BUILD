@@ -16,9 +16,6 @@
 # Description:
 #   Contains the Keras Mixed Precision API (TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
-
 package(
     default_visibility = [
         # TODO(scottzhu): Remove these two deps and convert the test to integration test.
@@ -59,26 +56,6 @@ py_library(
     ],
 )
 
-tf_py_test(
-    name = "policy_test",
-    size = "medium",
-    srcs = [
-        "policy_test.py",
-    ],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = ["no_rocm"],
-    deps = [
-        ":policy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
-        "//tensorflow/python/keras/optimizer_v2",
-    ],
-)
-
 py_library(
     name = "device_compatibility_check",
     srcs = ["device_compatibility_check.py"],
@@ -88,36 +65,12 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "device_compatibility_check_test",
-    srcs = ["device_compatibility_check_test.py"],
-    srcs_version = "PY3",
-    tfrt_enabled = True,
-    deps = [
-        ":device_compatibility_check",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras:combinations",
-    ],
-)
-
 py_library(
     name = "get_layer_policy",
     srcs = ["get_layer_policy.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras/engine:base_layer",
-    ],
-)
-
-tf_py_test(
-    name = "get_layer_policy_test",
-    srcs = ["get_layer_policy_test.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":get_layer_policy",
-        ":policy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -137,26 +90,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
-    ],
-)
-
-tf_py_test(
-    name = "autocast_variable_test",
-    size = "medium",
-    srcs = ["autocast_variable_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":autocast_variable",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:test_util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras/optimizer_v2",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -187,63 +120,6 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "loss_scale_optimizer_test",
-    size = "medium",
-    srcs = ["loss_scale_optimizer_test.py"],
-    python_version = "PY3",
-    xla_tags = [
-        "no_cuda_asan",  # times out
-    ],
-    deps = [
-        ":loss_scale_optimizer",
-        ":test_util",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_v2_toggles",
-        "//tensorflow/python/distribute:central_storage_strategy",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-    ],
-)
-
-cuda_py_test(
-    name = "loss_scale_benchmark",
-    size = "medium",
-    srcs = ["loss_scale_benchmark.py"],
-    tfrt_enabled = True,
-    deps = [
-        ":loss_scale_optimizer",
-        ":test_util",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_v2_toggles",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
-        "//tensorflow/python/keras",
-    ],
-)
-
-cuda_py_test(
-    name = "mixed_precision_graph_rewrite_test",
-    size = "small",
-    srcs = ["mixed_precision_graph_rewrite_test.py"],
-    python_version = "PY3",
-    tfrt_enabled = True,
-    deps = [
-        ":loss_scale_optimizer",
-        ":policy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:config",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:mixed_precision",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/keras:testing_utils",
-        "//tensorflow/python/keras/optimizer_v2",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],
@@ -251,44 +127,5 @@ py_library(
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python/keras",
-    ],
-)
-
-cuda_py_test(
-    name = "layer_test",
-    size = "medium",
-    srcs = ["layer_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
-    ],
-    deps = [
-        ":test_util",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/distribute:central_storage_strategy",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "layer_correctness_test",
-    size = "medium",
-    srcs = ["layer_correctness_test.py"],
-    python_version = "PY3",
-    shard_count = 10,
-    tags = [
-        "no_rocm",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

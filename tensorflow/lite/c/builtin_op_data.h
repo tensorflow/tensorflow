@@ -518,6 +518,9 @@ typedef struct {
   bool approximate;
 } TfLiteGeluParams;
 
+typedef struct {
+  int num_segments;
+} TfLiteUnsortedSegmentProdParams;
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

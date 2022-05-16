@@ -114,6 +114,10 @@ void TFGraphDialect::initialize() {
   // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
 
+  // Initialized the cached operation names.
+#define GET_OP_NAME_DEFS
+#include "tensorflow/core/ir/tf_op_names.inc"
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
@@ -305,7 +309,8 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
   // The control input are elided from the type list, add them here.
   arg_types.resize(op_infos.size(), control_type);
   if (!arg_types.empty())
-    parser.resolveOperands(op_infos, arg_types, loc, result.operands);
+    if (parser.resolveOperands(op_infos, arg_types, loc, result.operands))
+      return failure();
   if (result.name.getStringRef() != "tfg.return")
     result.types.push_back(control_type);
   return success();

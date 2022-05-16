@@ -19,13 +19,15 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
 namespace tfg {
 
 // Sort topologically (following SSA defs-uses edges) the given block.
-// The sort is stable.
-void SortTopologically(Block *block);
+// The sort is stable. Optionally accepts an instance of the TFG dialect for
+// virtually breaking NextIteration -> Merge cycles.
+void SortTopologically(Block *block, TFGraphDialect *dialect = nullptr);
 
 // Programmatically create a pass that topologically sort graphs.
 std::unique_ptr<Pass> CreateTopoSortPass();

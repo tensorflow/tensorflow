@@ -415,7 +415,8 @@ class StreamExecutor {
   bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc>* out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.
-  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType>* out_algorithms);
+  bool GetBlasGemmAlgorithms(Stream* stream,
+                             std::vector<blas::AlgorithmType>* out_algorithms);
 
   // Creates a backend-specific plan object for a blaslt matmul operation, which
   // can then be passed to DoBlasLtMatmul(). When possible, plans should be

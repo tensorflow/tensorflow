@@ -1623,7 +1623,7 @@ port::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
 }
 
 bool ROCMBlas::GetBlasGemmAlgorithms(
-    std::vector<blas::AlgorithmType> *out_algorithms) {
+    Stream *stream, std::vector<blas::AlgorithmType> *out_algorithms) {
   // ROCM TODO: properly implement the interface
   return true;
 }

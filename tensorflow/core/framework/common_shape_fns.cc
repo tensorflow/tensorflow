@@ -2407,7 +2407,8 @@ Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
         "Indices and updates specified for empty input");
   }
 
-  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape)) {
+  if (c->RankKnown(indices_shape) && c->RankKnown(updates_shape) &&
+      c->Rank(updates_shape) != 0) {
     const int64_t outer_dims = c->Rank(indices_shape) - 1;
     const DimensionHandle ixdim = c->Dim(indices_shape, -1);
 

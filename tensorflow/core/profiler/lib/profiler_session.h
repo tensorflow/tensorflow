@@ -51,7 +51,7 @@ class ProfilerSession {
     options.set_host_tracer_level(2);
     options.set_device_type(ProfileOptions::UNSPECIFIED);
     options.set_python_tracer_level(0);
-    options.set_enable_hlo_proto(false);
+    options.set_enable_hlo_proto(true);
     options.set_include_dataset_ops(true);
     return options;
   }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/task_runner.h"
@@ -547,6 +548,12 @@ void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
   VLOG(2) << "Delete local task " << task_info.task_id() << " from worker "
           << worker_address_ << " at the request of the client.";
   StopTask(*task);
+}
+
+WorkerStateExport DataServiceWorkerImpl::ExportState() const {
+  WorkerStateExport worker_state_export;
+  *worker_state_export.mutable_worker_config() = config_;
+  return worker_state_export;
 }
 
 void LocalWorkers::Add(absl::string_view worker_address,

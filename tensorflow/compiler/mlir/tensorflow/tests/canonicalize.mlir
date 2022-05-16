@@ -2038,3 +2038,25 @@ func.func @testReluOfMinimum6ToRelu6Int(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   %1 = "tf.Relu"(%0) : (tensor<4xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
 }
+
+// CHECK-LABEL: testTensorListGetItem
+func.func @testTensorListGetItem(%arg0: tensor<1600x1x32xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>) -> tensor<1x32xf32> {
+  %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<1600x1x32xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<1x32xf32>>>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  func.return %1 : tensor<1x32xf32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[RES:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+}
+
+// CHECK-LABEL: testTensorListGetItemMultipleUsers
+func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<1x32xf32>, tensor<1x32xf32>) {
+  %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<1600x1x32xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<1x32xf32>>>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  %2 = "tf.TensorListGetItem"(%0, %arg3, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  func.return %1, %2 : tensor<1x32xf32>, tensor<1x32xf32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+  // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+}

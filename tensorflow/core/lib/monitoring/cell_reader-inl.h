@@ -66,8 +66,8 @@ StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
 // supported.
 template <typename ValueType>
 ValueType GetValue(const Point& point) {
-  LOG(FATAL) << "Not implemented: Tensorflow CellReader currently does not "
-                "support percentiles.";
+  LOG(FATAL) << "Invalid argument: Tensorflow CellReader does not support type "
+             << typeid(ValueType).name();
 }
 
 template <>
@@ -81,6 +81,9 @@ bool GetValue(const Point& point);
 
 template <>
 Histogram GetValue(const Point& point);
+
+template <>
+Percentiles GetValue(const Point& point);
 
 // Returns the latest value for `metric_name`, associated with the `labels`. If
 // the metric has not collected any data, it returns a default value appropriate
@@ -105,8 +108,8 @@ ValueType GetLatestValueOrDefault(const CollectedMetrics& metrics,
 // values are supported.
 template <typename ValueType>
 ValueType GetDelta(const ValueType& a, const ValueType& b) {
-  LOG(FATAL) << "Not implemented: Tensorflow CellReader currently does not "
-                "support percentiles.";
+  LOG(FATAL) << "Invalid argument: Tensorflow CellReader does not support type "
+             << typeid(ValueType).name();
 }
 
 template <>
@@ -114,6 +117,15 @@ int64_t GetDelta(const int64_t& a, const int64_t& b);
 
 template <>
 Histogram GetDelta(const Histogram& a, const Histogram& b);
+
+template <>
+Percentiles GetDelta(const Percentiles& a, const Percentiles& b);
+
+template <>
+std::string GetDelta(const std::string& a, const std::string& b);
+
+template <>
+bool GetDelta(const bool& a, const bool& b);
 
 }  // namespace internal
 }  // namespace testing

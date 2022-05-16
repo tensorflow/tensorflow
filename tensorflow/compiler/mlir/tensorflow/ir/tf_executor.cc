@@ -346,7 +346,8 @@ ParseResult IslandOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
   if (!op_infos.empty()) {
     SmallVector<Type, 2> types(op_infos.size(), control_type);
-    parser.resolveOperands(op_infos, types, loc, result.operands);
+    if (parser.resolveOperands(op_infos, types, loc, result.operands))
+      return failure();
   }
 
   // Parse the body region.

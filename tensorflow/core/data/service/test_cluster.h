@@ -79,8 +79,9 @@ class TestCluster {
   // Stops all workers.
   void StopWorkers();
 
-  // Returns the dispatcher state export.
+  // Returns the server state exports.
   ServerStateExport ExportDispatcherState() const;
+  ServerStateExport ExportWorkerState(size_t index) const;
 
  private:
   bool initialized_ = false;
@@ -121,7 +122,7 @@ class DatasetClient {
       ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
   // Creates a job and returns the job client ID.
-  StatusOr<int64_t> CreateJob();
+  StatusOr<int64_t> CreateJob(const DatasetDef& dataset);
   // Gets the tasks for job `job_client_id`. The job has one task processed by
   // every worker.
   StatusOr<std::vector<TaskInfo>> GetTasks(int64 job_client_id);
@@ -193,10 +194,8 @@ StatusOr<int64_t> DatasetClient<T>::CreateJob(
 }
 
 template <class T>
-StatusOr<int64_t> DatasetClient<T>::CreateJob() {
-  TF_ASSIGN_OR_RETURN(
-      const int64 dataset_id,
-      RegisterDataset(tensorflow::data::testing::RangeDataset(10)));
+StatusOr<int64_t> DatasetClient<T>::CreateJob(const DatasetDef& dataset) {
+  TF_ASSIGN_OR_RETURN(const int64 dataset_id, RegisterDataset(dataset));
   return CreateJob(dataset_id, ProcessingModeDef::OFF, TARGET_WORKERS_ANY);
 }
 
