@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -163,10 +164,6 @@ Status CpuExecutable::ExecuteComputeFunction(
     absl::Span<MaybeOwningDeviceMemory const> buffers,
     HloExecutionProfile* hlo_execution_profile) {
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
-
-  XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
-  auto cleanup = absl::MakeCleanup(
-      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
 
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()

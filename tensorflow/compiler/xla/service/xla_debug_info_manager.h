@@ -32,9 +32,6 @@ struct XlaModuleDebugInfo {
   ModuleIdentifier module_id;
   // The hlo proto associated with this xla program.
   std::unique_ptr<HloProto> hlo_proto;
-  // TODO(b/133503446): We might need add performance info from cost analysis
-  // and DeviceDescription which contains peak memory bandwidth, clock speed,
-  // core count, and other device characteristics.
 };
 
 // Debug info manager keeps track of all the debug information (symbol table,
@@ -66,13 +63,6 @@ class XlaDebugInfoManager {
   void UnregisterModule(
       const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
       std::shared_ptr<const BufferAssignmentProto> buffer_assignment);
-
-  // Register when the module start execution on certain device.
-  // TODO(jiesun): Although we now track both running and compile time
-  // metadata, let's keep the interface for now.
-  void OnModuleStart(ModuleIdentifier module_id) {}
-  // Register when the module stop execution on certain device.
-  void OnModuleStop(ModuleIdentifier module_id) {}
 
   // Start tracing, began to collecting debug information for all the running
   // modules during the tracing period.

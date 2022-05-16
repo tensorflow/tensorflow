@@ -329,10 +329,6 @@ Status ExecuteThunks(const std::string& module_name,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
                      bool block_host_until_done) {
-  XlaDebugInfoManager::Get()->OnModuleStart(module_name);
-  auto cleanup = absl::MakeCleanup(
-      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
-
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
 
@@ -661,10 +657,6 @@ static Status ExecuteBef(const std::string& module_name,
                          const ServiceExecutableRunOptions* run_options,
                          const BufferAllocations& buffer_allocations,
                          size_t num_allocations, bool block_host_until_done) {
-  XlaDebugInfoManager::Get()->OnModuleStart(module_name);
-  auto cleanup = absl::MakeCleanup(
-      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
-
   uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(

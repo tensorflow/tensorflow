@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -58,29 +61,6 @@ class XlaDebugInfoManagerTest : public HloTestBase {
     }
   }
 
-  void StartProgram(int unique_id) {
-    for (int i = 0; i < external_references_.size(); i++) {
-      if (external_references_[i].unique_id == unique_id) {
-        xla_debug_info_manager_.OnModuleStart(external_references_[i].id);
-        break;
-      }
-    }
-  }
-
-  void StopProgram(int unique_id) {
-    for (int i = 0; i < external_references_.size(); i++) {
-      if (external_references_[i].unique_id == unique_id) {
-        xla_debug_info_manager_.OnModuleStop(external_references_[i].id);
-        break;
-      }
-    }
-  }
-
-  void StartAndStopProgram(int unique_id) {
-    StartProgram(unique_id);
-    StopProgram(unique_id);
-  }
-
   std::set<ModuleIdentifier> GetActiveModule() {
     return xla_debug_info_manager_.GetActiveModules();
   }
@@ -114,14 +94,8 @@ TEST_F(XlaDebugInfoManagerTest, NoTraceBasic) {
   auto program1 = RegisterProgram("program1");
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
 
-  StartAndStopProgram(program0);
-  StartProgram(program0);
-  StopProgram(program0);
   UnregisterProgram(program0);
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program1"));
-  StartAndStopProgram(program1);
-  StartProgram(program1);
-  StopProgram(program1);
   UnregisterProgram(program1);
   EXPECT_TRUE(GetActiveModule().empty());
 }
@@ -131,13 +105,6 @@ TEST_F(XlaDebugInfoManagerTest, NoTraceDuplicateIds) {
   auto program0B = RegisterProgram("program0");  // duplicates
   auto program1 = RegisterProgram("program1");
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
-
-  StartProgram(program0A);
-  StartProgram(program0B);
-  StartProgram(program1);
-  StopProgram(program0A);
-  StopProgram(program0B);
-  StopProgram(program1);
 
   UnregisterProgram(program1);
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
@@ -154,19 +121,13 @@ TEST_F(XlaDebugInfoManagerTest, ActiveTrace) {
   auto program1 = RegisterProgram("program1");
 
   // Case 1: Trace starts when no program is running.
-  StartAndStopProgram(program0A);
   StartTrace();
-  StartAndStopProgram(program1);
   auto program2 = RegisterProgram("program2");
-  StartAndStopProgram(program0B);
   EXPECT_THAT(StopTrace(),
               UnorderedElementsAre("program0", "program1", "program2"));
 
   // Case 1: Trace starts during program is running.
-  StartProgram(program0A);
   StartTrace();
-  StopProgram(program0A);
-  StartAndStopProgram(program1);
   EXPECT_THAT(StopTrace(),
               UnorderedElementsAre("program0", "program1", "program2"));
 
@@ -186,7 +147,6 @@ TEST_F(XlaDebugInfoManagerTest, UnregisterDuringTrace) {
   auto program1 = RegisterProgram("program1");
 
   StartTrace();
-  StartAndStopProgram(program1);
   UnregisterProgram(program1);
   UnregisterProgram(program0B);
   EXPECT_THAT(StopTrace(), UnorderedElementsAre("program0", "program1"));
