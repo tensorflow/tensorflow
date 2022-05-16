@@ -91,6 +91,8 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kUncompress;
 /* static */ constexpr const char* const DataServiceDatasetOp::kUncompressFn;
+/* static */ constexpr const char* const
+    DataServiceDatasetOp::kCrossTrainerCacheOptions;
 
 namespace {
 // Default interval between task list refreshes.
@@ -183,6 +185,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           std::unique_ptr<CapturedFunction> captured_uncompress_func,
+          const absl::optional<CrossTrainerCacheOptions>&
+              cross_trainer_cache_options,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
@@ -205,6 +209,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         iteration_counter_handle_(iteration_counter_handle),
         resource_mgr_(ctx->resource_manager()),
         captured_uncompress_func_(std::move(captured_uncompress_func)),
+        cross_trainer_cache_options_(cross_trainer_cache_options),
         output_types_(output_types),
         output_shapes_(output_shapes) {}
 
@@ -361,6 +366,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(captured_uncompress_func_->AddToGraph(
           ctx, b, &uncompress_arguments, &uncompress_arguments_types));
     }
+
+    // Attr: cross_trainer_cache_options
+    AttrValue cross_trainer_cache_options_attr;
+    std::string serialized_cross_trainer_cache_options;
+    if (cross_trainer_cache_options_.has_value()) {
+      serialized_cross_trainer_cache_options =
+          cross_trainer_cache_options_->SerializeAsString();
+    }
+    b->BuildAttrValue(serialized_cross_trainer_cache_options,
+                      &cross_trainer_cache_options_attr);
+    attrs.push_back(
+        {kCrossTrainerCacheOptions, cross_trainer_cache_options_attr});
     return b->AddDataset(this, inputs, attrs, output);
   }
 
@@ -413,8 +430,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           [&]() {
             return dispatcher_->GetOrCreateJob(
                 dataset()->dataset_id_, dataset()->processing_mode_, key,
-                dataset()->num_consumers_, dataset()->target_workers_,
-                job_client_id_);
+                dataset()->num_consumers_,
+                dataset()->cross_trainer_cache_options_.has_value(),
+                dataset()->target_workers_, job_client_id_);
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",
@@ -569,6 +587,38 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return errors::InvalidArgument(
             "Coordinated reads require non-local workers, but `target_workers` "
             "is \"LOCAL\".");
+      }
+      if (dataset()->cross_trainer_cache_options_.has_value()) {
+        TF_RETURN_IF_ERROR(ValidateMultiTrainerCache());
+      }
+      return Status::OK();
+    }
+
+    Status ValidateMultiTrainerCache() const {
+      if (!dataset()->cross_trainer_cache_options_.has_value()) {
+        return Status::OK();
+      }
+      if (dataset()->job_name_.empty()) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching requires named jobs. Got empty `job_name`.");
+      }
+      if (dataset()->metadata_.cardinality() != kInfiniteCardinality) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching requires the input dataset to be infinite. "
+            "Got input with cardinality ",
+            dataset()->metadata_.cardinality());
+      }
+      if (iterator_index_ > 1) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching requires infinite datasets and disallows "
+            "multiple iterations of the same dataset. Got iteration ",
+            iterator_index_);
+      }
+      if (StrictRoundRobin() && dataset()->num_consumers_.has_value()) {
+        return errors::InvalidArgument(
+            "Cross-trainer caching does not support coordinated reads. "
+            "Got number of coordinated consumers: ",
+            dataset()->num_consumers_.value());
       }
       return Status::OK();
     }
@@ -1014,6 +1064,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         req.set_round_index(task.round);
         req.set_allow_skip(true);
       }
+      if (dataset()->cross_trainer_cache_options_) {
+        req.set_trainer_id(
+            dataset()->cross_trainer_cache_options_->trainer_id());
+      }
       return task.worker->GetElement(req, result);
     }
 
@@ -1247,6 +1301,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const ResourceHandle iteration_counter_handle_;
   ResourceMgr* const resource_mgr_;  // Not owned
   const std::unique_ptr<CapturedFunction> captured_uncompress_func_;
+  const absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -1296,6 +1351,11 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     params.use_inter_op_parallelism = true;
     OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kUncompressFn, params,
                                                  &uncompress_fn_));
+  }
+
+  if (ctx->HasAttr(kCrossTrainerCacheOptions)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kCrossTrainerCacheOptions,
+                                     &seriazlied_cross_trainer_cache_options_));
   }
 }
 
@@ -1430,13 +1490,20 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                       /*captured_inputs=*/std::vector<Tensor>{},
                                       &captured_uncompress_func));
   }
+
+  absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
+  if (!seriazlied_cross_trainer_cache_options_.empty()) {
+    cross_trainer_cache_options.emplace();
+    cross_trainer_cache_options->ParseFromString(
+        seriazlied_cross_trainer_cache_options_);
+  }
   DatasetBase* dataset = new Dataset(
       ctx, op_version_, dataset_id, processing_mode, address, protocol,
       data_transfer_protocol_, job_name, consumer_index, num_consumers,
       max_outstanding_requests, task_refresh_interval_hint_ms_, target_workers_,
       *metadata, iteration_counter, owns_resource, iteration_counter_handle,
-      std::move(captured_uncompress_func), data_service_output_types,
-      data_service_output_shapes);
+      std::move(captured_uncompress_func), cross_trainer_cache_options,
+      data_service_output_types, data_service_output_shapes);
   if (should_uncompress) {
     VLOG(2) << "Inserting a ParallelMap dataset to uncompress tf.data service "
             << "dataset " << dataset_id << ".";

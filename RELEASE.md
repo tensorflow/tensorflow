@@ -43,6 +43,14 @@
     *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object
         or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
 
+*   `tf.data`:
+
+    *   Added support for cross-trainer data caching in tf.data service. This
+        saves computation resources when concurrent training jobs train from the
+        same dataset. See
+        https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+        for more details.
+
 *   `tf.math`:
 
     *   Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the

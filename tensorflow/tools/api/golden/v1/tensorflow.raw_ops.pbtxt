@@ -1066,15 +1066,15 @@ tf_module {
   }
   member_method {
     name: "DataServiceDataset"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'\', \'None\'], "
   }
   member_method {
     name: "DataServiceDatasetV2"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'\', \'None\'], "
   }
   member_method {
     name: "DataServiceDatasetV3"
-    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'None\'], "
+    argspec: "args=[\'dataset_id\', \'processing_mode\', \'address\', \'protocol\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'iteration_counter\', \'output_types\', \'output_shapes\', \'uncompress_fn\', \'task_refresh_interval_hint_ms\', \'data_transfer_protocol\', \'target_workers\', \'uncompress\', \'cross_trainer_cache_options\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'AUTO\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "DatasetCardinality"

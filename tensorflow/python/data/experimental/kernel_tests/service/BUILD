@@ -181,6 +181,38 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "cross_trainer_cache_test",
+    size = "medium",
+    srcs = ["cross_trainer_cache_test.py"],
+    shard_count = 4,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "cross_trainer_cache_ft_test",
+    size = "medium",
+    srcs = ["cross_trainer_cache_ft_test.py"],
+    shard_count = 4,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "multi_device_test",
     size = "small",
     srcs = ["multi_device_test.py"],

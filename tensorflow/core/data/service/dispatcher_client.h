@@ -78,6 +78,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                         const ProcessingModeDef& processing_mode,
                         const absl::optional<JobKeyDef>& job_key,
                         absl::optional<int64_t> num_consumers,
+                        bool use_cross_trainer_cache,
                         TargetWorkers target_workers, int64_t& job_client_id);
 
   // Releases a job client id, indicating that the id will no longer be used to

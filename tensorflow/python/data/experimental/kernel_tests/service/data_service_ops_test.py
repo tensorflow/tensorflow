@@ -646,8 +646,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds2 = self.make_distributed_dataset(
         ds2, cluster, processing_mode="parallel_epochs", job_name="job_name")
     ds = dataset_ops.Dataset.zip((ds1, ds2))
-    with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                "but there is already an existing job"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "but found an existing job with diff"):
       self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.default_test_combinations())

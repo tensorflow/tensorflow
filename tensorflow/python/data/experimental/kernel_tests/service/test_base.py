@@ -51,7 +51,8 @@ def _make_worker(dispatcher_address,
                  data_transfer_protocol,
                  shutdown_quiet_period_ms=0,
                  port=0,
-                 worker_tags=None):
+                 worker_tags=None,
+                 cross_trainer_cache_size_bytes=None):
   """Creates a worker server."""
   defaults = server_lib.WorkerConfig(dispatcher_address=dispatcher_address)
   config_proto = service_config_pb2.WorkerConfig(
@@ -64,7 +65,8 @@ def _make_worker(dispatcher_address,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
       data_transfer_protocol=data_transfer_protocol,
       data_transfer_address=defaults.worker_address,
-      shutdown_quiet_period_ms=shutdown_quiet_period_ms)
+      shutdown_quiet_period_ms=shutdown_quiet_period_ms,
+      cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
   return server_lib.WorkerServer(config_proto, start=False)
 
 
@@ -76,14 +78,16 @@ class TestWorker(object):
                dispatcher_address,
                shutdown_quiet_period_ms,
                data_transfer_protocol=None,
-               worker_tags=None):
+               worker_tags=None,
+               cross_trainer_cache_size_bytes=None):
     self._dispatcher_address = dispatcher_address
     self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
     self._server = _make_worker(
         dispatcher_address,
         data_transfer_protocol,
         shutdown_quiet_period_ms,
-        worker_tags=worker_tags)
+        worker_tags=worker_tags,
+        cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
     self._running = False
     self._data_transfer_protocol = data_transfer_protocol
 
@@ -268,6 +272,7 @@ class TestBase(test_base.DatasetTestBase):
                                num_consumers=None,
                                max_outstanding_requests=None,
                                compression="AUTO",
+                               cross_trainer_cache=None,
                                target_workers="AUTO"):
     # pylint: disable=protected-access
     return dataset.apply(
@@ -281,6 +286,7 @@ class TestBase(test_base.DatasetTestBase):
             task_refresh_interval_hint_ms=20,
             data_transfer_protocol=TRANSFER_PROTOCOL.value,
             compression=compression,
+            cross_trainer_cache=cross_trainer_cache,
             target_workers=target_workers))
 
   def make_distributed_range_dataset(self,
@@ -290,6 +296,7 @@ class TestBase(test_base.DatasetTestBase):
                                      job_name=None,
                                      max_outstanding_requests=None,
                                      compression="AUTO",
+                                     cross_trainer_cache=None,
                                      target_workers="AUTO"):
     dataset = dataset_ops.Dataset.range(num_elements)
     return self.make_distributed_dataset(
@@ -299,6 +306,7 @@ class TestBase(test_base.DatasetTestBase):
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests,
         compression=compression,
+        cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)
 
   def make_coordinated_read_dataset(
