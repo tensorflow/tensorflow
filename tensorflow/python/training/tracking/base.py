@@ -1389,7 +1389,7 @@ class Trackable(object):
 
     **Rule 3: [`SavedModel`-only] Watch out for un-traced tf.functions.**
 
-    At the beginning of `_trackable_children`, always call
+    At the begining of `_trackable_children`, always call
     `get_concrete_function()` for any `tf.function` that has an input signature.
 
     When `tf.functions` are saved to `SavedModel`, any `tf.functions` that have
