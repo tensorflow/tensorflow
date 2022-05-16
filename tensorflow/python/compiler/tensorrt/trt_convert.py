@@ -1131,6 +1131,7 @@ class TrtGraphConverterV2(object):
     self._calibration_input_fn = None
 
     self._converted = False
+    self._device = None
     self._build_called_once = False
     self._calibrated = False
 
@@ -1240,6 +1241,17 @@ class TrtGraphConverterV2(object):
     """
     assert not self._converted
 
+    # Creating an empty tensor to fetch queried device
+    device_requested = array_ops.zeros([]).device
+
+    if "gpu" not in device_requested.lower():
+      raise ValueError(f"Specified device is not a GPU: {device_requested}")
+
+    if "gpu:0" not in device_requested.lower():
+      self._device = device_requested
+      logging.info(f"Placing imported graph from "
+                   f"`{self._input_saved_model_dir}` on device: {self._device}")
+
     if (self._need_calibration and not calibration_input_fn):
       raise ValueError("Should specify calibration_input_fn because INT8 "
                        "calibration is needed")
@@ -1251,8 +1263,21 @@ class TrtGraphConverterV2(object):
                                   self._input_saved_model_tags)
     func = self._saved_model.signatures[self._input_saved_model_signature_key]
     frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
-    grappler_meta_graph_def = saver.export_meta_graph(
-        graph_def=frozen_func.graph.as_graph_def(), graph=frozen_func.graph)
+    frozen_graph_def = frozen_func.graph.as_graph_def()
+
+    # Clear any prior device assignments
+    logging.info("Clearing prior device assignments in loaded saved model")
+    for node in frozen_graph_def.node:
+      node.device = ""
+
+    if self._device is None:
+      grappler_meta_graph_def = saver.export_meta_graph(
+          graph_def=frozen_graph_def, graph=frozen_func.graph)
+    else:
+      with ops.Graph().as_default() as graph, ops.device(self._device):
+        importer.import_graph_def(frozen_graph_def, name="")
+        grappler_meta_graph_def = saver.export_meta_graph(
+            graph_def=graph.as_graph_def(), graph=graph)
 
     # Add a collection 'train_op' so that Grappler knows the outputs.
     fetch_collection = meta_graph_pb2.CollectionDef()
