@@ -137,7 +137,7 @@ class ControlFlowTransformer(converter.Base):
         continue
       # Variables not live into or out of the scope are considered local to the
       # scope.
-      if s in live_in or s in live_out or s in nonlocals or (s in iter_var):
+      if s in live_in or s in live_out or s in nonlocals or s in iter_var:
         basic_scope_vars.append(s)
       continue
     return frozenset(basic_scope_vars)
