@@ -50,9 +50,10 @@ cc_library(
 )
 
 td_library(
-    name = "ptq_td_files",
+    name = "quant_td_files",
     srcs = [
         "passes/lift_quantizable_spots_as_functions.td",
+        "passes/lift_quantizable_spots_as_functions_dynamic_range.td",
         "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
@@ -77,7 +78,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/prepare_lifting.td",
-    deps = [":ptq_td_files"],
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -90,7 +91,20 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions.td",
-    deps = [":ptq_td_files"],
+    deps = [":quant_td_files"],
+)
+
+gentbl_cc_library(
+    name = "lift_quantizable_spots_as_functions_dynamic_range_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/lift_quantizable_spots_as_functions_dynamic_range.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/lift_quantizable_spots_as_functions_dynamic_range.td",
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -103,7 +117,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/prepare_quantize.td",
-    deps = [":ptq_td_files"],
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -116,7 +130,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/quantize_composite_functions.td",
-    deps = [":ptq_td_files"],
+    deps = [":quant_td_files"],
 )
 
 cc_library(
@@ -130,6 +144,8 @@ cc_library(
         "passes/issue_ids_of_custom_aggregation_ops.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions.inc",
+        "passes/lift_quantizable_spots_as_functions_dynamic_range.cc",
+        "passes/lift_quantizable_spots_as_functions_dynamic_range.inc",
         "passes/post_quantize.cc",
         "passes/prepare_lifting.cc",
         "passes/prepare_lifting.inc",
