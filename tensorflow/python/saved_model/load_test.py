@@ -51,7 +51,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.keras import Model
 from tensorflow.python.keras import models
-from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import Layer
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.lib.io import tf_record
@@ -2585,11 +2584,15 @@ class SavedModelLoadMemoryTests(test.TestCase):
 
   def get_gpu_memory(self):
     command = "nvidia-smi --query-gpu=memory.total --format=csv"
-    memory_free_info = subprocess.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
-    if isinstance(memory_free_values, list):
-        return int(memory_free_values[0] / 1024)
-    return int(memory_free_values)
+    mem_free_info = (
+        subprocess.check_output(command.split())
+        .decode('ascii')
+        .split('\n')[:-1][1:]
+    )
+    mem_free_values = [int(x.split()[0]) for i, x in enumerate(mem_free_info)]
+    if isinstance(mem_free_values, list):
+      return int(mem_free_values[0] / 1024)
+    return int(mem_free_values)
 
   @test_util.run_gpu_only
   def test_no_oom_loading_large_tenor(self):
@@ -2603,13 +2606,21 @@ class SavedModelLoadMemoryTests(test.TestCase):
     x = array_ops.zeros(shape=(65536, 1), dtype=dtypes.int32)
     y = model(x)
     models.save_model(
-        model=model, filepath=save_dir, overwrite=True,
+        model=model,
+        filepath=save_dir,
+        overwrite=True,
         options=save_options.SaveOptions(
-            experimental_variable_policy=save_options.VariablePolicy.SAVE_VARIABLE_DEVICES))
+            experimental_variable_policy=save_options.VariablePolicy
+                .SAVE_VARIABLE_DEVICES
+        ),
+    )
     loaded = models.load_model(
         save_dir,
         options=save_options.SaveOptions(
-            experimental_variable_policy=save_options.VariablePolicy.SAVE_VARIABLE_DEVICES))
+            experimental_variable_policy=save_options.VariablePolicy
+                .SAVE_VARIABLE_DEVICES
+        ),
+    )
 
 
 if __name__ == "__main__":
