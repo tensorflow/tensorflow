@@ -130,15 +130,14 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
     self.assertFunctionMatchesEager(for_with_local_var, l)
 
   @parameterized.parameters(*itertools.product(
-      ([], 
-      [1], 
-      [1, 2]),
+      ([], [1], [1, 2]),
       (list, _int_tensor),
   ))
   def test_for_with_lambda_var(self, l, type_):
+    
     #self.skipTest("TODO")
 
-    #l = type_(l)
+    l = type_(l)
     self.assertFunctionMatchesEager(for_with_lambda_var, l)
 
   @parameterized.parameters(*itertools.product(
