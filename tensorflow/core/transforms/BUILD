@@ -93,13 +93,13 @@ cc_library(
         "//tensorflow/core/transforms/constant_folding:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:Pass",
         "//tensorflow/core/transforms/eliminate_passthrough_iter_args:Pass",
+        "//tensorflow/core/transforms/func_to_graph:Pass",
         "//tensorflow/core/transforms/functional_to_region:Pass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
         "//tensorflow/core/transforms/region_to_functional:Pass",
         "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/shape_inference:Pass",
         "//tensorflow/core/transforms/toposort:Pass",
-        "@llvm-project//mlir:Pass",
     ],
 )
 

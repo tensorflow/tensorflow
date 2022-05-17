@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/constant_folding/pass.h"
 #include "tensorflow/core/transforms/drop_unregistered_attribute/pass.h"
 #include "tensorflow/core/transforms/eliminate_passthrough_iter_args/pass.h"
+#include "tensorflow/core/transforms/func_to_graph/pass.h"
 #include "tensorflow/core/transforms/functional_to_region/pass.h"
 #include "tensorflow/core/transforms/graph_to_func/pass.h"
 #include "tensorflow/core/transforms/region_to_functional/pass.h"
