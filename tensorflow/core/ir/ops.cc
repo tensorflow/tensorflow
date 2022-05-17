@@ -490,16 +490,12 @@ LogicalResult GraphFuncOp::verify() {
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
-  if (!args_attrs)
-    return func_op.emitOpError() << "missing argument attributes array";
-  if (args_attrs.size() != func_op.getNumArguments())
+  if (args_attrs && args_attrs.size() != func_op.getNumArguments())
     return func_op.emitOpError()
            << "expects argument attributes for each argument ("
            << args_attrs.size() << " vs " << func_op.getNumArguments() << ")";
   ArrayAttr res_attrs = func_op.getAllResultAttrs();
-  if (!res_attrs)
-    return func_op.emitOpError() << "missing results attributes array";
-  if (res_attrs.size() != func_op.getNumResults())
+  if (res_attrs && res_attrs.size() != func_op.getNumResults())
     return func_op.emitOpError()
            << "expects results attributes for each result (" << res_attrs.size()
            << " vs " << func_op.getNumResults() << ")";
