@@ -62,6 +62,7 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   auto loc = graph.getLoc();
   auto func_op = builder.create<GraphFuncOp>(loc, name, func_type,
                                              /*generic=*/false);
+  func_op->setAttr("tfg.lifted_graph_version", graph.version());
   func_op.getRegion().takeBody(graph.getRegion());
   Block *body = func_op.getBody();
   llvm::SmallVector<Attribute> args_rets_attrs;

@@ -5,6 +5,7 @@
 
 // CHECK:   tfg.func @_mlir_lifted_graph(%Placeholder13A0: tensor<*xf32> {tfg.name = "Placeholder1:0"},
 // CHECK-NEXT:                           %Placeholder23A0: tensor<*xf32> {tfg.name = "Placeholder2:0"})
+// CHECK:   tfg.lifted_graph_version = #tf_type.version<producer = 34, min_consumer = 5>
 
 // Feeds substitution:
 // CHECK: Add(%Placeholder13A0, %Placeholder23A0) name("SomeAdd1")
