@@ -418,6 +418,9 @@ namespace cuda_helper = gpu_helper;
 // division. For detailed information see:
 //   https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
 //
+// Warning: This implementation only works when the divisor is [1, INT32_MAX]
+//          and the numerator has to be [0, INT32_MAX]. This is enough for our
+//          purpose for computing integer indices.
 // Basics: the typical int division can be written as:
 //   n / d = (m * n) / 2^(32 + s)
 // where 'n' is the numerator and 'd' is the divisor. For a given 'd', we
@@ -425,8 +428,6 @@ namespace cuda_helper = gpu_helper;
 struct FastDividerUint32 {
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC FastDividerUint32(uint32_t d)
       : divisor(d) {
-    // We assume that the divisor is at most INT32_MAX, which is enough for our
-    // purpose for computing int indices.
     assert(divisor >= 1 && divisor <= INT32_MAX);
     update_magic();
   }
@@ -456,6 +457,7 @@ struct FastDividerUint32 {
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC FastDividerUint32& operator=(
       uint32_t d) {
+    assert(divisor >= 1 && divisor <= INT32_MAX);
     this->divisor = d;
     update_magic();
     return *this;
