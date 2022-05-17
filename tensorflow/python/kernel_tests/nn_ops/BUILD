@@ -332,6 +332,7 @@ cuda_py_test(
     size = "medium",  # http://b/30603882
     timeout = "long",
     srcs = ["depthwise_conv_op_d9m_test.py"],
+    tags = ["no_rocm"],
     shard_count = 8,
     deps = [
         ":depthwise_conv_op_base",
