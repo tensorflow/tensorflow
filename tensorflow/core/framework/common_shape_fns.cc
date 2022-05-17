@@ -695,7 +695,6 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
-
   std::vector<int64_t> explicit_paddings;
   if (supports_explicit_padding) {
     Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
@@ -707,7 +706,18 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
                                          /*num_dims=*/4, data_format));
   } else {
+    std::vector<int64_t> p_list;
+    Status s_p_list = c->GetAttr("padding_list", &p_list);
     CHECK(padding != Padding::EXPLICIT);  // Crash ok.
+    if (!s_p_list.ok() && !errors::IsNotFound(s_p_list)) {
+      return s_p_list;
+    }
+    if (s_p_list.ok() && !p_list.empty()) {
+      padding = Padding::EXPLICIT;
+      explicit_paddings = p_list;
+      TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                           /*num_dims=*/4, data_format));
+    }
   }
 
   DimensionHandle output_rows, output_cols;
