@@ -4133,7 +4133,7 @@ SmallVector<TensorType> inferReduceWindowOpReturnType(
 }  // namespace
 
 // We intend to verify the following properties
-//  P1. The sizes of 'inputs' and 'init_values' must be atleast 1.
+//  P1. The sizes of 'inputs' and 'init_values' must be at least 1.
 //  P2. All `inputs` need to have compatible shapes.
 //  P3. size-of(window_dimension) == rank-of(input),
 //        where input is an element of 'inputs'.

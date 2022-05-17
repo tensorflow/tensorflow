@@ -455,7 +455,7 @@ llvm::SmallSetVector<StringRef, 4> FindSummationAxes(
 // for einsum_config "abc,cb->acb"
 // first_input_operand will get umap[{"a","b","c"}] -> (d0, d1, d2).
 // second_input_operand will get umap[{"c","b"}] -> (d2, d1).
-// ouput_operand will get umap[{"a","c","b"}] -> (d0, d2, d1).
+// output_operand will get umap[{"a","c","b"}] -> (d0, d2, d1).
 SmallVector<AffineExpr> GetExprFromConfig(
     const SmallVector<std::string>& loop_dims,
     const DenseMap<StringRef, AffineExpr>& str_affine_dim_umap) {
