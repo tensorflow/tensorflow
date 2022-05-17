@@ -4463,7 +4463,8 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     // Broadcast scalar `updates` in into expected shape as following shape:
     // updates.shape == indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
     if (updates_ty.getRank() == 0 &&
-        std::is_same<OpTy, TF::TensorScatterUpdateOp>::value) {
+        (std::is_same<OpTy, TF::TensorScatterUpdateOp>::value ||
+         std::is_same<OpTy, TF::TensorScatterAddOp>::value)) {
       if (!tensor_ty.hasStaticShape()) {
         return failure();
       }

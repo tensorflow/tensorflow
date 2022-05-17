@@ -5175,6 +5175,17 @@ func.func @tensor_scatter_add(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi
 
 // -----
 
+// CHECK-LABEL: @tensor_scatter_add_scalar_update
+func.func @tensor_scatter_add_scalar_update(%tensor: tensor<4x3xi32>, %indices: tensor<2x1xi32>, %updates: tensor<i32>) -> tensor<4x3xi32> {
+  // CHECK: mhlo.constant dense<[2, 3]> : tensor<2xi64>
+  // CHECK: "mhlo.dynamic_broadcast_in_dim"(%arg2, %0) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i32>, tensor<2xi64>) -> tensor<2x3xi32>
+  // CHECK: "mhlo.scatter"
+  %0 = "tf.TensorScatterAdd"(%tensor, %indices, %updates) : (tensor<4x3xi32>, tensor<2x1xi32>, tensor<i32>) -> tensor<4x3xi32>
+  func.return %0 : tensor<4x3xi32>
+}
+
+// -----
+
 // CHECK-LABEL: @tensor_scatter_sub
 func.func @tensor_scatter_sub(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, %updates: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   // CHECK: "mhlo.scatter"(%arg0, %arg1, %arg2) ({
