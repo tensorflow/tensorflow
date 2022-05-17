@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/graph_to_func/graph_to_func.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -127,50 +129,64 @@ Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
                              indexed_name.value(), "'");
   }
 
-  SmallVector<Value> feeds(feeds_names.size());
-  SmallVector<Value> fetches(fetches_names.size());
+  SmallVector<ValueRange> feeds(feeds_names.size());
+  SmallVector<ValueRange> fetches(fetches_names.size());
   SmallVector<Value> control_rets(control_rets_names.size());
   for (Operation &op : *graph.getBody()) {
     TFOp tf_op(op);
     StringRef node_name = tf_op.name();
-    // A slot is the node name + the output index separated by a colon.
-    std::string slot;
-    for (Value result : op.getResults()) {
-      slot = OpResultToSlotName(result.cast<OpResult>());
-      auto feed_pos = feeds_to_position.find(slot);
-      if (feed_pos != feeds_to_position.end()) {
-        feeds[feed_pos->second] = result;
-        continue;
-      }
-      auto fetch_pos = fetches_to_position.find(slot);
-      if (fetch_pos != fetches_to_position.end()) {
-        fetches[fetch_pos->second] = result;
-        continue;
-      }
-      auto control_ret_pos = control_rets_to_position.find(node_name);
-      if (control_ret_pos != control_rets_to_position.end()) {
-        control_rets[control_ret_pos->second] = tf_op.controlRet();
-        continue;
-      }
+
+    // feeds and fetches are supposed to be mutually exclusive but control-ret
+    // may include both of them.
+    auto control_ret_pos = control_rets_to_position.find(node_name);
+    if (control_ret_pos != control_rets_to_position.end()) {
+      control_rets[control_ret_pos->second] = tf_op.controlRet();
+    }
+    auto feed_pos = feeds_to_position.find(node_name);
+    if (feed_pos != feeds_to_position.end()) {
+      feeds[feed_pos->second] = op.getResults().drop_back();
+      continue;
+    }
+    auto fetch_pos = fetches_to_position.find(node_name);
+    if (fetch_pos != fetches_to_position.end()) {
+      fetches[fetch_pos->second] = op.getResults().drop_back();
+      continue;
     }
   }
+
   for (const auto &feed_info : feeds_to_position) {
-    if (!feeds[feed_info.second])
-      return InvalidArgument("Can't find feed: '",
-                             ToStringView(feed_info.first), "'");
+    if (feeds[feed_info.second].empty()) {
+      (void)emitOptionalWarning(graph.getLoc(), "Can't find feed: '",
+                                ToStringView(feed_info.first), "'");
+    }
   }
   for (const auto &fetch_info : fetches_to_position) {
-    if (!fetches[fetch_info.second])
-      return InvalidArgument("Can't find fetch: '",
-                             ToStringView(fetch_info.first), "'");
+    if (fetches[fetch_info.second].empty()) {
+      (void)emitOptionalWarning(graph.getLoc(), "Can't find fetch: '",
+                                ToStringView(fetch_info.first), "'");
+    }
   }
   for (const auto &control_ret_info : control_rets_to_position) {
-    if (!control_rets[control_ret_info.second])
-      return InvalidArgument("Can't find control rets: '",
-                             ToStringView(control_ret_info.first), "'");
+    if (!control_rets[control_ret_info.second]) {
+      (void)emitOptionalWarning(graph.getLoc(), "Can't find control rets: '",
+                                ToStringView(control_ret_info.first), "'");
+    }
   }
 
-  return GraphToFunc(graph, feeds, fetches, control_rets, name);
+  SmallVector<Value> flattened_feeds;
+  for (ValueRange values : feeds) {
+    for (Value value : values) flattened_feeds.push_back(value);
+  }
+
+  SmallVector<Value> flattened_fetches;
+  for (ValueRange values : fetches) {
+    for (Value value : values) flattened_fetches.push_back(value);
+  }
+
+  llvm::erase_if(control_rets, [](Value value) { return !value; });
+
+  return GraphToFunc(graph, flattened_feeds, flattened_fetches, control_rets,
+                     name);
 }
 
 }  // namespace tfg

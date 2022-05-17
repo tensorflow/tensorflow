@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -27,8 +28,9 @@ namespace tfg {
 // Returns a pass that runs on a Module and expects to find a single GraphOp
 // to transform into a function. The provided feeds and fetches are used to form
 // the function arguments and returned values.
-std::unique_ptr<Pass> CreateGraphToFuncPass(ArrayRef<std::string> feeds = {},
-                                            ArrayRef<std::string> fetches = {});
+std::unique_ptr<Pass> CreateGraphToFuncPass(
+    ArrayRef<std::string> feeds = {}, ArrayRef<std::string> fetches = {},
+    ArrayRef<std::string> control_rets = {});
 
 }  // namespace tfg
 }  // namespace mlir

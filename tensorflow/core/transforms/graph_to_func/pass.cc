@@ -28,9 +28,11 @@ namespace {
 
 // A pass that lift a graph into a function based on provided feeds and fetches.
 struct GraphToFuncPass : GraphToFuncBase<GraphToFuncPass> {
-  GraphToFuncPass(ArrayRef<std::string> feeds, ArrayRef<std::string> fetches) {
+  GraphToFuncPass(ArrayRef<std::string> feeds, ArrayRef<std::string> fetches,
+                  ArrayRef<std::string> control_rets) {
     feeds_ = feeds;
     fetches_ = fetches;
+    control_rets_ = control_rets;
   }
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -55,9 +57,10 @@ struct GraphToFuncPass : GraphToFuncBase<GraphToFuncPass> {
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateGraphToFuncPass(ArrayRef<std::string> feeds,
-                                            ArrayRef<std::string> fetches) {
-  return std::make_unique<GraphToFuncPass>(feeds, fetches);
+std::unique_ptr<Pass> CreateGraphToFuncPass(
+    ArrayRef<std::string> feeds, ArrayRef<std::string> fetches,
+    ArrayRef<std::string> control_rets) {
+  return std::make_unique<GraphToFuncPass>(feeds, fetches, control_rets);
 }
 
 }  // namespace tfg
