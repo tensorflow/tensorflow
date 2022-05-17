@@ -38,13 +38,15 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
 class _DSaver(functional_saver._SingleDeviceSaver):  # pylint: disable=protected-access
   """A single device saver that places tensors on DTensor Device."""
 
-  def __init__(self, mesh: layout.Mesh,
+  def __init__(self,
+               mesh: layout.Mesh,
                saveable_objects: List[saveable_object.SaveableObject]):
     super().__init__(saveable_objects)
     self._mesh = mesh
@@ -86,16 +88,15 @@ class _DSaver(functional_saver._SingleDeviceSaver):  # pylint: disable=protected
           if api.device_name() != spec.device:
             # Some small tensors are placed on CPU0 from save manager and
             # broadcasted to DTensor mesh, e,g., SaveCounter.
-            tensor = api.pack([tensor] *
-                              self._mesh.host_mesh().num_local_devices(),
-                              layout.Layout.replicated(
-                                  self._mesh.host_mesh(),
-                                  rank=tensor.shape.rank))
+            tensor = api.pack(
+                [tensor] * self._mesh.host_mesh().num_local_devices(),
+                layout.Layout.replicated(
+                    self._mesh.host_mesh(), rank=tensor.shape.rank))
           tensor_names.append(spec.name)
           tensors.append(tensor)
           tensor_slices.append(spec.slice_spec)
-    return save_restore.sharded_save(self._mesh, file_prefix, tensor_names,
-                                     tensor_slices, tensors)
+    return save_restore.sharded_save(
+        self._mesh, file_prefix, tensor_names, tensor_slices, tensors)
 
   def restore(
       self,
@@ -222,6 +223,21 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
     return restore_ops
 
 
+def saver_with_op_caching(mesh, obj, attached_dependencies=None):
+  """A TrackableSaver with a SaveableObject cache when graph building."""
+  if context.executing_eagerly():
+    saveables_cache = None
+  else:
+    saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
+  # DTensor Change: Use DTrackableSaver that utilizes _DSaver for save/restore.
+  return DTrackableSaver(
+      mesh,
+      graph_view_lib.ObjectGraphView(
+          weakref.ref(obj),
+          saveables_cache=saveables_cache,
+          attached_dependencies=attached_dependencies))
+
+
 class DTrackableSaver(util.TrackableSaver):
   """A DTensor trackable saver that uses _SingleDeviceSaver."""
 
@@ -229,11 +245,8 @@ class DTrackableSaver(util.TrackableSaver):
     super(DTrackableSaver, self).__init__(graph_view)
     self._mesh = mesh
 
-  def _save_cached_when_graph_building(self,
-                                       file_prefix,
-                                       object_graph_tensor,
-                                       options,
-                                       update_ckpt_state=False):
+  def _save_cached_when_graph_building(self, file_prefix, object_graph_tensor,
+                                       options, update_ckpt_state=False):
     """Create or retrieve save ops, overrides parents's private method.
 
     Args:
@@ -244,6 +257,7 @@ class DTrackableSaver(util.TrackableSaver):
       update_ckpt_state: Optional bool flag. Indiciate whether the internal
         checkpoint state needs to be updated. This is used for async checkpoint,
         which DTrackableSaver currently does not support.
+
     TODO(chienchunh): Implement async checkpoint for DTrackableSaver.
 
     Returns:
@@ -252,8 +266,8 @@ class DTrackableSaver(util.TrackableSaver):
       current object graph and any Python state to be saved in the
       checkpoint. When executing eagerly only the first argument is meaningful.
     """
-    (named_saveable_objects, graph_proto, feed_additions,
-     unused_registered_savers) = self._gather_saveables(
+    (named_saveable_objects, graph_proto,
+     feed_additions, unused_registered_savers) = self._gather_saveables(
          object_graph_tensor=object_graph_tensor)
     if (self._last_save_object_graph != graph_proto
         # When executing eagerly, we need to re-create SaveableObjects each time
@@ -331,8 +345,7 @@ class DTrackableSaver(util.TrackableSaver):
         reader=reader,
         restore_op_cache=self._restore_op_cache,
         graph_view=self._graph_view,
-        options=options,
-        saveables_cache=self._saveables_cache)
+        options=options)
     base.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
 
@@ -370,7 +383,10 @@ class DTrackableSaver(util.TrackableSaver):
 class DTensorCheckpoint(util.Checkpoint):
   """Manages saving/restoring trackable values to disk, for DTensor."""
 
-  def __init__(self, mesh: layout.Mesh, root=None, **kwargs):
+  def __init__(self,
+               mesh: layout.Mesh,
+               root=None,
+               **kwargs):
     super(DTensorCheckpoint, self).__init__(root=root, **kwargs)
     self._mesh = mesh
 
@@ -413,8 +429,4 @@ class DTensorCheckpoint(util.Checkpoint):
               "root.{name} already exists.".format(name=k))
     # DTensor Change:
     # Override the parents saver with DTrackableSaver with _SingleDeviceSaver.
-    self._saver = DTrackableSaver(
-        mesh,
-        graph_view_lib.ObjectGraphView(
-            weakref.ref(saver_root),
-            attached_dependencies=attached_dependencies))
+    self._saver = saver_with_op_caching(mesh, saver_root, attached_dependencies)

@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for checkpointing with Trackables.
-
-Note: This module is currently imported from the Trackable base class.
-See `util.py` the other checkpointing utils.
-"""
+"""Utilities for checkpointing with Trackables."""
 
 import collections
 

@@ -22,7 +22,6 @@ import numpy as np
 import six
 
 from tensorflow.python import tf2
-from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
@@ -1267,7 +1266,8 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
             vocab_file, vocab_size=vocab_size),
         oov_buckets,
         experimental_is_anonymous=is_anonymous)
-    objects = checkpoint_util.list_objects(graph_view.ObjectGraphView(table))
+    object_graph_view = graph_view.ObjectGraphView(table)
+    objects = object_graph_view.list_objects()
     assets = list(filter(lambda obj: isinstance(obj, tracking.Asset), objects))
     self.assertLen(assets, 1)
     self.assertEqual(
