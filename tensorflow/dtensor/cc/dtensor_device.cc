@@ -1426,9 +1426,6 @@ void DTensorDevice::LowerToSPMDFunction(
     RETURN_C_STATUS_IF_NOT_OK(s, status);
   }
 
-  TranslatedFunction function;
-  function.output_layouts.reserve(num_outputs);
-
   absl::flat_hash_set<Node*> control_ret_nodes;
   // Run DTensor MLIR passes that convert input graph to SPMD version.
   {
