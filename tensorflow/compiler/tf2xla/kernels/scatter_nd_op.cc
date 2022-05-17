@@ -189,7 +189,7 @@ class TensorScatterAddOp : public XlaOpKernel {
         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
           return xla::Add(x, y);
         },
-        /*broadcast_scalar_update=*/false);
+        /*broadcast_scalar_update=*/true);
   }
 };
 

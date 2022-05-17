@@ -236,5 +236,10 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
         self._runScatter(array_ops.tensor_scatter_update),
         np.array([1, 9, 1, 9, 9, 1, 1, 9], dtype=np.float32))
 
+  def testAdd(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_add),
+        np.array([1, 10, 1, 10, 10, 1, 1, 10], dtype=np.float32))
+
 if __name__ == "__main__":
   test.main()
