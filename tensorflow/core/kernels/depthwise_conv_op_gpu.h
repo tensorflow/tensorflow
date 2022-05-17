@@ -344,14 +344,14 @@ __global__ void __launch_bounds__(1024, 2)
       kKnownFilterHeight < 0 ? args.filter_rows : kKnownFilterHeight;
   const int filter_width =
       kKnownFilterWidth < 0 ? args.filter_cols : kKnownFilterWidth;
-  const int depth_multiplier =
+  const FastDividerUint32 depth_multiplier =
       kKnownDepthMultiplier < 0 ? args.depth_multiplier : kKnownDepthMultiplier;
   const int stride = args.stride;
   const int pad_height = args.pad_rows;
   const int pad_width = args.pad_cols;
-  const int out_height = args.out_rows;
   const int out_width = args.out_cols;
-  const int out_depth = args.out_depth;
+  const FastDividerUint32 out_height = args.out_rows;
+  const FastDividerUint32 out_depth = args.out_depth;
 
   GPU_1D_KERNEL_LOOP(thread_id, num_outputs) {
     // Compute the indexes of this thread in the output.
@@ -876,16 +876,16 @@ __global__ void __launch_bounds__(640, 2)
         const DepthwiseArgs args, const T* __restrict__ out_backprop,
         const T* __restrict__ filter, T* __restrict__ in_backprop,
         int num_in_backprop) {
-  const int in_height = args.in_rows;
-  const int in_width = args.in_cols;
-  const int in_depth = args.in_depth;
+  const FastDividerUint32 in_height = args.in_rows;
+  const FastDividerUint32 in_width = args.in_cols;
+  const FastDividerUint32 in_depth = args.in_depth;
   const int filter_height =
       kKnownFilterHeight < 0 ? args.filter_rows : kKnownFilterHeight;
   const int filter_width =
       kKnownFilterWidth < 0 ? args.filter_cols : kKnownFilterWidth;
   const int depth_multiplier =
       kKnownDepthMultiplier < 0 ? args.depth_multiplier : kKnownDepthMultiplier;
-  const int stride = args.stride;
+  const FastDividerUint32 stride = args.stride;
   const int pad_height = args.pad_rows;
   const int pad_width = args.pad_cols;
   const int out_height = args.out_rows;
@@ -908,11 +908,11 @@ __global__ void __launch_bounds__(640, 2)
     const int out_row_start =
         tf_max<int>(0, (in_row - filter_height + pad_height + stride) / stride);
     const int out_row_end =
-        tf_min(out_height - 1, (in_row + pad_height) / stride);
+        tf_min<int>(out_height - 1, (in_row + pad_height) / stride);
     const int out_col_start =
-        tf_max(0, (in_col - filter_width + pad_width + stride) / stride);
+        tf_max<int>(0, (in_col - filter_width + pad_width + stride) / stride);
     const int out_col_end =
-        tf_min(out_width - 1, (in_col + pad_width) / stride);
+        tf_min<int>(out_width - 1, (in_col + pad_width) / stride);
 
     UNROLL for (int out_channel = out_channel_start;
                 out_channel < out_channel_end; ++out_channel) {
@@ -1324,8 +1324,8 @@ __global__ void __launch_bounds__(512, 2)
   const int pad_width = args.pad_cols;
   const int out_depth = args.out_depth;
   const int out_height = args.out_rows;
-  const int out_width = args.out_cols;
-  const int depth_multiplier = args.depth_multiplier;
+  const FastDividerUint32 out_width = args.out_cols;
+  const FastDividerUint32 depth_multiplier = args.depth_multiplier;
   assert(gridDim.x == filter_width);
   assert(gridDim.z == out_depth);
 
