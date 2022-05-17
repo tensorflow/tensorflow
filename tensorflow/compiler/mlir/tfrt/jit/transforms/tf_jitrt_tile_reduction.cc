@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -243,15 +244,17 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
             bindSymbols(b.getContext(), sym0, sym1);
             auto diff_map = mlir::AffineMap::get(0, 2, {sym1 - sym0});
 
-            bvm.map(linalg_op.inputs(), inputs);
-            bvm.map(linalg_op.outputs(), outputs);
-            Value one = rewriter.create<ConstantIndexOp>(nested_loc, 1);
+            Value one = b.create<ConstantIndexOp>(nested_loc, 1);
             auto size = b.createOrFold<mlir::AffineApplyOp>(
                 nested_loc, diff_map, ValueRange{tilable_bound, input_size});
+            std::vector<Value> sliced_inputs;
+            sliced_inputs.reserve(inputs.size());
             for (Value input : inputs) {
-              bvm.map(input, b.create<ExtractSliceOp>(nested_loc, input, ivs,
-                                                      size, one));
+              sliced_inputs.push_back(
+                  b.create<ExtractSliceOp>(nested_loc, input, ivs, size, one));
             }
+            bvm.map(linalg_op.inputs(), sliced_inputs);
+            bvm.map(linalg_op.outputs(), outputs);
             auto new_linalg_op = b.clone(*linalg_op.getOperation(), bvm);
             filter.replaceLinalgTransformationFilter(rewriter, new_linalg_op);
             b.create<mlir::gml_st::YieldOp>(nested_loc,
