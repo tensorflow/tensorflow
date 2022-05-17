@@ -184,10 +184,11 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
 // different invocations of the same gemm operation.
 class GemmUidGenerator {
  public:
+  GemmUidGenerator() : cnt_(0) {}
   int64_t uid() { return cnt_.fetch_add(1); }
 
  private:
-  std::atomic<int64_t> cnt_ = 0;
+  std::atomic<int64_t> cnt_;
 };
 
 template <typename Gemm>
