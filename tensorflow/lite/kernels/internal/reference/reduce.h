@@ -46,6 +46,55 @@ inline bool IsFirstReduction(const int* index, const int num_axis,
 
 namespace tflite {
 
+enum ReduceType {
+  kSum,
+  kProd,
+  kMax,
+  kMin,
+  kAny,
+  kAll,
+};
+
+template <typename T>
+struct SumOp {
+  inline T operator()(const T& a, const T& b) { return a + b; }
+  static constexpr T kNeutralElement = T(0);
+};
+
+template <typename T, typename U>
+struct CastSumOp {
+  inline U operator()(const U& a, const T& b) { return a + static_cast<U>(b); }
+  static constexpr U kNeutralElement = U(0);
+};
+
+template <typename T>
+struct ProdOp {
+  inline T operator()(const T& a, const T& b) { return a * b; }
+  static constexpr T kNeutralElement = T(1);
+};
+
+template <typename T>
+struct MaxOp {
+  inline T operator()(const T& a, const T& b) { return (a > b) ? a : b; }
+  static constexpr T kNeutralElement = std::numeric_limits<T>::lowest();
+};
+
+template <typename T>
+struct MinOp {
+  inline T operator()(const T& a, const T& b) { return (a < b) ? a : b; }
+  static constexpr T kNeutralElement = std::numeric_limits<T>::max();
+};
+
+struct AndOp {
+  inline bool operator()(bool a, bool b) { return a && b; }
+  static constexpr bool kNeutralElement = true;
+};
+
+struct OrOp {
+  inline bool operator()(bool a, bool b) { return a || b; }
+  static constexpr bool kNeutralElement = false;
+};
+
 namespace reference_ops {
 
 // When the number of axis is zero, the reduction is simply a copy.
@@ -62,12 +111,11 @@ void ReduceIsCopy(const T* input_data, const int* input_dims,
 // A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
 // This method iterates through input data and reduce elements along the
 // dimensions given in axis.
-template <typename In, typename Out>
+template <typename In, typename Out, typename Op>
 inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
-                   const int num_axis, int* input_iter,
-                   Out reducer(Out current, const In in), Out* output_data) {
+                   const int num_axis, int* input_iter, Out* output_data) {
   // Reset input iterator.
   for (int idx = 0; idx < input_num_dims; ++idx) {
     input_iter[idx] = 0;
@@ -79,7 +127,7 @@ inline bool Reduce(const In* input_data, const int* input_dims,
     size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
                                                input_iter, num_axis, axis);
     output_data[output_offset] =
-        reducer(output_data[output_offset], input_data[input_offset]);
+        Op()(output_data[output_offset], input_data[input_offset]);
   } while (NextIndex(input_num_dims, input_dims, input_iter));
   return true;
 }
@@ -215,13 +263,9 @@ inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
                           const int output_num_dims, const int* axis,
                           const int num_axis, int* input_iter,
                           Out* output_data) {
-  auto reducer = [](const Out current, const In in) -> Out {
-    const Out actual_in = static_cast<Out>(in);
-    return current + actual_in;
-  };
-  return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
-                         output_num_dims, axis, num_axis, input_iter, reducer,
-                         output_data);
+  return Reduce<In, Out, CastSumOp<In, Out>>(
+      input_data, input_dims, output_dims, input_num_dims, output_num_dims,
+      axis, num_axis, input_iter, output_data);
 }
 
 template <typename T>
@@ -244,15 +288,37 @@ inline bool InitTensorDataForReduce(const int* dims, const int num_dims,
 }
 
 // Computes the generic value (i.e., sum/max/min/prod) of elements across
-// dimensions given in axis. It needs to pass in init_value and reducer.
+// dimensions given in axis. It needs to pass in reducer.
 template <typename T>
 inline bool ReduceGeneric(const T* input_data, const int* input_dims,
                           const int input_num_dims, T* output_data,
                           const int* output_dims, const int output_num_dims,
                           const int* axis, const int64_t num_axis_dimensions,
                           bool keep_dims, int* temp_index, int* resolved_axis,
-                          int* normalized_dims, T init_value,
-                          T reducer(const T current, const T in)) {
+                          int* normalized_dims, ReduceType reduce_type) {
+  T init_value;
+  switch (reduce_type) {
+    case kProd:
+      init_value = ProdOp<T>::kNeutralElement;
+      break;
+    case kSum:
+      init_value = SumOp<T>::kNeutralElement;
+      break;
+    case kMin:
+      init_value = MinOp<T>::kNeutralElement;
+      break;
+    case kMax:
+      init_value = MaxOp<T>::kNeutralElement;
+      break;
+    case kAny:
+      init_value = OrOp::kNeutralElement;
+      break;
+    case kAll:
+      init_value = AndOp::kNeutralElement;
+      break;
+    default:
+      return false;
+  }
   // Reset output data.
   if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
                                output_data)) {
@@ -271,14 +337,45 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
   // Return early when input shape has zero dim. This is done after initializing
   // data for output tensor because there are cases that the input tensor is
   // empty but output tensor is not. In that case, output tensor should be
-  // filled with init_value.
+  // filled with Op::kNeutralElement.
   for (int i = 0; i < input_num_dims; ++i) {
     if (input_dims[i] == 0) return true;
   }
 
-  return Reduce<T, T>(input_data, normalized_dims, output_dims,
-                      normalized_num_dims, output_num_dims, resolved_axis,
-                      num_resolved_axis, temp_index, reducer, output_data);
+  switch (reduce_type) {
+    case kProd:
+      return Reduce<T, T, ProdOp<T>>(input_data, normalized_dims, output_dims,
+                                     normalized_num_dims, output_num_dims,
+                                     resolved_axis, num_resolved_axis,
+                                     temp_index, output_data);
+    case kSum:
+      return Reduce<T, T, SumOp<T>>(input_data, normalized_dims, output_dims,
+                                    normalized_num_dims, output_num_dims,
+                                    resolved_axis, num_resolved_axis,
+                                    temp_index, output_data);
+    case kMin:
+      return Reduce<T, T, MinOp<T>>(input_data, normalized_dims, output_dims,
+                                    normalized_num_dims, output_num_dims,
+                                    resolved_axis, num_resolved_axis,
+                                    temp_index, output_data);
+    case kMax:
+      return Reduce<T, T, MaxOp<T>>(input_data, normalized_dims, output_dims,
+                                    normalized_num_dims, output_num_dims,
+                                    resolved_axis, num_resolved_axis,
+                                    temp_index, output_data);
+    case kAll:
+      return Reduce<T, T, AndOp>(input_data, normalized_dims, output_dims,
+                                 normalized_num_dims, output_num_dims,
+                                 resolved_axis, num_resolved_axis, temp_index,
+                                 output_data);
+    case kAny:
+      return Reduce<T, T, OrOp>(input_data, normalized_dims, output_dims,
+                                normalized_num_dims, output_num_dims,
+                                resolved_axis, num_resolved_axis, temp_index,
+                                output_data);
+    default:
+      return false;
+  }
 }
 
 // Computes the mean of elements across dimensions given in axis.

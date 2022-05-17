@@ -737,8 +737,7 @@ void ReduceAllDims(const T* input_data, const int* input_dims,
 // The underlying logic for Reduce Sum/Prod/Max/Min/Any
 template <typename T>
 TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
-                       OpContext* op_context, T init_value,
-                       T reducer(const T current, const T in)) {
+                       OpContext* op_context, ReduceType reduce_type) {
   int64_t num_axis = NumElements(op_context->axis);
   TfLiteTensor* temp_index;
   TF_LITE_ENSURE_OK(context,
@@ -778,9 +777,47 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
     return kTfLiteError;
   }
   if (IsReduceAllDims(resolved_axis, num_resolved_axis, normalized_num_dims)) {
+    T (*reducer)(const T current, const T in);
+    T neutral_element;
+    switch (reduce_type) {
+      case kProd:
+        neutral_element = ProdOp<T>::kNeutralElement;
+        reducer = [](const T current, const T in) -> T { return in * current; };
+        break;
+      case kSum:
+        neutral_element = SumOp<T>::kNeutralElement;
+        reducer = [](const T current, const T in) -> T { return in + current; };
+        break;
+      case kMin:
+        neutral_element = MinOp<T>::kNeutralElement;
+        reducer = [](const T current, const T in) -> T {
+          return (in < current) ? in : current;
+        };
+        break;
+      case kMax:
+        neutral_element = MaxOp<T>::kNeutralElement;
+        reducer = [](const T current, const T in) -> T {
+          return (in > current) ? in : current;
+        };
+        break;
+      case kAny:
+        neutral_element = OrOp::kNeutralElement;
+        reducer = [](const T current, const T in) -> T {
+          return in || current;
+        };
+        break;
+      case kAll:
+        neutral_element = AndOp::kNeutralElement;
+        reducer = [](const T current, const T in) -> T {
+          return in && current;
+        };
+        break;
+      default:
+        return kTfLiteError;
+    }
     ReduceAllDims(GetTensorData<T>(input), GetTensorData<int>(normalized_dims),
                   normalized_num_dims, GetTensorData<T>(op_context->output),
-                  init_value, reducer, context);
+                  neutral_element, reducer, context);
     return kTfLiteOk;
   }
   if (num_axis == 0) {
@@ -791,77 +828,14 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
   }
   TF_LITE_ENSURE(
       context,
-      reference_ops::ReduceGeneric<T>(
+      reference_ops::ReduceGeneric(
           GetTensorData<T>(input), input->dims->data, input->dims->size,
           GetTensorData<T>(op_context->output), op_context->output->dims->data,
           op_context->output->dims->size, GetTensorData<int>(op_context->axis),
           num_axis, op_context->params->keep_dims,
           GetTensorData<int>(temp_index), GetTensorData<int>(resolved_axis),
-          GetTensorData<int>(normalized_dims), init_value, reducer));
+          GetTensorData<int>(normalized_dims), reduce_type));
   return kTfLiteOk;
-}
-
-enum ReduceType {
-  kSum,
-  kProd,
-  kMax,
-  kMin,
-  kAny,
-  kAll,
-};
-
-// Eval for determined input type and reduce type.
-template <typename T>
-TfLiteStatus EvalType(TfLiteContext* context, TfLiteNode* node,
-                      OpContext* op_context, ReduceType reduce_type) {
-  switch (reduce_type) {
-    case kSum:
-      return EvalLogic<T>(
-          context, node, op_context, static_cast<T>(0),
-          [](const T current, const T in) -> T { return in + current; });
-      break;
-    case kProd:
-      return EvalLogic<T>(
-          context, node, op_context, static_cast<T>(1),
-          [](const T current, const T in) -> T { return in * current; });
-      break;
-    case kMax:
-      return EvalLogic<T>(context, node, op_context,
-                          std::numeric_limits<T>::lowest(),
-                          [](const T current, const T in) -> T {
-                            return (in > current) ? in : current;
-                          });
-      break;
-    case kMin:
-      return EvalLogic<T>(context, node, op_context,
-                          std::numeric_limits<T>::max(),
-                          [](const T current, const T in) -> T {
-                            return (in < current) ? in : current;
-                          });
-      break;
-    default:
-      return kTfLiteError;
-  }
-}
-
-// Template specialization for bool type
-template <>
-TfLiteStatus EvalType<bool>(TfLiteContext* context, TfLiteNode* node,
-                            OpContext* op_context, ReduceType reduce_type) {
-  switch (reduce_type) {
-    case kAny:
-      return EvalLogic<bool>(context, node, op_context, false,
-                             [](const bool current, const bool in) -> bool {
-                               return in || current;
-                             });
-    case kAll:
-      return EvalLogic<bool>(context, node, op_context, true,
-                             [](const bool current, const bool in) -> bool {
-                               return in && current;
-                             });
-    default:
-      return kTfLiteError;
-  }
 }
 
 // The entry point that handles input types and then calls template functions to
@@ -874,25 +848,25 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      return EvalType<float>(context, node, &op_context, reduce_type);
+      return EvalLogic<float>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteInt32:
-      return EvalType<int>(context, node, &op_context, reduce_type);
+      return EvalLogic<int>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteInt64:
-      return EvalType<int64_t>(context, node, &op_context, reduce_type);
+      return EvalLogic<int64_t>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteUInt8:
-      return EvalType<uint8_t>(context, node, &op_context, reduce_type);
+      return EvalLogic<uint8_t>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteInt8:
-      return EvalType<int8_t>(context, node, &op_context, reduce_type);
+      return EvalLogic<int8_t>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteInt16:
-      return EvalType<int16_t>(context, node, &op_context, reduce_type);
+      return EvalLogic<int16_t>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteBool:
-      return EvalType<bool>(context, node, &op_context, reduce_type);
+      return EvalLogic<bool>(context, node, &op_context, reduce_type);
       break;
     default:
       return kTfLiteError;
@@ -1064,7 +1038,7 @@ TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
   } else {
-    return EvalGeneric<reduce::kReference, reduce::kProd>(context, node);
+    return EvalGeneric<reduce::kReference, kProd>(context, node);
   }
 }
 
@@ -1097,30 +1071,30 @@ TfLiteRegistration* Register_REDUCE_PROD_REF() {
 }
 
 TfLiteRegistration* Register_REDUCE_MAX_REF() {
-  static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
-      reduce::EvalGeneric<reduce::kReference, reduce::kMax>};
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareSimple,
+                                 reduce::EvalGeneric<reduce::kReference, kMax>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_MIN_REF() {
-  static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
-      reduce::EvalGeneric<reduce::kReference, reduce::kMin>};
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareSimple,
+                                 reduce::EvalGeneric<reduce::kReference, kMin>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_ANY_REF() {
-  static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareAllOrAny,
-      reduce::EvalGeneric<reduce::kReference, reduce::kAny>};
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareAllOrAny,
+                                 reduce::EvalGeneric<reduce::kReference, kAny>};
   return &r;
 }
 
 TfLiteRegistration* Register_REDUCE_ALL_REF() {
-  static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareAllOrAny,
-      reduce::EvalGeneric<reduce::kReference, reduce::kAll>};
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareAllOrAny,
+                                 reduce::EvalGeneric<reduce::kReference, kAll>};
   return &r;
 }
 
