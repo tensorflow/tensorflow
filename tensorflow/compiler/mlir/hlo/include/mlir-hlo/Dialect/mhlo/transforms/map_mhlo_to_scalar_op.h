@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -310,8 +311,14 @@ inline Value MapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
   if (element_type.isSignlessInteger() || element_type.isSignedInteger()) {
     // lmhlo.abs(x, result) ->  result = select((x > 0), x, sub(0, x))
     Value lhs = args[0];
-    Value zero_intval =
-        b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
+    auto integer_type = element_type.dyn_cast<IntegerType>();
+
+    Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
+        loc, 0, integer_type.getWidth());
+    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+      zero_intval =
+          b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
+    }
     auto lhs_gt_zero = b->create<ScalarIOp<CompareOp>>(
         loc, arith::CmpIPredicate::sge, lhs, zero_intval);
     auto neg_val = b->create<ScalarIOp<mhlo::SubOp>>(loc, zero_intval, lhs);
@@ -499,14 +506,21 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     // When casting to bool, we need to compare whether the value is equal to
     // zero.
     if (source_type.isSignlessInteger() || source_type.isUnsignedInteger()) {
-      Value zero_intval = b->create<arith::ConstantOp>(
-          loc, b->getZeroAttr(args.front().getType()));
+      Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
+          loc, 0, source_type.cast<IntegerType>().getWidth());
+      if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+        zero_intval =
+            b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
+      }
       return b->create<mlir::arith::CmpIOp>(loc, arith::CmpIPredicate::ne,
                                             args.front(), zero_intval);
     }
     if (source_type.isa<FloatType>()) {
-      Value zero = b->create<arith::ConstantOp>(
-          loc, b->getZeroAttr(args.front().getType()));
+      Value zero =
+          b->create<arith::ConstantOp>(loc, b->getFloatAttr(source_type, 0.0));
+      if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+        zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
+      }
       return b->create<mlir::arith::CmpFOp>(loc, arith::CmpFPredicate::UNE,
                                             args.front(), zero);
     }
@@ -665,8 +679,11 @@ inline Value MhloAlwaysPropagateNaN(Value v, ValueRange args, Location loc,
                                                  args[0], args[1]);
 
     auto nan_apfloat = APFloat::getQNaN(float_type.getFloatSemantics());
-    Value nan = b->create<arith::ConstantOp>(
-        loc, b->getFloatAttr(args[0].getType(), nan_apfloat));
+    Value nan =
+        b->create<mlir::arith::ConstantFloatOp>(loc, nan_apfloat, float_type);
+    if (VectorType vec_type = args[0].getType().dyn_cast<VectorType>()) {
+      nan = b->create<::mlir::vector::SplatOp>(loc, vec_type, nan);
+    }
     v = b->create<mlir::arith::SelectOp>(loc, isnan, nan, v);
   }
   return v;
@@ -718,8 +735,14 @@ inline Value MapMhloOpToStdScalarOp<mhlo::NegOp>(Location loc,
   if (element_type.isa<IntegerType>()) {
     // lmhlo.neg(x, result) -> result = sub(0, x)
     Value lhs = args[0];
-    Value zero_intval =
-        b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
+    auto integer_type = element_type.dyn_cast<IntegerType>();
+
+    Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
+        loc, 0, integer_type.getWidth());
+    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+      zero_intval =
+          b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
+    }
     return b->create<ScalarIOp<mhlo::SubOp>>(loc, zero_intval, lhs);
   }
   return nullptr;
@@ -732,10 +755,11 @@ inline Value MapMhloOpToStdScalarOp<mhlo::NotOp>(
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
     // lmhlo.not(x) -> x ^ -1
-    Value all_ones = b->create<arith::ConstantOp>(
-        loc,
-        b->getIntegerAttr(args[0].getType(),
-                          APInt::getAllOnesValue(integer_type.getWidth())));
+    Value all_ones = b->create<::mlir::arith::ConstantIntOp>(
+        loc, -1, integer_type.getWidth());
+    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+      all_ones = b->create<::mlir::vector::SplatOp>(loc, vec_type, all_ones);
+    }
     return b->create<::mlir::arith::XOrIOp>(loc, all_ones, args[0]);
   }
   return nullptr;
@@ -866,8 +890,15 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto float_type = element_type.dyn_cast<FloatType>()) {
+    bool ignored;
+    APFloat zero_apfloat(0.0f);
+    zero_apfloat.convert(float_type.getFloatSemantics(),
+                         APFloat::rmNearestTiesToEven, &ignored);
     Value zero =
-        b->create<arith::ConstantOp>(loc, b->getZeroAttr(args[0].getType()));
+        b->create<mlir::arith::ConstantFloatOp>(loc, zero_apfloat, float_type);
+    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+      zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
+    }
     Value ne0_i1 = b->create<::mlir::arith::CmpFOp>(
         loc, arith::CmpFPredicate::ONE, args[0], zero);
     Value ne0_float =
@@ -880,15 +911,18 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
   }
   if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
     // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
-    Value zero =
-        b->create<arith::ConstantOp>(loc, b->getZeroAttr(args[0].getType()));
-    Value bitwidth_minus_one = b->create<arith::ConstantOp>(
-        loc, b->getIntegerAttr(
-                 args[0].getType(),
-                 APInt(integer_type.getWidth(), integer_type.getWidth() - 1)));
-    Value one = b->create<arith::ConstantOp>(
-        loc, b->getIntegerAttr(args[0].getType(),
-                               APInt(integer_type.getWidth(), 1)));
+    Value zero = b->create<::mlir::arith::ConstantIntOp>(
+        loc, 0, integer_type.getWidth());
+    Value bitwidth_minus_one = b->create<::mlir::arith::ConstantIntOp>(
+        loc, integer_type.getWidth() - 1, integer_type.getWidth());
+    Value one = b->create<::mlir::arith::ConstantIntOp>(
+        loc, 1, integer_type.getWidth());
+    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+      zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
+      bitwidth_minus_one =
+          b->create<::mlir::vector::SplatOp>(loc, vec_type, bitwidth_minus_one);
+      one = b->create<::mlir::vector::SplatOp>(loc, vec_type, one);
+    }
     Value cmp = b->create<::mlir::arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
                                                  args[0], zero);
     Value ashr =
