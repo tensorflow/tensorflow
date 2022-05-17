@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -split-input-file -shape-inference=graph-version=1010 %s | FileCheck %s
+// RUN: tfg-transforms-opt -split-input-file -tfg-shape-inference=graph-version=1010 %s | FileCheck %s
 
 module  {
   tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {

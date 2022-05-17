@@ -254,7 +254,7 @@ def ControlFlowSink : Pass<"tfg-cf-sink", "GraphFuncOp"> {
   ];
 }
 
-def Remapper : Pass<"remapper"> {
+def Remapper : Pass<"tfg-remapper"> {
   let summary = "Remap operations to decrease amount of operations";
   let description = [{
     This is TF-level instruction selection. It remaps operations onto other
@@ -384,7 +384,7 @@ def EliminatePassthroughIterArgs : Pass<"tfg-eliminate-passthrough-iter-args",
   let dependentDialects = ["tfg::TFGraphDialect"];
 }
 
-def ShapeInference : Pass<"shape-inference"> {
+def ShapeInference : Pass<"tfg-shape-inference"> {
   let summary = "Infer the output shape of operations";
   let description = [{
     Infer the result shape of an operation if possible. Besides inferring the op
@@ -398,7 +398,7 @@ def ShapeInference : Pass<"shape-inference"> {
   let constructor = "CreateShapeInferencePass()";
 }
 
-def ConstantFoldingPass : Pass<"constant-folding"> {
+def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
   let summary = "constant-folding on tfg";
   let description = [{
     This pass will fold operations into constants and do full/partial propagte
