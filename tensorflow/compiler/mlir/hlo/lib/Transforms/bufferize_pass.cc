@@ -236,7 +236,8 @@ struct OneShotBufferizePass
     opts.allowReturnAllocs = true;
     opts.dropEquivalentFuncResults = false;
     opts.bufferizeFunctionBoundaries = true;
-    opts.fullyDynamicLayoutMaps = false;
+    opts.functionBoundaryTypeConversion =
+        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
     opts.createDeallocs = false;
     opts.bufferAlignment = 64;
 

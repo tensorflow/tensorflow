@@ -1696,7 +1696,7 @@ func.func @different_op_based_side_effects(
 
 // Tests that we don't create dependencies between ops with different op-based
 // and value-based side effects.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @mixed_op_based_value_based_side_effects(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1734,7 +1734,7 @@ func.func @mixed_op_based_value_based_side_effects(
 
 // Tests that we create dependencies between `_XlaRecvAtHostV2` ops with equal
 // keys.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @recv_equal_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1768,7 +1768,7 @@ func.func @recv_equal_keys(
 
 // Tests that we create dependencies between `_XlaSendFromHostV2` ops with equal
 // keys.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @send_equal_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1803,7 +1803,7 @@ func.func @send_equal_keys(
 
 // Tests that we don't create dependencies between `_XlaRecvAtHostV2` ops with
 // different keys (corresponding to different resources).
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @recv_different_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1834,7 +1834,7 @@ func.func @recv_different_keys(
 
 // Tests that we don't create dependencies between `_XlaSendFromHostV2` ops with
 // different keys (corresponding to different resources).
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @send_different_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,

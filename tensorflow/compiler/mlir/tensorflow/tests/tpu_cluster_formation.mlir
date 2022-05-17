@@ -259,7 +259,7 @@ func.func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>
 // replicate operands and results.
 // CHECK-LABEL: func @replication_with_model_parallelism
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_1:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_2:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_3:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>)
-!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
+!rtype = tensor<!tf_type.resource<tensor<10x3xf32>>>
 
 func.func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>, tensor<f32>) {
   %0 = "tf.opA"() {is_stateless = true} : () -> tensor<i32>
@@ -471,7 +471,7 @@ func.func @cluster_nested_op_using_other_op() {
 // CHECK:    "tf.opD"([[CLUSTER]])
 
 // Preceding user is using resource updated by a nested op.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 // CHECK-LABEL: func @cluster_nested_op_updating_resource
 func.func @cluster_nested_op_updating_resource() {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
@@ -531,7 +531,7 @@ func.func @cluster_nested_op_using_resource() {
 // -----
 
 
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // Test multiple replicated clusters interleaved and uses resource variables.
 // CHECK-LABEL: func @multiple_replicated_interleaved
@@ -600,7 +600,7 @@ func.func @bad_num_replicas() {
 // -----
 
 // Test cluster with bad `num_cores_per_replica` attribute.
-!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
+!rtype = tensor<!tf_type.resource<tensor<10x3xf32>>>
 func.func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>) {
   %2 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
   %3 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
