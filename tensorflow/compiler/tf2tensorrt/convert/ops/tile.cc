@@ -199,8 +199,6 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
   }
 };
 
-REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertTile>(), "Tile");
-
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
