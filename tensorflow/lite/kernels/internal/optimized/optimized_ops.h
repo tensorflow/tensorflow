@@ -1198,11 +1198,11 @@ inline bool MeanGeneral(const T* input_data, const int* input_dims,
                         const int* output_dims, const int output_num_dims,
                         const int* axis, const int num_axis_dimensions,
                         bool keep_dims, int* temp_index, int* resolved_axis,
-                        U* temp_sum) {
+                        int* normalized_dims, U* temp_sum) {
   return reference_ops::Mean(input_data, input_dims, input_num_dims,
                              output_data, output_dims, output_num_dims, axis,
                              num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
+                             resolved_axis, normalized_dims, temp_sum);
 }
 
 template <>
@@ -1210,7 +1210,8 @@ inline bool MeanGeneral<float, float>(
     const float* input_data, const int* input_dims, const int input_num_dims,
     float* output_data, const int* output_dims, const int output_num_dims,
     const int* axis, const int num_axis_dimensions, bool keep_dims,
-    int* temp_index, int* resolved_axis, float* temp_sum) {
+    int* temp_index, int* resolved_axis, int* normalized_dims,
+    float* temp_sum) {
   // Handle reduce_mean for the last dimensions.
   if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
     ruy::profiler::ScopeLabel label("MeanLastDim/Float");
@@ -1231,7 +1232,7 @@ inline bool MeanGeneral<float, float>(
   return reference_ops::Mean(input_data, input_dims, input_num_dims,
                              output_data, output_dims, output_num_dims, axis,
                              num_axis_dimensions, keep_dims, temp_index,
-                             resolved_axis, temp_sum);
+                             resolved_axis, normalized_dims, temp_sum);
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,

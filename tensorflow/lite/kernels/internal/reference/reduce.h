@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -113,12 +115,28 @@ inline bool Reduce(const In* input_data, const int* input_dims,
   return true;
 }
 
-// This method parses the input 'axis' to remove duplicates and handle negative
-// values, and returns a valid 'out_axis'
+// Bubble sort for sorting small inputs. std::sort may dynamically allocate
+// memory so is not suitable for use in TFLM.
+static void sort(int* input, int size) {
+  for (int i = 0; i < size - 1; ++i) {
+    for (int j = 0; j < size - i - 1; ++j) {
+      if (input[j] > input[j + 1]) {
+        std::swap(input[j], input[j + 1]);
+      }
+    }
+  }
+}
+
+// This method parses the input 'axis' to remove duplicates, handle negative
+// values and remove redundant dimensions. It returns a valid 'out_axis' and
+// 'shape_out' contains the flattened input shape. 'out_num_dims' contains the
+// reduced number of dimensions.
 inline bool ResolveAxis(const int num_dims, const int* axis,
                         const int64_t num_axis, int* out_axis,
-                        int* out_num_axis) {
-  *out_num_axis = 0;  // Just in case.
+                        int* out_num_axis, const int* shape_in, int* shape_out,
+                        int* out_num_dims) {
+  int num_out_axis = 0;
+  int dims_out = num_dims;
   // Short-circuit axis resolution for scalars; the axis will go unused.
   if (num_dims == 0) {
     return true;
@@ -129,22 +147,64 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
     // negative index 'n_idx' as: n_idx = p_idx-num_dims
     // eg: For num_dims=3, [0, 1, 2] is the same as [-3, -2, -1]  */
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
-    TFLITE_DCHECK(current >= 0 && current < num_dims);
     if (current < 0 || current >= num_dims) {
       return false;
     }
     bool is_dup = false;
-    for (int j = 0; j < *out_num_axis; ++j) {
+    for (int j = 0; j < num_out_axis; ++j) {
       if (out_axis[j] == current) {
         is_dup = true;
         break;
       }
     }
     if (!is_dup) {
-      out_axis[*out_num_axis] = current;
-      *out_num_axis += 1;
+      out_axis[num_out_axis] = current;
+      num_out_axis += 1;
     }
   }
+  // If two or more adjacent dimensions are either reduced
+  // over or not, then the second and subsequent dimensions may be flattened.
+  memcpy(shape_out, shape_in, num_dims * sizeof(int));
+  if (num_out_axis > 0) {
+    sort(out_axis, num_out_axis);
+
+    int64_t j = num_out_axis - 1;
+    // true if the previous index is present in out_axis.
+    bool previous_here = (out_axis[j] == num_dims - 1);
+    if (previous_here) {
+      j -= 1;
+    }
+
+    for (int64_t i = num_dims - 2; i >= 0; --i) {
+      // true if the current index is present in out_axis.
+      bool current_here = j >= 0 ? (out_axis[j] == i) : false;
+      if (current_here == previous_here) {
+        shape_out[i] *= shape_out[i + 1];
+        for (int64_t k = i + 1; k + 1 < num_dims; ++k) {
+          shape_out[k] = shape_out[k + 1];
+        }
+        // All axis bigger than this need to be reduced by 1.
+        for (int64_t k = 0; k < num_out_axis; ++k) {
+          if (out_axis[k] > i) {
+            out_axis[k] -= 1;
+          }
+        }
+        if (current_here) {
+          for (int64_t k = j + 1; k + 1 < num_out_axis; ++k) {
+            out_axis[k] = out_axis[k + 1];
+          }
+          num_out_axis -= 1;
+        }
+        dims_out -= 1;
+      }
+      if (current_here) {
+        j -= 1;
+      }
+      previous_here = current_here;
+    }
+  }
+  *out_num_axis = num_out_axis;
+  *out_num_dims = dims_out;
   return true;
 }
 
@@ -191,11 +251,20 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
                           const int* output_dims, const int output_num_dims,
                           const int* axis, const int64_t num_axis_dimensions,
                           bool keep_dims, int* temp_index, int* resolved_axis,
-                          T init_value,
+                          int* normalized_dims, T init_value,
                           T reducer(const T current, const T in)) {
   // Reset output data.
   if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
                                output_data)) {
+    return false;
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis, input_dims, normalized_dims,
+                   &normalized_num_dims)) {
     return false;
   }
 
@@ -207,16 +276,9 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
     if (input_dims[i] == 0) return true;
   }
 
-  // Resolve axis.
-  int num_resolved_axis = 0;
-  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
-                   &num_resolved_axis)) {
-    return false;
-  }
-
-  return Reduce<T, T>(input_data, input_dims, output_dims, input_num_dims,
-                      output_num_dims, resolved_axis, num_resolved_axis,
-                      temp_index, reducer, output_data);
+  return Reduce<T, T>(input_data, normalized_dims, output_dims,
+                      normalized_num_dims, output_num_dims, resolved_axis,
+                      num_resolved_axis, temp_index, reducer, output_data);
 }
 
 // Computes the mean of elements across dimensions given in axis.
@@ -227,7 +289,8 @@ inline bool Mean(const T* input_data, const int* input_dims,
                  const int input_num_dims, T* output_data,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
-                 int* temp_index, int* resolved_axis, U* temp_sum) {
+                 int* temp_index, int* resolved_axis, int* normalized_dims,
+                 U* temp_sum) {
   if (num_axis_dimensions == 0) {
     ReduceIsCopy(input_data, input_dims, input_num_dims, output_data);
     return true;
@@ -250,21 +313,23 @@ inline bool Mean(const T* input_data, const int* input_dims,
 
   // Resolve axis.
   int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
   if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
-                   &num_resolved_axis)) {
+                   &num_resolved_axis, input_dims, normalized_dims,
+                   &normalized_num_dims)) {
     return false;
   }
 
-  if (!ReduceSumImpl<T, U>(input_data, input_dims, output_dims, input_num_dims,
-                           output_num_dims, resolved_axis, num_resolved_axis,
-                           temp_index, temp_sum)) {
+  if (!ReduceSumImpl<T, U>(input_data, normalized_dims, output_dims,
+                           normalized_num_dims, output_num_dims, resolved_axis,
+                           num_resolved_axis, temp_index, temp_sum)) {
     return false;
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
   size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
+    size_t current = static_cast<size_t>(normalized_dims[resolved_axis[idx]]);
     // Overflow prevention.
     if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
@@ -388,15 +453,13 @@ inline void Mean(const tflite::MeanParams& op_params,
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis for quantized values.
 template <typename T, typename U>
-inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
-                               float input_scale, const int* input_dims,
-                               const int input_num_dims, T* output_data,
-                               int32_t output_zero_point, float output_scale,
-                               const int* output_dims,
-                               const int output_num_dims, const int* axis,
-                               const int num_axis_dimensions, bool keep_dims,
-                               int* temp_index, int* resolved_axis, U* temp_sum,
-                               bool compute_sum) {
+inline bool QuantizedMeanOrSum(
+    const T* input_data, int32_t input_zero_point, float input_scale,
+    const int* input_dims, const int input_num_dims, T* output_data,
+    int32_t output_zero_point, float output_scale, const int* output_dims,
+    const int output_num_dims, const int* axis, const int num_axis_dimensions,
+    bool keep_dims, int* temp_index, int* resolved_axis, int* normalized_dims,
+    U* temp_sum, bool compute_sum) {
   if (num_axis_dimensions == 0) {
     ReduceIsCopy(input_data, input_dims, input_num_dims, output_data);
     return true;
@@ -435,21 +498,23 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
 
   // Resolve axis.
   int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
   if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
-                   &num_resolved_axis)) {
+                   &num_resolved_axis, input_dims, normalized_dims,
+                   &normalized_num_dims)) {
     return false;
   }
 
-  if (!ReduceSumImpl<T, U>(input_data, input_dims, output_dims, input_num_dims,
-                           output_num_dims, resolved_axis, num_resolved_axis,
-                           temp_index, temp_sum)) {
+  if (!ReduceSumImpl<T, U>(input_data, normalized_dims, output_dims,
+                           normalized_num_dims, output_num_dims, resolved_axis,
+                           num_resolved_axis, temp_index, temp_sum)) {
     return false;
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
   size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
+    size_t current = static_cast<size_t>(normalized_dims[resolved_axis[idx]]);
     // Overflow prevention.
     if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
@@ -486,22 +551,22 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
 }
 
 template <typename T>
-inline bool QuantizedReduceProd(const T* input_data, int32_t input_zero_point,
-                                const RuntimeShape& input_shape, T* output_data,
-                                int32_t output_zero_point,
-                                const RuntimeShape& output_shape,
-                                const int* axis,
-                                const int64_t num_axis_dimensions,
-                                bool keep_dims, int* temp_index,
-                                int* resolved_axis, int32_t* temp_prod,
-                                int32_t scaling_multiplier, int scaling_shift) {
+inline bool QuantizedReduceProd(
+    const T* input_data, int32_t input_zero_point,
+    const RuntimeShape& input_shape, T* output_data, int32_t output_zero_point,
+    const RuntimeShape& output_shape, const int* axis,
+    const int64_t num_axis_dimensions, bool keep_dims, int* temp_index,
+    int* resolved_axis, int* normalized_dims, int32_t* temp_prod,
+    int32_t scaling_multiplier, int scaling_shift) {
   const int32_t kMinValue = std::numeric_limits<T>::min();
   const int32_t kMaxValue = std::numeric_limits<T>::max();
 
   // Resolve axis.
   int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
   if (!ResolveAxis(input_shape.DimensionsCount(), axis, num_axis_dimensions,
-                   resolved_axis, &num_resolved_axis)) {
+                   resolved_axis, &num_resolved_axis, input_shape.DimsData(),
+                   normalized_dims, &normalized_num_dims)) {
     return false;
   }
 
@@ -516,11 +581,10 @@ inline bool QuantizedReduceProd(const T* input_data, int32_t input_zero_point,
                                          scaling_shift);
   };
 
-  if (!Reduce<T, int32_t>(
-          input_data, input_shape.DimsData(), output_shape.DimsData(),
-          input_shape.DimensionsCount(), output_shape.DimensionsCount(),
-          resolved_axis, num_resolved_axis, temp_index, reducer_first,
-          reducer_next, temp_prod)) {
+  if (!Reduce<T, int32_t>(input_data, normalized_dims, output_shape.DimsData(),
+                          normalized_num_dims, output_shape.DimensionsCount(),
+                          resolved_axis, num_resolved_axis, temp_index,
+                          reducer_first, reducer_next, temp_prod)) {
     return false;
   }
 
