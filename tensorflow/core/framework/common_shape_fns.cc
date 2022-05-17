@@ -706,9 +706,14 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
                                          /*num_dims=*/4, data_format));
   } else {
+    if (padding == Padding::EXPLICIT) {
+      return errors::InvalidArgument(
+          "Expected non-explicit padding but got explicit padding");
+    }
     std::vector<int64_t> p_list;
+    // `padding_list` attribute is used by Fused int8 convolutions to support
+    // explicit paddings.
     Status s_p_list = c->GetAttr("padding_list", &p_list);
-    CHECK(padding != Padding::EXPLICIT);  // Crash ok.
     if (!s_p_list.ok() && !errors::IsNotFound(s_p_list)) {
       return s_p_list;
     }
