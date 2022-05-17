@@ -128,7 +128,7 @@ class ControlFlowTransformer(converter.Base):
           symbol_name=gast.Constant(s.ssf(), kind=None))
     return assignments
 
-  def _get_block_basic_vars(self, modified, live_in, live_out, iter_var):
+  def _get_block_basic_vars(self, modified, live_in, live_out, iter_var=[]):
     nonlocals = self.state[_Function].scope.nonlocals
     basic_scope_vars = []
     for s in modified:
