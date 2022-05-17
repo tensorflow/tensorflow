@@ -21,7 +21,7 @@ import tensorflow as tf
 
 from tensorflow.python.autograph.tests import reference_test_base
 
-
+#tf.autograph.set_verbosity(10, True)
 def for_with_local_var(l):
   s = 0
   for i in l:
@@ -38,11 +38,20 @@ def while_with_local_var(x):
     x -= 1
   return s
 
-def for_with_lambda_var(l):
+def for_with_lambda_iter(l):
   fns = []
   results = []
   for i in l:
     fns.append(lambda: i+i)
+  for f in fns:
+    results.append(f())
+  return results
+
+def for_with_lambda_iter_local_var(l):
+  fns = []
+  results = []
+  for i in l:
+    fns.append(lambda i=i: i+i)
   for f in fns:
     results.append(f())
   return results
@@ -130,15 +139,25 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
     self.assertFunctionMatchesEager(for_with_local_var, l)
 
   @parameterized.parameters(*itertools.product(
-      ([], [1], [1, 2]),
-      (list, _int_tensor),
+      ([1], [1, 2]),
+      (list, list),
   ))
-  def test_for_with_lambda_var(self, l, type_):
+  def test_for_with_lambda_iter(self, l, type_):
+    self.skipTest("TODO")
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter, l)
+
+  @parameterized.parameters(*itertools.product(
+      ([1], [1, 2]),
+      (list, list),
+  ))
+
+  def test_for_with_lambda_iter_local_var(self, l, type_):
     
     #self.skipTest("TODO")
 
     l = type_(l)
-    self.assertFunctionMatchesEager(for_with_lambda_var, l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter_local_var, l)
 
   @parameterized.parameters(*itertools.product(
       (0, 1, 2),
