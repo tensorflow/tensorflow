@@ -179,26 +179,6 @@ template <typename F>
 
 namespace {
 
-// Clears all sharding attributes from instructions in the module. This must be
-// called only after all SPMD transformation is complete.
-Status ClearShardingAttributes(HloModule* module) {
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* hlo : computation->instructions()) {
-      // Keep sharding annotation on Infeed and entry parameters since they're
-      // used by HloReplicationAnalysis later (for ArCrsCombiner).
-      if (hlo->opcode() == HloOpcode::kInfeed) {
-        continue;
-      }
-      if (hlo->opcode() == HloOpcode::kParameter &&
-          computation == module->entry_computation()) {
-        continue;
-      }
-      hlo->clear_sharding();
-    }
-  }
-  return Status::OK();
-}
-
 std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
   int64_t group_size = 1;
@@ -1722,7 +1702,7 @@ std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
 }
 
 Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
-  if (hlo->HasSideEffect()) {
+  if (hlo->HasSideEffect() && !hlo->sharding().HasUniqueDevice()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
                          hlo->ToString());
   }
@@ -1743,6 +1723,9 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding().HasUniqueDevice()
                              ? hlo->sharding()
                              : HloSharding::Replicate();
+  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv) {
+    sharding = sharding.GetSubSharding(hlo->shape(), {0});
+  }
 
   // If the instruction cannot be partitioned, replicate the instruction unless
   // the instruction has side-effect.
@@ -4200,7 +4183,6 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(pass.Run(module).status());
   }
 
-  TF_RETURN_IF_ERROR(ClearShardingAttributes(module));
   return changed;
 }
 

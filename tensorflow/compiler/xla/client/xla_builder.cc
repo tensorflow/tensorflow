@@ -3438,8 +3438,10 @@ XlaOp XlaBuilder::SendToHost(XlaOp operand, XlaOp token,
     *send_done_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
     send_done_instr.set_channel_id(handle.handle());
     send_done_instr.set_is_host_transfer(true);
-    return AddInstruction(std::move(send_done_instr), HloOpcode::kSendDone,
-                          {send});
+    TF_ASSIGN_OR_RETURN(XlaOp send_done,
+                        AddInstruction(std::move(send_done_instr),
+                                       HloOpcode::kSendDone, {send}));
+    return send_done;
   });
 }
 
