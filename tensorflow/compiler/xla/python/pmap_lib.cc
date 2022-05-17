@@ -260,6 +260,20 @@ class PmapFunction {
     std::swap(python_shard_arg_fallback_, python_shard_arg_fallback);
   }
 
+  // Returns, for debugging purposes (e.g. finding why some call misses the
+  // cache and recompiles), the list of the string representations of the keys.
+  //
+  // The format can change at any time.
+  std::string DebugCacheKeys() const {
+    std::vector<std::string> key_strings = {
+        absl::StrCat("The cache contains ", executables_.size(), " elements:")};
+    // We will be able to use auto& [key, _] when TF uses C++ 17.
+    for (auto& pair : executables_) {
+      key_strings.push_back(pair.first.DebugString());
+    }
+    return absl::StrJoin(key_strings, "\n\n");
+  }
+
  private:
   // Mutates `cache_entry` in place.
   void PopulateCacheEntry(PmapCacheEntry& cache_entry,
@@ -868,12 +882,19 @@ void BuildPmapSubmodule(py::module& m) {
       },
       py::is_method(cfun_type));
 
-  // This is only for testing/debugging purposes
+  // This is only for testing/debugging purposes.
   cfun.attr("_cache_size") =
       property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
         TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
         return py::cast<int>(fun->cache_size());
       });
+
+  cfun.attr("_debug_cache_keys") = py::cpp_function(
+      [](py::handle self) -> xla::StatusOr<std::string> {
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        return fun->DebugCacheKeys();
+      },
+      py::is_method(cfun_type));
 
   pmap_lib.def("pmap",
                [](py::function fun, py::function cache_miss,
