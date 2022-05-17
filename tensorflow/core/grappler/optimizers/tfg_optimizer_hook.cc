@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
@@ -42,8 +41,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/transforms/func_to_graph/pass.h"
-#include "tensorflow/core/transforms/graph_to_func/pass.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
@@ -131,27 +128,8 @@ Status TFGGrapplerOptimizer::Optimize(
   }
   metrics.ReportAndStop();
 
+  // Run the pipeline on the graph.
   ModuleOp module = (*error_or_module).get();
-
-  std::unordered_set<std::string> nodes_to_preserve = item.NodesToPreserve();
-  bool should_lift_graph_to_func =
-      !item.feed.empty() || !item.fetch.empty() || !nodes_to_preserve.empty();
-
-  if (should_lift_graph_to_func) {
-    SmallVector<std::string> feed = llvm::to_vector<4>(llvm::map_range(
-        item.feed, [](const std::pair<std::string, tensorflow::Tensor>& item) {
-          return item.first;
-        }));
-    SmallVector<std::string> control_rets =
-        llvm::to_vector<4>(nodes_to_preserve);
-
-    PassManager pass_manager(impl_->GetContext());
-    pass_manager.addPass(CreateGraphToFuncPass(feed, item.fetch, control_rets));
-    if (failed(pass_manager.run(module)))
-      return InvalidArgument(
-          "MLIR Graph optimizer failed: Can't lift graph into function");
-  }
-
   StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
   if (failed(impl_->RunPipeline(module)))
     return error_handler.Combine(
@@ -166,14 +144,6 @@ Status TFGGrapplerOptimizer::Optimize(
                "execution. They are cached because certain error diagnostics "
                "were used to pass the internal execution result. Use warning "
                "diagnostic when possible if you want to avoid this.";
-  }
-
-  if (should_lift_graph_to_func) {
-    PassManager pass_manager(impl_->GetContext());
-    pass_manager.addPass(CreateFuncToGraphPass());
-    if (failed(pass_manager.run(module)))
-      return InvalidArgument(
-          "MLIR Graph Optimizer failed: Can't lower function into graph");
   }
 
   // Export the TFG module to GraphDef.
