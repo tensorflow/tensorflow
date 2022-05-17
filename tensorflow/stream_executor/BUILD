@@ -117,6 +117,7 @@ cc_library(
         ":stream_header",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core/kernels:gpu_utils",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core:protos_all_cc",
     ] + if_static(
