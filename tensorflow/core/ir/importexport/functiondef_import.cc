@@ -274,7 +274,7 @@ Status ImportGenericFunction(
   if (signature.is_stateful())
     attrs.append("is_stateful", builder.getUnitAttr());
   if (signature.control_output_size()) {
-    llvm::SmallVector<Attribute> control_outputs;
+    SmallVector<Attribute> control_outputs;
     for (const std::string& output : signature.control_output())
       control_outputs.push_back(builder.getStringAttr(output));
     attrs.append("control_output", builder.getArrayAttr(control_outputs));
@@ -349,10 +349,10 @@ Status ImportGenericFunction(
   // We populate the `arg_names` vector with the name of each input at each
   // position, and `arg_types` with the matching type.
   int arg_num = 0;
-  llvm::SmallVector<StringRef> arg_names;
-  llvm::SmallVector<Type> arg_types;
-  llvm::SmallVector<Attribute> args_attrs;
-  llvm::SmallVector<Attribute> res_attrs;
+  SmallVector<StringRef> arg_names;
+  SmallVector<Type> arg_types;
+  SmallVector<Attribute> args_attrs;
+  SmallVector<Attribute> res_attrs;
   for (const auto& enumerated_input : llvm::enumerate(signature.input_arg())) {
     const OpDef::ArgDef& input = enumerated_input.value();
     TF_ASSIGN_OR_RETURN(NamedAttrList input_attrs,
