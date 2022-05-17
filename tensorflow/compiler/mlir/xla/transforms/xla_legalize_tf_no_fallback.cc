@@ -19,7 +19,9 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project 
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"  
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
@@ -37,6 +40,9 @@ namespace {
 
 class LegalizeTFNoFallback
     : public LegalizeTFNoFallbackBase<LegalizeTFNoFallback> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<scf::SCFDialect>();
+  }
  public:
   explicit LegalizeTFNoFallback(bool allow_partial_conversion) {
     allow_partial_conversion_ = allow_partial_conversion;
@@ -62,10 +68,15 @@ void LegalizeTFNoFallback::runOnOperation() {
   target.addLegalDialect<arith::ArithmeticDialect>();
   target.addLegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<MhloDialect>();
+  target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<func::CallOp>();
+  target.addLegalOp<mlir::scf::YieldOp>();
+  target.addLegalOp<mlir::scf::IfOp>();
+  target.addLegalOp<mlir::kernel_gen::tf_framework::JITCompileFromStrOp>();
+  target.addLegalOp<mlir::kernel_gen::tf_framework::JITExecuteOp>();
 
   // Add TF->TF lowering patterns.
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
