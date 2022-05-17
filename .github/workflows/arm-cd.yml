@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, ARM64]
     strategy:
       matrix:
         pyver: ['3.7', '3.8', '3.9', '3.10']
