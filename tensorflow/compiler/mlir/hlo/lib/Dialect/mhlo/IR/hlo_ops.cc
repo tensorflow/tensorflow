@@ -223,6 +223,16 @@ Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
   return b.create<arith::IndexCastOp>(loc, type, value);
 }
 
+DenseElementsAttr reshape(DenseElementsAttr attr, ShapedType new_type) {
+  // TODO(b/232866626): DenseElementsAttr::reshape is broken for bool splats.
+  // Once that ticket is fixed, we can remove this conditional.
+  if (attr.isSplat() && new_type.getElementType().isInteger(/*width=*/1)) {
+    auto splat_value = attr.getValues<bool>()[0];
+    return DenseElementsAttr::get(new_type, {splat_value});
+  }
+  return attr.reshape(new_type);
+}
+
 //===----------------------------------------------------------------------===//
 // Utilities for verifiers
 //===----------------------------------------------------------------------===//
@@ -5425,7 +5435,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
-    return elements.reshape(getResult().getType().cast<ShapedType>());
+    return reshape(elements, getResult().getType().cast<ShapedType>());
   }
 
   return {};
@@ -7282,7 +7292,7 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
     index_shape.push_back(1);
     index_type =
         RankedTensorType::get(index_shape, index_type.getElementType());
-    index = index.reshape(index_type).cast<DenseIntElementsAttr>();
+    index = reshape(index, index_type).cast<DenseIntElementsAttr>();
   }
 
   // Increment the multi-dimensional index vector based on the limits for each

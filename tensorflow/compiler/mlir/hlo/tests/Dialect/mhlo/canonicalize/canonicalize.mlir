@@ -2185,3 +2185,11 @@ func.func @sort_no_dim_provided(%arg0: tensor<3x5xi32>) -> tensor<3x5xi32> {
 // CHECK:         %[[RES:.+]] = "mhlo.sort"(%[[ARG0]])
 // CHECK:           dimension = 1 : i64
 // CHECK:         return %[[RES]] : tensor<3x5xi32>
+
+// CHECK-LABEL: @reshape_splat_of_bools
+func.func public @reshape_splat_of_bools() -> tensor<2x1xi1> {
+  // CHECK: mhlo.constant dense<true> : tensor<2x1xi1>
+  %0 = mhlo.constant dense<true> : tensor<2xi1>
+  %1 = "mhlo.reshape"(%0) : (tensor<2xi1>) -> tensor<2x1xi1>
+  return %1 : tensor<2x1xi1>
+}
