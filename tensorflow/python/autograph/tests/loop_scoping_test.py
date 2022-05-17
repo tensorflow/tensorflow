@@ -153,9 +153,6 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
   ))
 
   def test_for_with_lambda_iter_local_var(self, l, type_):
-    
-    #self.skipTest("TODO")
-
     l = type_(l)
     self.assertFunctionMatchesEager(for_with_lambda_iter_local_var, l)
 
