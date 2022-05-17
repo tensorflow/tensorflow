@@ -214,6 +214,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t GetDisconnectedGracePeriodMicros();
     void SetError(Status status);
+    bool GetDeviceInfoCollected() { return device_info_collected_; }
+    void MarkDeviceInfoCollected() { device_info_collected_ = true; }
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
     void ExitBarrier(absl::string_view barrier_id);
@@ -230,6 +232,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // disconnected task. This grace period accounts for the lag time between
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t disconnect_grace_period_us_ = 0;
+    // Checks if task has called WaitForAllTasks() previously, which gathers the
+    // local device info.
+    bool device_info_collected_ = false;
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
@@ -544,7 +549,14 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     StatusCallback done) {
   {
     mutex_lock l(state_mu_);
-    cluster_devices_.MergeFrom(devices);
+    const auto& task_state = cluster_state_.find(GetTaskName(task));
+    // Add task device info to global device state for the first time that task
+    // has called WaitForAllTasks().
+    if (task_state != cluster_state_.end() &&
+        !task_state->second->GetDeviceInfoCollected()) {
+      cluster_devices_.MergeFrom(devices);
+      task_state->second->MarkDeviceInfoCollected();
+    }
   }
   BarrierAsync(device_propagation_barrier_id_, kDevicePropagationTimeout, task,
                {}, std::move(done));

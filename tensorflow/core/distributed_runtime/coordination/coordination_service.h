@@ -210,6 +210,8 @@ class CoordinationServiceInterface {
   friend class CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
+  friend class
+      CoordinationServiceTest_ListClusterDevices_DevicesAreNotAddedTwice_Test;
 
   virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
   virtual uint64_t GetServiceIncarnation() = 0;
