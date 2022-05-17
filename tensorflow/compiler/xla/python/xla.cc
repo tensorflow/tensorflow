@@ -34,11 +34,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
+#endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
+#ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
+#endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
@@ -179,24 +183,7 @@ PYBIND11_MODULE(xla_extension, m) {
             throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
           });
 
-  // TODO(tomhennigan): Remove these types.
-  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
-      m, "GpuDevice");
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
-      m, "TpuDevice");
-
   // Local XLA client methods.
-
-  py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
-  alloc_config.def(py::init<>())
-      .def_readwrite("kind", &GpuAllocatorConfig::kind)
-      .def_readwrite("memory_fraction", &GpuAllocatorConfig::memory_fraction)
-      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate);
-  py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
-      .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
-      .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
-      .value("BFC", GpuAllocatorConfig::Kind::kBFC)
-      .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
   py::enum_<PjRtClient::HostBufferSemantics>(m, "HostBufferSemantics")
       .value("IMMUTABLE_ONLY_DURING_CALL",
@@ -283,6 +270,22 @@ PYBIND11_MODULE(xla_extension, m) {
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
   });
+
+#ifdef XLA_PYTHON_ENABLE_GPU
+  py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
+  alloc_config.def(py::init<>())
+      .def_readwrite("kind", &GpuAllocatorConfig::kind)
+      .def_readwrite("memory_fraction", &GpuAllocatorConfig::memory_fraction)
+      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate);
+  py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
+      .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
+      .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
+      .value("BFC", GpuAllocatorConfig::Kind::kBFC)
+      .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
+
+  // TODO(tomhennigan): Remove this types.
+  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
+      m, "GpuDevice");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -302,6 +305,12 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
       py::arg("allowed_devices") = absl::nullopt,
       py::arg("platform_name") = absl::nullopt);
+#endif  // XLA_PYTHON_ENABLE_GPU
+
+#ifdef XLA_PYTHON_ENABLE_TPU
+  // TODO(tomhennigan): Remove this types.
+  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
+      m, "TpuDevice");
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
@@ -311,6 +320,7 @@ PYBIND11_MODULE(xla_extension, m) {
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("max_inflight_computations") = 32);
+#endif  // XLA_PYTHON_ENABLE_TPU
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
 
