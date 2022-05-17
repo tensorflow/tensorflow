@@ -51,6 +51,10 @@ class ModelTests: XCTestCase {
   func testInitWithInvalidFilePath_FailsInitialization() {
     XCTAssertNil(Model(filePath: "invalid/path"))
   }
+
+  func testInitWithData() {
+    XCTAssertNotNil(Model(modelData: Data(contentsOf: URL(fileURLWithPath: modelPath))))
+  }
 }
 
 // MARK: - Constants
