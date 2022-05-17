@@ -63,7 +63,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const absl::Span<const AotXlaComputationInstance> computations,
+    absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
@@ -109,11 +109,11 @@ CompileOnlyService::CompileAheadOfTime(
         *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
       }
     };
-    ShapeUtil::ForEachMutableSubshape(
-        const_cast<Shape*>(instance.result_layout),
-        update_shape_with_empty_tiles);
+    Shape result_layout(instance.result_layout);
+    ShapeUtil::ForEachMutableSubshape(&result_layout,
+                                      update_shape_with_empty_tiles);
     *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->ToProto();
+        result_layout.ToProto();
     for (auto shape : instance.argument_layouts) {
       ShapeUtil::ForEachMutableSubshape(const_cast<Shape*>(shape),
                                         update_shape_with_empty_tiles);
