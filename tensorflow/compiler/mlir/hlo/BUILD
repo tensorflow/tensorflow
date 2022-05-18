@@ -2264,6 +2264,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
+    td_srcs = [
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td",
+    ],
     deps = [":gml_st_ops_td_files"],
 )
 
