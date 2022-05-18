@@ -185,7 +185,8 @@ LogicalResult LaunchFunc::operator()(
 
   // If kernel does not exists create it from the ptx.
   if (kernel == nullptr) {
-    auto created = CreateKernel(name, args.size(), ptx.data(), {}, executor);
+    auto created = CreateKernel(absl::string_view(name.data(), name.size()),
+                                args.size(), ptx.data(), {}, executor);
     if (!created.ok()) return failure();
 
     kernel = kernels_cache->Set(executor, ptx.data(), std::move(*created));
