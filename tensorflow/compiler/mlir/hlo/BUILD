@@ -326,35 +326,39 @@ gentbl_cc_library(
     deps = [":lhlo_gpu_ops_td_files"],
 )
 
-# TODO(b/232986749): Uncomment when the ticket is fixed.
-# gentbl_filegroup(
-#     name = "hlo_ops_doc_gen",
-#     compatible_with = get_compatible_with_cloud(),
-#     tbl_outs = [
-#         (
-#             ["-gen-dialect-doc"],
-#             "g3doc/hlo_ops.md",
-#         ),
-#     ],
-#     tblgen = "@llvm-project//mlir:mlir-tblgen",
-#     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
-#     deps = [":hlo_ops_td_files"],
-# )
+gentbl_filegroup(
+    name = "hlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-dialect-doc",
+                "-dialect=mhlo",
+            ],
+            "g3doc/hlo_ops.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
 
-# TODO(b/232986749): Uncomment when the ticket is fixed.
-# gentbl_filegroup(
-#     name = "lhlo_ops_doc_gen",
-#     compatible_with = get_compatible_with_cloud(),
-#     tbl_outs = [
-#         (
-#             ["-gen-dialect-doc"],
-#             "g3doc/lhlo_ops.md",
-#         ),
-#     ],
-#     tblgen = "@llvm-project//mlir:mlir-tblgen",
-#     td_file = "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td",
-#     deps = [":lhlo_ops_td_files"],
-# )
+gentbl_filegroup(
+    name = "lhlo_ops_doc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-dialect-doc",
+                "-dialect=lmhlo",
+            ],
+            "g3doc/lhlo_ops.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td",
+    deps = [":lhlo_ops_td_files"],
+)
 
 cc_library(
     name = "hlo_ops_common",
