@@ -191,16 +191,13 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     //   DISCONNECTED -------> CONNECTED --------> ERROR (timeout)
     //                              |   ReportError
     //                              +--------------> ERROR
-    //                              |    Register
-    //                              ---------------> RESTARTED
     //
-    // When task state becomes ERROR or RESTARTED, propagate this status to
-    // other CONNECTED tasks in the cluster.
+    // When task state becomes ERROR, propagate this status to other CONNECTED
+    // tasks in the cluster.
     enum class State {
       DISCONNECTED,
       CONNECTED,
       ERROR,
-      RESTARTED,
     };
 
     State GetState() { return state_; }
@@ -520,22 +517,23 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       // be propagated to other tasks.
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected task registered with task_name=", task_name));
-    } else if (cluster_state_[task_name]->GetState() ==
-               TaskState::State::CONNECTED) {
-      Status s = MakeCoordinationError(
-          errors::Aborted("Duplicate task registration with task_name=",
-                          task_name),
-          task);
-      status = s;
-      SetTaskError(task_name, status);
-    } else {
-      // Hit this path when the task is registering itself for the first time,
-      // or it's already in ERROR state and now register again. In both cases,
-      // the service allows it to be registered.
+    }
+    if (cluster_state_[task_name]->GetState() ==
+        TaskState::State::DISCONNECTED) {
+      // This task is currently disconnected (registering for the first time or
+      // has called ResetTask() previously).
       cluster_state_[task_name]->SetConnected(incarnation);
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
                 << incarnation;
+    } else {
+      // This task is connected or already in error, which implies it has
+      // registered previously.
+      status = MakeCoordinationError(
+          errors::Aborted("Duplicate task registration with task_name=",
+                          task_name),
+          task);
+      SetTaskError(task_name, status);
     }
   }
   if (!status.ok()) {

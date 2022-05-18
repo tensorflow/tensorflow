@@ -353,6 +353,51 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   EXPECT_TRUE(errors::IsInvalidArgument(status)) << status;
 }
 
+TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Fails) {
+  ServerDef server_def = GetMultiClientServerDef("worker", 1);
+  JobDef* job_def = server_def.mutable_cluster()->add_job();
+  job_def->set_name("worker");
+  job_def->mutable_tasks()->insert({0, "dummy address"});
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          /*cache=*/nullptr);
+  // Task connects to coordination service.
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
+
+  // Registration should fail since task already registered previously.
+  const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/0);
+
+  EXPECT_TRUE(errors::IsAborted(status)) << status;
+}
+
+TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
+  ServerDef server_def = GetMultiClientServerDef("worker", 1);
+  JobDef* job_def = server_def.mutable_cluster()->add_job();
+  job_def->set_name("worker");
+  job_def->mutable_tasks()->insert({0, "dummy address"});
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          /*cache=*/nullptr);
+  // Task connects to coordination service.
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
+  // Arbitrarily set task to be in error.
+  TF_ASSERT_OK(
+      coord_service->ReportTaskError(task_0, errors::Internal("test_error")));
+
+  // Registration should fail since task already registered previously.
+  const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/0);
+
+  EXPECT_TRUE(errors::IsAborted(status)) << status;
+}
+
 TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
   EnableCoordinationService();
   TF_ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
