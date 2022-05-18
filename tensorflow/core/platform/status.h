@@ -38,6 +38,12 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
+namespace errors {
+
+typedef ::tensorflow::error::Code Code;
+
+}
+
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {

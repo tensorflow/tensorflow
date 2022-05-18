@@ -30,8 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace errors {
 
-typedef ::tensorflow::error::Code Code;
-
 namespace internal {
 
 // The DECLARE_ERROR macro below only supports types that can be converted
