@@ -111,6 +111,15 @@ func.func @divide_scalar_fold() -> tensor<4xi64> {
   func.return %2 : tensor<4xi64>
 }
 
+// CHECK-LABEL: divide_scalar_fold_by_zero
+func.func @divide_scalar_fold_by_zero() -> tensor<4xi64> {
+  %0 = mhlo.constant dense<7> : tensor<4xi64>
+  %1 = mhlo.constant dense<0> : tensor<4xi64>
+  // CHECK: mhlo.divide
+  %2 = "mhlo.divide"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  func.return %2 : tensor<4xi64>
+}
+
 // CHECK-LABEL: divide_fold_float
 func.func @divide_fold_float() -> tensor<4xf64> {
   %0 = mhlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
@@ -118,6 +127,24 @@ func.func @divide_fold_float() -> tensor<4xf64> {
   // CHECK: mhlo.constant dense<[1.000000e+00, 2.200000e+01, 2.500000e+00, 2.500000e-01]>
   %2 = "mhlo.divide"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
   func.return %2 : tensor<4xf64>
+}
+
+// CHECK-LABEL: divide_fold_by_zero
+func.func @divide_fold_by_zero() -> tensor<4xi64> {
+  %0 = mhlo.constant dense<[1, 2, 3, 4]> : tensor<4xi64>
+  %1 = mhlo.constant dense<[1, 2, 3, 0]> : tensor<4xi64>
+  // CHECK: mhlo.divide
+  %2 = "mhlo.divide"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  func.return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: remainder_scalar_fold_by_zero
+func.func @remainder_scalar_fold_by_zero() -> tensor<4xi64> {
+  %0 = mhlo.constant dense<7> : tensor<4xi64>
+  %1 = mhlo.constant dense<0> : tensor<4xi64>
+  // CHECK: mhlo.remainder
+  %2 = "mhlo.remainder"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  func.return %2 : tensor<4xi64>
 }
 
 // CHECK-LABEL: remainder_fold_int

@@ -5849,9 +5849,10 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   SplatElementsAttr splat_lhs = lhs.dyn_cast<SplatElementsAttr>();
   SplatElementsAttr splat_rhs = rhs.dyn_cast<SplatElementsAttr>();
   if (splat_lhs && splat_rhs) {
-    return SplatElementsAttr::get(
-        type, Convert()(splat_lhs.getSplatValue<ValType>(),
-                        splat_rhs.getSplatValue<ValType>()));
+    FailureOr<ValType> result(Convert()(splat_lhs.getSplatValue<ValType>(),
+                                        splat_rhs.getSplatValue<ValType>()));
+    return succeeded(result) ? SplatElementsAttr::get(type, *result)
+                             : Attribute();
   }
 
   // Prevent folding if lhs/rhs are too large.
@@ -5863,7 +5864,11 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   values.reserve(lhs.getNumElements());
   for (const auto zip :
        llvm::zip(lhs.getValues<ValType>(), rhs.getValues<ValType>())) {
-    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+    FailureOr<ValType> result(Convert()(std::get<0>(zip), std::get<1>(zip)));
+    if (failed(result)) {
+      return {};
+    }
+    values.push_back(std::move(*result));
   }
 
   return DenseElementsAttr::get(type, values);
@@ -5874,7 +5879,10 @@ struct divide : std::divides<T> {};
 
 template <>
 struct divide<APInt> {
-  APInt operator()(const APInt& a, const APInt& b) const { return a.sdiv(b); }
+  FailureOr<APInt> operator()(const APInt& a, const APInt& b) const {
+    if (b.isZero()) return failure();
+    return a.sdiv(b);
+  }
 };
 
 template <typename T>
@@ -5882,7 +5890,10 @@ struct remainder : std::modulus<T> {};
 
 template <>
 struct remainder<APInt> {
-  APInt operator()(const APInt& a, const APInt& b) const { return a.srem(b); }
+  FailureOr<APInt> operator()(const APInt& a, const APInt& b) const {
+    if (b.isZero()) return failure();
+    return a.srem(b);
+  }
 };
 
 template <>
