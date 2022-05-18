@@ -20,6 +20,8 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import registration
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import trackable_utils
@@ -143,6 +145,22 @@ def _add_attributes_to_object_graph_for_registered_savers(
       object_proto.registered_saver.object_name = object_name
 
 
+def _get_full_name(var):
+  """Gets the full name of variable for name-based checkpoint compatiblity."""
+  # pylint: disable=protected-access
+  if (not (isinstance(var, variables.Variable) or
+           # Some objects do not subclass Variable but still act as one.
+           resource_variable_ops.is_resource_variable(var))):
+    return ""
+
+  if getattr(var, "_save_slice_info", None) is not None:
+    # Use getattr because `var._save_slice_info` may be set as `None`.
+    return var._save_slice_info.full_name
+  else:
+    return var._shared_name
+  # pylint: enable=protected-access
+
+
 def _add_attributes_to_object_graph(trackable_objects, object_graph_proto,
                                     node_ids, object_names, object_map,
                                     call_with_mapped_captures, saveables_cache):
@@ -184,16 +202,19 @@ def _add_attributes_to_object_graph_for_saveable_objects(
     feed_additions = {}
   for trackable, factory_data_list in checkpoint_factory_map.items():
     object_proto = object_graph_proto.nodes[node_ids[trackable]]
+    object_to_save = _get_mapped_trackable(trackable, object_map)
     if saveables_cache is not None:
-      object_to_save = _get_mapped_trackable(trackable, object_map)
       cached_attributes = saveables_cache.setdefault(object_to_save, {})
     else:
       cached_attributes = None
 
     for factory_data in factory_data_list:
-      attribute = object_proto.attributes.add()
-      attribute.name = name = factory_data.name
-      attribute.checkpoint_key = key = factory_data.checkpoint_key
+      name = factory_data.name
+      key = factory_data.checkpoint_key
+      object_proto.attributes.add(
+          name=name,
+          checkpoint_key=key,
+          full_name=_get_full_name(object_to_save))
       saveable_factory = factory_data.factory
 
       # See if we can skip saving this checkpoint key.
@@ -216,16 +237,8 @@ def _add_attributes_to_object_graph_for_saveable_objects(
         if isinstance(maybe_saveable, saveable_object_lib.SaveableObject):
           saveables = (maybe_saveable,)
         else:
-          # Figure out the name-based Saver's name for this variable. If it's
-          # already a SaveableObject we'd just get the checkpoint key back, so
-          # we leave full_name blank.
-          saver_dict = saveable_object_util.op_list_to_dict(
-              [maybe_saveable], convert_variable_to_tensor=False)
-          full_name, = saver_dict.keys()
           saveables = tuple(saveable_object_util.saveable_objects_for_op(
               op=maybe_saveable, name=key))
-          for saveable in saveables:
-            saveable.full_name = full_name
         for saveable in saveables:
           if key not in saveable.name:
             raise AssertionError(
@@ -236,8 +249,6 @@ def _add_attributes_to_object_graph_for_saveable_objects(
           cached_attributes[name] = saveables
 
       for saveable in saveables:
-        if hasattr(saveable, "full_name"):
-          attribute.full_name = saveable.full_name
         if isinstance(saveable, base.PythonStateSaveable):
           if feed_additions is None:
             assert saveables_cache is None
