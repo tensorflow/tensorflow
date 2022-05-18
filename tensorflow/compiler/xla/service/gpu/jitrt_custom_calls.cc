@@ -393,6 +393,68 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+namespace {
+
+enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
+
+template <MemcpyDirection direction>
+struct Memcpy {
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           jitrt::FlatMemrefView dst,
+                           jitrt::FlatMemrefView src) const;
+  static Memcpy Handler() { return Memcpy(); }
+};
+}  // namespace
+
+template <MemcpyDirection direction>
+LogicalResult Memcpy<direction>::operator()(
+    const ServiceExecutableRunOptions* run_options, jitrt::FlatMemrefView dst,
+    jitrt::FlatMemrefView src) const {
+  se::Stream* stream = run_options->stream();
+
+  if (dst.size_in_bytes != src.size_in_bytes) return failure();
+
+  switch (direction) {
+    case MemcpyDirection::kDeviceToDevice: {
+      se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+      se::DeviceMemoryBase src_data = GetDeviceAddress(src);
+      stream->ThenMemcpy(&dst_data, src_data, src.size_in_bytes);
+    } break;
+    case MemcpyDirection::kDeviceToHost: {
+      se::DeviceMemoryBase src_data = GetDeviceAddress(src);
+      stream->ThenMemcpy(dst.data, src_data, src.size_in_bytes);
+    } break;
+    case MemcpyDirection::kHostToDevice: {
+      se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+      stream->ThenMemcpy(&dst_data, src.data, src.size_in_bytes);
+    } break;
+  }
+
+  // TODO(ezhulenev): H2D and D2H memcpy instead of blocking the execution
+  // thread should return an async token that will become available when
+  // transfer is completed.
+  if (direction != MemcpyDirection::kDeviceToDevice) {
+    auto st = stream->BlockHostUntilDone();
+    if (!st.ok()) return failure();
+  }
+
+  return success();
+}
+
+template <MemcpyDirection direction>
+static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::FlatMemrefView>()  // dst
+                             .Arg<jitrt::FlatMemrefView>()  // src
+                             .To<RuntimeChecks()>(Memcpy<direction>::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
@@ -404,6 +466,9 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
   bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
+  bind("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
+  bind("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
+  bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
 
   return symbol_map;
 }

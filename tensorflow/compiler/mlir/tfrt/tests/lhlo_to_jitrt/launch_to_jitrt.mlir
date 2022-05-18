@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: lhlo-tfrt-opt %s -gpu-binary-to-jitrt | FileCheck %s
+// RUN: lhlo-tfrt-opt %s -gpu-to-jitrt | FileCheck %s
 
 // Check that all gpu dialect `launch_func` operations gets converted to
 // function calls bound to jitrt custom calls.

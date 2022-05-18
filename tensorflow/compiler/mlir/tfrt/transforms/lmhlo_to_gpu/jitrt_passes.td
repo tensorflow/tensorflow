@@ -15,16 +15,16 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertGpuBinaryToJitRtPass :
-    Pass<"gpu-binary-to-jitrt", "mlir::ModuleOp"> {
-  let summary = "Converts gpu function launch ops to JitRt Gpu custom calls.";
+def ConvertGpuToJitRtPass :
+    Pass<"gpu-to-jitrt", "mlir::ModuleOp"> {
+  let summary = "Converts gpu operations to JitRt Gpu custom calls.";
 
   let description = [{
-    Converts gpu function launch operation to the JitRt custom calls, that will
-    be handled at runtime by the XLA JitRt custom call handlers.
+    Converts gpu operations (function launch, memcpy) to the JitRt custom calls,
+    that will be handled at runtime by the XLA JitRt custom call handlers.
   }];
 
-  let constructor = "createConvertGpuBinaryToJitRtPass()";
+  let constructor = "createConvertGpuToJitRtPass()";
 }
 
 def ConvertLmhloGpuToJitRtPass :
