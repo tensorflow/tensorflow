@@ -122,6 +122,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // the given primitive type.
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
 
+// Creates a Bitcast HLO instruction to the given shape+layout.
+HloInstruction* MakeBitcastHlo(HloInstruction* hlo, const Shape& shape);
+
 // Creates a BitcastConvert HLO instruction.
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type);
