@@ -195,6 +195,13 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
     # To skip "test_foo", add "foo" to this list.
     return []
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    # Subclasses should over-ride if they want to add optional tests.
+    # To add "test_foo", add "foo" to this list.
+    return []
+
   def assertRaisesError(self, msg):
     """assertRaisesRegexp or OpError, depending on context.executing_eagerly."""
     if context.executing_eagerly():
@@ -343,6 +350,44 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
           [op_log_abs_det, mat_log_abs_det])
       self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
   return test_log_abs_det
+
+
+def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
+  """op_a.matmul(op_b), in the case where the same type is returned."""
+  def test_operator_matmul_with_same_type(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator_a, mat_a = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      operator_b, mat_b = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+
+      mat_matmul = math_ops.matmul(mat_a, mat_b)
+      op_matmul = operator_a.matmul(operator_b)
+      mat_matmul_v, op_matmul_v = sess.run([mat_matmul, op_matmul.to_dense()])
+
+      self.assertIsInstance(op_matmul, operator_a.__class__)
+      self.assertAC(mat_matmul_v, op_matmul_v)
+  return test_operator_matmul_with_same_type
+
+
+def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
+  """op_a.solve(op_b), in the case where the same type is returned."""
+  def test_operator_solve_with_same_type(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator_a, mat_a = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      operator_b, mat_b = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+
+      mat_solve = linear_operator_util.matrix_solve_with_broadcast(mat_a, mat_b)
+      op_solve = operator_a.solve(operator_b)
+      mat_solve_v, op_solve_v = sess.run([mat_solve, op_solve.to_dense()])
+
+      self.assertIsInstance(op_solve, operator_a.__class__)
+      self.assertAC(mat_solve_v, op_solve_v)
+  return test_operator_solve_with_same_type
 
 
 def _test_matmul_base(
@@ -819,6 +864,7 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
 def add_tests(test_cls):
   """Add tests for LinearOperator methods."""
   test_name_dict = {
+      # All test classes should be added here.
       "add_to_tensor": _test_add_to_tensor,
       "adjoint": _test_adjoint,
       "cholesky": _test_cholesky,
@@ -829,6 +875,8 @@ def add_tests(test_cls):
       "eigvalsh": _test_eigvalsh,
       "inverse": _test_inverse,
       "log_abs_det": _test_log_abs_det,
+      "operator_matmul_with_same_type": _test_operator_matmul_with_same_type,
+      "operator_solve_with_same_type": _test_operator_solve_with_same_type,
       "matmul": _test_matmul,
       "matmul_with_broadcast": _test_matmul_with_broadcast,
       "saved_model": _test_saved_model,
@@ -838,15 +886,27 @@ def add_tests(test_cls):
       "to_dense": _test_to_dense,
       "trace": _test_trace,
   }
+  optional_tests = [
+      # Test classes need to explicitly add these to cls.optional_tests.
+      "operator_matmul_with_same_type",
+      "operator_solve_with_same_type",
+  ]
   tests_with_adjoint_args = [
       "matmul",
       "matmul_with_broadcast",
       "solve",
       "solve_with_broadcast",
   ]
+  if set(test_cls.skip_these_tests()).intersection(test_cls.optional_tests()):
+    raise ValueError(
+        "Test class {test_cls} had intersecting 'skip_these_tests' "
+        f"{test_cls.skip_these_tests()} and 'optional_tests' "
+        f"{test_cls.optional_tests()}.")
 
   for name, test_template_fn in test_name_dict.items():
     if name in test_cls.skip_these_tests():
+      continue
+    if name in optional_tests and name not in test_cls.optional_tests():
       continue
 
     for dtype, use_placeholder, shape_info in itertools.product(
@@ -958,7 +1018,7 @@ class NonSquareLinearOperatorDerivedClassTest(
         "solve",
         "solve_with_broadcast",
         "det",
-        "log_abs_det"
+        "log_abs_det",
     ]
 
   @staticmethod
