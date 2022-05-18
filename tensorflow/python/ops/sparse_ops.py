@@ -2893,7 +2893,7 @@ def map_values(op, *args, **kwargs):
          [6, 0, 0]], dtype=int32)
 
   Note: even though `tf.add(0, 5) != 0`, implicit zeros
-  will remain unchanged. However, if the sparse tensor contains any explict
+  will remain unchanged. However, if the sparse tensor contains any explicit
   zeros, these will be affected by the mapping!
 
   Args:

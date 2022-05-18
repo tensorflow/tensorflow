@@ -74,6 +74,8 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
@@ -81,6 +83,16 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Returns a semaphore for admission control on inflight computations.
   Semaphore& max_inflight_computations_semaphore() {
     return max_inflight_computations_semaphore_;
+  }
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
   }
 
  private:
@@ -91,6 +103,7 @@ class TfrtCpuDevice final : public PjRtDevice {
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
 };
 
 class TfrtCpuExecutable;
@@ -440,9 +453,9 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                       std::function<void(Status)> on_ready) override {
-    return Unimplemented("CopyRawToHost not implemented");
+  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                   int64_t transfer_size) override {
+    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
   }
 
   void Delete() override;

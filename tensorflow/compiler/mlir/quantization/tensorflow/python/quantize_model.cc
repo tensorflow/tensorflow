@@ -108,12 +108,16 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   // Freezes constants so that FakeQuant ops can reference quantization ranges.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateFusedKernelMatcherPass());
+
+  // TODO(b/229995333): Add PrepareLiftingPass for QAT. In QAT, AffineOps are
+  // connected to FakeQuantOp instead of the ConstOp so need to add separate
+  // pattern for FakeQuantOp.
+  // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
@@ -121,7 +125,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   pm.addPass(mlir::createSymbolDCEPass());
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
 
@@ -181,13 +185,15 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateFusedKernelMatcherPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  // TODO(b/230426953): Add TFShapeInferencePass to infer shapes for unranked
+  // types. pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
 
@@ -247,14 +253,14 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
 

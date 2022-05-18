@@ -290,8 +290,8 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
 
-Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
-                         Device** result) {
+Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
+                         TensorHandle* tensor_handle, Device** result) {
   Device* cpu_device = ctx.HostCPU();
   string device_name;
   if (tensor_handle->Type() != TensorHandle::LOCAL) {
@@ -304,6 +304,9 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
     const Tensor* tensor;
     // TODO(fishx): Avoid blocking here.
     TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
+    if (tensor->NumElements() == 0) {
+      return errors::InvalidArgument("Empty resource handle");
+    }
     const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
     device_name = handle.device();
 
@@ -321,7 +324,12 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
     if (use_host_memory) {
       *result = cpu_device;
     } else {
-      device_name = device != nullptr ? device->name() : cpu_device->name();
+      // Eager ops executing as functions should have their preferred inputs set
+      // to the op's device. This allows us to avoid expensive D2H copies if a
+      // mirror of the tensor already exists on the op's device.
+      if (!op.is_function() && device != nullptr && device != cpu_device) {
+        device = absl::get<Device*>(op.Device());
+      }
       *result = (device == nullptr ? cpu_device : device);
     }
   }
@@ -890,11 +898,62 @@ StatusOr<Fprint128> GetKernelCacheKey(
   return cache_key;
 }
 
+Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
+  // Here in local execute, set preferred device to be on the local task to
+  // avoid placing op on a remote device with higher priority.
+  const DeviceNameUtils::ParsedName& preferred_device =
+      DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())
+          ? op->GetDeviceParsedName()
+          : DeviceNameUtils::AddressSpace(ctx.HostCPUParsedName());
+  // Note: We use the unwrapped op for inferring the device.
+  // Without this, when wrapping CPU-only ops like RangeDataset we would
+  // place the wrapped op on a GPU (if one is available) which leads to
+  // errors because placer pins the function output nodes to GPU thereby
+  // forcing a H2D copy of the dataset variant which is not supported.
+  auto ndef = op->MutableAttrs()->BuildNodeDef();
+#ifdef INTEL_MKL
+  if (IsMKLEnabled() &&
+      absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
+    GetMKLNodeDef(&ndef);
+  }
+#endif  // INTEL_MKL
+
+  TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, device));
+
+  VLOG(1) << "PreferredDevice " << op->Name() << ": " << preferred_device;
+  VLOG(1) << "Placer place op [" << op->Name()
+          << "] on device: " << (*device)->name();
+  VLOG(4) << "Available kernels for " << op->Name() << " are"
+          << KernelsRegisteredForOp(op->Name());
+  op->SetDevice(*device);
+  return Status::OK();
+}
+
+Fprint128 GetDeviceCacheKey(EagerOperation* op, const EagerContext& ctx) {
+  Fprint128 device_cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
+  device_cache_key =
+      FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
+  return device_cache_key;
+}
+
 Status GetOrCreateKernelAndDevice(
     EagerOperation* op, TensorHandle** retvals, int* num_retvals,
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
+
+  // Set the EagerOperation's device prior to extracting the input_dev_ptrs to
+  // avoid any redundant H2D/D2H copies.
+  if (device == nullptr && !op->is_function()) {
+    Fprint128 device_cache_key = GetDeviceCacheKey(op, ctx);
+    device = ctx.GetCachedDevice(device_cache_key);
+    if (device == nullptr) {
+      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
+      ctx.AddDeviceToCache(device_cache_key, device);
+    } else {
+      op->SetDevice(device);
+    }
+  }
 
   // Save the original value of reuse_rendezvous_for_functions from the context.
   bool reuse_rendezvous_for_functions_original_value =
@@ -919,7 +978,7 @@ Status GetOrCreateKernelAndDevice(
       TensorHandle* input = (*inputs)[i];
 
       Device* input_device;
-      TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
+      TF_RETURN_IF_ERROR(GetDeviceForInput(*op, ctx, input, &input_device));
       VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
       input_dev_ptrs.push_back(input_device);
       CompositeDevice* composite_device = nullptr;
@@ -998,33 +1057,7 @@ Status GetOrCreateKernelAndDevice(
     VLOG(2) << op->Name() << " function_outputs_on_op_device: "
             << function_outputs_on_op_device;
     if (device == nullptr) {
-      // Here in local execute, set preferred device to be on the local task to
-      // avoid placing op on a remote device with higher priority.
-      const DeviceNameUtils::ParsedName& preferred_device =
-          DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())
-              ? op->GetDeviceParsedName()
-              : DeviceNameUtils::AddressSpace(ctx.HostCPUParsedName());
-      // Note: We use the unwrapped op for inferring the device.
-      // Without this, when wrapping CPU-only ops like RangeDataset we would
-      // place the wrapped op on a GPU (if one is available) which leads to
-      // errors because placer pins the function output nodes to GPU thereby
-      // forcing a H2D copy of the dataset variant which is not supported.
-      auto ndef = op->MutableAttrs()->BuildNodeDef();
-#ifdef INTEL_MKL
-      if (IsMKLEnabled() &&
-          absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
-        GetMKLNodeDef(&ndef);
-      }
-#endif  // INTEL_MKL
-
-      TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
-
-      VLOG(1) << "PreferredDevice " << op->Name() << ": " << preferred_device;
-      VLOG(1) << "Placer place op [" << op->Name()
-              << "] on device: " << device->name();
-      VLOG(4) << "Available kernels for " << op->Name() << " are"
-              << KernelsRegisteredForOp(op->Name());
-      op->SetDevice(device);
+      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
     } else {
       VLOG(1) << "Device for [" << op->Name()
               << "] already set to: " << device->name();
@@ -1286,7 +1319,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   auto status = GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel);
 
 #ifdef INTEL_MKL
-  if (IsMKLEnabled() && kernel != nullptr && !ctx.RunEagerOpAsFunction() &&
+  if (IsMKLEnabled() && kernel != nullptr &&
       op->Device() == kVariantDeviceNull) {
     // oneDNN optimization pass relies on the op's assigned device to determine
     // whether it can be rewritten.

@@ -39,6 +39,9 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
 Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
                              xla::Shape* shape);
 
+StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
+                                           const TensorShape& tensor_shape);
+
 // Converts a TensorShape into the equivalent XLA Shape proto, taking an
 // xla::PrimitiveType to specify the element type.  This never fails.
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,

@@ -13,8 +13,9 @@ package(
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
-        "//tensorflow/core/profiler/internal/tpu:__subpackages__",
+        "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -155,8 +156,19 @@ cc_library(
     name = "tpu_initializer_helper",
     srcs = ["tpu_initializer_helper.cc"],
     hdrs = ["tpu_initializer_helper.h"],
+    visibility = ["//visibility:public"],
     deps = [
+        ":libtftpu_header",
+        ":tpu_api",
+        ":tpu_api_dlsym_set_fn",
+        ":tpu_executor_init_fns",
+        ":tpu_library_init_fns",
+        ":tpu_ops_c_api_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -191,45 +203,12 @@ cc_library(
         ["tpu_api_dlsym_initializer_windows.cc"],
         otherwise = ["tpu_api_dlsym_initializer.cc"],
     ),
-    hdrs = ["tpu_api_dlsym_initializer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":libtftpu_header",
-        ":tpu_api",
-        ":tpu_api_dlsym_set_fn",
-        ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
-        ":tpu_library_init_fns",
-        ":tpu_ops_c_api_hdrs",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     # Always link this in, because even if we don't use it directly we want its
-    #static initializers to dynamically load API symbols exported from libtpu.so
-    alwayslink = True,
-)
-
-# This is an alternative to "tpu_api_dlsym_initializer" that only initializes
-# methods needed for the base TPU executor APIs (and thus has fewer deps). Do
-# not link in both this and "tpu_api_dlsym_initializer".
-cc_library(
-    name = "tpu_executor_dlsym_initializer",
-    srcs = if_windows(
-        ["tpu_executor_dlsym_initializer_windows.cc"],
-        otherwise = ["tpu_executor_dlsym_initializer.cc"],
-    ),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_api_dlsym_set_fn",
-        ":tpu_executor_init_fns",
-        ":tpu_initializer_helper",
-        "//tensorflow/compiler/xla/service:tpu_computation_placer",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
+    # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
 )
 

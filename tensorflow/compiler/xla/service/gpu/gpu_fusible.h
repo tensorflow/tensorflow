@@ -40,7 +40,7 @@ struct FusionInfoCache {
     num_unnested_reductions.erase(instr);
   }
 
-  // The rest of the members of this this class are for internal use within
+  // The rest of the members of this class are for internal use within
   // gpu_fusible. You shouldn't need to use them yourself.
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;

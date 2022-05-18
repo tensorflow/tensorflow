@@ -106,15 +106,29 @@ LoadAllTPUEmbeddingParametersOp::LoadAllTPUEmbeddingParametersOp(
   // TODO (b/201806244): remove this logic after the change to the
   // initialization to the config proto.
   OP_REQUIRES_OK(ctx, PopulateMissingFieldsInTPUEmbeddingConfig(&config_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_shards", &num_shards_));
+  // shard_id is either an attribute or an input tensor. Extract the attribute
+  // if it exists.
+  if (ctx->HasAttr("shard_id")) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_id", &shard_id_));
+  }
+}
 
-  int num_shards;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_shards", &num_shards));
-  int shard_id;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_id", &shard_id));
+Status LoadAllTPUEmbeddingParametersOp::ValidateAndSetShardId(
+    OpKernelContext* ctx, int* shard_id) {
+  const Tensor* shard_id_tensor;
+  // Handle shard id as an input tensor.
+  if (ctx->input("shard_id", &shard_id_tensor).ok()) {
+    int shard_id_input = shard_id_tensor->flat<int32>()(0);
 
-  OP_REQUIRES_OK(ctx, ComputeExpectedTableShardShapes(
-                          config_, shard_id, num_shards,
-                          "LoadAllTPUEmbeddingParametersOp", &table_shapes_));
+    // If shard_id_ is already set, check that it matches the input shard_id.
+    if (*shard_id != -1 && *shard_id != shard_id_input) {
+      return errors::FailedPrecondition("shard_id expected to be: ", *shard_id,
+                                        " but got: ", shard_id_input);
+    }
+    *shard_id = shard_id_input;
+  }
+  return Status::OK();
 }
 
 void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
@@ -203,8 +217,16 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
 }
 
 void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
-    VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute";
+  VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute";
+  // Handle path where shard id is a tensor input.
+  OP_REQUIRES_OK(ctx, ValidateAndSetShardId(ctx, &shard_id_));
 
+  if (!table_shape_initialized_) {
+    OP_REQUIRES_OK(ctx, ComputeExpectedTableShardShapes(
+                            config_, shard_id_, num_shards_,
+                            "LoadAllTPUEmbeddingParametersOp", &table_shapes_));
+    table_shape_initialized_ = true;
+  }
   std::array<std::vector<absl::Span<const float>>,
              tpu::kMaxAuxiliaryParameterCount + 1> state_variable_vector;
 

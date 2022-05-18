@@ -7,5 +7,5 @@ func.func @const() {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "TPU:0", name = "const", dtype = "tfdtype$DT_INT32", value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
     tf_executor.fetch
   }
-  return
+  func.return
 }

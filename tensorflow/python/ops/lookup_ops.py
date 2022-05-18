@@ -713,7 +713,7 @@ class TextFileInitializer(TableInitializerBase):
     value_dtype = dtypes.as_dtype(value_dtype)
 
     if key_index < -2:
-      raise ValueError("`key_index` should be >= -2, received: {key_index}.")
+      raise ValueError(f"`key_index` should be >= -2, received: {key_index}.")
 
     if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
       raise ValueError("`key_dtype` must be int64 if `key_index` is "

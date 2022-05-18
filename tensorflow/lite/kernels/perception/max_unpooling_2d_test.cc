@@ -87,7 +87,7 @@ TEST(MaxUnpoolingOpTest, SimpleTest) {
       /*output=*/{TensorType_FLOAT32, {}});
   model.SetInput({13, 4});
   model.SetIndices({1, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 13, 0, 0, 0, 0, 4, 0}));
@@ -111,7 +111,7 @@ TEST(MaxUnpoolingOpTest, Strides2x1Test) {
 
   model.SetInput(input_data);
   model.SetIndices(indices_data);
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 2, 2}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 2, 3, 0, 0, 4, 5, 0,
@@ -136,7 +136,7 @@ TEST(MaxUnpoolingOpTest, Strides2x2Test) {
 
   model.SetInput(input_data);
   model.SetIndices(indices_data);
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 8, 1}));
   EXPECT_THAT(
@@ -163,7 +163,7 @@ TEST(MaxUnpoolingOpTest, PaddingValidTest) {
 
   model.SetInput(input_data);
   model.SetIndices(indices_data);
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 5, 1}));
   EXPECT_THAT(model.GetOutput(),
@@ -193,7 +193,7 @@ TEST(MaxUnpoolingOpTest, InputWithBatchTest) {
 
   model.SetInput(input_data);
   model.SetIndices(indices_data);
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4, 12, 2}));
   EXPECT_THAT(
@@ -234,7 +234,7 @@ TEST(MaxUnpoolingOpTest, InputWithBatchAndPaddingValidTest) {
 
   model.SetInput(input_data);
   model.SetIndices(indices_data);
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4, 11, 2}));
   EXPECT_THAT(

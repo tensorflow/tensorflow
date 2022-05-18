@@ -140,7 +140,7 @@ func.func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
 
 // CHECK-TILE-012-LABEL: func @loop_3d_memref
 
-!memref_subview_type = type memref<?x?x?xf32, affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2 + d2)>>
+!memref_subview_type = memref<?x?x?xf32, affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2 + d2)>>
 
 func.func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
                            %s0: index, %s1: index, %s2: index) {
@@ -163,7 +163,7 @@ func.func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
     "computation"(%in_slice) : (!memref_subview_type) -> memref<?x?x?xf32>
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // -----

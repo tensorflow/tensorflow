@@ -174,6 +174,18 @@ enum FullTypeId {
   //   TFT_LITERAL[TFT_INT32]{1} is the compile-time constant 1.
   TFT_LITERAL = 1003;
 
+  // Encoding types describe a value of a certain type, encoded as a different
+  // type.
+  //
+  // Parametrization:
+  //   TFT_ENCODED[<encoded type>, <encoding type>]
+  //   * <encoded type> may be any type
+  //   * <encoding type> may be any type
+  //
+  // Examples:
+  //   TFT_ENCODING[TFT_INT32, TFT_STRING] is an integer encoded as string.
+  TFT_ENCODED = 1004;
+
   // Type attributes. These always appear in the parametrization of a type,
   // never alone. For example, there is no such thing as a "bool" TensorFlow
   // object (for now).
@@ -217,7 +229,7 @@ enum FullTypeId {
   // is expressed using TFT_PRODUCT.
   //
   //
-  // Parametrization: TFT_ARRAY[<element type>].
+  // Parametrization: TFT_DATASET[<element type>].
   //   * <element type> may be a concrete type or a type symbol. It represents
   //     the data type of the elements produced by the dataset.
   //
@@ -234,6 +246,15 @@ enum FullTypeId {
   //
   // Parametrization: TFT_RAGGED[<element_type>].
   TFT_RAGGED = 10103;
+
+  // Iterators created by tf.data ops and APIs. Very similar to Datasets, except
+  // they are mutable.
+  //
+  //
+  // Parametrization: TFT_ITERATOR[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  TFT_ITERATOR = 10104;
 
   // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
   // Unlike strict execution models, where ownership of a lock is denoted by
@@ -265,7 +286,7 @@ message FullTypeDef {
 
   repeated FullTypeDef args = 2;
 
-  // Literal values of this type object, if the the type admits one.
+  // Literal values of this type object, if the type admits one.
   // For example, a type variable admits a string attribute - its name.
   // Shape-related types may admit int attributes - their static shape values.
   // Fields for more data types to be added as needed.

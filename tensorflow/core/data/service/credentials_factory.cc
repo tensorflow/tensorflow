@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/credentials_factory.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 

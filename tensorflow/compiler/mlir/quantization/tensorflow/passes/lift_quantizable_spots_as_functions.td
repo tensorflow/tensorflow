@@ -18,14 +18,11 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
+include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 //===----------------------------------------------------------------------===//
 // Helper functions.
 //===----------------------------------------------------------------------===//
-
-class ExtractVariadic<int N> : NativeCodeCall<"*($0.begin() + "# N #")">;
-
-def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
 class IsFusedOpEndsWith<string OpName> : AttrConstraint<
     CPred<"!$_self.cast<ArrayAttr>().empty() && "
@@ -34,68 +31,140 @@ class IsFusedOpEndsWith<string OpName> : AttrConstraint<
     "Matching fused '" # OpName # "' op at the end">;
 
 //===----------------------------------------------------------------------===//
-// Pattern rules for lifting as functions
+// Pattern rules for lifting ops as functions
 //===----------------------------------------------------------------------===//
 
-def LiftFusedConv2DRelu6 : Pat<
-  (TF__FusedConv2DOp:$res
-    $input, $filter, $bias, $strides, $padding,
-    $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
-    IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_relu6_fn">
-     (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
-     (ResultList $res),
-     (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInLiftedFunc $res)]>;
-
-def LiftFusedConv2DRelu : Pat<
-  (TF__FusedConv2DOp:$res
-    $input, $filter, $bias, $strides, $padding,
-    $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
-    IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_relu_fn">
-     (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
-     (ResultList $res),
-     (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInLiftedFunc $res)]>;
-
-def LiftFusedConv2D : Pat<
-  (TF__FusedConv2DOp:$res
-    $input, $filter, $bias, $strides, $padding,
-    $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
-    IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
+def LiftConv : Pat<
+  (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn, $padding,
+     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
   (LiftAsFunctionCall<"fused_conv2d_fn">
-     (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
+     (ArgumentList $input, $filter),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInLiftedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
-def LiftFusedMatMulRelu6 : Pat<
-  (TF__FusedMatMulOp:$res
-    $input, $weight, $bias, $transpose_a, $transpose_b,
-    IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_relu6_fn">
-     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
+def LiftDepthwiseConv : Pat<
+  (TF_DepthwiseConv2dNativeOp:$res $input, $filter, $strides, $padding,
+     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"fused_depthwise_conv2d_fn">
+     (ArgumentList $input, $filter),
      (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)]>;
+     (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
-def LiftFusedMatMulRelu : Pat<
-  (TF__FusedMatMulOp:$res
-    $input, $weight, $bias, $transpose_a, $transpose_b,
-    IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_relu_fn">
-     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)]>;
-
-def LiftFusedMatMul : Pat<
-  (TF__FusedMatMulOp:$res
-    $input, $weight, $bias, $transpose_a, $transpose_b,
-    IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
+def LiftMatMul : Pat<
+  (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
   (LiftAsFunctionCall<"fused_matmul_fn">
-     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
+     (ArgumentList $a, $b),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+
+//===----------------------------------------------------------------------===//
+// Pattern rules for lifting ops with bias as functions
+//===----------------------------------------------------------------------===//
+
+def LiftDepthwiseConv2dNativeWithBias : Pat<
+    (TF_BiasAddOp:$res
+      (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
+         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
+      $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"fused_depthwise_conv2d_with_bias_fn">
+     (ArgumentList $input, $filter, $bias),
+     (ResultList $res),
+     (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+def LiftConv2dWithBias : Pat<
+  (TF_BiasAddOp:$res
+      (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
+         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
+       $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"fused_conv2d_with_bias_fn">
+     (ArgumentList $input, $filter, $bias),
+     (ResultList $res),
+     (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+def LiftMatmulWithBias : Pat<
+  (TF_BiasAddOp:$res
+      (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+      $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"fused_matmul_with_bias_fn">
+     (ArgumentList $a, $b, $bias),
+     (ResultList $res),
+     (AttributeList $transpose_a, $transpose_b)),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+//===----------------------------------------------------------------------===//
+// Pattern rules for lifting ops with bias and activation as functions
+//===----------------------------------------------------------------------===//
+
+multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName> {
+  def LiftConvWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
+         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
+    (LiftAsFunctionCall<"fused_conv2d_with_"# ActivationName #"_fn">
+       (ArgumentList $input, $filter),
+       (ResultList $res),
+       (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftConv2dWithBiasAnd#LastFusedOp : Pat<
+    (ActivationOp:$res
+     (TF_BiasAddOp
+        (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
+           $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
+         $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"fused_conv2d_with_bias_and_"# ActivationName #"_fn">
+       (ArgumentList $input, $filter, $bias),
+       (ResultList $res),
+       (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftDepthwiseConv2dNativeWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
+         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
+    (LiftAsFunctionCall<"fused_depthwise_conv2d_with_"# ActivationName #"_fn">
+       (ArgumentList $input, $filter),
+       (ResultList $res),
+       (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftDepthwiseConv2dNativeWithBiasAnd#LastFusedOp : Pat<
+      (ActivationOp:$res
+        (TF_BiasAddOp
+          (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
+             $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
+          $bias, IsDataFormatNHWC:$bias_data_format)),
+      (LiftAsFunctionCall<"fused_depthwise_conv2d_with_bias_and_"# ActivationName #"_fn">
+         (ArgumentList $input, $filter, $bias),
+         (ResultList $res),
+         (AttributeList $strides, $padding, $explicit_padding, $dilations)),
+      [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftMatmulWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_MatMulOp $a, $b, $transpose_a, $transpose_b)),
+    (LiftAsFunctionCall<"fused_matmul_with_"# ActivationName #"_fn">
+       (ArgumentList $a, $b),
+       (ResultList $res),
+       (AttributeList $transpose_a, $transpose_b)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftMatmulWithBiasAnd#LastFusedOp : Pat<
+    (ActivationOp:$res
+     (TF_BiasAddOp
+        (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+      $bias, IsDataFormatNHWC:$bias_data_format)),
+    (LiftAsFunctionCall<"fused_matmul_with_bias_and_"# ActivationName #"_fn">
+       (ArgumentList $a, $b, $bias),
+       (ResultList $res),
+       (AttributeList $transpose_a, $transpose_b)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+}
+defm : LiftCompositeOpsWithActivation<TF_ReluOp, "relu">;
+defm : LiftCompositeOpsWithActivation<TF_Relu6Op, "relu6">;

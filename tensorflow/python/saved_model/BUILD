@@ -361,6 +361,7 @@ py_strict_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:versions",
+        "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
@@ -700,7 +701,6 @@ tf_python_pybind_extension(
         "pywrap_saved_model_metrics.h",
     ],
     features = ["-layering_check"],
-    module_name = "pywrap_saved_model",
     visibility = [
         "//tensorflow/python/saved_model:__subpackages__",
         "//tensorflow/python/training:__subpackages__",

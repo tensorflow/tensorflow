@@ -3,7 +3,7 @@
 // Test for case with no session initialize op.
 module attributes {tf_saved_model.semantics} {
   // CHECK-LABEL: serving_default
-  func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}) ->
+  func.func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}) ->
     (tensor<1x10xf32> {tf_saved_model.index_path = ["output_0"]}, tensor<1x10xi64> {tf_saved_model.index_path = ["output_1"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     %handle_1 = "tf.VarHandleOp"() {container="c", shared_name="b"} : () -> tensor<!tf_type.resource<tensor<1x10xi64>>>
@@ -30,7 +30,7 @@ module attributes {tf_saved_model.semantics} {
 // Test for case with existing session initialize op.
 module attributes {tf_saved_model.semantics} {
   // CHECK-LABEL: init_all_tables
-  func @init_all_tables()
+  func.func @init_all_tables()
   attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
     %cst = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi64>
     %cst_0 = arith.constant dense<["a", "b", "c", "d"]> : tensor<4x!tf_type.string>
@@ -39,7 +39,7 @@ module attributes {tf_saved_model.semantics} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     %cst_1 = arith.constant dense<1.0> : tensor<1x10xf32>
     "tf.AssignVariableOp"(%handle_0, %cst_1) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
-    return
+    func.return
     // CHECK: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<1x10xf32>
     // CHECK: %[[RESOURCE:.*]] = "tfl.var_handle"() {container = "c", shared_name = "a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     // CHECK: "tfl.assign_variable"(%[[RESOURCE]], %[[CST]]) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
@@ -49,7 +49,7 @@ module attributes {tf_saved_model.semantics} {
   // CHECK: "tf_saved_model.session_initializer"() {initializers = [@init_all_tables]} : () -> ()
 
   // CHECK-LABEL: serving_default
-  func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}) ->
+  func.func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}) ->
     (tensor<1x10xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_x:0", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     %0 = "tf.ReadVariableOp"(%handle_0) : (tensor<!tf_type.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
@@ -70,7 +70,7 @@ module attributes {tf_saved_model.semantics} {
 
 // Don't legalize if type is not supported.
 module attributes {tf_saved_model.semantics} {
-  func @serving_default() ->
+  func.func @serving_default() ->
     (tensor<1x10xui64> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
     %0 = "tf.ReadVariableOp"(%handle_0) {device = ""} : (tensor<!tf_type.resource<tensor<1x10xui64>>>) -> tensor<1x10xui64>
@@ -84,12 +84,12 @@ module attributes {tf_saved_model.semantics} {
 
 // Don't legalize if type is not supported.
 module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = true} {
-  func @serving_default() ->
+  func.func @serving_default() ->
     () attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = ""}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
     %cst = arith.constant dense<2> : tensor<1x10xui64>
     "tf.AssignVariableOp"(%handle_0, %cst) : (tensor<!tf_type.resource<tensor<1x10xui64>>>, tensor<1x10xui64>) -> ()
-    return
+    func.return
   }
 
   // CHECK: tf.VarHandleOp
@@ -100,7 +100,7 @@ module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = true}
 
 // Don't legalize if disabled by earlier analysis.
 module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = false} {
-  func @serving_default() ->
+  func.func @serving_default() ->
     (tensor<1x10xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     %0 = "tf.ReadVariableOp"(%handle_0) : (tensor<!tf_type.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>

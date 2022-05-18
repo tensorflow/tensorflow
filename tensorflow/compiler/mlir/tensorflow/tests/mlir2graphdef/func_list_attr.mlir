@@ -45,7 +45,7 @@ func.func @main() {
     %1:2 = tf_executor.island wraps "tf.Case"(%0#0) {Tin = [], Tout = ["tfdtype$DT_FLOAT"], branches = [@foo, @bar], device = "", output_shapes = [], is_stateless = false} : (tensor<i32>) -> tensor<*xf32> loc("Case")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-DAG: name: "foo"

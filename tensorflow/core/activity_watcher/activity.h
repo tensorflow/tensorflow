@@ -57,12 +57,17 @@ struct Activity {
 class ActivityScope {
  public:
   explicit ActivityScope(std::unique_ptr<Activity> activity);
-  virtual ~ActivityScope();
+  ~ActivityScope();
 
  private:
   ActivityId ABSL_ATTRIBUTE_UNUSED activity_id_;
   TF_DISALLOW_COPY_AND_ASSIGN(ActivityScope);
 };
+
+// Records an activity explicitly. Useful when the start and end of an activity
+// happen in different threads.
+ActivityId ActivityStart(std::unique_ptr<Activity> activity);
+void ActivityEnd(ActivityId id);
 
 }  // namespace activity_watcher
 }  // namespace tensorflow

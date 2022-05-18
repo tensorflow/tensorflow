@@ -13,7 +13,7 @@ func.func @init() {
   %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
   %1 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %2 = "tf.Assign"(%0, %1) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<!tf_type.int32ref>
-  return
+  func.return
 }
 
 // CHECK-LABEL: @inference

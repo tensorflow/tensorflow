@@ -321,6 +321,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_RELU, 2}, "2.1.0"},
               {{BuiltinOperator_RELU, 3}, "2.5.0"},
               {{BuiltinOperator_RELU_N1_TO_1, 1}, "1.5.0"},
+              {{BuiltinOperator_RELU_0_TO_1, 1}, "2.10.0"},
               {{BuiltinOperator_PRELU, 1}, "1.8.0"},
               {{BuiltinOperator_EXP, 1}, "1.7.0"},
               {{BuiltinOperator_COS, 1}, "1.14.0"},
@@ -376,6 +377,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_GELU, 1}, "2.9.0"},
               {{BuiltinOperator_GELU, 2}, "2.9.0"},
               {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 1}, "2.9.0"},
+              {{BuiltinOperator_UNSORTED_SEGMENT_PROD, 1}, "2.10.0"},
           });
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};

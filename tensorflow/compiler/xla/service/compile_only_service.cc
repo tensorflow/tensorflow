@@ -63,7 +63,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const absl::Span<const AotXlaComputationInstance> computations,
+    absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
@@ -94,11 +94,30 @@ CompileOnlyService::CompileAheadOfTime(
   execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
   execution_options.set_use_auto_spmd_partitioning(
       options.use_auto_spmd_partitioning());
+  for (auto t : options.auto_spmd_partitioning_mesh_shape()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_shape()->Add(t);
+  }
+  for (auto t : options.auto_spmd_partitioning_mesh_ids()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
+  }
   execution_options.set_deduplicate_hlo(options.deduplicate_hlo());
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
+    auto update_shape_with_empty_tiles = [this](Shape* subshape,
+                                                const xla::ShapeIndex& index) {
+      if (subshape->IsArray() && subshape->layout().tiles().empty()) {
+        *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
+      }
+    };
+    Shape result_layout(instance.result_layout);
+    ShapeUtil::ForEachMutableSubshape(&result_layout,
+                                      update_shape_with_empty_tiles);
     *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->ToProto();
+        result_layout.ToProto();
+    for (auto shape : instance.argument_layouts) {
+      ShapeUtil::ForEachMutableSubshape(const_cast<Shape*>(shape),
+                                        update_shape_with_empty_tiles);
+    }
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
@@ -112,9 +131,6 @@ CompileOnlyService::CompileAheadOfTime(
     DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
     hlo_modules.push_back(std::move(hlo_module));
   }
-
-  execution_options.clear_shape_with_output_layout();
-  DumpExecutionOptions(execution_options, debug_options);
 
   return compiler_->CompileAheadOfTime(
       absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),

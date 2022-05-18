@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tfl-optimize-functional-ops -split-input-file | FileCheck %s
 
 // CHECK-LABEL: main
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   // CHECK: %[[INPUT0:.*]] = "tf.Placeholder.input"
   %0 = "tf.Placeholder.input"(%arg0) : (tensor<f32>) -> tensor<f32>
   // CHECK: %[[INPUT1:.*]] = "tf.Placeholder.input"
@@ -13,12 +13,12 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   func.return %3 : tensor<f32>
 }
 
-func private @add(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
+func.func private @add(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
   %0 = "tf.Add"(%arg0, %arg1): (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
-func private @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
+func.func private @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
@@ -28,7 +28,7 @@ func private @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  
 // Verify handling of nested If ops to inline.
 
 // CHECK-LABEL: main
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   // CHECK: %[[INPUT0:.*]] = "tf.Placeholder.input"
   %0 = "tf.Placeholder.input"(%arg0) : (tensor<f32>) -> tensor<f32>
   // CHECK: %[[INPUT1:.*]] = "tf.Placeholder.input"
@@ -40,23 +40,23 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   func.return %3 : tensor<f32>
 }
 
-func private @addormul(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
+func.func private @addormul(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
   %0 = arith.constant dense<false> : tensor<i1>
   %1 = "tf.If"(%0, %arg1, %arg0) {else_branch = @mul, then_branch = @add, is_stateless = true} : (tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %1 : tensor<*xf32>
 }
 
-func private @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
+func.func private @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
-func private @add(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
+func.func private @add(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
   %0 = "tf.Add"(%arg0, %arg1): (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
-func private @mul(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
+func.func private @mul(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  {
   %0 = "tf.Multiply"(%arg0, %arg1): (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
@@ -65,7 +65,7 @@ func private @mul(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>  
 
 // Verify unused if with functions without side-effects is removed.
 // CHECK-LABEL: main
-func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
+func.func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
     attributes {tf.entry_function = {inputs = "input", outputs = "Conv2D"}} {
   %cst = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
   %cst_0 = arith.constant dense<1.000000e+00> : tensor<f32>
@@ -82,12 +82,12 @@ func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
   func.return %4 : tensor<3x15x14x8xf32>
 }
 
-func private @_functionalize_if_else_branch_00(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
+func.func private @_functionalize_if_else_branch_00(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
   %cst = arith.constant dense<false> : tensor<i1>
   func.return %cst : tensor<i1>
 }
 
-func private @_functionalize_if_then_branch_00(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
+func.func private @_functionalize_if_then_branch_00(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
   %cst = arith.constant dense<true> : tensor<i1>
   func.return %cst : tensor<i1>
 }
@@ -98,7 +98,7 @@ func private @_functionalize_if_then_branch_00(%arg0: tensor<*xi1>, %arg1: tenso
 
 // Verify unused if with function with side-effects is not removed.
 // CHECK-LABEL: main
-func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
+func.func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
     attributes {tf.entry_function = {inputs = "input", outputs = "Conv2D"}} {
   %cst = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
   %cst_0 = arith.constant dense<1.000000e+00> : tensor<f32>
@@ -115,12 +115,12 @@ func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
   func.return %4 : tensor<3x15x14x8xf32>
 }
 
-func private @_functionalize_if_else_branch_01(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
+func.func private @_functionalize_if_else_branch_01(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
   %cst = arith.constant dense<false> : tensor<i1>
   func.return %cst : tensor<i1>
 }
 
-func private @_functionalize_if_then_branch_01(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
+func.func private @_functionalize_if_then_branch_01(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
   %0 = "tf.blah"() : () -> tensor<i1>
   func.return %0 : tensor<i1>
 }
@@ -134,7 +134,7 @@ func private @_functionalize_if_then_branch_01(%arg0: tensor<*xi1>, %arg1: tenso
 // stateless.
 
 // CHECK-LABEL: main
-func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
+func.func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
     attributes {tf.entry_function = {inputs = "input", outputs = "Conv2D"}} {
   %cst = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
   %cst_0 = arith.constant dense<1.000000e+00> : tensor<f32>
@@ -151,12 +151,12 @@ func @main(%arg0: tensor<3x15x14x3xf32>) -> tensor<3x15x14x8xf32>
   func.return %4 : tensor<3x15x14x8xf32>
 }
 
-func private @_functionalize_if_else_branch_02(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
+func.func private @_functionalize_if_else_branch_02(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
   %cst = arith.constant dense<false> : tensor<i1>
   func.return %cst : tensor<i1>
 }
 
-func private @_functionalize_if_then_branch_02(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
+func.func private @_functionalize_if_then_branch_02(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<i1>  {
   %0 = "tf.blah"() : () -> tensor<i1>
   func.return %0 : tensor<i1>
 }

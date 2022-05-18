@@ -2,7 +2,7 @@
 // RUN: FileCheck %s
 
 #map0 = affine_map<(d0) -> (d0)>
-func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
+func.func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
                   %C: tensor<8xf32>) -> tensor<8xf32> {
   %c0 = arith.constant 0 : index
   %c2 = arith.constant 2 : index
@@ -53,7 +53,7 @@ func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
 
 // -----
 
-func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
+func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
   %c60 = arith.constant 60 : index
@@ -116,7 +116,7 @@ func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
 #map1 = affine_map<(d0, d1) -> (d1)>
 #map2 = affine_map<(d0) -> (d0)>
 #map3 = affine_map<(d0) -> ()>
-func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
+func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c16 = arith.constant 16 : index
   %c0 = arith.constant 0 : index
@@ -167,7 +167,7 @@ func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
 // -----
 
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
-func @test_transfer_read_of_one_dim_expand_shape(
+func.func @test_transfer_read_of_one_dim_expand_shape(
     %in: tensor<10xf32>) -> tensor<5xf32> {
   %c0 = arith.constant 0 : index
   %zero_float = arith.constant 0.000000e+00 : f32
@@ -196,7 +196,7 @@ func @test_transfer_read_of_one_dim_expand_shape(
 // -----
 
 #map0 = affine_map<(d0, d1) -> (d0, 0)>
-func @test_transfer_read_of_one_dim_expand_shape_different_shape(
+func.func @test_transfer_read_of_one_dim_expand_shape_different_shape(
     %in: tensor<1xf32>) -> tensor<18xf32> {
   %c0 = arith.constant 0 : index
   %zero_float = arith.constant 0.000000e+00 : f32
@@ -216,7 +216,7 @@ func @test_transfer_read_of_one_dim_expand_shape_different_shape(
 
 // -----
 
-func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
+func.func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %init = linalg.init_tensor [2, 1000] : tensor<2x1000xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<2x1000xf32>) -> tensor<2x1000xf32>
@@ -227,7 +227,7 @@ func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
 
 // -----
 
-func @vectorize_small_untiled_fill() -> tensor<128xf32> {
+func.func @vectorize_small_untiled_fill() -> tensor<128xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %init = linalg.init_tensor [128] : tensor<128xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<128xf32>) -> tensor<128xf32>

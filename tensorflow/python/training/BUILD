@@ -63,7 +63,7 @@ filegroup(
         "training_ops.py",
         "warm_starting_util.py",
     ],
-    visibility = ["//tensorflow/python/training:__pkg__"],
+    visibility = ["//visibility:private"],
 )
 
 py_library(
@@ -814,30 +814,9 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-cuda_py_test(
-    name = "checkpoint_management_test",
-    size = "small",
-    srcs = [
-        "checkpoint_management_test.py",
-    ],
-    python_version = "PY3",
-    deps = [
-        ":checkpoint_management",
-        ":saver",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 

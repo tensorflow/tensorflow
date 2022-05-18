@@ -158,6 +158,8 @@ class AttrSlice {
   // Returns the attr_value for attr_name if found. Otherwise, returns a
   // NotFound status.
   Status Find(StringPiece attr_name, const AttrValue** attr_value) const;
+  Status FindByString(const std::string& attr_name,
+                      const AttrValue** attr_value) const;
 
   // Helper class to avoid allocations in EqualAttrs.
   // TODO(irving): Will go away once NodeInfo is used.
@@ -192,6 +194,8 @@ class AttrSlice {
   const AttrValueMap* attrs() const {
     return ndef_ != nullptr ? &ndef_->attr() : attrs_;
   }
+
+  Status CheckFind(StringPiece attr_name, const AttrValue* attr_value) const;
 
   const NodeDef* ndef_;
   const AttrValueMap* attrs_;
@@ -250,6 +254,13 @@ Status GetNodeAttr(
     std::vector<PartialTensorShape>* value);  // type "list(shape)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
+
+template <typename T>
+StatusOr<T> GetNodeAttr(const NodeDef& ndef, absl::string_view attr_name) {
+  T val;
+  TF_RETURN_IF_ERROR(GetNodeAttr(ndef, attr_name, &val));
+  return val;
+}
 
 // This version avoids copying the TensorProto.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.

@@ -241,9 +241,7 @@ objc_library(
         "-ObjC++",
     ],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu/common:gpu_info"],
 )
 
 objc_library(

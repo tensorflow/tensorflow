@@ -35,7 +35,7 @@ using tensorflow::TensorShapeProto;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::errors::Unimplemented;
 
-Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
+Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
   switch (dtype) {
     case tensorflow::DT_HALF:
       *type = builder.getF16Type();
@@ -168,7 +168,7 @@ Status ConvertToDataType(Type type, DataType* dtype) {
 }
 
 void ConvertToMlirShape(const TensorShape& input_shape,
-                        llvm::SmallVectorImpl<int64_t>* shape) {
+                        SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dims());
   for (const auto& d : input_shape) {
     shape->push_back(d.size);
@@ -176,7 +176,7 @@ void ConvertToMlirShape(const TensorShape& input_shape,
 }
 
 Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape) {
+                          SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dim_size());
   auto& dims = input_shape.dim();
   for (auto& d : dims) {
@@ -200,7 +200,7 @@ tensorflow::StatusOr<Type> ConvertToMlirTensorType(
   if (shape.unknown_rank()) {
     return UnrankedTensorType::get(element_type);
   }
-  llvm::SmallVector<int64_t, 4> shape_dims;
+  SmallVector<int64_t, 4> shape_dims;
   TF_RETURN_IF_ERROR(ConvertToMlirShape(shape, &shape_dims));
   return RankedTensorType::get(shape_dims, element_type);
 }

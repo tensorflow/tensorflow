@@ -1985,7 +1985,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
   RankedTensorType slice_type = slice_value.getType().cast<RankedTensorType>();
   assert((slice_type.getDimSize(axis) % num_split) == 0);
 
-  // Each slice has a different begining point.
+  // Each slice has a different beginning point.
   // The slice size is actually the same each op.
   SmallVector<int64_t> begin_vals, size_vals;
   for (int j = 0, s = slice_type.getRank(); j < s; j++) {
@@ -2060,7 +2060,7 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   int32_t curr_split_start = 0;
   for (int i = 0; i < size_split.size(); i++) {
-    // Each slice has a different begining point.
+    // Each slice has a different beginning point.
     // The slice size is different for each op.
     SmallVector<int64_t> begin_vals, size_vals;
 
@@ -3597,10 +3597,10 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   // params tensor.
   //
   // From here, we take each of the ND dimensions and multiply it with
-  // the the size of the next params dimension (or 1 for the last
+  // the size of the next params dimension (or 1 for the last
   // dimension), then sum all these together with a reduce_sum
   // operator.  This is exactly the same mathematics as one would use
-  // flatten the indicies of an N-dimensional row-major array into a
+  // flatten the indices of an N-dimensional row-major array into a
   // 1-D array in C.
   //
   // More precisely, do an element-wise multiply with [params.shape[1

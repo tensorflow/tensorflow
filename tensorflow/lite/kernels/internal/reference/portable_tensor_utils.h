@@ -309,9 +309,8 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                              reduction_size);
 }
 
-void MeanStddevNormalization(const float* __restrict__ input_vector,
-                             float* __restrict__ output_vector, int v_size,
-                             int n_batch) {
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch) {
   PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 

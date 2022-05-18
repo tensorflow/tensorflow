@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
@@ -113,9 +114,24 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":exceptions",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "exceptions",
+    hdrs = ["exceptions.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
     ],
 )
 
@@ -130,6 +146,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":exceptions",
         ":status_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -187,12 +204,14 @@ cc_library(
     name = "traceback",
     srcs = ["traceback.cc"],
     hdrs = ["traceback.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":exceptions",
         ":python_ref_manager",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
@@ -245,6 +264,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":exceptions",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -264,6 +284,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:transpose",
+        "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:statusor",
@@ -322,6 +343,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":exceptions",
         ":py_client",
         ":python_ref_manager",
         ":python_utils",
@@ -410,6 +432,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":exceptions",
         ":jax_jit",
         ":py_client",
         ":python_utils",
@@ -486,6 +509,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":exceptions",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -538,9 +562,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
@@ -626,9 +648,36 @@ cc_library(
     ],
 )
 
+# TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
+# xla_extension.so so that each backend is a separate plugin, however that must wait for a clean
+# ABI separation between devices.
 config_setting(
-    name = "enable_gpu",
+    name = "link_gpu_plugin",
     define_values = {"xla_python_enable_gpu": "true"},
+)
+
+bool_flag(
+    name = "enable_gpu",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "gpu_enabled",
+    flag_values = {
+        ":enable_gpu": "True",
+    },
+)
+
+bool_flag(
+    name = "enable_tpu",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "tpu_enabled",
+    flag_values = {
+        ":enable_tpu": "True",
+    },
 )
 
 pybind_extension(
@@ -636,60 +685,72 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
-    module_name = "xla_extension",
+    defines = select({
+        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
+        "//conditions:default": [],
+    }) + select({
+        ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
+        "//conditions:default": [],
+    }),
     pytype_deps = [
         "//third_party/py/numpy",
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
     deps = [
-        ":dlpack",
-        ":jax_jit",
-        ":mlir",
-        ":ops",
-        ":pmap_lib",
-        ":pprof_profile_builder",
-        ":profiler",
-        ":transfer_guard_lib",
-        ":py_client",
-        ":pytree",
-        ":python_ref_manager",
-        ":traceback",
-        ":outfeed_receiver_py",
-        ":types",
-        ":xla_compiler",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@pybind11",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/pjrt:cpu_device",
-        "//tensorflow/compiler/xla/pjrt:interpreter_device",
-        "//tensorflow/compiler/xla/pjrt:gpu_device",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tpu_client",
-        "//tensorflow/compiler/xla/pjrt/distributed",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla/pjrt/distributed:service",
-        "//tensorflow/core:lib",
-        # Do NOT remove this dependency. The XLA Python extension must not
-        # depend on any part of TensorFlow at runtime, **including**
-        # libtensorflow_framework.so. The XLA module is deployed self-contained
-        # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
-        # not require Tensorflow.
-        "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
-        "//tensorflow/python:bfloat16_lib",
-    ] + select({
-        ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
-        "//tensorflow:with_tpu_support": [
-            "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
-        ],
-        "//conditions:default": [],
-    }),
+               ":dlpack",
+               ":jax_jit",
+               ":mlir",
+               ":ops",
+               ":pmap_lib",
+               ":pprof_profile_builder",
+               ":profiler",
+               ":transfer_guard_lib",
+               ":py_client",
+               ":pytree",
+               ":python_ref_manager",
+               ":traceback",
+               ":outfeed_receiver_py",
+               ":types",
+               ":xla_compiler",
+               "@com_google_absl//absl/strings",
+               "@com_google_absl//absl/strings:str_format",
+               "@com_google_absl//absl/types:span",
+               "@pybind11",
+               "//third_party/python_runtime:headers",  # buildcleaner: keep
+               "//tensorflow/compiler/xla:literal",
+               "//tensorflow/compiler/xla:shape_util",
+               "//tensorflow/compiler/xla:status",
+               "//tensorflow/compiler/xla:statusor",
+               "//tensorflow/compiler/xla:types",
+               "//tensorflow/compiler/xla:util",
+               "//tensorflow/compiler/xla/pjrt:cpu_device",
+               "//tensorflow/compiler/xla/pjrt:interpreter_device",
+               "//tensorflow/compiler/xla/pjrt:pjrt_client",
+               "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+               "//tensorflow/compiler/xla/pjrt/distributed",
+               "//tensorflow/compiler/xla/pjrt/distributed:client",
+               "//tensorflow/compiler/xla/pjrt/distributed:service",
+               "//tensorflow/core:lib",
+               # Do NOT remove this dependency. The XLA Python extension must not
+               # depend on any part of TensorFlow at runtime, **including**
+               # libtensorflow_framework.so. The XLA module is deployed self-contained
+               # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
+               # not require Tensorflow.
+               "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+               "//tensorflow/python:bfloat16_lib",
+           ] + select({
+               ":gpu_enabled": [
+                   "//tensorflow/compiler/xla/pjrt:gpu_device",
+               ],
+               "//conditions:default": [],
+           }) + select({
+               ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+               "//conditions:default": [],
+           }) +
+           select({
+               ":tpu_enabled": [
+                   "//tensorflow/compiler/xla/pjrt:tpu_client",
+               ],
+               "//conditions:default": [],
+           }),
 )

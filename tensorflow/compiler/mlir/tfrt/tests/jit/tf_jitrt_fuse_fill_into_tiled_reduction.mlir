@@ -6,7 +6,7 @@
 #map1 = affine_map<(d0)[s0] -> (2, -d0 + s0)>
 #map2 = affine_map<(d0, d1) -> (d0, d1)>
 #map3 = affine_map<(d0, d1) -> (d0)>
-func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
@@ -101,7 +101,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #map1 = affine_map<(d0, d1) -> (d0)>
 module  {
-  func @reduce_row_sum_2d_static(%in: tensor<8x16xf32>) -> tensor<8xf32> {
+  func.func @reduce_row_sum_2d_static(%in: tensor<8x16xf32>) -> tensor<8xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %c2 = arith.constant 2 : index
     %c4 = arith.constant 4 : index
@@ -144,7 +144,7 @@ module  {
 #map1 = affine_map<(d0, d1) -> (d0, d1)>
 #map2 = affine_map<(d0, d1) -> (d1)>
 module  {
-  func @reduce_column_sum_2d(%in: tensor<?x?xf32>) -> tensor<?xf32> {
+  func.func @reduce_column_sum_2d(%in: tensor<?x?xf32>) -> tensor<?xf32> {
     %cst = arith.constant 0.000000e+00 : f32
     %c0 = arith.constant 0 : index
     %c4 = arith.constant 4 : index

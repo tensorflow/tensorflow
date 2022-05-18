@@ -27,7 +27,6 @@ func.func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 
 // -----
 
-// Test WhileRegionOp::isDefinedOutsideOfLoop
 // CHECK-LABEL: testWhileRegionisDefinedOutsideOfLoop
 func.func @testWhileRegionisDefinedOutsideOfLoop(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<4xf32> {
   %a = "tf.Neg"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>

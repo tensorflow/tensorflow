@@ -5899,8 +5899,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
 
   ```
   num_updates, index_depth = indices.shape.as_list()
-  inner_shape = tensor.shape[:index_depth]
-  outer_shape = tensor.shape[index_depth:]
+  outer_shape = tensor.shape[:index_depth]
+  inner_shape = tensor.shape[index_depth:]
   assert updates.shape == [num_updates, inner_shape]
   ```
 
@@ -6751,18 +6751,25 @@ def repeat_with_axis(data, repeats, axis, name=None):
          [3, 3, 4, 4, 4]], dtype=int32)>
 
   """
+  # Whether the execution happens on the XLA path.
+  on_xla_path = (
+      control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
+      config.get_optimizer_jit() or pywrap_tf_session.TF_GetXlaAutoJitEnabled())
+
   if not isinstance(axis, int):
     raise TypeError("Argument `axis` must be an int. "
                     f"Received `axis` = {axis} of type {type(axis).__name__}")
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")
-    # Note: We pass dtype=None so that the existing type is maintained instead
-    # of force-casting to int32.
-    if forward_compat.forward_compatible(2022, 3, 30):
-      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
-    else:
+    # Note: We want to pass dtype=None to convert_to_int_tensor so that the
+    # existing type is maintained instead of force-casting to int32. However,
+    # this is not compatible with the implementation used on the XLA path.
+    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
       repeats = convert_to_int_tensor(repeats, name="repeats")
+    else:
+      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
+
     repeats.shape.with_rank_at_most(1)
 
     # If `data` is a scalar, then upgrade it to a vector.
@@ -6793,10 +6800,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # The implementation on the else branch has better performance. However, it
     # does not work on the XLA path since it relies on the range op with a
     # shape that is not a compile-time constant.
-    if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-        config.get_optimizer_jit() or
-        pywrap_tf_session.TF_GetXlaAutoJitEnabled() or
-        not forward_compat.forward_compatible(2022, 3, 30)):
+    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
       repeats_original = repeats
 
       # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.

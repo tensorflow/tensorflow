@@ -44,4 +44,5 @@ bazel test \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_output=errors \
-  -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+  -- ${DEFAULT_BAZEL_TARGETS} \
+  -//tensorflow/lite/... -//tensorflow/compiler/aot/...

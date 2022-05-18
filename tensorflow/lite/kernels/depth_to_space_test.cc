@@ -70,7 +70,7 @@ TEST(DepthToSpaceOpModel, NoBlockSize) {
 TEST(DepthToSpaceOpModel, Float32) {
   DepthToSpaceOpModel m({TensorType_FLOAT32, {1, 1, 1, 4}}, 2);
   m.SetInput<float>({1.4, 2.3, 3.2, 4.1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1.4, 2.3, 3.2, 4.1}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 2, 1));
 }
@@ -78,7 +78,7 @@ TEST(DepthToSpaceOpModel, Float32) {
 TEST(DepthToSpaceOpModel, Uint8) {
   DepthToSpaceOpModel m({TensorType_UINT8, {1, 1, 2, 4}}, 2);
   m.SetInput<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 5, 6, 3, 4, 7, 8}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 4, 1));
@@ -87,7 +87,7 @@ TEST(DepthToSpaceOpModel, Uint8) {
 TEST(DepthToSpaceOpModel, int8) {
   DepthToSpaceOpModel m({TensorType_INT8, {1, 2, 1, 4}}, 2);
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 2, 1));
@@ -96,7 +96,7 @@ TEST(DepthToSpaceOpModel, int8) {
 TEST(DepthToSpaceOpModel, Int32) {
   DepthToSpaceOpModel m({TensorType_INT32, {1, 2, 2, 4}}, 2);
   m.SetInput<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(),
               ElementsAreArray(
                   {1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16}));
@@ -106,7 +106,7 @@ TEST(DepthToSpaceOpModel, Int32) {
 TEST(DepthToSpaceOpModel, Int64) {
   DepthToSpaceOpModel m({TensorType_INT64, {1, 1, 1, 1}}, 1);
   m.SetInput<int64_t>({4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 1));
 }

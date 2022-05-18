@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -126,8 +127,12 @@ StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           int64_t replica_count,
                                           int64_t num_partitions) {
-  return ParseAndReturnVerifiedModule(
-      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfigForTest(replica_count, num_partitions)));
+  UpdateEntryComputationLayout(module.get());
+  return module;
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -138,7 +143,20 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
       allow_mixed_precision_in_hlo_verifier_,
       backend().compiler()->ShapeSizeBytesFunction());
   TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  UpdateEntryComputationLayout(module.get());
   return std::move(module);
+}
+
+HloComputation* HloTestBase::AddEntryComputationAndUpdateEntryComputationLayout(
+    HloModule* module, std::unique_ptr<HloComputation> computation) {
+  auto comp = module->AddEntryComputation(std::move(computation));
+  UpdateEntryComputationLayout(module);
+  return comp;
+}
+
+void HloTestBase::UpdateEntryComputationLayout(HloModule* module) {
+  xla::UpdateEntryComputationLayout(
+      module, test_runner_.device_shape_representation_fn());
 }
 
 /* static */
@@ -278,6 +296,10 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   TF_ASSIGN_OR_RETURN(auto reference,
                       reference_runner_.Execute(std::move(reference_module),
                                                 arguments, run_hlo_passes));
+  if (reference.IsAll(0)) {
+    LOG(WARNING) << "Reference value is only zeros.";
+  }
+
   return LiteralTestUtil::NearOrEqual(/*expected=*/reference, /*actual=*/test,
                                       error);
 }

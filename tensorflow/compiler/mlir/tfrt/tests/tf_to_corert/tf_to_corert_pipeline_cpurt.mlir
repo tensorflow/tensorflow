@@ -6,7 +6,7 @@
 // RUN:       tfrt-cost-threshold=1024                                         \
 // RUN:       auto-fusion-oplist=tf.Relu,tf.Transpose,tf.Const                 \
 // RUN:       auto-fusion-min-cluster-size=1"                                  \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --dump-input=always
 
 // Check TF->JitRT JIT compiled operations clustering and outlining starting
 // from the Tensorflow executor dialect.
@@ -47,8 +47,9 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // CHECK:      }
 
 // -----
-// Two identical clusters consisting of a single operation. Check that outlined
-// clusters are deduplicated and we compile only once.
+// Two identical clusters (except the _class attribute) consisting of a single
+// `Relu` operation. Check that outlined clusters are deduplicated and we
+// compile only once.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK:     func @_tfrt_fallback_init
@@ -65,11 +66,13 @@ module attributes {tf.versions = {producer = 462 : i32}} {
     // CHECK: tf_jitrt.fallback.execute @kernel::@compute
     %0 = tf_executor.graph {
       %outs0, %control0 = tf_executor.island wraps "tf.Relu"(%arg0)
-                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+                            {device = "", _class = ["loc:@Relu_0"]}
+                            : (tensor<?x?xf32>) -> tensor<?x?xf32>
       %outs1, %control1 = tf_executor.island wraps "tf.Sqrt"(%outs0)
                             {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       %outs2, %control2 = tf_executor.island wraps "tf.Relu"(%outs1)
-                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+                            {device = "", _class = ["loc:@Relu_1"]}
+                            : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs2: tensor<?x?xf32>
     }
     func.return %0 : tensor<?x?xf32>

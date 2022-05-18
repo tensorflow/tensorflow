@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/common_runtime/device_propagation.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_case_op.h"
@@ -73,6 +77,21 @@ bool HasArgsOrRetvals(const Graph& g) {
     if (n->IsArg() || n->IsRetval()) return true;
   }
   return false;
+}
+
+const absl::flat_hash_set<std::string>& DevicePropagationOpList() {
+  // Control flow ops and Identity ops which are inserted by function call
+  // inlining.
+  static const auto op_list = new absl::flat_hash_set<std::string>(
+      {"Identity", "IdentityN", "Enter", "Exit", "Switch", "Merge",
+       "NextIteration"});
+  return *op_list;
+}
+
+bool IsPropagatableDevice(StringPiece device_string) {
+  DeviceNameUtils::ParsedName device;
+  return DeviceNameUtils::ParseFullName(device_string, &device) &&
+         device.type == DEVICE_TPU;
 }
 
 }  // namespace
@@ -142,6 +161,7 @@ Status LowerFunctionalOpsPass::Run(
   // Case, While node is lowered. Since new graph nodes are always added to the
   // end of the list of nodes it is ensured that nested If/Case/While nodes will
   // be lowered as well.
+  int num_node_ids_before_lowering = g->num_node_ids();
   for (int i = 2; i < g->num_node_ids(); ++i) {
     Node* n = g->FindNodeId(i);
     if (n == nullptr) continue;  // deleted node
@@ -176,6 +196,16 @@ Status LowerFunctionalOpsPass::Run(
           << "' attr set but it does not support lowering.\n";
     }
   }
+
+  // Propagates device assignments inside a function call to control flow ops
+  // after function call is lowered, bcause If/Case/While node lowering happen
+  // before function call lowering,
+  PropagateDevices(
+      [num_node_ids_before_lowering](const Node& n) {
+        return DevicePropagationOpList().contains(n.type_string()) &&
+               n.id() >= num_node_ids_before_lowering;  // Newly created nodes.
+      },
+      IsPropagatableDevice, g);
 
   return Status::OK();
 }

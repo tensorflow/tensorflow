@@ -22,5 +22,5 @@ func.func @main() {
     %2:2 =  tf_executor.island(%1#1) wraps "tf.Const"() {value = dense<4.000000e+00> : tensor<f64>} : () -> tensor<f64>
     tf_executor.fetch
   }
-  return
+  func.return
 }

@@ -19,7 +19,7 @@ module attributes {gpu.container_module} {
     gpu.launch_func @abs_kernel::@abs_kernel
         blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1)
         args(%14 : memref<?xf32>, %16 : memref<?xf32>)
-    return
+    func.return
   }
 
   // CHECK-LABEL: gpu.module @abs_kernel
@@ -84,7 +84,7 @@ module attributes {gpu.container_module} {
     %83 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
     %84 = tf_framework.alloc(%arg0, %size) : memref<?xf32>
     gpu.launch_func  @AddV2_kernel_1::@AddV2_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%size : index, %82 : memref<?xf32>, %83 : memref<?xf32>, %84 : memref<?xf32>)
-    return
+    func.return
   }
 
   // CHECK-LABEL: gpu.module @AddV2_kernel_1
@@ -172,7 +172,7 @@ module attributes {gpu.container_module} {
     %309 = memref.reinterpret_cast %241 to offset: [0], sizes: [%size1, %size0], strides: [%stride0, %stride1]: memref<?x?xf32> to memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>
     %310 = tf_framework.alloc(%arg0, %size1, %size0) : memref<?x?xf32>
     gpu.launch_func  @AddV2_kernel_3::@AddV2_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%size0 : index, %size1 : index, %310 : memref<?x?xf32>, %304 : memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>, %309 : memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>)
-    return
+    func.return
   }
 
   // CHECK-LABEL: gpu.module @AddV2_kernel_3
@@ -281,7 +281,7 @@ module attributes {gpu.container_module} {
     %28 = memref.reinterpret_cast %26 to offset: [0], sizes: [%size], strides: [%c1]: memref<?xf32> to memref<?xf32, #map0>
     %29 = tf_framework.alloc(%arg0, %size) : memref<?xf32>
     gpu.launch_func  @AddV2_kernel::@AddV2_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%size : index, %29 : memref<?xf32>, %27 : memref<?xf32, #map0>, %28 : memref<?xf32, #map0>)
-    return
+    func.return
   }
   // CHECK-LABEL: gpu.module @AddV2_kernel
   gpu.module @AddV2_kernel {

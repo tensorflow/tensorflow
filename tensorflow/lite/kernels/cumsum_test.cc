@@ -62,7 +62,7 @@ TEST(CumsumOpTest, SimpleIntTest) {
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 3, 6, 10, 5, 11, 18, 26}));
@@ -77,7 +77,7 @@ TEST(CumsumOpTest, SimpleInt64Test) {
                   100000000005l, 100000000006l, 100000000007l, 100000000008l});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
                                  {100000000001l, 200000000003l, 300000000006l,
@@ -92,7 +92,7 @@ TEST(CumsumOpTest, SimpleIntAxis0Test) {
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {0});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 2, 3, 4, 6, 8, 10, 12}));
@@ -105,7 +105,7 @@ TEST(CumsumOpTest, Simple1DIntTest) {
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {0});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 3, 6, 10, 15, 21, 28, 36}));
@@ -118,7 +118,7 @@ TEST(CumsumOpTest, SimpleIntReverseTest) {
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({10, 9, 7, 4, 26, 21, 15, 8}));
@@ -131,7 +131,7 @@ TEST(CumsumOpTest, SimpleIntExclusiveTest) {
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({0, 1, 3, 6, 0, 5, 11, 18}));
@@ -144,7 +144,7 @@ TEST(CumsumOpTest, SimpleFloatTest) {
   m.PopulateTensor<float>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
                                  ArrayFloatNear({1, 3, 6, 10, 5, 11, 18, 26})));

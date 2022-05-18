@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/utils.h"
 
+#include <string>
+
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"

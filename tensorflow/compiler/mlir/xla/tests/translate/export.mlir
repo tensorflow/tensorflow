@@ -282,7 +282,7 @@ func.func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
 }
 
 func.func @empty_callee() {
-  return
+  func.return
 }
 
 // CHECK:       [[CALLEE:%.*]] () -> () {
@@ -298,8 +298,8 @@ func.func @empty_callee() {
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  %0 = call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  %1 = call @callee(%0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %0 = func.call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = func.call @callee(%0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
 }
 
@@ -330,7 +330,7 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
-  %0:2 = call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>)
+  %0:2 = func.call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>)
   func.return %0#0, %0#1 : tensor<4xi32>, tensor<4xi32>
 }
 
@@ -426,7 +426,7 @@ func.func @main() {
   // CHECK: c128[] constant((1, 0))
   %cst_10 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
 
-  return
+  func.return
 }
 
 // -----
@@ -554,44 +554,6 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  custom_call_target="foo"
 // CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  backend_config="bar"
-
-// -----
-
-// CHECK:  HloModule
-func.func @main(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
-
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
-  func.return %0 : tensor<16x64xbf16>
-}
-
-// CHECK: ENTRY
-// CHECK:   %[[Arg:.*]] = s32[16,16] parameter(0)
-// CHECK:   u32[16,16] convert(s32[16,16] %[[Arg]])
-// CHECK:   u32[4] subtract(u32[4] %{{.*}}, u32[4] %{{.*}})
-// CHECK:   u32[4] multiply(u32[4] %{{.*}}, u32[4] %{{.*}})
-// CHECK:   u32[4,16,16] shift-right-logical(u32[4,16,16] %{{.*}}, u32[4,16,16] %{{.*}})
-// CHECK:   bf16[4,16,16] convert(u32[4,16,16] %{{.*}})
-// CHECK:   bf16[4,16,16] multiply(bf16[4,16,16] %{{.*}}, bf16[4,16,16] %{{.*}})
-// CHECK:   ROOT
-
-// -----
-
-// CHECK:  HloModule
-func.func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
-
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false, is_16bits = true} : (tensor<16x16xi32>) -> tensor<16x32xbf16>
-  func.return %0 : tensor<16x32xbf16>
-}
-
-// CHECK: ENTRY
-// CHECK:   %[[Arg:.*]] = s32[16,16] parameter(0)
-// CHECK:   u32[16,16] convert(s32[16,16] %[[Arg]])
-// CHECK:   u32[2] subtract(u32[2] %{{.*}}, u32[2] %{{.*}})
-// CHECK:   u32[2] multiply(u32[2] %{{.*}}, u32[2] %{{.*}})
-// CHECK:   u32[2,16,16] shift-right-logical(u32[2,16,16] %{{.*}}, u32[2,16,16] %{{.*}})
-// CHECK:   bf16[2,16,16] convert(u32[2,16,16] %{{.*}})
-// CHECK:   bf16[2,16,16] multiply(bf16[2,16,16] %{{.*}}, bf16[2,16,16] %{{.*}})
-// CHECK:   ROOT
 
 // -----
 
@@ -1215,18 +1177,6 @@ func.func @main(%arg: tensor<3x4xi32>, %start1: tensor<i64>, %start2: tensor<i64
 // -----
 
 // CHECK:  HloModule
-func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  "mhlo.trace"(%arg0) {tag = "This is a random test"} : (tensor<2xi32>) -> ()
-  func.return %arg0: tensor<2xi32>
-}
-
-// CHECK:  ENTRY
-// CHECK:  [[VAL_1:%.*]] = s32[2] parameter(0)
-// CHECK:  () trace(s32[2] [[VAL_1]])
-
-// -----
-
-// CHECK:  HloModule
 func.func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   // CHECK:  [[ARG:%.*]] = s32[1,2,3,4] parameter(0)
 
@@ -1302,7 +1252,7 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[], {{.*}}: s32[], {{.*}}: s32[]) -> pred[] {
@@ -1321,7 +1271,7 @@ func.func @main(%input0: tensor<16x16xf32>) {
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>) -> (tensor<16x16xf32>)
-  return
+  func.return
 }
 
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
@@ -1475,7 +1425,7 @@ func.func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
 // CHECK:  [[GTE1:%.*]] = u32[2,2] get-tuple-element((u64[3], u32[2,2]) [[RNG]]), index=1
 // CHECK:  ROOT
 // CHECK-SAME: [[RES:%.*]] = (u64[3], u32[2,2]) tuple(u64[3] [[GTE0]], u32[2,2] [[GTE1]])
-  %0:2 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  %0:2 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
   func.return %1 : tuple<tensor<3xui64>, tensor<2x2xui32>>
 }
@@ -1564,4 +1514,16 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,
            window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: %[[TOK:.*]] = token[] after-all()
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] add-dependency(f32[3,4] %[[ARG0]], token[] %[[TOK]])
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
 }

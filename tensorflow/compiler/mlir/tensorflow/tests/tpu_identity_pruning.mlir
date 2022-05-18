@@ -12,7 +12,7 @@ func.func @testIdentity(%arg0: tensor<i32>) {
     %1 = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
     tf_device.return %1 : tensor<i32>
   }) : () -> tensor<i32>
-  return
+  func.return
 }
 
 // Tests IdentityN op in cluster is pruned away.
@@ -27,7 +27,7 @@ func.func @testIdentityN(%arg0: tensor<i32>, %arg1: tensor<f32>) {
     %1:2 = "tf.IdentityN"(%arg0, %arg1) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
     tf_device.return %1#0, %1#1 : tensor<i32>, tensor<f32>
   }) : () -> (tensor<i32>, tensor<f32>)
-  return
+  func.return
 }
 
 // Tests transitive Identity ops reachable from the cluster are pruned away.
@@ -42,7 +42,7 @@ func.func @testTransitiveIdentity(%arg0: tensor<i32>) {
     %1 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @callee0} : (tensor<i32>) -> tensor<i32>
     tf_device.return %1 : tensor<i32>
   }) : () -> tensor<i32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @callee0
@@ -80,7 +80,7 @@ func.func @testIdentityOutsideCluster(%arg0: tensor<i32>) {
   // CHECK:      "tf.PartitionedCall"([[CLUSTER]])
   // CHECK-SAME: f = @callee2
   %2 = "tf.PartitionedCall"(%1) {config = "", config_proto = "", executor_type = "", f = @callee2} : (tensor<i32>) -> tensor<i32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @callee2

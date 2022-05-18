@@ -295,6 +295,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGather(HloInstruction* gather) override;
 
+  Status HandleScatter(HloInstruction* hlo) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleAsyncStart(HloInstruction* async_start) override;
@@ -318,8 +320,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
-
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
@@ -347,19 +347,19 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // handled by the evaluator.
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
     return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override {
     return Unimplemented(
         "BatchNormInference HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
-  };
+  }
   Status HandleOutfeed(HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
-  };
+  }
 
   // Returns the already-evaluated literal result for the instruction.
   //

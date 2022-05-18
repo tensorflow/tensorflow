@@ -197,10 +197,20 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
                                  const GpuInfo& gpu_info,
                                  const GraphFloat32& graph,
                                  TensorReserver* tensor_reserver) {
+  ZeroClampSupport zero_clamp_support;
+  zero_clamp_support.image_buffer = gpu_info.SupportsZeroClampForImageBuffer();
+  zero_clamp_support.image2d = gpu_info.SupportsZeroClampForImages();
+  zero_clamp_support.image2d_array = gpu_info.SupportsZeroClampForImages();
+  zero_clamp_support.image3d = gpu_info.SupportsZeroClampForImages();
+
   ValueId max_id = 0;
   auto tensors = graph.values();
-  auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
+    auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+    if (t->tensor.type != DataType::FLOAT32 &&
+        t->tensor.type != DataType::FLOAT16) {
+      data_type = t->tensor.type;
+    }
     const auto shape = graph.GetValue(t->id)->tensor.shape;
     auto it_predefined = create_info.predefined.find(t->id);
     auto it_immutable_external =
@@ -257,6 +267,7 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
       }
     }
     tensor_desc.SetBHWCShape(shape);
+    tensor_desc.SetZeroClampSupport(zero_clamp_support);
     tensor_reserver->Add(t->id, tensor_desc);
     max_id = std::max(max_id, t->id);
   }

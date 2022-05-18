@@ -47,7 +47,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
   func.func private @f() attributes {
-    return
+    func.return
   }
 
   // Representation for init functions
@@ -59,7 +59,7 @@ module attributes {tf_saved_model.semantics} {
   ) attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]}
   {
     "tf.some_call"(%arg1) : (tensor<!tf_type.resource<tensor<1x64xf32>>>) -> ()
-    return
+    func.return
   }
 
 }
@@ -72,7 +72,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   func.func @f(
     %arg0: tensor<f32> {tf.resource_name = "resource"}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
-    return
+    func.return
   }
 
 }
@@ -86,6 +86,6 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
     %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
   ) attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 }

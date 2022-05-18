@@ -175,7 +175,7 @@ struct LegalizeTrigonometricToApproximationPass
 
 }  // anonymous namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createLegalizeTrigonometricToApproximationPass() {
   return std::make_unique<LegalizeTrigonometricToApproximationPass>();
 }

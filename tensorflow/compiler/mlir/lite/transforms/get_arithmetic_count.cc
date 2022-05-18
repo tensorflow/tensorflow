@@ -35,7 +35,9 @@ namespace TFL {
 namespace {
 
 struct GetArithmeticCountPass
-    : public PassWrapper<GetArithmeticCountPass, OperationPass<FuncOp>> {
+    : public PassWrapper<GetArithmeticCountPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetArithmeticCountPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {
@@ -65,7 +67,7 @@ void GetArithmeticCountPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect GetArithmeticCount
 /// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass() {
   return std::make_unique<GetArithmeticCountPass>();
 }
 

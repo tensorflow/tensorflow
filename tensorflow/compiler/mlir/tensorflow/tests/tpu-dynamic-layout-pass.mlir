@@ -451,7 +451,7 @@ func.func @parallel_execute(%arg0: tensor<*x!tf_type.resource> {tf.device = "/de
     }) {device = "/device:TPU:1"} : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -522,5 +522,5 @@ func.func @replicated_parallel_execute(%arg0: tensor<*x!tf_type.resource> {tf.de
     }) {} : () -> ()
     tf_device.return
   }
-  return
+  func.return
 }

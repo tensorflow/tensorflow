@@ -20,6 +20,7 @@ pytype_library(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tpu:tpu_embedding",
+        "//tensorflow/python/tpu:tpu_embedding_for_serving",
         "//tensorflow/python/tpu:tpu_embedding_v1",
         "//tensorflow/python/tpu:tpu_embedding_v2",
         "//tensorflow/python/tpu:tpu_strategy_util",

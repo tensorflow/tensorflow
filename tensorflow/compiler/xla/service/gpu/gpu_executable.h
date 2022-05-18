@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -42,6 +43,14 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
+namespace tfrt {
+namespace gpu {
+
+class GpuContextCache;
+
+}  // namespace gpu
+}  // namespace tfrt
+
 namespace xla {
 namespace gpu {
 
@@ -55,6 +64,9 @@ inline bool IsBefEnabled(const HloModuleConfig& config) {
   return IsBefExecutableEnabled(config) || IsBefThunkEnabled(config);
 }
 
+// Returns whether GpuExecutable runs on TFRT/JitRt.
+bool IsJitRtExecutableEnabled(const HloModuleConfig& config);
+
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
@@ -66,11 +78,35 @@ class GpuExecutable : public Executable {
     size_t size;
   };
 
+  struct GpuContextCacheDeleter {
+    void operator()(tfrt::gpu::GpuContextCache* ptr) const;
+  };
+
  public:
   struct BefExecutable;
+  struct JitRtExecutable;
+
+  // Serialized MLIR module prepared for JitRt compilation.
+  struct JitRtProgram {
+    explicit JitRtProgram(std::string entry_point, std::string module,
+                          std::vector<int64_t> buffer_sizes,
+                          DebugOptions debug_options)
+        : entry_point(std::move(entry_point)),
+          module(std::move(module)),
+          buffer_sizes(std::move(buffer_sizes)),
+          debug_options(std::move(debug_options)) {}
+
+    std::string entry_point;
+    std::string module;
+    std::vector<int64_t> buffer_sizes;
+    DebugOptions debug_options;
+  };
 
   typedef std::unique_ptr<const ThunkSchedule> OwnedThunkSchedule;
   typedef std::unique_ptr<uint8_t, BefBufferDeleter> OwnedBefBuffer;
+  typedef std::unique_ptr<JitRtProgram> OwnedJitRtProgram;
+  typedef std::unique_ptr<tfrt::gpu::GpuContextCache, GpuContextCacheDeleter>
+      OwnedGpuContextCache;
 
   struct ConstantInfo {
     std::string symbol_name;
@@ -94,9 +130,10 @@ class GpuExecutable : public Executable {
     std::string asm_text;
     std::vector<uint8_t> binary;
     GpuVersion gpu_version;
-    // The GpuExecutable will either execute Thunks or a whole-program BEF
-    // depending on which is supplied.
-    absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
+    // The GpuExecutable will either execute Thunks, a whole-program BEF or a
+    // JitRt compiled native function depending on which is supplied.
+    absl::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
+        executable;
     xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
@@ -113,6 +150,15 @@ class GpuExecutable : public Executable {
     };
 
     std::unique_ptr<HloModule> debug_module = nullptr;
+
+    // Only relevant to whole-program BEF execution:
+    // Optionally provide a cache of GPU contexts and corresponding
+    // tfrt::ResourceContext(s). This can be used to supply
+    // tfrt::ResourceContext(s) that are preloaded with GPU resources for given
+    // GPU contexts. This isn't required for correct execution. However, it
+    // prevents the initial execution step from being slowed down due to
+    // initializing GPU resources.
+    OwnedGpuContextCache gpu_ctx_cache;
   };
 
   // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
@@ -122,17 +168,24 @@ class GpuExecutable : public Executable {
   // buffer parameters in the entry function - in tfrt_gpu dialect, buffer
   // arguments start from the third parameter (after tfrt::Chain and GpuStream).
   static Status SetUpMlirAllocation(
-      mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
+      mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
       Shape* output_shape, int buffer_param_offset = 0);
 
   // Returns an Executable that is loaded from a BEF. This BEF must have entry
-  // point information recorded by use of the tfrt::gpu::setEntryPoint()
-  // function.
+  // point information set using the 'tfrt-set-entry-point' pass.
   static StatusOr<std::unique_ptr<Executable>> LoadFromBef(
       std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
-      xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version);
+      xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version,
+      stream_executor::StreamExecutor* executor);
+
+  // Returns a cache of the given StreamExecutor's GPU context and a
+  // corresponding tfrt::ResourceContext that is preloaded with the GPU
+  // resources needed to run the specified BEF program.
+  static StatusOr<OwnedGpuContextCache> CreatePreloadedGpuContextCache(
+      llvm::ArrayRef<uint8_t> bef_array,
+      stream_executor::StreamExecutor* executor);
 
   static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
@@ -289,6 +342,9 @@ class GpuExecutable : public Executable {
 
   // Data for bef executable mode only, owned.
   BefExecutable* bef_executable_ = nullptr;
+
+  // JitRt executable if the JitRt mode is on, owned.
+  JitRtExecutable* jitrt_executable_ = nullptr;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;

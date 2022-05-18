@@ -600,7 +600,6 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     // Buffer for storing the invocation results.
     std::deque<std::shared_ptr<InvocationResult>> invocation_results_
         TF_GUARDED_BY(*mu_);
-    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
 
     // Method for deregistering the cancellation callback.
@@ -611,6 +610,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const DatasetBase* const input_;

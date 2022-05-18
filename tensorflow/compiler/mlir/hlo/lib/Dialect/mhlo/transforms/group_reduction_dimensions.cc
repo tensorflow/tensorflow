@@ -24,6 +24,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
@@ -262,9 +264,9 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
   LogicalResult matchAndRewrite(ReduceOp op,
                                 PatternRewriter& rewriter) const override {
     // Only apply to reduction of a unique argument.
-    if (op.inputs().size() != 1 || op.init_values().size() != 1)
+    if (op.operands().size() != 1 || op.init_values().size() != 1)
       return failure();
-    Value arg = op.inputs().front();
+    Value arg = op.operands().front();
     auto arg_ty = arg.getType().cast<RankedTensorType>();
 
     // Sort reduction dimensions, which is not an invariant of the op.
@@ -324,7 +326,7 @@ void populateGroupReductionDimensionsPatterns(MLIRContext* context,
                                                  prefer_columns_reductions);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool prefer_columns_reductions) {
   return std::make_unique<GroupReductionDimensionsPass>(
       prefer_columns_reductions);

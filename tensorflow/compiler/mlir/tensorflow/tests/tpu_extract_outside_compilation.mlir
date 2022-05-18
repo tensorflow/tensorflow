@@ -60,7 +60,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Tests extraction of a single outside compiled cluster with multiple ops and no input or output dependecies.
@@ -85,7 +85,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.E"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Tests extraction of a multiple outside compiled clusters with no input or output dependecies.
@@ -106,7 +106,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.E"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Tests extraction of a single outside compiled cluster with single TPU cluster return.
@@ -1491,7 +1491,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.E"(%0, %1) : (tensor<i32>, tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Verifies that ops indirectly depending on results from the host are also
@@ -1520,7 +1520,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.G"(%0, %1) : (tensor<i32>, tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Tests dynamically shaped input to outside compilation.
@@ -1540,7 +1540,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Tests dynamically shaped output from outside compilation.
@@ -1552,14 +1552,14 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]]
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[HOST_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"()
-    // CHECK-SAME:       host_mlir_module = "module  {\0A  func @host_func() -> tensor<?xi32> {\0A    %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32> loc(#loc1)\0A    return %0 : tensor<?xi32> loc(#loc1)\0A  }
+    // CHECK-SAME:       host_mlir_module = "module  {\0A  func.func @host_func() -> tensor<?xi32> {\0A    %0 = \22tf.B\22() {_xla_outside_compilation = \22cluster1\22} : () -> tensor<?xi32> loc(#loc1)\0A    return %0 : tensor<?xi32> loc(#loc1)\0A  }
     // CHECK:            "tf.C"(%[[HOST_OUTPUT]])
     "tf_device.cluster"() ({
       %0 = "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> (tensor<?xi32>)
       "tf.C"(%0) : (tensor<?xi32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-    return
+    func.return
   }
 
   // Tests extraction of a single outside compiled cluster with arg input and single dynamic shape device->host input.

@@ -150,6 +150,8 @@ def setup_gpu(required_gpus):
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
+    # Enable soft device placement to run distributed doctests.
+    tf.config.set_soft_device_placement(True)
     self.setUp()
 
   def tear_down(self, test):

@@ -24,6 +24,7 @@ from absl.testing import parameterized
 
 # pylint:disable=g-direct-tensorflow-import
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
@@ -45,8 +46,8 @@ mock = test.mock
 
 
 CLUSTER_SIZE = 4
-EPOCHS_TO_RUN = 10
-STEPS_PER_EPOCH = 15
+EPOCHS_TO_RUN = 5
+STEPS_PER_EPOCH = 6
 _PEER_WATCHER_THREAD_PREFIX = 'PeerTerminationWatcher'
 _LOCAL_WATCHER_THREAD_PREFIX = 'WorkerTerminationSignalWatcher'
 
@@ -87,7 +88,10 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
                 cluster_spec,
                 maintenance_event=None,
                 training_finished=None,
-                frequent_send=False):
+                frequent_send=False,
+                training_restarted=None,
+                termination_config=failure_handling.TerminationConfig(
+                    time_till_termination=0)):
 
     _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
@@ -96,7 +100,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       del args, kwargs
       if not frequent_send:
         time.sleep(1)
-        if (not maintenance_event.is_set()) and (random.randrange(0, 20) > 18):
+        if (not maintenance_event.is_set()) and (random.randrange(0, 7) == 5):
           maintenance_event.set()
           logging.info('Termination notice available.')
           return True
@@ -130,7 +134,8 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         fh_ckpt = tracking_util.Checkpoint(model=model)
 
         worker_preemption_watcher = failure_handling.WorkerPreemptionHandler(
-            strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
+            strategy.cluster_resolver, fh_ckpt, checkpoint_dir,
+            termination_config)
 
       def distributed_train_step(current_epoch, current_step):
 
@@ -144,6 +149,26 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
           logging.info('epoch %d finished', current_epoch)
 
       logging.info('Start training at %d', worker_preemption_watcher.total_runs)
+
+      # If the training process has been restarted, verify that the expected
+      # number of checkpoints have been written.
+      # We also want to check training_finished, because there's a corner case
+      # where the signal is sent quite late and training finishes before the
+      # grace period ends.
+      if training_restarted.is_set() and not training_finished.is_set():
+        match_group = [
+            re.search(r'.*ckpt-(\d+).index', a_file)
+            for a_file in gfile.ListDirectory(checkpoint_dir)
+        ]
+        checkpoint_index = [
+            a_match.group(1) for a_match in match_group if a_match
+        ]
+        if termination_config.time_till_termination > 0:
+          # Two checkpoints were saved for the extended grace period.
+          self.assertEqual(int(checkpoint_index[0]), 2)
+        else:
+          self.assertEqual(int(checkpoint_index[0]), 1)
+
       for epoch in range(
           worker_preemption_watcher.total_runs // STEPS_PER_EPOCH,
           EPOCHS_TO_RUN):
@@ -153,6 +178,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
             STEPS_PER_EPOCH):
           worker_preemption_watcher.run(distributed_train_step, epoch, step)
 
+      logging.info('Training finished.')
       training_finished.set()
 
       self.assertEqual(
@@ -195,6 +221,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         num_workers=CLUSTER_SIZE)
     maintenance_event = multi_process_runner.manager().Event()
     training_finished = multi_process_runner.manager().Event()
+    training_restarted = multi_process_runner.manager().Event()
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
@@ -207,7 +234,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         self.worker_fn,
         cluster_spec,
         args=(checkpoint_dir, cluster_spec, maintenance_event,
-              training_finished),
+              training_finished, False, training_restarted),
         rpc_layer=rpc_layer,
         return_output=True,
         dependence_on_chief=has_chief)
@@ -218,36 +245,45 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     while (not maintenance_event.is_set()) and (not training_finished.is_set()):
       time.sleep(1)
 
-    time.sleep(5)
+    # wait for all cluster to exit with a time out
+    waiting_time = 0
+    exit_process_count = 0
+    # this addition to mitigate the fact that our step time is too short in test
+    while exit_process_count != CLUSTER_SIZE and waiting_time < 15:
+      exit_process_count = 0
+      for worker_id in range(CLUSTER_SIZE):
+        if not mpr.process_exists('worker', worker_id):
+          exit_process_count += 1
+      waiting_time += 1
+      time.sleep(1)
+
+    if waiting_time >= 15:
+      raise RuntimeError('Waited long but at least one worker still exist. '
+                         'Considering size of our model, this should not'
+                         ' happen.')
+
     if not training_finished.is_set():
       logging.info('restarting workers')
+      training_restarted.set()
       for worker_id in range(CLUSTER_SIZE):
         mpr.start_single_process('worker', worker_id, cluster_spec)
       logging.info('workers restarted')
 
-    stdout = mpr.join().stdout
-    if maintenance_event.is_set():
-      all_start_point = []
-      for msg in stdout:
-        matched_group = re.search(r'.*Start training at (\d+)', msg)
+    mpr.join(timeout=250)
+    self.assertTrue(training_finished.is_set())
 
-        if matched_group:
-          all_start_point.append(int(matched_group.group(1)))
-
-      # remove duplicate logs created due to presence of multiple workers
-      start_points = all_start_point[::CLUSTER_SIZE]
-
-      if len(start_points) > 1:
-        # assert that after restarting, we don't repeat previous training steps
-        self.assertNotEqual(start_points[-1], 0)
-
-  def test_two_workers_preempted_consecutively(self):
+  @combinations.generate(
+      combinations.combine(
+          grace_period=[0, 7],
+          ))
+  def test_multiple_workers_preempted_consecutively(self, grace_period):
     has_chief = False
     cluster_spec = multi_worker_test_base.create_cluster_spec(
         has_chief=has_chief,
         num_workers=CLUSTER_SIZE)
     maintenance_event = multi_process_runner.manager().Event()
     training_finished = multi_process_runner.manager().Event()
+    training_restarted = multi_process_runner.manager().Event()
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
@@ -256,12 +292,14 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     else:
       rpc_layer = 'grpc+loas'
 
+    termination_config = failure_handling.TerminationConfig(
+        time_till_termination=grace_period)
     mpr = multi_process_runner.MultiProcessRunner(
         self.worker_fn,
         cluster_spec,
         args=(checkpoint_dir, cluster_spec,
               maintenance_event,
-              training_finished, True),
+              training_finished, True, training_restarted, termination_config),
         rpc_layer=rpc_layer,
         return_output=True,
         dependence_on_chief=has_chief)
@@ -269,12 +307,12 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     logging.info('Cluster starting.')
     mpr.start()
 
-    time.sleep(5)
-
     # wait for all cluster to exit with a time out
     waiting_time = 0
     exit_process_count = 0
-    while exit_process_count != CLUSTER_SIZE and waiting_time < 40:
+    # this addition to mitigate the fact that our step time is too short in test
+    while exit_process_count != CLUSTER_SIZE and waiting_time < max(
+        grace_period + 15, 40):
       exit_process_count = 0
       for worker_id in range(CLUSTER_SIZE):
         if not mpr.process_exists('worker', worker_id):
@@ -282,26 +320,67 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       waiting_time += 1
       time.sleep(1)
 
-    if waiting_time == 100:
+    if waiting_time == max(grace_period + 5, 40):
       raise RuntimeError('Waited long but at least one worker still exist. '
                          'Considering size of our model, this should not'
                          ' happen.')
 
     maintenance_event.set()
     logging.info('restarting workers')
+    training_restarted.set()
     for worker_id in range(CLUSTER_SIZE):
       mpr.start_single_process('worker', worker_id, cluster_spec)
     logging.info('workers restarted')
 
-    stdout = mpr.join().stdout
-    found_message = 0
-    for msg in stdout:
-      matched_group = re.search(r'.*has received termination notice*', msg)
+    mpr.join(timeout=250)
+    self.assertTrue(training_finished.is_set())
 
-      if matched_group:
-        found_message += 1
+  def test_grace_period_continue_training(self):
+    grace_period = 7
+    has_chief = False
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=has_chief,
+        num_workers=CLUSTER_SIZE)
 
-    self.assertGreaterEqual(found_message, 1)
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
+    maintenance_event = multi_process_runner.manager().Event()
+    training_finished = multi_process_runner.manager().Event()
+    training_restarted = multi_process_runner.manager().Event()
+
+    if _is_oss():
+      rpc_layer = 'grpc'
+    else:
+      rpc_layer = 'grpc+loas'
+
+    termination_config = failure_handling.TerminationConfig(
+        time_till_termination=grace_period)
+    mpr = multi_process_runner.MultiProcessRunner(
+        self.worker_fn,
+        cluster_spec,
+        args=(checkpoint_dir, cluster_spec, maintenance_event,
+              training_finished, False, training_restarted, termination_config),
+        rpc_layer=rpc_layer,
+        return_output=True,
+        dependence_on_chief=has_chief)
+
+    logging.info('Cluster starting.')
+    mpr.start()
+
+    while (not maintenance_event.is_set()) and (not training_finished.is_set()):
+      time.sleep(1)
+
+    # this addition to mitigate the fact that our step time is too short in test
+    time.sleep(grace_period + 10)
+    if not training_finished.is_set():
+      logging.info('restarting workers')
+      training_restarted.set()
+      for worker_id in range(CLUSTER_SIZE):
+        mpr.start_single_process('worker', worker_id, cluster_spec)
+      logging.info('workers restarted')
+
+    mpr.join(timeout=250)
+
+    self.assertTrue(training_finished.is_set())
 
 
 if __name__ == '__main__':

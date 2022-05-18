@@ -47,7 +47,7 @@ class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the
   // beginning of the function, if it is non empty and has a block.
-  explicit MlirHloBuilder(mlir::FuncOp func)
+  explicit MlirHloBuilder(mlir::func::FuncOp func)
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
         loc_(builder_.getUnknownLoc()) {}

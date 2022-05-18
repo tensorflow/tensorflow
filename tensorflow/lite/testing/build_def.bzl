@@ -217,6 +217,7 @@ def generated_test_models_failing(conversion_mode, delegate):
             "conv3d_transpose",
             "depthwiseconv",
             "dynamic_rnn",
+            "einsum",
             "expand_dims",
             "eye",
             "fill",

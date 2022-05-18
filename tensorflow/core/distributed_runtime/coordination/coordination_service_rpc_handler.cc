@@ -195,6 +195,23 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
       });
 }
 
+void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
+    const GetKeyValueDirRequest* request, GetKeyValueDirResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  std::vector<KeyValueEntry> results =
+      service->GetKeyValueDir(request->directory_key());
+  *response->mutable_kv() = {std::make_move_iterator(results.begin()),
+                             std::make_move_iterator(results.end())};
+  done(Status::OK());
+}
+
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(
     const DeleteKeyValueRequest* request, DeleteKeyValueResponse* response,
     StatusCallback done) {

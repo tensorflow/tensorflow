@@ -140,6 +140,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kReplicaId:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -155,11 +156,9 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
       return true;
     // Technically the following ops do not require an explicit result shape,
@@ -1250,6 +1249,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
@@ -1322,8 +1322,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     // Ternary ops.
     case HloOpcode::kClamp:
-    case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect: {
+    case HloOpcode::kSelect: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
           !ParseAttributes(attrs, allow_attributes)) {
@@ -2792,9 +2791,14 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       attrs["unique_indices"] = {/*required=*/false, AttrTy::kBool,
                                  &unique_indices};
 
-      if ((!preset_operands &&
-           !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
+        return nullptr;
+      }
+
+      if (operands.size() % 2 == 0) {
+        TokenError(StrCat("expects an odd number of operands, but has ",
+                          operands.size(), " operands"));
         return nullptr;
       }
 
@@ -2806,16 +2810,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               /*index_vector_dim=*/*index_vector_dim);
 
       if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 3> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
             return ShapeInference::InferScatterShape(
-                operands[0]->shape(), operands[1]->shape(),
-                operands[2]->shape(),
-                update_computation.value()->ComputeProgramShape(), dim_numbers);
+                arg_shapes, update_computation.value()->ComputeProgramShape(),
+                dim_numbers);
           })) {
         return nullptr;
       }
+      auto input_count = operands.size() / 2;
+      auto operand_span = absl::MakeConstSpan(operands);
       return builder->AddInstruction(HloInstruction::CreateScatter(
-          *shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
-          /*updates=*/operands[2], *update_computation, dim_numbers,
+          *shape, operand_span.first(input_count), operands[input_count],
+          operand_span.last(input_count), *update_computation, dim_numbers,
           indices_are_sorted.value(), unique_indices.value()));
     }
     case HloOpcode::kDomain: {
@@ -2835,10 +2845,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands[0], std::move(domain.exit_metadata),
           std::move(domain.entry_metadata)));
     }
-    case HloOpcode::kTrace:
-      TokenError(StrCat("parsing not yet implemented for op: ",
-                        HloOpcodeString(opcode)));
-      return nullptr;
     case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,

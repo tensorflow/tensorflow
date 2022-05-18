@@ -23,5 +23,5 @@ func.func @main() {
     tf_executor.NextIteration.Sink [%0#1] %11#0 : tensor<*xi32> {device = "", T = "tfdtype$DT_INT32"} loc("while/NextIteration")
     tf_executor.fetch
   }
-  return
+  func.return
 }

@@ -6,10 +6,10 @@
 module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func.func @missing_tf_versions() {
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -21,10 +21,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_devices() {
     // expected-error@+1 {{error in fetching TPU compilation/execution devices: no TPU_SYSTEM devices found}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -37,10 +37,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @missing_num_cores_per_replica() {
     // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -52,10 +52,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_num_cores_per_replica() {
     // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = "", step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -67,10 +67,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_num_cores_per_replica() {
     // expected-error@+1 {{requires attribute 'step_marker_location'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -82,10 +82,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_step_marker_location() {
     // expected-error@+1 {{requires attribute 'step_marker_location'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = 1, topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -97,10 +97,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @unparsable_step_marker_location() {
     // expected-error@+1 {{bad 'step_marker_location' attribute with value 'test'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "test", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -112,10 +112,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @missing_topology() {
     // expected-error@+1 {{requires attribute 'topology'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -127,10 +127,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_topology() {
     // expected-error@+1 {{requires attribute 'topology'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = 1 : i32, device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -142,10 +142,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @invalid_topology() {
     // expected-error@+1 {{error in fetching TPU compilation/execution devices}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "test", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -157,10 +157,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @missing_device_assignment() {
     // expected-error@+1 {{requires attribute 'device_assignment'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -172,10 +172,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_device_assignment() {
     // expected-error@+1 {{requires attribute 'device_assignment'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = "", input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -187,10 +187,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_element_device_assignment() {
     // expected-error@+1 {{bad 'device_assignment' attribute at index 0, not an int}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [""], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -223,10 +223,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @invalid_device_assignment() {
     // expected-error@+1 {{error in fetching TPU compilation/execution devices}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\03\01\01\02\10\01\18\02\22\06\00\00\00\00\00\01", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -238,7 +238,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @missing_input_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{requires attribute 'input_sharding_configuration'}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", device_assignment = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -263,7 +263,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_input_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{requires attribute 'input_sharding_configuration'}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = "", output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -278,7 +278,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @mismatched_size_input_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{bad 'input_sharding_configuration' attribute, expected array attribute of size 1, got size 0}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -293,7 +293,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @unsupported_operand_type(%arg0: tensor<?xi2>) {
     // expected-error@+1 {{failed to determine operand type at index 0: Converting i2 to DataType}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi2>) -> tensor<?xi2>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
     func.return %arg0 : tensor<?xi2>
@@ -308,7 +308,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_element_input_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{bad 'input_sharding_configuration' attribute at index 0, not a string}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = [1], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -323,7 +323,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @unparsable_element_input_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{bad 'input_sharding_configuration' attribute at index 0 with value 'test': failed to parse to xla::OpSharding}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["test"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -338,7 +338,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @missing_output_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{requires attribute 'output_sharding_configuration'}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -353,7 +353,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_output_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{requires attribute 'output_sharding_configuration'}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = "", use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -368,7 +368,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @mismatched_size_output_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{bad 'output_sharding_configuration' attribute, expected array attribute of size 1, got size 0}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -384,7 +384,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @bad_element_output_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{bad 'output_sharding_configuration' attribute at index 0, not a string}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = [1], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -399,7 +399,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @unparsable_element_output_sharding_configuration(%arg0: tensor<?xi32>) {
     // expected-error@+1 {{bad 'output_sharding_configuration' attribute at index 0 with value 'test': failed to parse to xla::OpSharding}}
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["test"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
-    return
+    func.return
   }
   func.func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     func.return %arg0 : tensor<?xi32>
@@ -422,10 +422,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      metadata
     // CHECK-SAME: num_replicas: 1
     // CHECK-SAME: num_cores_per_replica: 1
-    return
+    func.return
   }
   func.func @empty_func() {
-    return
+    func.return
   }
 }
 
@@ -817,7 +817,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
   func.func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    %1 = call @nested_func(%0) : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = func.call @nested_func(%0) : (tensor<?xi32>) -> tensor<?xi32>
     func.return %1 : tensor<?xi32>
   }
 
@@ -915,7 +915,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
   func.func @referenced_func1(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    %1 = call @referenced_func2(%0) : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = func.call @referenced_func2(%0) : (tensor<?xi32>) -> tensor<?xi32>
     func.return %1 : tensor<?xi32>
   }
 
@@ -962,8 +962,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
   func.func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) {body = @referenced_func1} : (tensor<?xi32>) -> tensor<?xi32>
-    %1 = call @referenced_func(%0) : (tensor<?xi32>) -> tensor<?xi32>
-    %2 = call @referenced_func(%1) : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = func.call @referenced_func(%0) : (tensor<?xi32>) -> tensor<?xi32>
+    %2 = func.call @referenced_func(%1) : (tensor<?xi32>) -> tensor<?xi32>
     func.return %2 : tensor<?xi32>
   }
 
@@ -1178,7 +1178,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK: "tf.AssignVariableOp"(%arg1, %[[PARALLEL_EXECUTE_OUTPUT]]#1)
     "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
     "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-    return
+    func.return
   }
   func.func @computation(%arg0: tensor<i32>) -> tensor<i32> {
     func.return %arg0: tensor<i32>
@@ -1216,7 +1216,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK: "tf.AssignVariableOp"(%arg1, %[[PARALLEL_EXECUTE_OUTPUT]]#1)
     "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<3x2xf32>>>, tensor<3x2xf32>) -> ()
     "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<3x2xf32>>>, tensor<3x2xf32>) -> ()
-    return
+    func.return
   }
   func.func @computation(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
     func.return %arg0: tensor<3x4xf32>
@@ -1239,7 +1239,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
     "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
     "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-    return
+    func.return
   }
   func.func @computation(%arg0: tensor<i32>) -> tensor<i32> {
     func.return %arg0: tensor<i32>
@@ -1262,7 +1262,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
     "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
     "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-    return
+    func.return
   }
   func.func @computation(%arg0: tensor<i32>) -> tensor<i32> {
     func.return %arg0: tensor<i32>
@@ -1285,7 +1285,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
     "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
     "tf._SomeOp"(%computation) : (tensor<i32>) -> ()
-    return
+    func.return
   }
   func.func @computation(%arg0: tensor<i32>) -> tensor<i32> {
     func.return %arg0: tensor<i32>
@@ -2347,10 +2347,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 // -----
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  func.func @missing_compilation_and_replication_attributes() {
-    // expected-error@+1 {{'tf_device.cluster_func' op is expected to have either both or none of '_replication_info and _xla_compile_device_type attributes.}}
+  func.func @missing_compilation_attribute() {
+    // expected-error@+1 {{'tf_device.cluster_func' op has '_replication_info' attribute but not '_xla_compile_device_type' attribute which is unsupported}}
     "tf_device.cluster_func"() {_replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
 }
 
@@ -2358,9 +2358,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func.func @empty_replication_attribute() {
-    // expected-error@+1 {{'tf_device.cluster_func' op has an empty _replication_info attribute.}}
+    // expected-error@+1 {{'tf_device.cluster_func' op has an empty '_replication_info' attribute}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
   }
 }
 
@@ -2368,8 +2368,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func.func @empty_compilation_attribute() {
-    // expected-error@+1 {{'tf_device.cluster_func' op has an empty _xla_compile_device_type attribute.}}
+    // expected-error@+1 {{'tf_device.cluster_func' op has invalid '_xla_compile_device_type' value ''}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
-    return
+    func.return
+  }
+}
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func.func @invalid_compilation_attribute() {
+    // expected-error@+1 {{'tf_device.cluster_func' op has invalid '_xla_compile_device_type' value 'XPU'}}
+    "tf_device.cluster_func"() {_xla_compile_device_type = "XPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
+    func.return
   }
 }

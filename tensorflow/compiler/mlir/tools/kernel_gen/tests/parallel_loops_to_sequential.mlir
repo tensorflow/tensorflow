@@ -9,7 +9,7 @@ func.func @parallel_loop(%lb_0 : index, %lb_1 : index,
     %sum_elem = arith.addi %i0, %i1 : index
     memref.store %sum_elem, %buf[%i0, %i1] : memref<?x?xindex>
   }
-  return
+  func.return
 }
 // CHECK: scf.for [[I_0:%.*]] = [[LB_0:%.*]] to [[UB_0:%.*]] step [[S_0:%.*]]
 // CHECK:   scf.for [[I_1:%.*]] = [[LB_1:%.*]] to [[UB_1:%.*]] step [[S_1:%.*]]

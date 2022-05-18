@@ -2,9 +2,9 @@
 
 module {
   func.func @simpleTest(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %arg3: tensor<1xf32>) -> tensor<2x1xf32> {
-    %0 = call @func_0_GPU_FLOAT(%arg0, %arg1, %arg2) {tac.interface_name = "func_0"} : (tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-    %1 = call @func_1_GPU_FLOAT(%arg0, %arg3) {tac.interface_name = "func_1"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-    %2 = call @func_2_CPU_FLOAT(%0, %1) {tac.interface_name = "func_2"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<2x1xf32>
+    %0 = func.call @func_0_GPU_FLOAT(%arg0, %arg1, %arg2) {tac.interface_name = "func_0"} : (tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    %1 = func.call @func_1_GPU_FLOAT(%arg0, %arg3) {tac.interface_name = "func_1"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+    %2 = func.call @func_2_CPU_FLOAT(%0, %1) {tac.interface_name = "func_2"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<2x1xf32>
     func.return %2 : tensor<2x1xf32>
   }
 

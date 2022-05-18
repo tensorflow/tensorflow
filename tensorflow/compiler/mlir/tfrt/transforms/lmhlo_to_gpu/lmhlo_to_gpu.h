@@ -18,13 +18,14 @@
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace tensorflow {
 
 // Creates a pass that lowers lmhlo_gpu ops to tfrt_gpu. Prepares the function
 // to be consumed by MLIR's gpu-async-region pass.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToGpuPass();
 
 void registerConvertLmhloToGpuPass();

@@ -13,7 +13,7 @@ module attributes {tf_saved_model.semantics} {
   attributes {tf_saved_model.exported_names = ["f"]} {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
-    return
+    func.return
   }
 }
 
@@ -30,7 +30,7 @@ module attributes {tf_saved_model.semantics} {
   attributes {tf_saved_model.exported_names = ["f"]} {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     // CHECK: "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 }
 
@@ -45,7 +45,7 @@ module attributes {tf_saved_model.semantics} {
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 
 }
@@ -63,12 +63,12 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<!tf_type.resource<tensor<f32>>>) -> ()
-    return
+    func.return
   }
 
   func.func private @f_callee(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
     // CHECK: "tf.Const"() {value = dense<2.100000e+01> : tensor<f32>}
-    return
+    func.return
   }
 }
 
@@ -85,13 +85,13 @@ module attributes {tf_saved_model.semantics} {
   func.func @g(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["g"]} {
     "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @g_callee} : (tensor<!tf_type.resource<tensor<f32>>>) -> ()
-    return
+    func.return
   }
 
   func.func private @g_callee(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     // CHECK: "tf.Const"() {value = dense<3.200000e+01> : tensor<f32>}
-    return
+    func.return
   }
 }
 
@@ -107,14 +107,14 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<!tf_type.resource<tensor<f32>>>) -> ()
-    return
+    func.return
   }
 
   func.func private @f_callee(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
     %0 = "tf.Const"() {value = dense<5.000000e+00> : tensor<f32>} : () -> tensor<f32>
     // expected-error @+1 {{immutable bound input}}
     "tf.AssignAddVariableOp"(%arg0, %0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-    return
+    func.return
   }
 }
 
@@ -131,7 +131,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 }
 
@@ -151,7 +151,7 @@ module attributes {tf_saved_model.semantics} {
 
     // CHECK-DAG: "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>}
     %1 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 }
 

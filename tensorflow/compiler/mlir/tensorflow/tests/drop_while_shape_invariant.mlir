@@ -60,5 +60,5 @@ func.func @while_shape_invariant_within_cluster(%arg0: tensor<4xf32>) {
     tf_device.return
   }) {} : () -> ()
 
-  return
+  func.return
 }

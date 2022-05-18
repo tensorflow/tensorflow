@@ -309,6 +309,8 @@ bool IsGpuCompatibleDataType(const NodeDef* contraction,
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT;
+  } else if (IsMatMul(*contraction)) {
+    return dtype == DT_FLOAT || dtype == DT_HALF;
   } else {
     return false;
   }
@@ -326,6 +328,16 @@ bool IsCpuCompatibleDataFormat(const RemapperContext& ctx,
   } else {
     return false;
   }
+}
+
+bool BlasLtMatmulEnabled() {
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_CUBLASLT", /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
 }
 
 bool IsGpuCompatibleDataFormat(const RemapperContext& ctx,
@@ -351,6 +363,12 @@ bool IsGpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   return NodeIsOnGpu(conv2d) && IsGpuCompatibleDataType(conv2d) &&
          IsGpuCompatibleDataFormat(ctx, conv2d);
+}
+
+bool IsGpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
+  DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
+  return BlasLtMatmulEnabled() && NodeIsOnGpu(matmul) &&
+         IsGpuCompatibleDataType(matmul);
 }
 
 bool IsCpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
@@ -388,42 +406,62 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   // ROCm does not support _FusedConv2D
   return false;
 #endif
-  // The TF->XLA bridge does not support `_FusedConv2D` so we avoid creating
-  // this op.  Furthermore, XLA already does this fusion internally so there
+  // The TF->XLA bridge does not support `_Fused[Conv2D|MatMul]` so we avoid
+  // creating this op. Furthermore, XLA already does this fusion internally so
+  // there is no true benefit from doing this optimization if XLA is going to
+  // compile the unfused operations anyway.
+  if (ctx.xla_auto_clustering_on) return false;
+
+  const GraphDef* graph = ctx.graph_view.graph();
+
+  // We rely on cuDNN for fused convolution and cublasLt for fused matmul.
+  const NodeDef& activation_node = graph->node(matched.activation);
+  if (!IsRelu(activation_node)) return false;
+
+  const NodeDef& contraction_node = graph->node(matched.contraction);
+  if (IsConv2D(contraction_node)) {
+    const std::vector<OpInfo::TensorProperties>& input_props =
+        ctx.graph_properties.GetInputProperties(contraction_node.name());
+    const TensorShapeProto& filter_shape =
+        input_props.size() >= 2 ? input_props[1].shape() : TensorShapeProto();
+
+    // FusedConv2D on GPU with 1x1 convolution is marginally faster than
+    // in-graph computation in micro benchmarks (see kernels/conv_ops_test.cc),
+    // and significantly slower in large scale benchmarks.
+    bool is_spatial_conv = Rank(filter_shape) == 4 &&          //
+                           IsKnown(filter_shape.dim(1)) &&     //
+                           IsKnown(filter_shape.dim(2)) &&     //
+                           filter_shape.dim(1).size() != 1 &&  //
+                           filter_shape.dim(2).size() != 1;
+
+    return is_spatial_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
+  } else if (IsMatMul(contraction_node)) {
+    return IsGpuCompatibleMatMul(ctx, &contraction_node);
+  }
+
+  return false;
+}
+
+// Checks if we can rewrite a pattern to the `_FusedMatMul` on GPU device.
+bool IsGpuCompatible(const RemapperContext& ctx,
+                     const ContractionWithBiasAdd& matched) {
+#if TENSORFLOW_USE_ROCM
+  // ROCm does not support _FusedMatMul
+  return false;
+#endif
+  // The TF->XLA bridge does not support `_FusedMatMul` so we avoid creating
+  // this op. Furthermore, XLA already does this fusion internally so there
   // is no true benefit from doing this optimization if XLA is going to compile
   // the unfused operations anyway.
   if (ctx.xla_auto_clustering_on) return false;
 
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
-  if (!IsConv2D(contraction_node)) return false;
+  if (!IsMatMul(contraction_node)) return false;
 
-  const std::vector<OpInfo::TensorProperties>& input_props =
-      ctx.graph_properties.GetInputProperties(contraction_node.name());
-  const TensorShapeProto& filter_shape =
-      input_props.size() >= 2 ? input_props[1].shape() : TensorShapeProto();
-
-  // FusedConv2D on GPU with 1x1 convolution is marginally faster than
-  // in-graph computation in micro benchmarks (see kernels/conv_ops_test.cc),
-  // and significantly slower in large scale benchmarks.
-  bool is_spatial_conv = Rank(filter_shape) == 4 &&          //
-                         IsKnown(filter_shape.dim(1)) &&     //
-                         IsKnown(filter_shape.dim(2)) &&     //
-                         filter_shape.dim(1).size() != 1 &&  //
-                         filter_shape.dim(2).size() != 1;
-
-  // We rely on cuDNN for fused convolution, and it currently supports only Relu
-  // activation.
-  const NodeDef& activation_node = graph->node(matched.activation);
-  bool is_relu = IsRelu(activation_node);
-
-  return is_relu && is_spatial_conv &&
-         IsGpuCompatibleConv2D(ctx, &contraction_node);
+  return IsGpuCompatibleMatMul(ctx, &contraction_node);
 }
-bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithBiasAdd& matched) {
-  return false;
-}
+
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithSqueezeAndBiasAdd& matched) {
   return false;
@@ -468,7 +506,7 @@ bool IsConvOrMatMul(const NodeDef& node) {
          IsConv3D(node);
 }
 
-// Returns true if one input to Add is Conv2D or DepthwiseConv2dNative or
+// Returns true if one input to Add is Conv2D/3D or DepthwiseConv2dNative or
 // MatMul, and the other input is semantically equivalent to BiasAdd.
 bool IsBiasSemanticAdd(const RemapperContext& ctx,
                        const utils::MutableNodeView& node_view,
@@ -476,6 +514,7 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   if (!IsMKLEnabled()) return false;
 
   const auto* node_def = node_view.node();
+  if (!NodeIsOnCpu(node_def)) return false;
   if (!IsAdd(*node_def) || node_view.NumRegularFanins() != 2) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node_def->name());
@@ -488,23 +527,25 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   const auto* node_view_1 = regular_fanin_1.node_view();
   const auto* node_def_1 = node_view_1->node();
 
+  if (!IsConvOrMatMul(*node_def_0) && !IsConvOrMatMul(*node_def_1))
+    return false;
+
   auto is_channel_last_format = [](const NodeDef& node) -> bool {
     if (node.attr().contains("data_format")) {
       const string data_format = node.attr().at("data_format").s();
-      return (data_format == "NHWC");
+      return (data_format == "NHWC" || data_format == "NDHWC");
     }
     return true;
   };
 
-  if (!IsConvOrMatMul(*node_def_0) && !IsConvOrMatMul(*node_def_1))
-    return false;
-
+  // Currently supported data formats are NHWC and NDHWC.
   if (!is_channel_last_format(*node_def_0) ||
       !is_channel_last_format(*node_def_1))
     return false;
 
   const TensorShapeProto& prot0_shape = props[0].shape();
   const TensorShapeProto& prot1_shape = props[1].shape();
+
   if (prot0_shape.unknown_rank() || prot1_shape.unknown_rank() ||
       prot0_shape.dim_size() < 1 || prot1_shape.dim_size() < 1 ||
       !IsKnown(prot0_shape.dim(prot0_shape.dim_size() - 1)) ||
@@ -513,6 +554,29 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
 
   // Helper function to check Add/AddV2 could be replaced with BiasAdd.
   const auto is_supported_shape =
+      [&](const TensorShapeProto& shape,
+          const TensorShapeProto& bcast_shape) -> bool {
+    int conv_channel_dim;
+    conv_channel_dim = shape.dim(shape.dim_size() - 1).size();
+
+    if (shape.dim_size() == 4 && bcast_shape.dim_size() > 4) return false;
+    if (shape.dim_size() == 5 && bcast_shape.dim_size() > 5) return false;
+
+    if (shape.dim_size() < 2) return false;
+    // Check that the conv node's channel dim is equal to the 1-dim add node's
+    // dim
+    if (conv_channel_dim != bcast_shape.dim(bcast_shape.dim_size() - 1).size())
+      return false;
+
+    // Check that add nodes dims are all 1's except the channel dim
+    for (int i = 0; i < bcast_shape.dim_size() - 1; i++) {
+      if (1 != bcast_shape.dim(i).size()) return false;
+    }
+    return true;
+  };
+
+  // This is used only for MatMul+Add fusion.
+  const auto is_matmul_supported_shape =
       [](const TensorShapeProto& shape,
          const TensorShapeProto& bcast_shape) -> bool {
     if (shape.dim_size() < 2 || bcast_shape.dim_size() != 1) return false;
@@ -524,13 +588,22 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
       !ShapesBroadcastable(prot0_shape, prot1_shape))
     return false;
 
-  if (is_supported_shape(prot0_shape, prot1_shape)) {
+  // For now block MatMul+Add fusion if Bias dims are more than one.
+  // TODO(intel-tf): Enable this fusion once it is properly tested.
+  if (IsConvOrMatMul(*node_def_0)) {
     bias_port = 1;
-    return true;
-  }
-  if (is_supported_shape(prot1_shape, prot0_shape)) {
+    if (IsMatMul(*node_def_0)) {
+      return (is_matmul_supported_shape(prot0_shape, prot1_shape));
+    } else {
+      return (is_supported_shape(prot0_shape, prot1_shape));
+    }
+  } else if (IsConvOrMatMul(*node_def_1)) {
     bias_port = 0;
-    return true;
+    if (IsMatMul(*node_def_1)) {
+      return (is_matmul_supported_shape(prot1_shape, prot0_shape));
+    } else {
+      return (is_supported_shape(prot1_shape, prot0_shape));
+    }
   }
   return false;
 }
@@ -862,6 +935,8 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
   const auto* node_def = node_view.node();
   if (!IsAddN(*node_def) && !IsAddWithNoBroadcast(ctx, *node_def)) return false;
 
+  if (!NodeIsOnCpu(node_def)) return false;
+
   // MKL AddN ops only support float and bfloat16 data types.
   if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
     return false;
@@ -906,6 +981,8 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
+
+  if (!NodeIsOnCpu(node_def)) return false;
 
   // Currently, Contraction + Bias + Add + Tanh pattern is not supported
   if (IsTanh(*node_def)) return false;
@@ -1122,9 +1199,12 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
       if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
     }
   } else if (found_gelu_approximate) {
-    // Check if _FusedMatMul contains only BiasAdd
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
+
+    if (!NodeIsOnCpu(matmul_node)) return false;
+
+    // Check if _FusedMatMul contains only BiasAdd
     auto fused_ops = matmul_node->attr().at("fused_ops").list().s();
     if (fused_ops.size() == 1) {
       if (fused_ops.at(0) != "BiasAdd") return false;
@@ -1285,6 +1365,8 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
     if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
         !is_training)
       return false;
+
+    if (!NodeIsOnCpu(fused_batch_norm_node)) return false;
 
     // FusedBatchNorm node should have mean/variance as empty constant
     NodeDef* empty_const_node =
@@ -3064,7 +3146,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     const auto& biasadd_fanin_0 = relu_fanin_0_node_view->GetRegularFanin(0);
     const auto* biasadd_fanin_0_node_def = biasadd_fanin_0.node_view()->node();
 
-    if (!IsConv2D(*biasadd_fanin_0_node_def) ||
+    if (!IsConv2D(*biasadd_fanin_0_node_def) &&
         !IsConv3D(*biasadd_fanin_0_node_def))
       return false;
     if (GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T") != DT_FLOAT)
@@ -3121,7 +3203,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
-           IsContractionWithAdd(ctx, node_index);
+           IsContractionWithAdd(ctx, node_index) ||
+           is_relu_biasadd_conv_candidate();
 
   return is_relu_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
@@ -3255,17 +3338,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                             &invalidated_nodes, &nodes_to_delete));
         continue;
       }
-    }
-
-    // Infer properties lazily in case they are not needed.
-    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
-      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
-          assume_valid_feeds,
-          /*aggressive_shape_inference=*/false,
-          /*include_input_tensor_values=*/true,
-          /*include_output_tensor_values=*/false));
-      ctx.inferred_graph_properties = true;
     }
 
     // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd into the

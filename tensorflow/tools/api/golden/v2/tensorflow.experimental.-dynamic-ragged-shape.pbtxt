@@ -34,7 +34,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'row_partitions\', \'inner_shape\', \'dtype\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'row_partitions\', \'inner_shape\', \'dtype\', \'validate\', \'static_inner_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "from_lengths"

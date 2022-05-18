@@ -9,8 +9,8 @@
 // This is shown on the device function by setting `tf.aliasing_output`
 // attribute of argument `a` to `b`.
 
-!tf_res_i32 = type tensor<*x!tf_type.resource<tensor<i32>>>
-!tf_res_f32 = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_i32 = tensor<*x!tf_type.resource<tensor<i32>>>
+!tf_res_f32 = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // CHECK-LABEL: func @simple_input_output_pairs
 func.func @simple_input_output_pairs(%arg0: !tf_res_i32, %arg1: !tf_res_f32, %arg2: !tf_res_f32) {
@@ -20,7 +20,7 @@ func.func @simple_input_output_pairs(%arg0: !tf_res_i32, %arg1: !tf_res_f32, %ar
   %device_output:2 = "tf_device.cluster_func"(%0, %1, %2) {_tpu_replicate = "tpu", func = @device_func_0} : (tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<i32>)
   "tf.AssignVariableOp"(%arg1, %device_output#0) : (!tf_res_f32, tensor<f32>) -> ()
   "tf.AssignVariableOp"(%arg0, %device_output#1) : (!tf_res_i32, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @device_func_0
@@ -37,7 +37,7 @@ func.func @skip_outputs_with_multiple_use(%arg0: !tf_res_i32) {
   %device_output = "tf_device.cluster_func"(%0) {_tpu_replicate = "tpu", func = @device_func_1} : (tensor<i32>) -> tensor<i32>
   "tf.AssignVariableOp"(%arg0, %device_output) : (!tf_res_i32, tensor<i32>) -> ()
   "tf.SomeOp"(%device_output) : (tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @device_func_1
@@ -52,7 +52,7 @@ func.func @skip_inputs_with_multiple_use(%arg0: !tf_res_i32) {
   %device_output = "tf_device.cluster_func"(%0) {_tpu_replicate = "tpu", func = @device_func_2} : (tensor<i32>) -> tensor<i32>
   "tf.AssignVariableOp"(%arg0, %device_output) : (!tf_res_i32, tensor<i32>) -> ()
   "tf.SomeOp"(%0) : (tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @device_func_2
@@ -68,7 +68,7 @@ func.func @skip_multiple_assigns_to_resource(%arg0: !tf_res_f32, %arg1: !tf_res_
   %device_output:2 = "tf_device.cluster_func"(%0, %1) {_tpu_replicate = "tpu", func = @device_func_3} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   "tf.AssignVariableOp"(%arg0, %device_output#0) : (!tf_res_f32, tensor<f32>) -> ()
   "tf.AssignVariableOp"(%arg0, %device_output#1) : (!tf_res_f32, tensor<f32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @device_func_3
@@ -84,7 +84,7 @@ func.func @skip_multiple_reads_of_resource(%arg0: !tf_res_f32, %arg1: !tf_res_f3
   %device_output:2 = "tf_device.cluster_func"(%0, %1) {_tpu_replicate = "tpu", func = @device_func_4} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   "tf.AssignVariableOp"(%arg0, %device_output#0) : (!tf_res_f32, tensor<f32>) -> ()
   "tf.AssignVariableOp"(%arg1, %device_output#1) : (!tf_res_f32, tensor<f32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @device_func_4

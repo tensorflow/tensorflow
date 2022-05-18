@@ -74,12 +74,14 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
+class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<quant::QuantizationDialect, TFL::TensorFlowLiteDialect>();
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTF)
+
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF&) {}
   explicit LegalizeTF(bool run_tfl_runtime_verification,
@@ -165,6 +167,13 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
       .create<TF::ShapeOp>(loc, input,
                            /*use_32bit=*/false_attr)
       .output();
+}
+
+mlir::TFL::MirrorPaddingType GetTFLMirrorPaddingFromString(
+    mlir::StringAttr padding) {
+  return llvm::StringSwitch<mlir::TFL::MirrorPaddingType>(padding.getValue())
+      .Case("REFLECT", mlir::TFL::MirrorPaddingType::REFLECT)
+      .Case("SYMMETRIC", mlir::TFL::MirrorPaddingType::SYMMETRIC);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -926,7 +935,7 @@ void addPatterns(MLIRContext* context, RewritePatternSet& patterns,
                LegalizeUnidirectionalSequenceRnn>(context);
 }
 
-bool applyPatterns(FuncOp func, ConversionTarget& target,
+bool applyPatterns(func::FuncOp func, ConversionTarget& target,
                    FrozenRewritePatternSet& frozenPatterns) {
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
@@ -1009,7 +1018,7 @@ void LegalizeTF::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
     bool run_tfl_runtime_verification, bool preserve_assert_op) {
   return std::make_unique<LegalizeTF>(run_tfl_runtime_verification,
                                       preserve_assert_op);

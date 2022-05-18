@@ -1,0 +1,120 @@
+op {
+  graph_op_name: "DynamicLoadAllTPUEmbeddingParameters"
+  visibility: HIDDEN
+    in_arg {
+    name: "parameters"
+    description: <<END
+A list of tensors, one for each embedding table,
+containing the initial embedding table parameters to use in embedding
+lookups.
+END
+  }
+  in_arg {
+    name: "auxiliary1"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the first auxiliary optimization parameter to use in embedding
+training loop updates. The shape of each entry is ignored (and thus can be
+empty) for those tables whose optimization algorithms do not have at least one
+auxiliary parameter.
+END
+  }
+  in_arg {
+    name: "auxiliary2"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the second auxiliary optimization parameter to use in
+embedding training loop updates. The shape of each entry is ignored (and thus
+can be empty) for those tables whose optimization algorithms do not have at
+least two auxiliary
+END
+  }
+  in_arg {
+    name: "auxiliary3"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the third auxiliary optimization parameter to use in embedding
+training loop updates. The shape of each entry is ignored (and thus can be
+empty) for those tables whose optimization algorithms do not have three
+auxiliary parameters.
+END
+  }
+  in_arg {
+    name: "auxiliary4"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the second auxiliary optimization parameter to use in
+embedding training loop updates. The shape of each entry is ignored (and thus
+can be empty) for those tables whose optimization algorithms do not have at
+least four auxiliary
+END
+  }
+  in_arg {
+    name: "auxiliary5"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the third auxiliary optimization parameter to use in embedding
+training loop updates. The shape of each entry is ignored (and thus can be
+empty) for those tables whose optimization algorithms do not have five
+auxiliary parameters.
+END
+  }
+  in_arg {
+    name: "auxiliary6"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the second auxiliary optimization parameter to use in
+embedding training loop updates. The shape of each entry is ignored (and thus
+can be empty) for those tables whose optimization algorithms do not have at
+least six auxiliary
+END
+  }
+  in_arg {
+    name: "auxiliary7"
+    description: <<END
+A list of tensors, one for each embedding table, containing the
+initial values of the third auxiliary optimization parameter to use in embedding
+training loop updates. The shape of each entry is ignored (and thus can be
+empty) for those tables whose optimization algorithms do not have sevan
+auxiliary parameters.
+END
+  }
+  in_arg {
+    name: "shard_id"
+    description: <<END
+Identifier of shard for this operation.
+END
+  }
+  attr {
+    name: "NumTables"
+    description: <<END
+The number of embedding tables.
+END
+  }
+  attr {
+    name: "config"
+    description: <<END
+An TPUEmbeddingConfiguration proto describing the
+table parameters being loaded, serialized to a string.
+END
+  }
+  attr {
+    name: "num_shards"
+    description: <<END
+Number of shards into which the embedding tables are divided.
+END
+  }
+  summary: "An op that loads optimization parameters into embedding memory."
+  description: <<END
+An op that loads optimization parameters into embedding memory. Must be
+preceded by a ConfigureTPUEmbeddingHost op that sets up the correct embedding
+table configuration. For example, this op is used to install parameters that are
+loaded from a checkpoint before a training loop is executed.  For Adagrad,
+auxiliary1 should be the accumulators. For SGD, all of the auxiliary* values
+should be empty. For FTRL, auxiliary1 should be the accumulators and auxiliary2
+should be the linear terms. For ADAM, auxiliary1 should be the momenta and
+auxiliary2 should be the velocities. The distinction between this op and
+LoadAllTPUEmbeddingParameters op is that the shard_id input in this op is
+a tensor input.
+END
+}

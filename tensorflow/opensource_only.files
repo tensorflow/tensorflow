@@ -11,6 +11,10 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
+tensorflow/dtensor/mlir/utils/BUILD:
+tensorflow/dtensor/mlir/utils/collective_lowering.cc:
+tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
+tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_2/BUILD:
@@ -48,6 +52,7 @@ tensorflow/lite/core/shims/cc/model.h:
 tensorflow/lite/core/shims/cc/model_builder.h:
 tensorflow/lite/core/shims/cc/shims_test_util.h:
 tensorflow/lite/core/shims/cc/tools/verifier.h:
+tensorflow/lite/core/shims/cc/tools/verifier_internal.h:
 tensorflow/lite/core/shims/cc_library_with_tflite.bzl:
 tensorflow/lite/core/shims/jni/jni_utils.cc:
 tensorflow/lite/core/shims/jni/jni_utils.h:
@@ -72,7 +77,7 @@ tensorflow/python/tpu/profiler/pip_package/README:
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh:
 tensorflow/python/tpu/profiler/pip_package/setup:.py
 tensorflow/python/tpu/tpu.bzl:
-tensorflow/security/fuzzing/tf_fuzzing.bzl:
+tensorflow/security/fuzzing/tf_fuzzing:.bzl
 tensorflow/stream_executor/build_defs.bzl:
 tensorflow/tools/build_info/BUILD:
 tensorflow/tools/ci_build/a100/nightly.sh:
@@ -82,7 +87,6 @@ tensorflow/tools/ci_build/release/common_win.bat:
 tensorflow/tools/ci_build/release/mac_build_utils.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/nightly.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/release.sh:
-tensorflow/tools/ci_build/release/ubuntu_16/sanity/build.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py310_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py37_full/release_pip_rename.sh:
@@ -131,6 +135,8 @@ tensorflow/tools/toolchains/win/tf_win_01252022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02042022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02082022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_02212022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_04062022/BUILD:
+tensorflow/tools/toolchains/win/tf_win_04112022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06212021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06242021/BUILD:
@@ -138,6 +144,7 @@ tensorflow/tools/toolchains/win/tf_win_08062020/BUILD:
 tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
+tensorflow/tools/toolchains/win_1803/py39/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
 third_party/BUILD:

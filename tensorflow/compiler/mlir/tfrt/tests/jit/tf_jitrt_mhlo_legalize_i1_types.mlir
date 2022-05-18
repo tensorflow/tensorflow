@@ -1,6 +1,6 @@
 // RUN: tf-tfrt-opt %s -tf-jitrt-legalize-i1-types -split-input-file | FileCheck %s
 
-func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
+func.func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
   func.return %arg0 : tensor<?x?xi1>
 }
 
@@ -11,7 +11,7 @@ func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
 
 // -----
 
-func @true_constant_op() -> tensor<i1> {
+func.func @true_constant_op() -> tensor<i1> {
   %0 = mhlo.constant dense<true> : tensor<i1>
   func.return %0 : tensor<i1>
 }
@@ -23,7 +23,7 @@ func @true_constant_op() -> tensor<i1> {
 
 // -----
 
-func @false_constant_op() -> tensor<i1> {
+func.func @false_constant_op() -> tensor<i1> {
   %0 = mhlo.constant dense<false> : tensor<i1>
   func.return %0 : tensor<i1>
 }
@@ -35,7 +35,7 @@ func @false_constant_op() -> tensor<i1> {
 
 // -----
 
-func @and_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
+func.func @and_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
   %0 = mhlo.and %arg0, %arg1 : tensor<?x?xi1>
   func.return %0 : tensor<?x?xi1>
 }
@@ -49,7 +49,7 @@ func @and_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
 
 // -----
 
-func @or_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
+func.func @or_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
   %0 = mhlo.or %arg0, %arg1 : tensor<?x?xi1>
   func.return %0 : tensor<?x?xi1>
 }
@@ -63,7 +63,7 @@ func @or_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
 
 // -----
 
-func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
+func.func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
   %0 = mhlo.constant dense<1> : tensor<1xi32>
   %1 = "mhlo.convert"(%arg0) : (tensor<?x?xi1>) -> tensor<?x?xi1>
   %2 = mhlo.constant dense<true> : tensor<i1>

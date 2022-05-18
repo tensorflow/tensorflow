@@ -60,9 +60,8 @@ void VectorBatchVectorAdd(const T* vector, int v_size, int n_batch,
 
 // Cwise product of two vectors.
 template <typename T>
-inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
-                                     const T* __restrict__ vector2, int v_size,
-                                     T* __restrict__ result) {
+inline void VectorVectorCwiseProduct(const T* vector1, const T* vector2,
+                                     int v_size, T* result) {
   for (int v = 0; v < v_size; v++) {
     *result++ = *vector1++ * *vector2++;
   }
@@ -466,9 +465,8 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.
-void MeanStddevNormalization(const float* __restrict__ input_vector,
-                             float* __restrict__ output_vector, int v_size,
-                             int n_batch);
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch);
 
 // Saturate Add with rescale on both inputs.
 void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,

@@ -19,5 +19,9 @@ namespace tensorflow {
 namespace activity_watcher {
 ActivityScope::ActivityScope(std::unique_ptr<Activity>) {}
 ActivityScope::~ActivityScope() {}
+
+ActivityId ActivityStart(std::unique_ptr<Activity>) { return 0; }
+void ActivityEnd(ActivityId id) {}
+
 }  // namespace activity_watcher
 }  // namespace tensorflow

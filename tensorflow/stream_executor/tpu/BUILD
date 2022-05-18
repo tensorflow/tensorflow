@@ -9,7 +9,7 @@ package(
         "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
-        "//tensorflow/core/profiler/internal/tpu:__subpackages__",
+        "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
     ],
@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -212,16 +213,13 @@ cc_library(
     hdrs = ["tpu_node_context.h"],
     deps = [
         ":status_helper",
-        ":tpu_executor_c_api_hdrs",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",

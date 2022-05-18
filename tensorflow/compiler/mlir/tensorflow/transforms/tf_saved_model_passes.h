@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/public/session.h"
 
@@ -47,7 +48,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariablesInSessionInitializerPass();
 
 // Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
-std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDedupBoundInputBindingPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"

@@ -600,6 +600,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static bool enable_xla_param_broadcast_;
   static bool enable_multicore_locking_;
   static bool use_nd_sharding_ops_;
+  Status InternalRun(const GraphOptimizationPassOptions& options);
 };
 
 }  // namespace tensorflow

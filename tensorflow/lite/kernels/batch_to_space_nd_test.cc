@@ -112,7 +112,7 @@ class BatchToSpaceNDOpDynamicModel : public BatchToSpaceNDOpModel {
 TEST(BatchToSpaceNDOpTest, SimpleConstTest) {
   BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 0, 0});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(
@@ -123,7 +123,7 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8) {
   BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 0, 0},
                                TensorType_INT8);
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray(
@@ -133,7 +133,7 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8) {
 TEST(BatchToSpaceNDOpTest, BatchOneConstTest) {
   BatchToSpaceNDOpConstModel m({1, 2, 2, 1}, {1, 1}, {0, 0, 0, 0});
   m.SetInput<float>({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1, 2, 3, 4}));
 }
@@ -147,7 +147,7 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8EmptyOutput) {
   BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 2, 2},
                                TensorType_INT8);
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 0, 1}));
   EXPECT_THAT(m.GetOutputSize(), 0);
 }
@@ -157,7 +157,7 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTest) {
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(
@@ -169,7 +169,7 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8) {
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray(
@@ -181,7 +181,7 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, -1, 0});
-  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "crops.i. >= 0 was not true.";
+  ASSERT_NE(m.Invoke(), kTfLiteOk) << "crops.i. >= 0 was not true.";
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
@@ -194,7 +194,7 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({2, 2, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 4, 1}));
   EXPECT_THAT(m.GetOutput<int8_t>(), ::testing::IsEmpty());
 }
@@ -214,7 +214,7 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsConstTest) {
 TEST(BatchToSpaceNDOpTest, Simple3DConstTest) {
   BatchToSpaceNDOpConstModel m({4, 4, 1}, {2}, {0, 0});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 8, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(
@@ -224,7 +224,7 @@ TEST(BatchToSpaceNDOpTest, Simple3DConstTest) {
 TEST(BatchToSpaceNDOpTest, Simple3DConstTestWithCrops) {
   BatchToSpaceNDOpConstModel m({4, 4, 1}, {2}, {1, 1});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray({9, 2, 10, 3, 11, 4, 13, 6, 14, 7, 15, 8}));
@@ -235,7 +235,7 @@ TEST(BatchToSpaceNDOpTest, Simple3DDynamicTest) {
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2});
   m.SetCrops({0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 8, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(
@@ -247,7 +247,7 @@ TEST(BatchToSpaceNDOpTest, Simple3DDynamicTestWithCrops) {
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2});
   m.SetCrops({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray({9, 2, 10, 3, 11, 4, 13, 6, 14, 7, 15, 8}));

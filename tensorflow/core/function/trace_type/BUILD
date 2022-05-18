@@ -9,7 +9,7 @@ pytype_strict_library(
     name = "trace_type",
     srcs = [
         "__init__.py",
-        "signature_builder.py",
+        "trace_type_builder.py",
     ],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],

@@ -73,7 +73,7 @@ TEST(BcastGradArgsInt32OpModel, AllEqualsInt32DTypes) {
       /*output2=*/{TensorType_INT32, {}});
   model.SetInput1({3, 1, 2, 3});
   model.SetInput2({3, 1, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1().size(), 0);
   EXPECT_THAT(model.GetOutput2().size(), 0);
@@ -87,7 +87,7 @@ TEST(BcastGradArgsInt32OpModel, BroadcastableDimAtInput1Int32DTypes) {
       /*output2=*/{TensorType_INT32, {}});
   model.SetInput1({3, 4, 1, 3});
   model.SetInput2({3, 4, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1(), ElementsAreArray({2}));
   EXPECT_THAT(model.GetOutput2().size(), 0);
@@ -101,7 +101,7 @@ TEST(BcastGradArgsInt32OpModel, BroadcastableDimAtInput2Int32DTypes) {
       /*output2=*/{TensorType_INT32, {}});
   model.SetInput1({3, 4, 2, 3});
   model.SetInput2({3, 1, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1().size(), 0);
   EXPECT_THAT(model.GetOutput2(), ElementsAreArray({1}));
@@ -115,7 +115,7 @@ TEST(BcastGradArgsInt32OpModel, DifferentInputSizesInt32DTypes) {
       /*output2=*/{TensorType_INT32, {}});
   model.SetInput1({3, 4, 2, 3});
   model.SetInput2({4, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1().size(), 0);
   EXPECT_THAT(model.GetOutput2(), ElementsAreArray({0}));
@@ -129,7 +129,7 @@ TEST(BcastGradArgsInt32OpModel, NonBroadcastableDimsInt32DTypes) {
       /*output2=*/{TensorType_INT32, {}});
   model.SetInput1({3, 4, 2, 3});
   model.SetInput2({9, 9, 9, 9});
-  EXPECT_THAT(model.InvokeUnchecked(), kTfLiteError);
+  EXPECT_THAT(model.Invoke(), kTfLiteError);
 }
 
 class BcastGradArgsInt64OpModel : public SingleOpModel {
@@ -175,7 +175,7 @@ TEST(BcastGradArgsInt32OpModel, AllEqualsInt64DTypes) {
       /*output2=*/{TensorType_INT64, {}});
   model.SetInput1({3, 1, 2, 3});
   model.SetInput2({3, 1, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1().size(), 0);
   EXPECT_THAT(model.GetOutput2().size(), 0);
@@ -189,7 +189,7 @@ TEST(BcastGradArgsInt32OpModel, BroadcastableDimAtInput1Int64DTypes) {
       /*output2=*/{TensorType_INT64, {}});
   model.SetInput1({3, 4, 1, 3});
   model.SetInput2({3, 4, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1(), ElementsAreArray({2}));
   EXPECT_THAT(model.GetOutput2().size(), 0);
@@ -203,7 +203,7 @@ TEST(BcastGradArgsInt32OpModel, BroadcastableDimAtInput2Int64DTypes) {
       /*output2=*/{TensorType_INT64, {}});
   model.SetInput1({3, 4, 2, 3});
   model.SetInput2({3, 1, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1().size(), 0);
   EXPECT_THAT(model.GetOutput2(), ElementsAreArray({1}));
@@ -217,7 +217,7 @@ TEST(BcastGradArgsInt32OpModel, DifferentInputSizesInt64DTypes) {
       /*output2=*/{TensorType_INT64, {}});
   model.SetInput1({3, 4, 2, 3});
   model.SetInput2({4, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput1().size(), 0);
   EXPECT_THAT(model.GetOutput2(), ElementsAreArray({0}));
@@ -231,7 +231,7 @@ TEST(BcastGradArgsInt32OpModel, NonBroadcastableDimsInt64DTypes) {
       /*output2=*/{TensorType_INT64, {}});
   model.SetInput1({3, 4, 2, 3});
   model.SetInput2({9, 9, 9, 9});
-  EXPECT_THAT(model.InvokeUnchecked(), kTfLiteError);
+  EXPECT_THAT(model.Invoke(), kTfLiteError);
 }
 
 }  // namespace

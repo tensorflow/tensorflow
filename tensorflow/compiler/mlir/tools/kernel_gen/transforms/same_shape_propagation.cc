@@ -95,7 +95,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   } else {
     Value val = value.value();
     mlir::AsmState asm_state(
-        val.getParentRegion()->getParentOfType<mlir::FuncOp>());
+        val.getParentRegion()->getParentOfType<mlir::func::FuncOp>());
     val.printAsOperand(os, asm_state);
   }
   return os;
@@ -196,7 +196,7 @@ class ShapeEqualityKnowledge {
  public:
   /// Checks all operations for potential shape equality of their respective
   /// results.
-  void build(FuncOp function) {
+  void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
         registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
@@ -374,7 +374,7 @@ struct PropagateShapeKnowledgeToKernels
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateShapeKnowledgeToKernels() {
   return std::make_unique<PropagateShapeKnowledgeToKernels>();
 }

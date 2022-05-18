@@ -18,5 +18,5 @@ func.func @main() {
     %6:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<3> : tensor<i32>} : () -> (tensor<i32>) loc("foo_")
     tf_executor.fetch
   }
-  return
+  func.return
 }

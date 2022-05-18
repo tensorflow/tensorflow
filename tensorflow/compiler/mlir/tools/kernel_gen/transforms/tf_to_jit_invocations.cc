@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -183,7 +184,7 @@ struct PackJITCompileOpPattern
     OpBuilder tmp_module_builder(getContext(), rewriter.getListener());
     auto jit_module = tmp_module_builder.create<ModuleOp>(loc);
     tmp_module_builder.setInsertionPointToStart(jit_module.getBody());
-    auto jit_function = tmp_module_builder.create<FuncOp>(
+    auto jit_function = tmp_module_builder.create<func::FuncOp>(
         loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
         tmp_module_builder.getFunctionType(body->getArgumentTypes(),
                                            yield_op->getOperandTypes()));
@@ -264,7 +265,8 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (!IsUnaryTFOperation(op) || !llvm::isa<FuncOp>(op->getParentOp())) {
+    if (!IsUnaryTFOperation(op) ||
+        !llvm::isa<func::FuncOp>(op->getParentOp())) {
       return failure();
     }
 
@@ -345,7 +347,7 @@ void PopulateTFToJITInvocationPatterns(
       index_64bit_if_jit_compiling, cpu_codegen);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFToJITInvocationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
     bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {

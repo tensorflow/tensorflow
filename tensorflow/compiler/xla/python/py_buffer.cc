@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
@@ -205,6 +206,29 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
   }
   auto traceback = Traceback::Get();
   return Make(dst_device.client, std::move(out), std::move(traceback));
+}
+
+std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
+    absl::string_view serialized_descriptor) const {
+  absl::Mutex mu;
+  bool done = false;
+  Status status;
+  bool sends_were_enqueued;
+  buffer_->CopyToRemoteDevice(
+      serialized_descriptor,
+      [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
+        absl::MutexLock l(&mu);
+        done = true;
+        status = s;
+        sends_were_enqueued = dispatched;
+      });
+  {
+    py::gil_scoped_release gil_release;
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(
+        +[](bool* done) { return *done; }, &done));
+  }
+  return std::make_pair(status, sends_were_enqueued);
 }
 
 Status PyBuffer::BlockHostUntilReady() {
@@ -582,6 +606,16 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->CopyToDevice(dst_device);
       },
       py::is_method(type));
+  type.attr("copy_to_remote_device") = py::cpp_function(
+      [](PyBuffer::object self, const py::bytes serialized_descriptor) {
+        // TODO(phawkins): remove the std::string cast after C++17 is required.
+        // py::bytes has a std::string_view cast, but not an absl::string_view
+        // cast.
+        return self.buf()->CopyToRemoteDevice(
+            static_cast<std::string>(serialized_descriptor));
+      },
+      py::is_method(type));
+
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<size_t> {
         return self.buf()->OnDeviceSizeInBytes();
@@ -597,6 +631,12 @@ Status PyBuffer::RegisterTypes(py::module& m) {
             "block_until_ready() instead.");
         return self.buf()->BlockHostUntilReady();
       },
+      py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsReady(); },
+      py::is_method(type));
+  type.attr("is_known_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsKnownReady(); },
       py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {

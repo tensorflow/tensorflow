@@ -757,6 +757,7 @@ TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
+template struct LaunchConv2DOp<CPUDevice, Eigen::bfloat16>;
 template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
@@ -862,12 +863,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   }
 
 #if GOOGLE_CUDA
-  // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
-  // in NHWC data layout. In all other configurations it's more efficient to
-  // run computation in NCHW data format.
-  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
-                               stream->GetCudaComputeCapability().IsAtLeast(
-                                   se::CudaComputeCapability::VOLTA);
+  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
+                                                    stream, /*is_conv2d=*/true);
 #else
   // fast NHWC implementation is a CUDA only feature
   const bool compute_in_nhwc = false;

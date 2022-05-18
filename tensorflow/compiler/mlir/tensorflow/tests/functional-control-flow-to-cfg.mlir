@@ -149,7 +149,7 @@ func.func @testWhile0Result() {
 // CHECK:   cf.br ^bb1
 // CHECK: ^bb3:
 
-  return
+  func.return
 // CHECK:   return
 }
 

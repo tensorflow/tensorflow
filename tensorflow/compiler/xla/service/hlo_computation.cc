@@ -76,9 +76,7 @@ HloComputation::HloComputation(
       fusion_instruction_(fusion_instruction),
       is_fusion_computation_(fusion_instruction != nullptr),
       custom_call_instruction_(nullptr),
-      is_custom_call_computation_(false),
-      async_instruction_(nullptr),
-      is_async_computation_(false) {
+      is_custom_call_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -104,6 +102,13 @@ HloComputation::~HloComputation() {
     CHECK(fusion_instruction_->fused_instructions_computation() == this);
     fusion_instruction_->ClearCalledComputations();
     fusion_instruction_ = nullptr;
+  }
+  if (IsAsyncComputation()) {
+    for (auto* async_instr : async_instructions_) {
+      CHECK(async_instr->async_wrapped_computation() == this);
+      async_instr->ClearCalledComputations();
+    }
+    async_instructions_.clear();
   }
 }
 
@@ -493,9 +498,8 @@ HloComputation::ComputeChannelDependencies() const {
 }
 
 static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
-  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
-    return user->opcode() == HloOpcode::kTrace;
-  });
+  return absl::c_all_of(instruction->users(),
+                        [](HloInstruction* user) { return false; });
 }
 
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
@@ -506,12 +510,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
   visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
-    if (instruction->opcode() == HloOpcode::kTrace) {
-      // Trace instructions aren't handled by the DFS visitor. Add trace
-      // instructions to the post order at the end (necessarily they have no
-      // users).
-      trace_instructions.push_back(instruction.get());
-    } else if (HasOnlyTraceUsers(instruction.get())) {
+    if (HasOnlyTraceUsers(instruction.get())) {
       ComputeInstructionPostOrder(instruction.get(), channel_dependencies,
                                   visited, post_order);
     }
@@ -1132,7 +1131,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     }
     instructions.push_back(std::move(new_instr));
   }
-  Builder builder(name() + "." + suffix);
+  Builder builder(suffix.empty() ? name() : name() + "." + suffix);
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }

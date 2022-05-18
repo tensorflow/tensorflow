@@ -178,11 +178,6 @@ PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
   }
 }
 
-bool IsArrayType(PrimitiveType primitive_type) {
-  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
-         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN;
-}
-
 // Class to memoize the computation of
 //   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"

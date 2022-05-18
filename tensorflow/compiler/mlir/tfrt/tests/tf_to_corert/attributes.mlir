@@ -5,7 +5,7 @@
 func.func @remove_unused_attr() {
   // CHECK: %out_op_chain = tfrt_fallback_async.executeop.seq(%arg0) key(0) cost({{.*}}) device("/device:CPU:0") "tf.SomeOp2"()
   "tf.SomeOp2"() {device = "/device:CPU:0", _output_shapes = ["tfshape$"], f.Tin = [f32], f._read_only_resource_inputs = []} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @basic
@@ -34,7 +34,7 @@ func.func @shape() {
   // CHECK: tf.TensorArrayV3
   // CHECK-SAME: element_shape = #corert.shape<*>
   %ta:2 = "tf.TensorArrayV3"(%size) {device = "/device:CPU:0", dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @resource
@@ -42,7 +42,7 @@ func.func @resource() {
   // CHECK: tf.SomeOp
   // CHECK-SAME: dtype = !corert.resource
   "tf.SomeOp"() {device = "/device:CPU:0", dtype = !tf_type.resource} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant
@@ -50,7 +50,7 @@ func.func @variant(%arg: tensor<!tf_type.variant>) {
   // CHECK: tf.ZerosLike
   // CHECK-SAME: T = !corert.variant
   %0 = "tf.ZerosLike"(%arg) {device = "/device:CPU:0", T = !tf_type.variant} : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
-  return
+  func.return
 }
 
 // Checks that TF quantized attrs are lowered to the corert types
@@ -79,5 +79,5 @@ func.func @quantized_types(%arg0: tensor<!tf_type.resource<tensor<1x3x!tf_type.q
   // CHECK: tf.ReadVariableOp
   // CHECK-SAME: dtype = !corert.qint32
   %4 = "tf.ReadVariableOp"(%arg4) {_output_shapes = ["tfshape$dim { size: 1 } dim { size: 3 }"], device = "/device:CPU:0", dtype = !tf_type.qint32} : (tensor<!tf_type.resource<tensor<1x3x!tf_type.qint32>>>) -> tensor<1x3x!tf_type.qint32>
-  return
+  func.return
 }

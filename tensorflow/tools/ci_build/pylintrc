@@ -45,6 +45,8 @@ disable=design,similarities,no-self-use,attribute-defined-outside-init,locally-d
 # C0326 bad-whitespace
 # W0611 unused-import
 # W0622 redefined-builtin
+#(TODO) Some of these are not valid anymore:
+# https://github.com/tensorflow/tensorflow/issues/55442
 enable=indexing-exception,old-raise-syntax,W0311,W0312,C0330,C0301,C0326,W0611,W0622
 
 # Set the cache size for astng objects.

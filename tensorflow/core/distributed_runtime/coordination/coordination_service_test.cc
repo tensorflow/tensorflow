@@ -41,11 +41,20 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 using ::testing::EqualsProto;
+using ::testing::IsEmpty;
+using ::testing::UnorderedElementsAre;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Seconds(1);
 constexpr char kCoordinationServiceType[] = "standalone";
+
+KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
+  KeyValueEntry kv;
+  kv.set_key(key);
+  kv.set_value(value);
+  return kv;
+}
 
 class TestCoordinationClient : public CoordinationClient {
  public:
@@ -79,22 +88,27 @@ class TestCoordinationClient : public CoordinationClient {
     done(errors::Unimplemented(#method "Async"));                     \
   }
 
-  UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
-  UNIMPLEMENTED(GetKeyValue);
+  UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
-  void ShutdownTaskAsync(CallOptions* call_opts,
-                         const ShutdownTaskRequest* request,
-                         ShutdownTaskResponse* response,
-                         StatusCallback done) override {
-    done(errors::Unimplemented("ShutdownTaskAsync"));
+
+#define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
+  void method##Async(CallOptions* call_opts, const method##Request* request, \
+                     method##Response* response, StatusCallback done)        \
+      override {                                                             \
+    done(errors::Unimplemented(#method "Async"));                            \
   }
+
+  UNIMPLEMENTED_WITH_CALL_OPTS(GetKeyValue);
+  UNIMPLEMENTED_WITH_CALL_OPTS(Heartbeat);
+  UNIMPLEMENTED_WITH_CALL_OPTS(ShutdownTask);
+#undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
   mutex mu_;
@@ -432,6 +446,82 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   EXPECT_FALSE(n2.HasBeenNotified());
 }
 
+TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_SingleValueInDirectory) {
+  EnableCoordinationService();
+  KeyValueEntry kv = CreateKv("dir/path", "value0");
+  TF_ASSERT_OK(coord_service_->InsertKeyValue(kv.key(), kv.value()));
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, UnorderedElementsAre(EqualsProto(kv)));
+}
+
+TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_MultipleValuesInDirectory) {
+  EnableCoordinationService();
+  KeyValueEntry kv = CreateKv("dir/path", "value0");
+  KeyValueEntry kv2 = CreateKv("dir/path2", "value1");
+  // Placed in nested subdirectory.
+  KeyValueEntry kv_sub = CreateKv("dir/sub_dir/path", "value_sub");
+  TF_ASSERT_OK(coord_service_->InsertKeyValue(kv.key(), kv.value()));
+  TF_ASSERT_OK(coord_service_->InsertKeyValue(kv2.key(), kv2.value()));
+  TF_ASSERT_OK(coord_service_->InsertKeyValue(kv_sub.key(), kv_sub.value()));
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, UnorderedElementsAre(EqualsProto(kv), EqualsProto(kv2),
+                                           EqualsProto(kv_sub)));
+}
+
+TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_Empty_ReturnsEmptyList) {
+  EnableCoordinationService();
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, IsEmpty());
+}
+
+TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_WrongDir_ReturnsEmptyList) {
+  EnableCoordinationService();
+  // Wrong directory.
+  TF_ASSERT_OK(coord_service_->InsertKeyValue("dir0/path", "value0"));
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, IsEmpty());
+}
+
+TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_WrongDirPrefix_ReturnsEmptyList) {
+  EnableCoordinationService();
+  // Check that we don't match with nested subdirectories with the wrong prefix.
+  TF_ASSERT_OK(coord_service_->InsertKeyValue("wrong_dir/dir/path", "value0"));
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, IsEmpty());
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       GetKeyValueDir_NonDirectoryPrefix_ReturnsEmptyList) {
+  EnableCoordinationService();
+  // Wrong directory.
+  TF_ASSERT_OK(coord_service_->InsertKeyValue("dir_key", "value0"));
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, IsEmpty());
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       GetKeyValueDir_NonDirectoryKey_ReturnsEmptyList) {
+  EnableCoordinationService();
+  // Insert same key that is not a directory.
+  TF_ASSERT_OK(coord_service_->InsertKeyValue("dir", "value0"));
+
+  std::vector<KeyValueEntry> result = coord_service_->GetKeyValueDir("dir");
+
+  EXPECT_THAT(result, IsEmpty());
+}
+
 }  // namespace
 
 // Verify that coordination service can gather each task's device info and
@@ -555,6 +645,62 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
       local_1;
   *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
       local_2;
+  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
+                                   EqualsProto(expected_cluster_devices)));
+}
+
+// Task devices should not be added twice if same task calls WaitForAllDevices()
+// twice.
+TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
+  const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
+  CoordinatedTask task_1;
+  task_1.set_job_name("worker");
+  task_1.set_task_id(1);
+  Status status = Status::OK();
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
+  absl::Notification n;
+  // Map fake devices to each task.
+  CoordinationServiceDeviceInfo local_devices_0;
+  CoordinationServiceDeviceInfo local_devices_1;
+  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("task0_device0");
+  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("task0_device1");
+  *local_devices_1.mutable_tf()->mutable_devices()->Add() =
+      CreateTestTfDevice("task1_device0");
+  // Task0 sends device info.
+  CoordinationServiceDeviceInfo cluster_devices;
+  coord_service->WaitForAllTasks(task_0, local_devices_0,
+                                 [](Status s) { TF_ASSERT_OK(s); });
+
+  // Task0 sends device info sgain.
+  coord_service->WaitForAllTasks(task_0, local_devices_0,
+                                 [](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks(
+      task_1, local_devices_1,
+      [coord_service = coord_service.get(), &cluster_devices, &n](Status s) {
+        TF_ASSERT_OK(s);
+        // Gather the cluster device info.
+        cluster_devices = coord_service->ListClusterDevices();
+        n.Notify();
+      });
+  n.WaitForNotification();
+
+  // No duplicates found.
+  CoordinationServiceDeviceInfo expected_cluster_devices;
+  auto expected_devices =
+      expected_cluster_devices.mutable_tf()->mutable_devices();
+  expected_devices->Add(local_devices_0.mutable_tf()->devices().begin(),
+                        local_devices_0.mutable_tf()->devices().end());
+  expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
+                        local_devices_1.mutable_tf()->devices().end());
   EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
                                    EqualsProto(expected_cluster_devices)));
 }
@@ -1066,5 +1212,35 @@ TEST_F(CoordinateTwoTasksTest,
   // Other task is alerted that shutdown has been initiated without it.
   Status other_task_status = client_1_.GetStatus();
   EXPECT_TRUE(errors::IsInternal(other_task_status)) << other_task_status;
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       ShutdownWithBarrier_BarrierFailsWithoutClientConnection_ServiceStops) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/true);
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  Status barrier_status;
+
+  absl::Notification n;
+  coord_service_->ShutdownTaskAsync(task_0_, [&n, &barrier_status](Status s) {
+    barrier_status = s;
+    n.Notify();
+  });
+  // Block until barrier times out.
+  n.WaitForNotification();
+  // Provide time for coordination service to shut down after barrier timeout.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(absl::Seconds(1)));
+
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status)) << barrier_status;
+
+  // Service stops because no service-to-client connection is available for
+  // error propagation.
+  // Task 1 still sends unexpected heartbeat because it doesn't know that
+  // service has stopped yet, which should fail.
+  Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
+
+  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 }
 }  // namespace tensorflow

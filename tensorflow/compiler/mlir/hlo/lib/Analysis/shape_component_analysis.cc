@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
@@ -342,16 +343,17 @@ struct ShapeVisitor {
   void backwardReduceShape(Value op) {
     forwards_worklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
-    if (reduceOp.inputs().size() == 1)
+    if (reduceOp.operands().size() == 1) {
       backwards_worklist.push_back(
-          ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back()));
+          ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back()));
+    }
   }
   void forwardReduceShape(Value op) {
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
-    if (reduceOp.inputs().size() != 1) return forwardUnknownShape(op);
+    if (reduceOp.operands().size() != 1) return forwardUnknownShape(op);
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     for (const auto &dim : llvm::enumerate(lookup(
-             ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back())))) {
+             ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back())))) {
       if (!llvm::is_contained(reduceOp.dimensions(), dim.index()))
         dims.push_back(dim.value());
     }
@@ -404,8 +406,8 @@ struct ShapeVisitor {
     //
     // TODO(ezhulenev): Add symbolic shape attribute verifier to the jitrt
     // dialect.
-    if (auto func =
-            dyn_cast_or_null<FuncOp>(argument.getOwner()->getParentOp())) {
+    if (auto func = dyn_cast_or_null<func::FuncOp>(
+            argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
               argument.getArgNumber(), "jitrt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));

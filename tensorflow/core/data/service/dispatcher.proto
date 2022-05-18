@@ -104,7 +104,7 @@ message GetDataServiceConfigResponse {
   DataServiceConfig config = 1;
 }
 
-// Next tag: 10
+// Next tag: 11
 message GetOrCreateJobRequest {
   reserved 2, 3, 4;
   // The id of the dataset to create a job for.
@@ -119,6 +119,8 @@ message GetOrCreateJobRequest {
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // True if cross-trainer cache is enabled.
+  bool use_cross_trainer_cache = 10;
   // Specifies which workers the client of this job reads from.
   TargetWorkers target_workers = 9;
 }
@@ -205,7 +207,7 @@ service DispatcherService {
   // Updates the dispatcher with information about the worker's state.
   rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
 
-  // Gets a dataset defintion.
+  // Gets a dataset definition.
   rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
 
   // Gets the next split for a given job.

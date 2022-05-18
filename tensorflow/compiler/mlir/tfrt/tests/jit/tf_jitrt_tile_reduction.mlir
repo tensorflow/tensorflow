@@ -2,7 +2,7 @@
 // RUN:   -tf-jitrt-tile-reduction="reduction-2d-tile-sizes=4,4 reduction-vector-size=8 reduction-1d-tile-size=16" \
 // RUN: | FileCheck %s
 
-func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
+func.func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
                         %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
@@ -61,7 +61,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 
 // -----
 
-func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
+func.func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<8x16xf32>
@@ -86,7 +86,7 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
 
 // -----
 
-func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -138,7 +138,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 
 // -----
 
-func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -163,7 +163,7 @@ func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // -----
 
-func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
+func.func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %lhs, %c0 : tensor<?xf32>
@@ -197,21 +197,21 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
 
      // CHECK: %[[TMP_INIT:.*]] = linalg.init_tensor [8] : tensor<8xf32>
      // CHECK: %[[TMP_FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[TMP_INIT]]
+     // CHECK: %[[TILABLE_UB:.*]] = affine.apply
+// CHECK-SAME:  %[[INPUT_SIZE]]
      // CHECK: %[[TMP_SUM:.*]] = gml_st.loop (%[[I:.*]]) = (%[[C0]])
-// CHECK-SAME:   to (%[[INPUT_SIZE]]) step (%[[C16]])
+// CHECK-SAME:   to (%[[TILABLE_UB]]) step (%[[C16]])
 // CHECK-SAME:   ins (%[[LHS_:.*]] = %[[LHS]]: tensor<?xf32>,
 // CHECK-SAME:        %[[RHS_:.*]] = %[[RHS]]: tensor<?xf32>)
 // CHECK-SAME:   outs (%[[TMP_INIT_:.*]] = %[[TMP_FILL]]: tensor<8xf32>)
 
      // CHECK: %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS_]][%[[I]]]
-     // CHECK: %[[LHS_PAD:.*]] = tensor.pad %[[LHS_SUB]]
-     // CHECK: %[[LHS_RESHAPE:.*]] = tensor.expand_shape %[[LHS_PAD]]
+     // CHECK: %[[LHS_RESHAPE:.*]] = tensor.expand_shape %[[LHS_SUB]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
 // CHECK-SAME:   : tensor<16xf32> into tensor<2x8xf32>
 
      // CHECK: %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS_]][%[[I]]]
-     // CHECK: %[[RHS_PAD:.*]] = tensor.pad %[[RHS_SUB]]
-     // CHECK: %[[RHS_RESHAPE:.*]] = tensor.expand_shape %[[RHS_PAD]]
+     // CHECK: %[[RHS_RESHAPE:.*]] = tensor.expand_shape %[[RHS_SUB]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
 // CHECK-SAME:   : tensor<16xf32> into tensor<2x8xf32>
 
@@ -226,7 +226,13 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
      // CHECK:     } -> tensor<8xf32>
      // CHECK:   gml_st.yield %[[SUM_OF_PROD]] : tensor<8xf32>
      // CHECK: }
-     // CHECK: linalg.generic
+     // CHECK: %[[HORIZONTAL_REDUCE:.*]] = linalg.generic
 // CHECK-SAME: ins(%[[TMP_SUM]] : tensor<8xf32>) outs(%[[FILL]] : tensor<f32>)
 //  CHECK-NOT:  mulf
+//      CHECK:  addf
+
+     // CHECK: gml_st.loop (%[[K:.*]]) = (%[[TILABLE_UB]])
+// CHECK-SAME:   to (%[[INPUT_SIZE]]) step (%[[C16]])
+     // CHECK: linalg.generic
+//      CHECK:  mulf
 //      CHECK:  addf

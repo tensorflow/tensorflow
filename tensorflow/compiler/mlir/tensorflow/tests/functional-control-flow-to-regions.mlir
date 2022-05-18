@@ -14,9 +14,9 @@ func.func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf3
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 
   // CHECK: "tf.IfRegion"
-  // CHECK: [[Result0:%.*]] = call @testIf1Then
+  // CHECK: [[Result0:%.*]] = func.call @testIf1Then
   // CHECK: "tf.Yield"([[Result0]])
-  // CHECK: [[Result1:%.*]] = call @testIf1Else
+  // CHECK: [[Result1:%.*]] = func.call @testIf1Else
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: _attr0 = 10
   // CHECK-SAME: _attr1 = true
@@ -47,10 +47,10 @@ func.func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf3
 
   // CHECK: "tf.IfRegion"
   // CHECK: "tf.Cast"
-  // CHECK: [[Result0:%.*]] = call @testIf1Then
+  // CHECK: [[Result0:%.*]] = func.call @testIf1Then
   // CHECK: "tf.Yield"([[Result0]])
   // CHECK: "tf.Cast"
-  // CHECK: [[Result1:%.*]] = call @testIf1Else
+  // CHECK: [[Result1:%.*]] = func.call @testIf1Else
   // CHECK: "tf.Yield"([[Result1]])
   func.return %0 : tensor<2xf32>
 }
@@ -70,9 +70,9 @@ func.func @testIfNoInputs(%arg0: tensor<i1>) -> tensor<2xf32> {
   } : (tensor<i1>) -> tensor<2xf32>
 
   // CHECK: "tf.IfRegion"
-  // CHECK: [[Result0:%.*]] = call @testIf1Then
+  // CHECK: [[Result0:%.*]] = func.call @testIf1Then
   // CHECK: "tf.Yield"([[Result0]])
-  // CHECK: [[Result1:%.*]] = call @testIf1Else
+  // CHECK: [[Result1:%.*]] = func.call @testIf1Else
   // CHECK: "tf.Yield"([[Result1]])
   func.return %0 : tensor<2xf32>
 }
@@ -98,7 +98,7 @@ func.func @testIfNoResult(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> () {
   // CHECK: "tf.Cast"
   // CHECK: call @testIf1Else
   // CHECK: "tf.Yield"()
-  return
+  func.return
 }
 
 // -----
@@ -120,7 +120,7 @@ func.func @testIfNoInputAndNoResult(%arg0: tensor<i1>) -> () {
   // CHECK: "tf.Yield"()
   // CHECK: call @testIf1Else
   // CHECK: "tf.Yield"()
-  return
+  func.return
 }
 
 // -----
@@ -161,9 +161,9 @@ func.func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
-  // CHECK: [[Result1:%.*]] = call @testWhileCond
+  // CHECK: [[Result1:%.*]] = func.call @testWhileCond
   // CHECK: "tf.Yield"([[Result1]])
-  // CHECK: [[Result2:%.*]] = call @testWhileBody
+  // CHECK: [[Result2:%.*]] = func.call @testWhileBody
   // CHECK: "tf.Yield"([[Result2]])
   // CHECK: _attr0 = 10
   // CHECK-SAME: _attr1 = true
@@ -190,11 +190,11 @@ func.func @testWhileResultNoIO() -> () {
   } : () -> ()
 
   // CHECK: "tf.WhileRegion"
-  // CHECK: [[Result1:%.*]] = call @testWhileCond
+  // CHECK: [[Result1:%.*]] = func.call @testWhileCond
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: call @testWhileBody
   // CHECK: "tf.Yield"()
-  return
+  func.return
 }
 
 // -----
@@ -214,10 +214,10 @@ func.func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
   // CHECK: ^bb0(%[[CARG0:.*]]: tensor<4xf32>
-  // CHECK: [[Result1:%.*]] = call @testWhileCond(%[[CARG0]])
+  // CHECK: [[Result1:%.*]] = func.call @testWhileCond(%[[CARG0]])
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: ^bb0(%[[BARG0:.*]]: tensor<4xf32>
-  // CHECK: [[Result2:%.*]] = call @testWhileBody(%[[BARG0]])
+  // CHECK: [[Result2:%.*]] = func.call @testWhileBody(%[[BARG0]])
   // CHECK: "tf.Yield"([[Result2]])
   // CHECK: return [[Result0]]
   func.return %1 : tensor<*xf32>
@@ -240,10 +240,10 @@ func.func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
-  // CHECK: [[Result1:%.*]] = call @testWhileCond
+  // CHECK: [[Result1:%.*]] = func.call @testWhileCond
   // CHECK: [[ToBool:%.*]] = "tf.ToBool"([[Result1]])
   // CHECK: "tf.Yield"([[ToBool]])
-  // CHECK: [[Result2:%.*]] = call @testWhileBody
+  // CHECK: [[Result2:%.*]] = func.call @testWhileBody
   // CHECK: "tf.Yield"([[Result2]])
   // CHECK: return [[Result0]]
   func.return %1 : tensor<*xf32>
@@ -261,7 +261,7 @@ func.func @testIfDevice(%arg0: tensor<i1>) {
 
   // CHECK: "tf.IfRegion"
   // CHECK: device = "/device:CPU:0"
-  return
+  func.return
 }
 
 // -----
@@ -276,5 +276,5 @@ func.func @testWhileDevice() {
 
   // CHECK: "tf.WhileRegion"
   // CHECK: device = "/device:CPU:0"
-  return
+  func.return
 }

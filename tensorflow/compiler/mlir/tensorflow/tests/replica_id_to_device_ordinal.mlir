@@ -31,7 +31,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
       }
       tf_executor.fetch
     }
-    return
+    func.return
   }
 
   // CHECK:      tf_executor.island
@@ -63,7 +63,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
       }
       tf_executor.fetch
     }
-    return
+    func.return
   }
   // CHECK:      tf_executor.island
   // CHECK:      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"
@@ -87,7 +87,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
       }
       tf_executor.fetch
     }
-    return
+    func.return
   }
   // CHECK:      tf_executor.island
   // CHECK:      "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"

@@ -347,6 +347,10 @@ class StreamExecutor {
   // Note: on OpenCL we implicitly select platform zero at the moment.
   int PlatformDeviceCount() const;
 
+  // Returns whether the StreamExecutor supports BLAS plans as implemented
+  // for instance in the cuBLASLt API
+  bool SupportsBlasPlans() const;
+
   // Returns whether the StreamExecutor supports BLAS routines for the platform
   // that underlies this interface.
   bool SupportsBlas() const;
@@ -411,7 +415,8 @@ class StreamExecutor {
   bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc>* out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.
-  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType>* out_algorithms);
+  bool GetBlasGemmAlgorithms(Stream* stream,
+                             std::vector<blas::AlgorithmType>* out_algorithms);
 
   // Creates a backend-specific plan object for a blaslt matmul operation, which
   // can then be passed to DoBlasLtMatmul(). When possible, plans should be
@@ -549,6 +554,10 @@ class StreamExecutor {
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
   StreamExecutorMemoryAllocator* GetAllocator() { return &allocator_; }
+
+  internal::StreamExecutorInterface* GetInternalExecutor() {
+    return implementation_.get();
+  }
 
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,

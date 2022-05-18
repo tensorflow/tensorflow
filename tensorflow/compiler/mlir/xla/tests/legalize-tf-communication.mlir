@@ -94,7 +94,7 @@ func.func @host_compute_no_operands_one_result() {
   // CHECK-NOT:  "mhlo.after_all"
   // CHECK:      "mhlo.recv"([[INIT_TOKEN]])
   %0 = "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> tensor<i32>
-  return
+  func.return
 }
 
 // -----
@@ -113,7 +113,7 @@ func.func @host_compute_one_operand_no_results(%arg0: tensor<i32>) {
 
   // CHECK:      "mhlo.recv"([[SEND_TOKEN]])
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
-  return
+  func.return
 }
 
 // -----
@@ -131,7 +131,7 @@ func.func @host_compute_single_operand_result(%arg0: tensor<i32>) {
   // CHECK:      "mhlo.recv"([[SEND_TOKEN]])
   // CHECK-NOT:  "mhlo.after_all"
   %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
-  return
+  func.return
 }
 
 // -----
@@ -149,7 +149,7 @@ func.func @send_to_host(%arg0: tensor<i32>) {
   // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send_key_dtoh_0"}
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> !mhlo.token
   "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -217,7 +217,7 @@ func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK:      [[CALL:%.*]]:2 = call @callee([[MAIN_ARG0]], [[MAIN_TOKEN]])
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> (tensor<i32>, !mhlo.token)
-  %0 = call @callee(%arg0) : (tensor<i32>) -> tensor<i32>
+  %0 = func.call @callee(%arg0) : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[CALL]]#0
   func.return %0 : tensor<i32>
@@ -250,7 +250,7 @@ func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
 
   // CHECK:      [[CALL:%.*]]:2 = call [[CALLEE_CLONE:@.*]]([[MAIN_ARG0]], [[MAIN_TOKEN]])
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> (tensor<i32>, !mhlo.token)
-  %0 = call @callee(%arg0) : (tensor<i32>) -> tensor<i32>
+  %0 = func.call @callee(%arg0) : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[CALL]]#0 : tensor<i32>
   func.return %0 : tensor<i32>
@@ -294,7 +294,7 @@ func.func @main(%arg0: tensor<i32>) {
 
   // CHECK:      [[MAIN_SEND2_TOKEN:%.*]] = "mhlo.send"([[MAIN_ARG0]], [[CALL_TOKEN]])
   "tf.XlaSendToHost"(%arg0) {key = "send2"} : (tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK: func private @callee([[CALLEE_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
@@ -308,7 +308,7 @@ func.func private @callee() {
   "tf.XlaSendToHost"(%0) {key = "send1"} : (tensor<i32>) -> ()
 
   // CHECK:      return [[CALLEE_SEND_TOKEN]]
-  return
+  func.return
 }
 
 // -----
@@ -321,7 +321,7 @@ func.func private @callee0() {
 
   // CHECK:      call @callee1([[INIT_TOKEN]])
   func.call @callee1() : () -> ()
-  return
+  func.return
 }
 
 // CHECK: func private @callee1([[CALLEE1_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
@@ -332,7 +332,7 @@ func.func private @callee1() {
   func.call @callee2() : () -> ()
 
   // CHECK:      return [[CALL_2]]
-  return
+  func.return
 }
 
 // CHECK: func private @callee2([[CALLEE2_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
@@ -343,7 +343,7 @@ func.func private @callee2() {
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK:      return [[RECV_TUPLE]]#1
-  return
+  func.return
 }
 
 // -----
@@ -357,7 +357,7 @@ func.func @callee3() {
 
   // CHECK:      call @callee4{{.+}}([[CALLEE3_INIT_TOKEN]])
   func.call @callee4() : () -> ()
-  return
+  func.return
 }
 
 // CHECK: func @callee4()
@@ -368,7 +368,7 @@ func.func @callee4() {
   func.call @callee5() : () -> ()
 
   // CHECK:      return
-  return
+  func.return
 }
 
 // CHECK: func private @callee5([[CALLEE5_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
@@ -379,7 +379,7 @@ func.func private @callee5() {
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK:      return [[RECV_TUPLE]]#1
-  return
+  func.return
 }
 
 // CHECK: func private @callee4{{.+}}([[CALLEE4_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
@@ -618,7 +618,7 @@ func.func @if_function_call(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32
   // CHECK:      [[INIT_TOKEN:%.*]] = "mhlo.create_token"
   // CHECK: "mhlo.if"
   %0 = "mhlo.if"(%arg0) ({
-    // CHECK:      [[CALL_TOKEN:%.*]] = call @callee([[ARG1]], [[INIT_TOKEN]])
+    // CHECK:      [[CALL_TOKEN:%.*]] = func.call @callee([[ARG1]], [[INIT_TOKEN]])
     func.call @callee(%arg1) : (tensor<f32>) -> ()
 
     // CHECK:      "mhlo.return"([[ARG1]], [[CALL_TOKEN]])
@@ -636,7 +636,7 @@ func.func private @callee(%arg0: tensor<f32>) {
   "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<f32>) -> ()
 
   // CHECK: return [[SEND_TOKEN]]
-  return
+  func.return
 }
 
 // -----
@@ -660,7 +660,7 @@ func.func @if_region_multiple_ops(%arg0: tensor<i1>, %arg1: tensor<f32>) {
   },  {
     "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -687,7 +687,7 @@ func.func @if_followed_by_communication_op(%arg0: tensor<i1>, %arg1: tensor<f32>
 
   // CHECK-NEXT: "mhlo.send"({{.*}}, [[IF]]#1)
   "tf.XlaSendToHost"(%arg1) {key = "send_key1"} : (tensor<f32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -831,7 +831,7 @@ func.func @while_followed_by_communication_op(%arg0: tensor<f32>) {
 
   // CHECK: "mhlo.send"({{.*}}, [[WHILE]]#1)
   "tf.XlaSendToHost"(%arg0) {key = "send_key1"} : (tensor<f32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -846,7 +846,7 @@ func.func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
     "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return
+  func.return
 }
 
 // -----
@@ -861,12 +861,12 @@ func.func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
     func.call @callee() : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return
+  func.return
 }
 
 func.func private @callee() {
   "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -879,5 +879,5 @@ func.func @multi_block_func() {
   cf.br ^bb1
 ^bb1:
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
-  return
+  func.return
 }

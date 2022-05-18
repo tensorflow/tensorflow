@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -61,8 +62,8 @@ class BufferReuse : bufferization::BufferPlacementTransformationBase {
         // possible.
         if (userange.rangesInterfere(itemA, itemB)) continue;
 
-        // The defining block of itemA has to dominate all uses of itemB.
-        if (!dominatesAllUses(itemA.getParentBlock(), itemB)) continue;
+        // The defining op of itemA has to dominate all uses of itemB.
+        if (!dominatesAllUses(itemA, itemB)) continue;
 
         // Insert itemB into the right place of the potReuseVector. The order of
         // the vector is defined via the program order of the first use of each
@@ -91,11 +92,11 @@ class BufferReuse : bufferization::BufferPlacementTransformationBase {
   }
 
  private:
-  /// Check if all uses of item are dominated by the given block.
-  bool dominatesAllUses(Block *block, Value item) {
-    for (OpOperand &operand : item.getUses()) {
-      if (!dominators.dominates(block, operand.getOwner()->getBlock()))
-        return false;
+  /// Check if all uses of itemB are dominated by the definition of itemA.
+  bool dominatesAllUses(Value itemA, Value itemB) {
+    for (OpOperand &operand : itemB.getUses()) {
+      Operation *defOp = operand.getOwner();
+      if (!defOp || !dominators.properlyDominates(itemA, defOp)) return false;
     }
     return true;
   }
@@ -293,7 +294,7 @@ struct BufferReusePass : BufferReuseBase<BufferReusePass> {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

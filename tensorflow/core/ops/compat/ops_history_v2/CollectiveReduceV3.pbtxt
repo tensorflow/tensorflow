@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "CollectiveReduceV3"
   input_arg {
     name: "input"

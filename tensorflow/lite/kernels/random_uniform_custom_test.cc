@@ -132,7 +132,7 @@ TYPED_TEST(RandomUniformTest, TestOutput) {
     tflite::RandomUniformOpModel<int32_t> m(
         {1000, 50, 5}, tflite::TensorType_INT32,
         {tflite::GetTTEnum<Float>(), {}}, dynamic);
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     auto output = m.GetOutput<Float>();
     EXPECT_EQ(output.size(), 1000 * 50 * 5);
 
@@ -159,7 +159,7 @@ TYPED_TEST(RandomUniformTest, TestOutputInt64) {
     tflite::RandomUniformOpModel<int64_t> m(
         {1000, 50, 5}, tflite::TensorType_INT64,
         {tflite::GetTTEnum<Float>(), {}}, dynamic);
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     auto output = m.GetOutput<Float>();
     EXPECT_EQ(output.size(), 1000 * 50 * 5);
 
@@ -195,7 +195,7 @@ TYPED_TEST(RandomUniformIntTest, TestOutput) {
   tflite::RandomUniformIntOpModel<int32_t> m(
       {1000, 50, 5}, tflite::TensorType_INT32, {tflite::GetTTEnum<Int>(), {}},
       0, 5);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Int>();
   EXPECT_EQ(output.size(), 1000 * 50 * 5);
 
@@ -216,7 +216,7 @@ TYPED_TEST(RandomUniformIntTest, TestOutputInt64) {
   tflite::RandomUniformIntOpModel<int64_t> m(
       {1000, 50, 5}, tflite::TensorType_INT64, {tflite::GetTTEnum<Int>(), {}},
       0, 5);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Int>();
   EXPECT_EQ(output.size(), 1000 * 50 * 5);
 

@@ -4,7 +4,7 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{unknown tf_saved_model dialect arg attribute 'tf_saved_model.not_a_real_arg_attr'}}
   func.func private @f(%arg0: tensor<f32> {tf_saved_model.not_a_real_arg_attr = 1 : i32}) {
-    return
+    func.return
   }
 
 }
@@ -17,7 +17,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32> {tf_saved_model.bound_input = 1 : i32}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
-    return
+    func.return
   }
 
 }
@@ -30,7 +30,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32> {tf_saved_model.bound_input = @doesnt_exist}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
-    return
+    func.return
   }
 
 }
@@ -39,7 +39,7 @@ module attributes {tf_saved_model.semantics} {
 
 // expected-error@+1 {{'tf_saved_model.exported_names' must be on an op whose immediate parent has attribute 'tf_saved_model.semantics'}}
 func.func @f() attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
-  return
+  func.return
 }
 
 // -----
@@ -59,7 +59,7 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{'tf_saved_model.exported_names' must be an array of strings}}
   func.func @f() attributes { tf_saved_model.exported_names = 1 : i32} {
-    return
+    func.return
   }
 
 }
@@ -70,12 +70,12 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-note@+1 {{previously seen here}}
   func.func @f() attributes { tf_saved_model.exported_names = ["foo"]} {
-    return
+    func.return
   }
 
   // expected-error@+1 {{duplicate exported name 'foo'}}
   func.func @g() attributes { tf_saved_model.exported_names = ["foo"]} {
-    return
+    func.return
   }
 
 }
@@ -98,7 +98,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32> {tf_saved_model.index_path = 1}
   ) attributes { tf_saved_model.exported_names = ["f"] } {
-    return
+    func.return
   }
 
 }
@@ -111,7 +111,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32> {tf_saved_model.index_path = [1.0] }
   ) attributes { tf_saved_model.exported_names = ["f"] } {
-    return
+    func.return
   }
 
 }
@@ -124,7 +124,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32>
   ) attributes { tf_saved_model.exported_names = ["f"] } {
-    return
+    func.return
   }
 
 }
@@ -137,7 +137,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32> {tf.resource_name = "resource"}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
-    return
+    func.return
   }
 
 }
@@ -153,7 +153,7 @@ module attributes {tf_saved_model.semantics} {
     %arg0: tensor<f32> {tf_saved_model.bound_input = @some_constant},
     %arg1: tensor<f32> {tf_saved_model.index_path = [0]}
   ) attributes { tf_saved_model.exported_names = ["f"] } {
-    return
+    func.return
   }
 
 }
@@ -195,12 +195,12 @@ module attributes {tf_saved_model.semantics} {
   func.func @f() attributes { tf_saved_model.exported_names = ["f"] } {
     // expected-error@+1 {{exported function cannot be internally referenced}}
     "some_dialect.some_call"() { callee = @g } : () -> ()
-    return
+    func.return
   }
 
   // expected-note@+1 {{references this exported function}}
   func.func @g() attributes { tf_saved_model.exported_names = ["g"] } {
-    return
+    func.return
   }
 
 }
@@ -212,9 +212,9 @@ module attributes {tf_saved_model.semantics} {
 
   func.func @root() attributes {tf_saved_model.exported_names = ["root"]} {
     "some_unregistered_dialect.maybe_a_symbol_table"() ({
-      return
+      func.return
     }) : () -> ()
-    return
+    func.return
   }
 
 }
@@ -235,7 +235,7 @@ module attributes {tf_saved_model.semantics} {
     %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
     %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
   ) attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 }
 
@@ -260,7 +260,7 @@ module attributes {tf_saved_model.semantics} {
   // expected-error@+1 {{bound input with type 'tensor<f32>' expected to have type 'tensor<!tf_type.resource<tensor<?xf32>>>'}}
   func.func @f(%arg0: tensor<f32> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 }
 
@@ -313,7 +313,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   func.func private @f(
     %arg0: tensor<f32> {tf.resource_name = "resource"}
   ) attributes {tf_saved_model.exported_names = ["foo.some_func"] } {
-    return
+    func.return
   }
 
 }
@@ -326,7 +326,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(
     %arg0: tensor<f32> {tf.resource_name = "resource"}
   ) {
-    return
+    func.return
   }
 
 }
@@ -373,7 +373,7 @@ module attributes {tf_saved_model.semantics} {
   // expected-error@+1 {{the initializer function should be exported}}
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func.func private @init() {
-    return
+    func.return
   }
 }
 
@@ -384,7 +384,7 @@ module attributes {tf_saved_model.semantics} {
   // expected-error@+1 {{the initializer function should have only one exported name}}
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func.func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
-    return
+    func.return
   }
 }
 
@@ -396,7 +396,7 @@ module attributes {tf_saved_model.semantics} {
   "some_dialect.some_op"() {sym_name = "v"} : () -> ()
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
     attributes { tf_saved_model.exported_names = ["a"] } {
-    return
+    func.return
   }
 
 }
@@ -411,6 +411,6 @@ module attributes {tf_saved_model.semantics} {
     %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
     %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
   ) attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 }

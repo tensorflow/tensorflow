@@ -177,7 +177,7 @@ class PrefetchThread {
   // Runs the prefetch thread. It runs until an error is encountered or the
   // destructor is called.
   void Run();
-  // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
+  // Fills `out` with a round of data. Waits for up to `wait_us` microseconds
   // before giving up and returning with `out` empty. A negative `wait_us`
   // signals to wait indefinitely.
   Status FillBuffer(int64_t wait_us,
@@ -194,13 +194,13 @@ class PrefetchThread {
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
   Status status_ TF_GUARDED_BY(mu_) = Status::OK();
-  // Thread which constantly tries to fill `buffer_` up with
-  // `num_consumers` elements.
-  std::unique_ptr<Thread> thread_;
   // Condition variable notified when elements are added to or removed from
   // `buffer_`, or when `status_` is changed.
   condition_variable cv_;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
+  // Thread which constantly tries to fill `buffer_` up with
+  // `num_consumers` elements.
+  std::unique_ptr<Thread> thread_;
 };
 
 // A task runner which enforces round-robin order for consuming a task's

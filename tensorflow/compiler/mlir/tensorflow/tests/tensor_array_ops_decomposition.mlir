@@ -118,7 +118,7 @@ func.func @main() -> () {
   // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[READ2]], %[[SPLIT_RESHAPE]])
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[ADD]])
   %split = "tf.TensorArraySplitV3"(%ta#0, %concat#0, %concat#1, %ta#1) {element_shape_except0 = #tf_type.shape<*>} : (tensor<!tf_type.resource>, tensor<*xf32>, tensor<*xi64>, tensor<f32>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -140,7 +140,7 @@ func.func @main() -> () {
   // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[READ2]], %[[GATHER_SLICE]])
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[ADD]])
   %scatter = "tf.TensorArrayScatterV3"(%ta#0, %indices, %gather, %ta#1) {element_shape_except0 = #tf_type.shape<*>} : (tensor<!tf_type.resource>, tensor<5xi32>, tensor<*xf32>, tensor<f32>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -186,7 +186,7 @@ func.func @main() -> () {
   // CHECK-SAME: (tensor<5x3xf32>, tensor<1x3xf32>, tensor<2xi32>) -> tensor<5x3xf32>
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[UPDATE1]])
   %scatter = "tf.TensorArrayScatterV3"(%ta#0, %indices, %gather, %ta#1) {element_shape_except0 = #tf_type.shape<*>} : (tensor<!tf_type.resource>, tensor<2xi32>, tensor<*xf32>, tensor<f32>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -230,7 +230,7 @@ func.func @main() {
   // CHECK: %[[UPDATE3:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ3]], %[[ADD3]],
   // CHECK: "tf.AssignVariableOp"(%[[GVAR3]], %[[UPDATE3]])
   %write3 = "tf.TensorArrayWriteV3"(%grad3#0, %index, %value, %grad3#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -253,7 +253,7 @@ func.func @main() -> () {
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
   // CHECK: "tf.Slice"(%[[READ]],
   %read = "tf.TensorArrayReadV3"(%1#0, %index, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 // CHECK: func @while_body(%[[BARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[BARG1:.*]]: tensor<i32>, %[[BARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func.func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>) {
@@ -311,7 +311,7 @@ func.func @main() -> () {
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %grad:2 = "tf.TensorArrayGradV3"(%ta#0, %ta#1) {source = "a"} : (tensor<!tf_type.resource>, tensor<f32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %const, %elem, %grad#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
-  return
+  func.return
 }
 // CHECK: func @then_branch(%[[TARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[TARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[TARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func.func @then_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
@@ -386,7 +386,7 @@ func.func @main() -> () {
   // CHECK: %[[READ_VAR:.*]] = "tf.ReadVariableOp"(%[[VAR]])
   // CHECK: "tf.Slice"(%[[READ_VAR]]
   %read = "tf.TensorArrayReadV3"(%ta#0, %index, %while#0) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 
 // -----
@@ -425,7 +425,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
   %idx = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.TensorArrayReadV3
   %read_val = "tf.TensorArrayReadV3"(%ta#0, %idx, %case_op) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 
 // -----
@@ -457,7 +457,7 @@ func.func @main() -> () {
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
   // CHECK: "tf.Slice"(%[[READ]],
   %read = "tf.TensorArrayReadV3"(%call2, %index, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 // CHECK-LABEL: func @callee
 // CHECK-SAME: (%[[OCARG0:.*]]: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
@@ -507,7 +507,7 @@ func.func @main() -> () {
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
   // CHECK: "tf.Slice"(%[[READ]],
   %read = "tf.TensorArrayReadV3"(%call2, %index, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 // CHECK: func private @callee(%[[CARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func.func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
@@ -535,7 +535,7 @@ func.func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.r
 // CHECK-LABEL: func @main
 func.func @main() -> () {
   %call = "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> tensor<i32>
-  return
+  func.return
 }
 // CHECK: func private @callee() -> tensor<i32>
 func.func @callee() -> tensor<i32> {
@@ -555,7 +555,7 @@ func.func @callee() -> tensor<i32> {
 func.func @main() -> () {
   // CHECK: "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> tensor<*xf32>
   %call = "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> (tensor<*xf32>)
-  return
+  func.return
 }
 func.func private @callee() -> (tensor<*xf32>) {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
@@ -593,7 +593,7 @@ func.func @main() -> () {
     : (tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
   // CHECK-NOT: tf.TensorArrayReadV3
   %read = "tf.TensorArrayReadV3"(%call, %index, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func private @callee
@@ -635,7 +635,7 @@ func.func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.r
 func.func @main(%arg0: tensor<i32>) -> () {
   // expected-error @+1 {{unknown max element count}}
   %ta:2 = "tf.TensorArrayV3"(%arg0) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  return
+  func.return
 }
 
 // -----
@@ -646,7 +646,7 @@ func.func @main(%arg0: tensor<i32>) -> () {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // expected-error @+1 {{unknown element shape}}
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  return
+  func.return
 }
 
 // -----
@@ -662,7 +662,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // expected-error @+1 {{unknown tensor array}}
   %read = "tf.TensorArrayReadV3"(%if_op, %index, %ta0#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
-  return
+  func.return
 }
 func.func @if_then(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   func.return %arg0 : tensor<!tf_type.resource>
@@ -690,7 +690,7 @@ func.func @main() -> () {
       "tf.Yield"(%carg0, %idx) : (tensor<!tf_type.resource>, tensor<i32>) -> ()
     }) {is_stateless = false}
        : (tensor<!tf_type.resource>, tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>)
-  return
+  func.return
 }
 
 // -----

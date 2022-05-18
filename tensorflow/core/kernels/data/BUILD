@@ -435,6 +435,32 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "iterator_ops_test",
+    size = "small",
+    srcs = ["iterator_ops_test.cc"],
+    deps = [
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
 tf_kernel_library(
     name = "map_dataset_op",
     srcs = ["map_dataset_op.cc"],
@@ -1034,6 +1060,43 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "rewrite_dataset_op",
+    srcs = ["rewrite_dataset_op.cc"],
+    hdrs = ["rewrite_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:rewrite_utils",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "rewrite_dataset_op_test",
+    size = "small",
+    srcs = ["rewrite_dataset_op_test.cc"],
+    deps = [
+        ":iterator_ops",
+        ":range_dataset_op",
+        ":rewrite_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
+    ],
+)
+
+tf_kernel_library(
     name = "shard_dataset_op",
     srcs = ["shard_dataset_op.cc"],
     hdrs = ["shard_dataset_op.h"],
@@ -1497,6 +1560,7 @@ tf_kernel_library(
         ":range_dataset_op",
         ":reduce_dataset_op",
         ":repeat_dataset_op",
+        ":rewrite_dataset_op",
         ":shard_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",

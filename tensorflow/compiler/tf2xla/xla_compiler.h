@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -198,6 +199,19 @@ class XlaCompiler {
 
     // Enable detailed logging of compilation metadata.
     bool detailed_logging = true;
+  };
+
+  // Argument for compiling a single op.
+  struct SingleOpCompileArgument {
+    // Data type of the output tensors. This is used to create _Retval node.
+    std::vector<DataType> output_dtypes;
+
+    // The NodeDef representing the op.
+    NodeDef node_def;
+
+    // This is currently only used to obtain MLIR TPU bridge rollout state.
+    // Can be removed once full rollout is complete.
+    ConfigProto config_proto;
   };
 
   explicit XlaCompiler(Options options);

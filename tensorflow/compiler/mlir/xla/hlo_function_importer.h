@@ -51,11 +51,11 @@ class HloFunctionImporter {
  public:
   // Imports the given computation as a function in the given module. This also
   // imports any computations referred by instructions in this computation.
-  static Status ImportAsFunc(const xla::HloComputation& computation,
-                             mlir::ModuleOp module,
-                             std::unordered_map<const xla::HloComputation*,
-                                                mlir::FuncOp>* function_map,
-                             mlir::Builder* builder);
+  static Status ImportAsFunc(
+      const xla::HloComputation& computation, mlir::ModuleOp module,
+      std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
+          function_map,
+      mlir::Builder* builder);
 
   // Imports the given hlo computation to the specified region. If
   // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
@@ -134,7 +134,7 @@ class HloFunctionImporter {
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
-                                         mlir::FuncOp>* function_map,
+                                         mlir::func::FuncOp>* function_map,
                       mlir::Builder* builder)
       : context_(module.getContext()),
         module_(module),
@@ -147,7 +147,8 @@ class HloFunctionImporter {
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
-  StatusOr<mlir::FuncOp> ImportAsFunc(const xla::HloComputation& computation);
+  StatusOr<mlir::func::FuncOp> ImportAsFunc(
+      const xla::HloComputation& computation);
 
   // Imports the given computation in the specified region.
   tensorflow::Status ImportAsRegion(const HloComputation& computation,
@@ -230,7 +231,8 @@ class HloFunctionImporter {
   mlir::Builder* builder_;
 
   // Mapping from HloComputation to the created MLIR function.
-  std::unordered_map<const xla::HloComputation*, mlir::FuncOp>* function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
+      function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
   std::unordered_map<const xla::HloInstruction*, mlir::Value>

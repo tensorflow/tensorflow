@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
+#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
 namespace tensorflow {

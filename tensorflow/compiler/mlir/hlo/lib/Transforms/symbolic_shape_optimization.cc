@@ -27,8 +27,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -118,8 +121,19 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
           return rewriter.create<tensor::ExtractOp>(loc, operand, operand_dim)
               .getResult();
         }));
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
-        op, op->getResultTypes().front(), elements);
+    Type index_ty = rewriter.getIndexType();
+    Type concrete_result_ty = RankedTensorType::get(
+        {static_cast<int64_t>(elements.size())}, index_ty);
+    Value result = rewriter.create<tensor::FromElementsOp>(
+        loc, concrete_result_ty, elements);
+
+    // Insert cast, if needed.
+    Type expected_ty = op.getResult().getType();
+    if (result.getType() != expected_ty) {
+      result = rewriter.create<tensor::CastOp>(loc, expected_ty, result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -806,7 +820,8 @@ class SymbolicShapeOptimizationPass final
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createSymbolicShapeOptimizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass() {
   return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 

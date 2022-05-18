@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_tfrt_gpu.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -30,18 +31,19 @@ limitations under the License.
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
-  mlir::registerAllPasses();
-
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
-                  mlir::mhlo::MhloDialect, tfrt::gpu::GpuDialect,
-                  tfrt::gpu::conversion::GpuConversionDialect>();
+                  mlir::mhlo::MhloDialect, tfrt::gpu::GpuDialect>();
   tfrt::RegisterTFRTDialects(registry);
+
+  mlir::registerAllPasses();
+  tensorflow::registerConvertLmhloToGpuBranchPass();
   tensorflow::registerConvertLmhloToGpuBinaryPass();
   tensorflow::registerConvertLmhloToGpuPass();
   tensorflow::registerLmhloToTfrtGpuPass();
-  tfrt::gpu::registerPasses();
+  tfrt::gpu::RegisterPasses();
+  tensorflow::registerLmhloToJitRtPasses();
   return failed(
       mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n", registry));
 }

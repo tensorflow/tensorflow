@@ -38,6 +38,8 @@ namespace full_type {
 // used the correct ops), use Status - an incorrect graph is considered a user
 // error.
 
+ForwardTypeInferenceFn KeepExisting() { return nullptr; }
+
 ForwardTypeInferenceFn ReplicateInput(int i, int n) {
   return [i, n](const TypeRefVector& input_types, const TypeRefMap& type_vars) {
     const FullTypeDef& in_type = input_types.at(i).get();
@@ -86,6 +88,54 @@ ForwardTypeInferenceFn Merge() {
       ret_type.set_type_id(TFT_PRODUCT);
       *(ret_type.add_args()) = merged;
     }
+    return ret_type;
+  };
+}
+
+ForwardTypeInferenceFn Encode(FullTypeId t, int i) {
+  return [t, i](const TypeRefVector& input_types,
+                const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+    DCHECK(input_types.size() >= i);
+
+    FullTypeDef ret_type;
+    const FullTypeDef& in_t = input_types[i].get();
+    if (in_t.type_id() == TFT_UNSET) {
+      return ret_type;
+    }
+
+    ret_type.set_type_id(TFT_PRODUCT);
+
+    auto* enc_type = ret_type.add_args();
+    enc_type->set_type_id(TFT_ENCODED);
+    *enc_type->add_args() = in_t;
+    enc_type->add_args()->set_type_id(t);
+    return ret_type;
+  };
+}
+
+ForwardTypeInferenceFn Decode(FullTypeId t, int i) {
+  return [t, i](const TypeRefVector& input_types,
+                const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+    DCHECK(input_types.size() >= i);
+
+    const FullTypeDef& in_t = input_types[i].get();
+
+    const FullTypeId enc_tid = GetArgDefaultUnset(in_t, 1).type_id();
+    if ((enc_tid != TFT_UNSET) && (enc_tid != t)) {
+      return Status(error::INVALID_ARGUMENT,
+                    absl::StrCat("expected encoded type ", t, " for input ", i,
+                                 ", got ", in_t.DebugString()));
+    }
+
+    FullTypeDef ret_type;
+
+    const FullTypeDef& out_t = GetArgDefaultUnset(in_t, 0);
+    if (in_t.type_id() == TFT_UNSET) {
+      return ret_type;
+    }
+
+    ret_type.set_type_id(TFT_PRODUCT);
+    *ret_type.add_args() = out_t;
     return ret_type;
   };
 }
@@ -242,6 +292,29 @@ ForwardTypeInferenceFn ContainerMap(
     }
     return ret_type;
   };
+}
+
+ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
+  return
+      [t, u, input_idx](const TypeRefVector& input_types,
+                        const TypeRefMap& type_vars) -> StatusOr<FullTypeDef> {
+        DCHECK_GE(input_types.size(), input_idx);
+        const FullTypeDef& in_t = input_types.at(input_idx).get();
+        FullTypeDef ret_type;
+        if (in_t.type_id() == TFT_UNSET) {
+          return ret_type;
+        }
+        if (in_t.type_id() != t) {
+          return Status(error::INVALID_ARGUMENT,
+                        absl::StrCat("expected type ", t, " for input ",
+                                     input_idx, ", got ", in_t.DebugString()));
+        }
+        ret_type.set_type_id(TFT_PRODUCT);
+        FullTypeDef* t = ret_type.add_args();
+        t->set_type_id(u);
+        *t->mutable_args() = in_t.args();
+        return ret_type;
+      };
 }
 
 FullTypeDef BatchTensor(const FullTypeDef& t) {

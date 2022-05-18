@@ -71,14 +71,16 @@ bool IsRematerializable(const HloInstruction* instruction) {
     }
   }
 
+  if (auto collective = DynCast<HloCollectiveInstruction>(instruction)) {
+    return !collective->constrain_layout();
+  }
+
   // Don't rematerialize instructions with side effects or instructions which
   // cannot be cloned safely.
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
     case HloOpcode::kConditional:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
     case HloOpcode::kCustomCall:
     case HloOpcode::kParameter:
     case HloOpcode::kWhile:
@@ -1695,6 +1697,13 @@ StatusOr<int64_t> RematerializeInstructions(
     }
     for (auto* indirect_user : indirect_users) {
       instruction_list->Denylist(indirect_user->instruction);
+    }
+    if (HloDataflowAnalysis::IsAsynchronousOperationStart(best->opcode()) ||
+        HloDataflowAnalysis::IsAsynchronousOperationDone(best->opcode())) {
+      VLOG(2) << "The old instruction " << best->name()
+              << " is an async op. Removing to maintain one start to one done "
+                 "invariant to keep the HLO valid.";
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(best));
     }
   }
   VLOG(1) << "Rematerializing instructions ["

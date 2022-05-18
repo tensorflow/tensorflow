@@ -301,6 +301,29 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "one_hot_test_lib",
+    testonly = 1,
+    srcs = ["one_hot_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "one_hot_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":one_hot_test_lib"],
+)
+
+objc_library(
     name = "padding_test_lib",
     testonly = 1,
     srcs = ["padding_test.mm"],
@@ -449,6 +472,8 @@ objc_library(
     srcs = ["resampler_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
         "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
     ],
@@ -512,6 +537,29 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":reshape_test_lib"],
+)
+
+objc_library(
+    name = "select_v2_test_lib",
+    testonly = 1,
+    srcs = ["select_v2_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "select_v2_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":select_v2_test_lib"],
 )
 
 objc_library(
@@ -754,6 +802,7 @@ objc_library(
         "lstm_test.mm",
         "max_unpooling_test.mm",
         "mean_stddev_normalization_test.mm",
+        "one_hot_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",

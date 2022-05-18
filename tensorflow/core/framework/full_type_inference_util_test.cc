@@ -377,7 +377,7 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
               ::testing::HasSubstr("expected a subtype"));
 }
 
-TEST(MultiaryUnstack, One) {
+TEST(MultiaryUnstack, Basic) {
   FullTypeDef t1;
   t1.set_type_id(TFT_TENSOR);
 
@@ -394,7 +394,7 @@ TEST(MultiaryUnstack, One) {
   ASSERT_EQ(rt.args(0).args(0).args(0).type_id(), TFT_TENSOR);
 }
 
-TEST(MultiaryUnstack, Three) {
+TEST(MultiaryUnstack, Ternary) {
   FullTypeDef t1;
   t1.set_type_id(TFT_RAGGED);
   t1.add_args()->set_type_id(TFT_STRING);
@@ -424,7 +424,7 @@ TEST(MultiaryUnstack, Three) {
   ASSERT_EQ(rt.args(0).args(0).args(2).args(0).type_id(), TFT_INT64);
 }
 
-TEST(MapContainer, One) {
+TEST(MapContainer, Basic) {
   FullTypeDef cont_t;
   cont_t.set_type_id(TFT_DATASET);
   FullTypeDef* el_t = cont_t.add_args();
@@ -444,7 +444,7 @@ TEST(MapContainer, One) {
   ASSERT_EQ(rt.args(0).args(0).args(0).type_id(), TFT_TENSOR);
 }
 
-TEST(MapContainer, Three) {
+TEST(MapContainer, Ternary) {
   FullTypeDef t1;
   t1.set_type_id(TFT_ANY);
   FullTypeDef cont_t;
@@ -480,6 +480,45 @@ TEST(MapContainer, Three) {
   ASSERT_EQ(rt.args(0).args(0).args(2).type_id(), TFT_RAGGED);
   ASSERT_EQ(rt.args(0).args(0).args(2).args_size(), 1);
   ASSERT_EQ(rt.args(0).args(0).args(2).args(0).type_id(), TFT_INT64);
+}
+
+TEST(MapCovariant, Basic) {
+  FullTypeDef t;
+  t.set_type_id(TFT_TENSOR);
+  t.add_args()->set_type_id(TFT_INT32);
+
+  const auto ret = MapCovariant(TFT_TENSOR, TFT_DATASET, 0)({t}, {});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  ASSERT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(rt.args(0).args(0).args_size(), 0);
+}
+
+TEST(MapCovariant, IgnoresUnset) {
+  FullTypeDef t;
+  t.set_type_id(TFT_UNSET);
+
+  const auto ret = MapCovariant(TFT_TENSOR, TFT_DATASET, 0)({t}, {});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_UNSET);
+  ASSERT_EQ(rt.args_size(), 0);
+}
+
+TEST(MapCovariant, RejectsMismatchedType) {
+  FullTypeDef t;
+  t.set_type_id(TFT_TENSOR);
+  t.add_args()->set_type_id(TFT_INT32);
+
+  const auto ret = MapCovariant(TFT_ARRAY, TFT_DATASET, 0)({t}, {});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("expected type"));
 }
 
 }  // namespace

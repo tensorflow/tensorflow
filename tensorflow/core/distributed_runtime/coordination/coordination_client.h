@@ -36,7 +36,8 @@ class CoordinationClient {
                                  RegisterTaskResponse* response,
                                  StatusCallback done) = 0;
 
-  virtual void HeartbeatAsync(const HeartbeatRequest* request,
+  virtual void HeartbeatAsync(CallOptions* call_opts,
+                              const HeartbeatRequest* request,
                               HeartbeatResponse* response,
                               StatusCallback done) = 0;
 
@@ -66,9 +67,14 @@ class CoordinationClient {
                                    InsertKeyValueResponse* response,
                                    StatusCallback done) = 0;
 
-  virtual void GetKeyValueAsync(const GetKeyValueRequest* request,
+  virtual void GetKeyValueAsync(CallOptions* call_opts,
+                                const GetKeyValueRequest* request,
                                 GetKeyValueResponse* response,
                                 StatusCallback done) = 0;
+
+  virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                                   GetKeyValueDirResponse* response,
+                                   StatusCallback done) = 0;
 
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,

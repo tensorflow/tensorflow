@@ -49,12 +49,12 @@ limitations under the License.
 using llvm::APInt;
 using llvm::makeArrayRef;
 using mlir::DenseIntElementsAttr;
-using mlir::FuncOp;
 using mlir::NamedAttribute;
 using mlir::Operation;
 using mlir::RankedTensorType;
 using mlir::Type;
 using mlir::Value;
+using mlir::func::FuncOp;
 
 namespace xla {
 
@@ -254,7 +254,7 @@ Status HloFunctionImporter::ImportAsRegion(
   return importer.ImportAsRegion(computation, region, flatten_region_arg_tuple);
 }
 
-StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
+StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation) {
   auto& imported = (*function_map_)[&computation];
   if (imported) return imported;
@@ -270,8 +270,8 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
 
   // Construct the MLIR function and map arguments.
   llvm::ArrayRef<mlir::NamedAttribute> attrs;
-  auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
-                                       computation_name, func_type, attrs);
+  auto function = FuncOp::create(mlir::UnknownLoc::get(context_),
+                                 computation_name, func_type, attrs);
   auto visibility = computation_name == "main" ? FuncOp::Visibility::Public
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);
@@ -1052,9 +1052,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
+      auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+          builder_->getContext(),
+          *mlir::mhlo::symbolizeRngAlgorithm(rng_op->algorithm()));
       auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, flattened_ret_types,
-          func_builder->getI32IntegerAttr(rng_op->algorithm()), operands[0]);
+          loc, flattened_ret_types, algorithm_attr, operands[0]);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
@@ -1149,7 +1151,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->create<mlir::mhlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
-                                        &reduce_scatter_op.computation()));
+                                        &reduce_scatter_op.computation(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       return reduce_scatter_op.getOperation();
     }
@@ -1335,6 +1338,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NO_ATTRIBUTE_CASE(kAbs, AbsOp);
+      NO_ATTRIBUTE_CASE(kAddDependency, AddDependencyOp);
       NO_ATTRIBUTE_CASE(kAnd, AndOp);
       NO_ATTRIBUTE_CASE(kAtan2, Atan2Op);
       NO_ATTRIBUTE_CASE(kBitcastConvert, BitcastConvertOp);
@@ -1432,11 +1436,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->getI32Type(), instruction->mantissa_bits()));
       return op.getOperation();
     }
-    case HloOpcode::kAddDependency:
-      // Arbitrary op code that I suspect we will not implement for quite a
-      // while and allows testing handling of unknown ops. Selected because it
-      // is not mentioned in xla client anywhere or in the hlo of our sample
-      // models.
     default: {
       mlir::OperationState result(loc, "mhlo.unknown");
       result.addOperands(operands);

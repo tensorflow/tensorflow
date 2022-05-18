@@ -153,6 +153,10 @@ class HloValue : public BufferValue {
         [this](std::vector<HloUse>& uses) { ComputeUses(uses); });
   }
 
+  // Returns true if this has a position that is the root of the given
+  // computation.
+  bool IsRootOf(const HloComputation* computation) const;
+
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
 
