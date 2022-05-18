@@ -30,6 +30,7 @@ py_library(
         ":checkpoint_options",
         ":functional_saver",
         ":graph_view",
+        ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpoint_management",
@@ -145,6 +146,17 @@ py_library(
     srcs = ["graph_view.py"],
     srcs_version = "PY3",
     deps = [
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+py_library(
+    name = "util",
+    srcs = ["util.py"],
+    srcs_version = "PY3",
+    deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -154,6 +166,7 @@ py_library(
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking",
     ],
 )
 

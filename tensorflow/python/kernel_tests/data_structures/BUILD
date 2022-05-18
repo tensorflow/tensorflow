@@ -150,6 +150,7 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/saved_model:load",

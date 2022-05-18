@@ -404,7 +404,7 @@ class CheckpointPosition(object):
       # the SaveableObject itself has been cached. If not, we'll make it, and
       # either way we'll extract new ops from it (or if it has Python state to
       # restore, we'll run that).
-      saveables_cache = self._checkpoint.graph_view.saveables_cache
+      saveables_cache = self._checkpoint.saveables_cache
       if saveables_cache is None:
         # No SaveableObject caching when executing eagerly.
         saveable = None
