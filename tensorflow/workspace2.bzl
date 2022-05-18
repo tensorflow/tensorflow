@@ -125,7 +125,7 @@ def _tf_toolchains():
 def _tf_repositories():
     """All external dependencies for TF builds."""
 
-    # To update any of the dependencies bellow:
+    # To update any of the dependencies below:
     # a) update URL and strip_prefix to the new git commit hash
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "1be2e5d8380e7a2983f7325d462cba044f8a1016bd3e403ede093c3086595040",
-        strip_prefix = "XNNPACK-d5dc9e245f0d474235f2b0a48e3e8525de02a5db",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/d5dc9e245f0d474235f2b0a48e3e8525de02a5db.zip"),
+        sha256 = "c042e52d36bcc317d8fe417fe3e2b33620d73b8479d9c22ec90bae14ef4a91bb",
+        strip_prefix = "XNNPACK-d34dc03a2d7d1ba5dafe60f6f4d1ade5c1fc86ad",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/d34dc03a2d7d1ba5dafe60f6f4d1ade5c1fc86ad.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
