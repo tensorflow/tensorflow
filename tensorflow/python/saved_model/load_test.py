@@ -49,9 +49,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
-from tensorflow.python.keras import Model
-from tensorflow.python.keras import models
-from tensorflow.python.keras.layers import Layer
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
@@ -2552,32 +2549,20 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
                         [3, 1])
 
-class _Embedding(Layer):
-  def __init__(self, input_dim, output_dim, trainable=True):
-    super(_Embedding, self).__init__(dtype=dtypes.float32)
-    self.input_dim = input_dim
-    self.output_dim = output_dim
-    self.embedding_table = None
-    self.trainable = trainable
+class _TestModel(module.Module):
 
-  def build(self, input_shape):
-    self.embedding_table = self.add_weight(
-        "embedding_table", shape=[self.input_dim, self.output_dim],
-        dtype=dtypes.float32, trainable=self.trainable)
-
-  def call(self, indices):
-    return array_ops.gather(params=self.embedding_table, indices=indices)
-
-class _TestModel(Model):
   def __init__(self, rows, cols):
     super().__init__()
-    self.embedding = _Embedding(input_dim=rows, output_dim=cols)
+    self.rows=rows
+    self.cols=cols
+    self.table = None
 
-  def call(self, x):
+  def __call__(self, x):
     with ops.device('/cpu:0'):
-      x = self.embedding(x)
-    with ops.device('/gpu:0'):
-      x = math_ops.reduce_sum(x, axis=1)
+      self.table = variables.Variable(
+          constant_op.constant(1., shape=[self.rows, self.cols]))
+      x = math_ops.matmul(self.table, x)
+      x = math_ops.reduce_sum(x, axis=0)
     return x
 
 class SavedModelLoadMemoryTests(test.TestCase):
@@ -2603,20 +2588,19 @@ class SavedModelLoadMemoryTests(test.TestCase):
     ncols = 128
     nrows = (max_gpu_memory_in_Gb + 1) * 2**30 // ncols // 4
     model = _TestModel(rows=nrows, cols=ncols)
-    x = array_ops.zeros(shape=(65536, 1), dtype=dtypes.int32)
+    x = array_ops.zeros(shape=(ncols, 128), dtype=dtypes.float32)
     y = model(x)
-    models.save_model(
-        model=model,
-        filepath=save_dir,
-        overwrite=True,
+    save.save(
+        model,
+        save_dir,
         options=save_options.SaveOptions(
             experimental_variable_policy=save_options.VariablePolicy
                 .SAVE_VARIABLE_DEVICES
         ),
     )
-    loaded = models.load_model(
-        save_dir,
-        options=save_options.SaveOptions(
+    loaded = load.load(
+        export_dir=save_dir,
+        options=load_options.LoadOptions(
             experimental_variable_policy=save_options.VariablePolicy
                 .SAVE_VARIABLE_DEVICES
         ),
