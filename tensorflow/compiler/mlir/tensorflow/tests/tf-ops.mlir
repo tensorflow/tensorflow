@@ -3776,6 +3776,20 @@ func.func @testBatchMatMulV2InvalidOutputBatchDimension(%lhs: tensor<10x2x5x10xf
 
 // -----
 
+func.func @testBatchMatMulV2DynamicInputBatchDimension(%lhs: tensor<?x2x5x10xf32>, %rhs: tensor<?x10xf32>) -> tensor<5x2x5x10xf32> {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<?x2x5x10xf32>, tensor<?x10xf32>) -> tensor<5x2x5x10xf32>
+  func.return %0 : tensor<5x2x5x10xf32>
+}
+
+// -----
+
+func.func @testBatchMatMulV2DynamicOutputBatchDimension(%lhs: tensor<1x2x5x10xf32>, %rhs: tensor<1x10xf32>) -> tensor<?x2x5x10xf32> {
+  %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<1x2x5x10xf32>, tensor<1x10xf32>) -> tensor<?x2x5x10xf32>
+  func.return %0 : tensor<?x2x5x10xf32>
+}
+
+// -----
+
 func.func @testBatchMatMulV2InvalidOutputRank(%lhs: tensor<10x2x5x10xf32>, %rhs: tensor<10x1x10x10xf32>) {
   // expected-error @+1 {{found invalid output rank, expected 4 but got 3}}
   %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x2x5x10xf32>, tensor<10x1x10x10xf32>) -> tensor<10x5x10xf32>
