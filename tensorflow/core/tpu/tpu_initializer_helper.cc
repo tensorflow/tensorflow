@@ -25,6 +25,8 @@ limitations under the License.
 #include <unistd.h>
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -39,6 +41,9 @@ limitations under the License.
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#elif defined(LIBTPU_STATIC)
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif  // PLATFORM_GOOGLE
@@ -176,11 +181,7 @@ Status TryAcquireTpuLock() {
     return Status::OK();
   }
 }
-#if defined(PLATFORM_GOOGLE)
-Status InitializeTpuLibrary(void* library_handle) {
-  return errors::Unimplemented("You must statically link in a TPU library.");
-}
-#else  // PLATFORM_GOOGLE
+#if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_library_init_fns.inc"
 
 Status InitializeTpuLibrary(void* library_handle) {
@@ -262,6 +263,34 @@ Status FindAndLoadTpuLibrary() {
   return Status::OK();
 }
 
+#elif defined(LIBTPU_STATIC)
+
+#include "tensorflow/core/tpu/tpu_library_init_fns.inc"
+
+Status InitializeTpuLibrary() {
+  // Retrieve arguments from environment if applicable
+  std::pair<std::vector<std::string>, std::vector<const char*>> args =
+      GetLibTpuInitArguments();
+
+  TfTpu_Initialize(/*init_library*/ true, args.second.size(),
+                   args.second.data());
+
+  RegisterTpuPlatform();
+  return Status::OK();
+}
+
+Status FindAndLoadTpuLibrary() {
+  // We can open the shared library which means we are in a TPU environment.
+  // Try to acquire exclusive access.
+  TF_RETURN_IF_ERROR(TryAcquireTpuLock());
+  TF_RETURN_IF_ERROR(InitializeTpuLibrary());
+  return Status::OK();
+}
+
+#else   // PLATFORM_GOOGLE
+Status InitializeTpuLibrary(void* library_handle) {
+  return errors::Unimplemented("You must statically link in a TPU library.");
+}
 #endif  // PLATFORM_GOOGLE
 std::pair<std::vector<std::string>, std::vector<const char*>>
 GetLibTpuInitArguments() {

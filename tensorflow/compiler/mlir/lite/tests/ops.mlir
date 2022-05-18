@@ -1463,6 +1463,14 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 
 // -----
 
+func.func @testBatchMatmul5DRank(%arg0 : tensor<1x1x4x384x32xf32>, %arg1 : tensor<1x4x384x32xf32>) -> tensor<1x1x4x384x384xf32> {
+  // expected-error @+1 {{'tfl.batch_matmul' op failed to verify that lhs and rhs of this op must have rank between [2, 4]}}
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x1x4x384x32xf32>, tensor<1x4x384x32xf32>) -> tensor<1x1x4x384x384xf32>
+  func.return %0 : tensor<1x1x4x384x384xf32>
+}
+
+// -----
+
 func.func @testConcat(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
   // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
@@ -2907,7 +2915,7 @@ func.func @select_v2_with_dynamic_shape_from_broadcast_args(%arg0: tensor<8x7x6x
 func.func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x7x6x5x?x3x2x1xi1>, %arg1: tensor<8x7x6x5x?x3x2x1xf32>, %arg2: tensor<?x3x2x1xf32>, %arg3: tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32> {
   %0 = "tfl.broadcast_to"(%arg1, %arg3) : (tensor<8x7x6x5x?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
   %1 = "tfl.broadcast_to"(%arg2, %arg3) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
-  // expected-error @+1 {{'tfl.select_v2' op failed to verify that operands do not have the same shape or broadcastable shapes within the rank 4}}
+  // expected-error @+1 {{'tfl.select_v2' op failed to verify that operands do not have the same shape or broadcastable shapes within the rank 5}}
   %2 = "tfl.select_v2"(%arg0, %0, %1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
   func.return %2 : tensor<8x7x6x5x?x3x2x1xf32>
 }

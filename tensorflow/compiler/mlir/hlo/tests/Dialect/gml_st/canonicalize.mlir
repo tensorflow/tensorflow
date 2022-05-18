@@ -58,7 +58,7 @@ func.func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
 // CHECK-SAME: to (%[[C48]]) step (%[[C24]])
 // CHECK-SAME: ins (%[[A_:.*]] = %[[A]]: [[BUF_TY]])
 // CHECK-SAME: outs (%[[B_:.*]] = %[[B]]: [[TY]], %[[C_:.*]] = %[[C]]: [[BUF_TY]]) {
-// CHECK-NEXT:   %[[RES:.*]] = call @foo(%[[A_]], %[[B_]], %[[C_]])
+// CHECK-NEXT:   %[[RES:.*]] = func.call @foo(%[[A_]], %[[B_]], %[[C_]])
 // CHECK-NEXT:   gml_st.yield %[[RES]] :
 
 // CHECK: return %[[RESULT]]
@@ -241,7 +241,7 @@ func.func @fold_tensor_cast(%in: tensor<4x600xf32>,
 // CHECK:      %[[OUT_SUB:.*]] = tensor.cast %[[OUT_]]
 // CHECK-SAME:   : tensor<4xf32> to tensor<?xf32>
 
-// CHECK:      %[[RESULT_SUB:.*]] = call @do(%[[IN_SUB_CAST]], %[[OUT_SUB]])
+// CHECK:      %[[RESULT_SUB:.*]] = func.call @do(%[[IN_SUB_CAST]], %[[OUT_SUB]])
 // CHECK:      %[[RESULT_CAST:.*]] = tensor.cast %[[RESULT_SUB]]
 // CHECK:      gml_st.yield %[[RESULT_CAST]] : tensor<4xf32>
 // CHECK:    }

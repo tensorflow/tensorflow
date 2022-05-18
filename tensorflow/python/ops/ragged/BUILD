@@ -582,6 +582,7 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:type_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -184,7 +184,6 @@ cc_library(
     srcs = [
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
-        "convert_to_signless_pass.cc",
         "copy_cleanup_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",

@@ -22,21 +22,18 @@ limitations under the License.
 #include "mlir/IR/RegionKindInterface.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/transforms/pass_detail.h"
-#include "tensorflow/core/transforms/utils/op_cat_helper.h"
 
 namespace mlir {
 namespace tfg {
 
-void SortTopologically(Block *block) {
+void SortTopologically(Block *block, TFGraphDialect *dialect) {
   if (block->empty() || llvm::hasSingleElement(*block)) return;
 
   Block::iterator first(&block->front());
   Block::iterator last = block->end();
   if (!block->getParentOp()->hasTrait<OpTrait::NoTerminator>()) --last;
-
-  // Helper for determining TF op kind.
-  OpCatHelper helper(block->getParentOp()->getContext());
 
   // Sort using a greedy worklist algorithm.
   std::vector<Operation *> worklist;
@@ -66,16 +63,17 @@ void SortTopologically(Block *block) {
 
   // An operation can be recursively scheduled if its and all its nested
   // operations' operands are ready.
-  const auto can_be_scheduled = [&is_ready, &helper](Operation *op) {
+  const auto can_be_scheduled = [&is_ready, dialect](Operation *op) {
     if (!op->getNumRegions()) {
       return llvm::all_of(op->getOperands(), [&](Value operand) {
         if (is_ready(operand, op)) return true;
         // The only normally allowed cycles in TensorFlow graphs are backedges
         // from NextIteration to Merge nodes. Virtually break these edges by
         // marking them as ready.
+        if (!dialect) return false;
         Operation *parent = operand.getDefiningOp();
-        if (!isa<TFOp>(op) || !isa<TFOp>(parent)) return false;
-        return parent && helper.IsMerge(op) && helper.IsNextIteration(parent);
+        return parent && dialect->IsMerge(op) &&
+               dialect->IsNextIteration(parent);
       });
     }
     return !op->walk([&](Operation *child) {
@@ -111,12 +109,14 @@ namespace {
 // A pass that topologically sort Graph regions.
 struct TopoSortPass : TopoSortBase<TopoSortPass> {
   void runOnOperation() override {
+    auto *dialect = getContext().getLoadedDialect<TFGraphDialect>();
+
     Operation *op = getOperation();
     auto region_op = dyn_cast<RegionKindInterface>(op);
     if (!region_op) return;
     for (int region : llvm::seq<int>(0, op->getNumRegions()))
       if (!region_op.hasSSADominance(region) && !op->getRegion(region).empty())
-        SortTopologically(&op->getRegion(region).front());
+        SortTopologically(&op->getRegion(region).front(), dialect);
   }
 };
 

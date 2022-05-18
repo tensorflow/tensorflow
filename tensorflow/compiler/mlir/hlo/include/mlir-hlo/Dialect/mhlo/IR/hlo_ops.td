@@ -167,7 +167,7 @@ def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
 }
 
 def HLO_CbrtOp: HLO_UnaryElementwiseOp<"cbrt",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
   let summary = "Cubic root operator";
   let description = [{
     Returns element-wise cubic root of the operand.
@@ -177,7 +177,7 @@ def HLO_CbrtOp: HLO_UnaryElementwiseOp<"cbrt",
   }];
 }
 def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
   let summary = "Ceil operator";
   let description = [{
     Returns `Ceil(operand)` element-wise.
@@ -206,7 +206,7 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
 }
 
 def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
-    [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_IntTensor> {
   let summary = "Count-leading-zeros (Clz) operator";
   let description = [{
     Returns the number of leading zeros in each operand element-wise.
@@ -216,7 +216,7 @@ def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
   }];
 }
 def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Cos operator";
   let description = [{
     Returns `Cos(operand)` element-wise.
@@ -226,7 +226,7 @@ def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
   }];
 }
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Exponential operator";
   let description = [{
     Returns `e^(operand)` element-wise.
@@ -236,7 +236,7 @@ def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
   }];
 }
 def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Exponential minus one operator";
   let description = [{
     Returns `e^(operand) - 1` element-wise.
@@ -246,7 +246,7 @@ def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
   }];
 }
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
   let summary = "Floor operator";
   let description = [{
     Returns `Floor(operand)` element-wise.
@@ -283,7 +283,7 @@ def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite", [NoSideEffect,
 }
 
 def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Logarithm operator";
   let description = [{
     Returns `log(operand)` element-wise.
@@ -293,7 +293,7 @@ def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
   }];
 }
 def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Log1p operator";
   let description = [{
     Returns `log(operand+1)` element-wise.
@@ -303,7 +303,7 @@ def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
   }];
 }
 def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Logistic operator";
   let description = [{
     Returns `logistic(operand)` element-wise.
@@ -313,7 +313,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
   }];
 }
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
-    [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
   let summary = "Not operator";
   let description = [{
     Returns `!operand` element-wise.
@@ -325,7 +325,7 @@ def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
 }
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
-    [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_IntFpOrComplexTensor> {
   let summary = "Negation operator";
   let description = [{
     Returns `-operand` element-wise.
@@ -337,7 +337,7 @@ def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
 }
 
 def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
-    [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_IntTensor> {
   let summary = "PopulationCount operator";
   let description = [{
     Returns the number of bits set in each operand element-wise.
@@ -358,7 +358,7 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 }
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
   let summary = "Round operator";
   let description = [{
     Returns `Round(operand)` element-wise, rounding to nearest integer with
@@ -371,7 +371,7 @@ def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
 }
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Reciprocal Square-root operator";
   let description = [{
     Returns `1.0 / sqrt(operand)` element-wise.
@@ -381,7 +381,7 @@ def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
   }];
 }
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
-    [NoSideEffect, SameOperandsAndResultType],
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType],
     TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>> {
   let summary = "Sign operator";
   let description = [{
@@ -401,7 +401,7 @@ def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
   let hasFolder = 1;
 }
 def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Sin operator";
   let description = [{
     Returns `Sin(operand)` element-wise.
@@ -411,7 +411,7 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
   }];
 }
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Square-root operator";
   let description = [{
     Returns `sqrt(operand)` element-wise.
@@ -423,7 +423,7 @@ def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
 }
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
-    [NoSideEffect, SameOperandsAndResultType],
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType],
     HLO_FpOrComplexTensor> {
   let summary = "Tanh operator";
   let description = [{
@@ -482,8 +482,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect,
-       HLO_CompatibleOperandsAndResultType, InferTensorType]> {
+      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Addition operator";
   let description = [{
     Returns `lhs + rhs` element-wise.
@@ -495,7 +494,7 @@ def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
 }
 
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Atan2 operator";
   let description = [{
     Returns `atan2(lhs/rhs)` element-wise.
@@ -519,7 +518,7 @@ def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
 }
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Division operator";
   let description = [{
     Returns `lhs / rhs` element-wise.
@@ -531,7 +530,7 @@ def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
 }
 
 def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
-      [Commutative, NoSideEffect, SameOperandsAndResultType]> {
+      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Maximum operator";
   let description = [{
     Returns `max(lhs, rhs)` element-wise.
@@ -543,7 +542,7 @@ def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
 }
 
 def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
-      [Commutative, NoSideEffect, SameOperandsAndResultType]> {
+      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Minimum operator";
   let description = [{
     Returns `min(lhs, rhs)` element-wise.
@@ -555,7 +554,7 @@ def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
 }
 
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
-      [Commutative, NoSideEffect, SameOperandsAndResultType]> {
+      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Multiplication operator";
   let description = [{
     Returns `lhs * rhs` element-wise.
@@ -567,7 +566,7 @@ def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
 }
 
 def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Power operator";
   let description = [{
     Returns `lhs ^ rhs` element-wise.
@@ -577,7 +576,7 @@ def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
   }];
 }
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Remainder operator";
   let description = [{
     Returns `lhs % rhs` element-wise.
@@ -589,7 +588,7 @@ def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
 }
 
 def HLO_ShiftLeftOp : HLO_BinaryElementwiseOp<"shift_left",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Shift Left operator";
   let description = [{
     Returns `lhs << rhs` element-wise.
@@ -600,7 +599,7 @@ def HLO_ShiftLeftOp : HLO_BinaryElementwiseOp<"shift_left",
 }
 
 def HLO_ShiftRightArithmeticOp : HLO_BinaryElementwiseOp<"shift_right_arithmetic",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Shift right arithmetic operator";
   let description = [{
     Returns arithmetic `lhs >> rhs` element-wise.
@@ -611,7 +610,7 @@ def HLO_ShiftRightArithmeticOp : HLO_BinaryElementwiseOp<"shift_right_arithmetic
 }
 
 def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Shift right logical operator";
   let description = [{
     Returns logical `lhs >> rhs` element-wise.
@@ -622,7 +621,7 @@ def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
 }
 
 def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Subtraction operator";
   let description = [{
     Returns `lhs - rhs` element-wise.
@@ -639,8 +638,8 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
-        HLO_BinaryElementwiseOp<
-            mnemonic, [Commutative, NoSideEffect, SameOperandsAndResultType]> {
+        HLO_BinaryElementwiseOp<mnemonic,
+          [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let arguments = (ins
     HLO_PredOrIntTensor:$lhs,
     HLO_PredOrIntTensor:$rhs
@@ -972,7 +971,7 @@ def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
 }
 
 def HLO_AllReduceOp : HLO_Op<"all_reduce",
-    [SameOperandsAndResultType]> {
+    [HLO_CompatibleOperandsAndResultType]> {
   let summary = "AllReduce operator";
   let description = [{
     Performs a custom reduction across replicas.
@@ -1307,6 +1306,7 @@ def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
 
   let arguments = (ins HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
+  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -1414,7 +1414,7 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
 // directly.
 
 def HLO_CholeskyOp : HLO_Op<"cholesky",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Cholesky operator";
   let description = [{
   Computes the Cholesky decomposition of a batch of symmetric (Hermitian)
@@ -1442,7 +1442,6 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
     DefaultValuedAttr<BoolAttr, "false">:$lower
   );
 
-  let hasVerifier = 1;
   let results = (outs HLO_FpOrComplexTensor);
 }
 
@@ -1498,7 +1497,7 @@ def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
 }
 
 def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
-    [NoSideEffect, SameOperandsAndResultType]> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "CollectivePermute operator";
   let description = [{
     CollectivePermute is a collective operation that sends and receives data
@@ -1536,6 +1535,7 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
 
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
@@ -1555,7 +1555,7 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
   }];
 }
 
-def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
+def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Copy operator";
   let description = [{
     Returns a copy of `operand`.
@@ -1566,7 +1566,7 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
 }
 
 def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
-    [NoSideEffect, SameOperandsAndResultType]> {
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Sums input across replicated instances.";
   let description = [{
      For each of the replica groups, operands of the group devices are summed
@@ -2005,7 +2005,7 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
-      [NoSideEffect, SameOperandsAndResultType]> {
+      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Reverse operator";
   let description = [{
     Reverses the specified dimensions of `operand` according to the given

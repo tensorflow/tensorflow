@@ -418,8 +418,8 @@ cc_library(
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":gpu_event_stats",
         ":group_events",
-        ":math_utils",
         ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
@@ -594,5 +594,19 @@ tf_cc_test(
         ":buffer_pool",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_event_stats",
+    srcs = ["gpu_event_stats.cc"],
+    hdrs = ["gpu_event_stats.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )

@@ -156,12 +156,13 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void GetKeyValueAsync(const GetKeyValueRequest* request,
+  void GetKeyValueAsync(CallOptions* call_opts,
+                        const GetKeyValueRequest* request,
                         GetKeyValueResponse* response,
                         StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/GetKeyValue", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

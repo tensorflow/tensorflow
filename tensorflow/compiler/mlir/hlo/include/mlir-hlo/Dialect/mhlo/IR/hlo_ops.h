@@ -112,4 +112,16 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
+namespace mlir {
+namespace mhlo {
+
+SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
+                    const llvm::ArrayRef<Value> &operands,
+                    const llvm::ArrayRef<Type> &element_types,
+                    int64_t dimension, bool is_stable,
+                    ComparisonDirection direction);
+
+}  // end namespace mhlo
+}  // end namespace mlir
+
 #endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H

@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -135,6 +136,49 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
         # Computed output value should be close to reference value.
         tol = 1e-5 if precision == 'float32' else 1e-2
         self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_conv2d_biasadd_relu_fusion(self):
+    """Test Conv2D+BiasAdd+Relu fusion."""
+    if not test_util.is_gpu_available():
+      self.skipTest('No GPU available')
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    metadata = config_pb2.RunMetadata()
+
+    n, h, w, c = (5, 3, 3, 4)
+
+    ops.reset_default_graph()
+    x = _input([n, c, h, w])
+    w = _weight([2, 2, c, c])
+    b = _bias([c])
+    y = nn_ops.conv2d(x, w, strides=(1, 1), padding='SAME', data_format='NCHW')
+    z = nn.bias_add(y, b, data_format='NC..')
+    out = nn.relu(z)
+
+    # Compute reference value.
+    config = _get_config(remapping_on=False)
+    with session.Session(config=config) as sess:
+      sess.run(variables.global_variables_initializer())
+      output_val_ref = sess.run(out, options=run_options, run_metadata=metadata)
+    # Compute output with fusion.
+    config = _get_config(remapping_on=True)
+    with session.Session(config=config) as sess:
+      sess.run(variables.global_variables_initializer())
+      output_val = sess.run(out, options=run_options, run_metadata=metadata)
+      graph = metadata.partition_graphs[0]
+
+    # Graph should contain fused op.
+    found_fused_op = False
+    for node in graph.node:
+      if node.op == '_FusedConv2D':
+        found_fused_op = True
+        break
+    self.assertTrue(found_fused_op)
+
+    # Computed output value should be close to reference value.
+    tol = 1e-5
+    self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
 
 if __name__ == '__main__':

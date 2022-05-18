@@ -66,6 +66,7 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         ":test_utils",
+        ":types",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -188,6 +189,7 @@ cc_library(
     hdrs = ["test_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":types",
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",

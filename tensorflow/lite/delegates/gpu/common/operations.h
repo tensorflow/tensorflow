@@ -622,6 +622,11 @@ struct OneHotAttributes {
   float off_value = 0;
 };
 
+struct SelectV2Attributes {
+  bool broadcast_true = false;
+  bool broadcast_false = false;
+};
+
 }  // namespace gpu
 }  // namespace tflite
 

@@ -107,5 +107,9 @@ ServerStateExport TestCluster::ExportDispatcherState() const {
   return dispatcher_->ExportState();
 }
 
+ServerStateExport TestCluster::ExportWorkerState(size_t index) const {
+  return workers_[index]->ExportState();
+}
+
 }  // namespace data
 }  // namespace tensorflow

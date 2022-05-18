@@ -130,11 +130,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   config->set_alias_passthrough_params(
       execution_options->alias_passthrough_params());
 
-  if (aot_options != nullptr &&
-      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
-    config->set_fusion_config_collection(
-        aot_options->fusion_config_collection());
-    *config->mutable_fusion_config() = aot_options->fusion_config();
+  if (aot_options != nullptr) {
+    config->set_matrix_unit_operand_precision(
+        aot_options->matrix_unit_operand_precision());
+    if (aot_options->fusion_config_collection() !=
+        FusionConfigCollection::kOff) {
+      config->set_fusion_config_collection(
+          aot_options->fusion_config_collection());
+      *config->mutable_fusion_config() = aot_options->fusion_config();
+    }
   }
 
   return std::move(config);

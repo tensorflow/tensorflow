@@ -23,6 +23,9 @@ message TfCallbackData {
 
   message OutputBufferDescription {
     optional BufferDescription buffer_description = 1;
+    // Whether the buffer stores dynamically padded data: in that case, actual
+    // concrete dimensions need to be stored after the buffer.
+    optional bool is_dynamically_padded = 2;
   }
 
   optional tensorflow.NodeDef op = 1;

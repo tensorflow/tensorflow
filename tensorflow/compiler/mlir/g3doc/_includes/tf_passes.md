@@ -47,6 +47,7 @@ wll be replaced by `_tpu_replicate="cluster"` as follows,
 %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_tpu = true, use_spmd_for_xla_partitioning = false} : () -> ()
 ```
 ### `-tf-data-optimization`: Performs tf.data optimizations
+### `-tf-device-assignment-by-func-attr`: Device assignment in TF dialect using the device specified in the function attribute.
 ### `-tf-device-cluster-formation`: Form clusters from instructions assigned to same device
 Clusters operations with the same device assignment id. For each
 cluster, creates a "tf_device.device_launch" op with a Region containing the

@@ -20,9 +20,11 @@ add_mlir_library(MLIRBufferTransforms
   bufferize.cc
   bufferize_pass.cc
   copy_removal.cc
+  propagate_static_shapes_to_kernel.cc
   lower_index_cast_pass.cc
   symbolic_shape_optimization.cc
   shape_simplification.cc
+  tile_loops_pass.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen
@@ -31,6 +33,7 @@ add_mlir_library(MLIRBufferTransforms
   Core
 
   LINK_LIBS PUBLIC
+  MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass

@@ -34,10 +34,10 @@ class TraceType {
   // Returns True if the object is a subtype of "other".
   virtual bool is_subtype_of(const TraceType& other) const = 0;
 
-  // Returns a new object representing the supertype oforiginal object and
-  // "others".
+  // Returns a new object representing the "most specific common supertype" of
+  // original object and "others".
   // Returns nullptr if a supertype does not exist.
-  virtual std::unique_ptr<TraceType> most_specific_common_supertype(
+  virtual std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const = 0;
 
   // Returns a string representation of the object.

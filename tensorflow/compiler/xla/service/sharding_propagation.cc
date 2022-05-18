@@ -610,7 +610,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
 
 bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
                                           int64_t aggressiveness) {
-  // At minimum agressiveness, only allow pass-through ops.
+  // At minimum aggressiveness, only allow pass-through ops.
   if (aggressiveness < 1 &&
       !(inst.IsElementwise() || inst.IsCustomCall("Sharding")) &&
       inst.opcode() != HloOpcode::kTranspose &&
@@ -1772,7 +1772,7 @@ bool ShardingPropagation::InferShardingFromOperands(
             if (operand->sharding().tuple_elements().empty()) {
               continue;
             }
-            // Use ReplicateAllDataDims to to preserve manual subgroups.
+            // Use ReplicateAllDataDims to preserve manual subgroups.
             instruction->set_sharding(HloSharding::SingleTuple(
                 instruction->shape(),
                 hlo_sharding_util::ReplicateAllDataDims(

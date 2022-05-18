@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+from tensorflow.compiler.mlir.python.mlir_wrapper import filecheck_wrapper as fw
 from tensorflow.compiler.tf2xla import test_ops_for_light_outside_compilation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -31,6 +32,10 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
     if not test_util.is_gpu_available():
       self.skipTest('Light outside compilation only works for GPUs now')
 
+  def assertFilecheck(self, actual, expected):
+    """Assert that FileCheck runs successfully."""
+    self.assertTrue(fw.check(actual, expected))
+
   def test_static_tf_op(self):
     """Test operations with static shapes."""
 
@@ -40,16 +45,50 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
     with context.device('/gpu:0'):
       z = random_ops.random_normal([2, 2])
-      hlo = compiled_f.experimental_get_compiler_ir(z)('hlo_no_metadata')
 
-      self.assertIn(
-          r'f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %reshape.2), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING, backend_config="{\"op\":{\"name\":\"TestStaticTf\",\"op\":\"TestStaticTf\",\"input\":[\"x\"],\"device\":\"\",\"attr\":{}},\"inputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}],\"outputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}]}',
-          hlo)
+      self.assertFilecheck(
+          compiled_f.experimental_get_compiler_ir(z)('hlo'), r"""
+          CHECK: f32[2,2]{1,0} custom-call(f32[2,2]{1,0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING
+          CHECK: \"name\":\"TestStaticTf\"
+          """)
 
       self.assertAllClose(compiled_f(z), z)
 
+  def test_unranked_output_error(self):
+    """Test that we error out for unranked dynamic shape."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f():
+      return test_ops_for_light_outside_compilation.dynamic_unranked()
+
+    with context.device('/gpu:0'):
+
+      with self.assertRaisesRegex(ValueError, 'Output 0 has unknown rank'):
+        compiled_f.experimental_get_compiler_ir()()
+
+  def test_dynamic_output_multidim(self):
+    """Test that we correctly handle multi-dimensional dynamic output."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f(shape):
+      return test_ops_for_light_outside_compilation.dynamic_multidim(shape)
+
+    with context.device('/gpu:0'):
+
+      # Rank is hardcoded to 5.
+      shape = [3, 4, 5, 4, 3]
+      hlo = compiled_f.experimental_get_compiler_ir(shape)('hlo_no_metadata')
+      out = compiled_f(shape)
+
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: f32[<=20,<=20,<=20,<=20,<=20]{4,3,2,1,0} custom-call(), custom_call_target="GenericTfCallbackGPU"
+          CHECK: \"name\":\"DynamicMultidim\"
+          """)
+      self.assertAllClose(out, array_ops.ones(shape))
+
   def test_dynamic_output_tf_op(self):
-    """Test dynamic output => returns bad status at runtime."""
+    """Test that dynamic output is sliced properly to the size known at runtime."""
 
     @def_function.function(jit_compile=True)
     def compiled_f(x):
@@ -58,9 +97,16 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
     with context.device('/gpu:0'):
       z = random_ops.random_normal([10])
+      out = compiled_f(z)
+      hlo = compiled_f.experimental_get_compiler_ir(z)('hlo_no_metadata')
 
-      with self.assertRaisesRegex(ValueError, 'Found unknown dimension'):
-        compiled_f.experimental_get_compiler_ir(z)()
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: f32[<=5]{0} custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
+          CHECK: \"name\":\"TestDynamicTf\"
+          """)
+      self.assertAllClose(out, z[:2])
+      self.assertEqual(len(out), 2)
 
   def test_dynamic_input(self):
     """Test dynamic input => returns bad status at runtime."""
@@ -90,9 +136,11 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       z = random_ops.random_normal([2, 2])
       hlo = compiled_f.experimental_get_compiler_ir(z)('hlo_no_metadata')
 
-      self.assertIn(
-          r'custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING, backend_config="{\"op\":{\"name\":\"TestStaticMultipleOutputTf\",\"op\":\"TestStaticMultipleOutputTf\",\"input\":[\"x\"],\"device\":\"\",\"attr\":{}},\"inputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}],\"outputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}},{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"2\",\"name\":\"\"},{\"size\":\"2\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}]}',
-          hlo)
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING
+          CHECK: \"name\":\"TestStaticMultipleOutputTf\"
+          """)
       self.assertAllClose(compiled_f(z)[0], z)
       self.assertAllClose(compiled_f(z)[1], z)
 
@@ -109,9 +157,11 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       z = random_ops.random_normal([10])
       hlo = compiled_f.experimental_get_compiler_ir(z, 5)('hlo_no_metadata')
 
-      self.assertIn(
-          r'custom-call(f32[10]{0} %reshape.2), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING, backend_config="{\"op\":{\"name\":\"TestTfMustBeConstant\",\"op\":\"TestTfMustBeConstant\",\"input\":[\"x\",\"TestTfMustBeConstant/constant_to_add\"],\"device\":\"\",\"attr\":{}},\"inputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"10\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}},{\"buffer_description\":{\"shape\":{\"dim\":[],\"unknown_rank\":false},\"type\":\"DT_INT32\"},\"value\":{\"dtype\":\"DT_INT32\",\"tensor_shape\":{\"dim\":[],\"unknown_rank\":false},\"version_number\":0,\"tensor_content\":\"BQAAAA==\",\"half_val\":[],\"float_val\":[],\"double_val\":[],\"int_val\":[],\"string_val\":[],\"scomplex_val\":[],\"int64_val\":[],\"bool_val\":[],\"dcomplex_val\":[],\"resource_handle_val\":[],\"variant_val\":[],\"uint32_val\":[],\"uint64_val\":[]}}],\"outputs\":[{\"buffer_description\":{\"shape\":{\"dim\":[{\"size\":\"10\",\"name\":\"\"}],\"unknown_rank\":false},\"type\":\"DT_FLOAT\"}}]}',
-          hlo)
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
+          CHECK: \"name\":\"TestTfMustBeConstant\"
+          """)
 
       expected_output = [j + 5 for j in z]
       self.assertAllClose(compiled_f(z, 5), expected_output)

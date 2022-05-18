@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -139,6 +140,11 @@ Histogram GetValue(const Point& point) {
 }
 
 template <>
+Percentiles GetValue(const Point& point) {
+  return Percentiles(point.percentiles_value);
+}
+
+template <>
 int64_t GetDelta(const int64_t& a, const int64_t& b) {
   return a - b;
 }
@@ -151,6 +157,23 @@ Histogram GetDelta(const Histogram& a, const Histogram& b) {
                << result.status();
   }
   return *result;
+}
+
+template <>
+Percentiles GetDelta(const Percentiles& a, const Percentiles& b) {
+  return a.Subtract(b);
+}
+
+template <>
+std::string GetDelta(const std::string& a, const std::string& b) {
+  LOG(FATAL) << "`CellReader<std::string>` does not support `Delta`. "
+             << "Please use `Read` instead.";
+}
+
+template <>
+bool GetDelta(const bool& a, const bool& b) {
+  LOG(FATAL) << "`CellReader<bool>` does not support `Delta`. "
+             << "Please use `Read` instead.";
 }
 
 }  // namespace internal

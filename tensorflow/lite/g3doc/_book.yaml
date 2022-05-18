@@ -32,12 +32,20 @@ upper_tabs:
           path: /lite/inference_with_metadata/task_library/object_detector
         - title: "ImageSegmenter"
           path: /lite/inference_with_metadata/task_library/image_segmenter
+        - title: "ImageEmbedder"
+          path: /lite/inference_with_metadata/task_library/image_embedder
+        - title: "ImageSearcher"
+          path: /lite/inference_with_metadata/task_library/image_searcher
         - title: "NLClassifier"
           path: /lite/inference_with_metadata/task_library/nl_classifier
         - title: "BertNLClassifier"
           path: /lite/inference_with_metadata/task_library/bert_nl_classifier
         - title: "BertQuestionAnswerer"
           path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "TextEmbedder"
+          path: /lite/inference_with_metadata/task_library/text_embedder
+        - title: "TextSearcher"
+          path: /lite/inference_with_metadata/task_library/text_searcher
         - title: "AudioClassifier"
           path: /lite/inference_with_metadata/task_library/audio_classifier
         - title: "Customized API"
@@ -227,6 +235,9 @@ upper_tabs:
           path: /lite/tutorials/model_maker_text_classification
         - title: "BERT question & answer"
           path: /lite/tutorials/model_maker_question_answer
+        - title: "Text search"
+          path: /lite/tutorials/model_maker_text_searcher
+          status: New
 
         - heading: "Audio"
         - title: "Audio classification"

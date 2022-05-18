@@ -15,14 +15,53 @@ limitations under the License.
 
 #ifndef TENSORFLOW_CORE_FUNCTION_TRACE_TYPE_STANDARD_PRIMITIVE_TYPES_H_
 #define TENSORFLOW_CORE_FUNCTION_TRACE_TYPE_STANDARD_PRIMITIVE_TYPES_H_
-
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/function/trace_type/standard/trace_type.h"
 
 namespace tensorflow {
 namespace trace_type {
+
+// Represents cases where the value is not defined.
+class None : public TraceType {
+ public:
+  explicit None();
+  std::unique_ptr<TraceType> clone() const override;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> join(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+};
+
+// Represents type hierarchies that have a generic top type.
+class Any : public TraceType {
+ public:
+  // Passing in absl::nullopt instantiates the top type.
+  explicit Any(absl::optional<std::unique_ptr<TraceType>> base);
+  std::unique_ptr<TraceType> clone() const override;
+
+  absl::optional<const TraceType*> base() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> join(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  absl::optional<std::unique_ptr<TraceType>> base_;
+};
 
 // TODO(b/231340870): Add support for other types such as tf.dtype.
 template <typename T>
@@ -40,7 +79,7 @@ class Literal : public TraceType {
     return *this == other;
   }
 
-  std::unique_ptr<TraceType> most_specific_common_supertype(
+  std::unique_ptr<TraceType> join(
       const std::vector<const TraceType*>& others) const override {
     for (const auto& other : others) {
       if (*this != *other) return nullptr;
@@ -76,6 +115,94 @@ template <>
 inline std::string Literal<std::string>::to_string() const {
   return "String<" + value_ + ">";
 }
+
+// TODO(b/232114163): Reconsider flexibility of structural subtyping.
+// Represents a fixed collection of types.
+class Product : public TraceType {
+ public:
+  explicit Product(std::vector<std::unique_ptr<TraceType>> elements);
+  std::unique_ptr<TraceType> clone() const override;
+
+  const std::vector<const TraceType*> elements() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> join(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  std::vector<std::unique_ptr<TraceType>> elements_;
+};
+
+struct TraceTypeHashByRef {
+  std::size_t operator()(const TraceType* const& t) const noexcept {
+    return t->hash();
+  }
+};
+
+struct TraceTypeEqByRef {
+  bool operator()(const TraceType* lhs, const TraceType* rhs) const {
+    return *lhs == *rhs;
+  }
+};
+
+using RecordMap = absl::flat_hash_map<const TraceType*, const TraceType*,
+                                      TraceTypeHashByRef, TraceTypeEqByRef>;
+
+// TODO(b/232114163): Reconsider flexibility of structural subtyping.
+// Represents a set of fields consisting of a key type and a value type.
+// Key type must be an invariant type (a.is_subtype_of(b) implies a == b).
+class Record : public TraceType {
+ public:
+  explicit Record(std::vector<std::unique_ptr<TraceType>> keys,
+                  std::vector<std::unique_ptr<TraceType>> values);
+
+  std::unique_ptr<TraceType> clone() const override;
+
+  const RecordMap& fields() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> join(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  std::vector<std::unique_ptr<TraceType>> owned_keys_;
+  std::vector<std::unique_ptr<TraceType>> owned_values_;
+  RecordMap fields_;
+};
+
+// Represents a named type, placing the base type into a closed type hierarchy
+// with other UserDefinedType types sharing the same name.
+class UserDefinedType : public TraceType {
+ public:
+  explicit UserDefinedType(std::string name, std::unique_ptr<TraceType> base);
+  std::unique_ptr<TraceType> clone() const override;
+
+  const std::string& name() const;
+  const TraceType* base() const;
+
+  bool is_subtype_of(const TraceType& other) const override;
+  std::unique_ptr<TraceType> join(
+      const std::vector<const TraceType*>& others) const override;
+
+  std::string to_string() const override;
+  std::size_t hash() const override;
+
+  bool operator==(const TraceType& other) const override;
+
+ private:
+  std::string name_;
+  std::unique_ptr<TraceType> base_;
+};
 
 }  // namespace trace_type
 }  // namespace tensorflow

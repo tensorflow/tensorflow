@@ -14,15 +14,17 @@
 # ==============================================================================
 """Various types of Trackable objects."""
 
+
 from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training.tracking import asset
-from tensorflow.python.training.tracking import autotrackable
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import resource
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base
+from tensorflow.python.trackable import data_structures
+from tensorflow.python.trackable import resource
+
 
 AutoTrackable = autotrackable.AutoTrackable
 Asset = asset.Asset

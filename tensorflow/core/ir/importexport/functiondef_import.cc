@@ -333,6 +333,8 @@ Status ImportGenericFunction(
   // Import the function attributes with a `tf.` prefix to match the current
   // infrastructure expectations.
   for (const auto& namedAttr : func.attr()) {
+    if (namedAttr.first.empty())
+      return InvalidArgument("Invalid function attribute name");
     const std::string& name = "tf." + namedAttr.first;
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,

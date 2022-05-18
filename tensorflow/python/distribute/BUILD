@@ -666,6 +666,7 @@ distribute_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
@@ -1416,6 +1417,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["distributed_variable_test.py"],
     disable_v2 = True,  # TODO(b/209058825)
+    disable_v3 = True,  # TODO(b/209058825)
     main = "distributed_variable_test.py",
     shard_count = 3,
     tags = [

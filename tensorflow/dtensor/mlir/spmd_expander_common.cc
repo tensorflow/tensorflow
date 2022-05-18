@@ -680,6 +680,8 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
 Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
+  if (value.isa<mlir::BlockArgument>())
+    return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
     return errors::Internal(
@@ -695,6 +697,8 @@ Status ExtractConstStringVectorFromValue(
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
+  if (value.isa<mlir::BlockArgument>())
+    return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
     return errors::Internal(absl::StrCat("required constant value for ",

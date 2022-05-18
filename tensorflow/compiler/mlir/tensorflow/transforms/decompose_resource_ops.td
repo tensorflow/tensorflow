@@ -363,10 +363,8 @@ def DecomposeResourceScatterAdd : Pat<
 
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
 // tf.TensorScatterUpdate, and tf.AssignVariable.
-// TODO(b/178725329): Support scalar `updates` during decomposition.
 def DecomposeResourceScatterUpdate : Pat<
-  (TF_ResourceScatterUpdateOp:$src_op
-    $resource, $indices, NonScalarRankedType:$updates),
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterUpdateOp

@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -42,20 +43,18 @@ TEST(CppGeneratorTest, typical_usage) {
   PathConfig controller_config(output_dir, source_dir, api_dirs, ops);
   CppGenerator generator(cpp_config, controller_config);
 
+  Env *env = Env::Default();
+  string golden_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
+                                   controller_config.tf_output_dir);
+
   string generated_header = generator.HeaderFileContents().Render();
   string generated_source = generator.SourceFileContents().Render();
-
-  Env *env = Env::Default();
   string expected_header;
-  string header_file_name =
-      io::JoinPath(testing::TensorFlowSrcRoot(),
-                   controller_config.tf_output_dir, "testing_ops.h.golden");
+  string header_file_name = io::JoinPath(golden_dir, "testing_ops.h.golden");
   TF_CHECK_OK(ReadFileToString(env, header_file_name, &expected_header));
 
   string expected_source;
-  string source_file_name =
-      io::JoinPath(testing::TensorFlowSrcRoot(),
-                   controller_config.tf_output_dir, "testing_ops.cc.golden");
+  string source_file_name = io::JoinPath(golden_dir, "testing_ops.cc.golden");
   TF_CHECK_OK(ReadFileToString(env, source_file_name, &expected_source));
 
   // Remove carriage returns (for Windows)

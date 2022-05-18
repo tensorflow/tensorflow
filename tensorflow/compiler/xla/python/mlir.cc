@@ -49,7 +49,9 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
                                          /*import_all_computations=*/true));
   std::string s;
   llvm::raw_string_ostream os(s);
-  module->print(os);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo();
+  module->print(os, flags);
   return s;
 }
 

@@ -980,6 +980,32 @@ cc_library(
 )
 
 cc_library(
+    name = "select_v2",
+    srcs = ["select_v2.cc"],
+    hdrs = ["select_v2.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_library(
+    name = "select_v2_test_util",
+    testonly = 1,
+    srcs = ["select_v2_test_util.cc"],
+    hdrs = ["select_v2_test_util.h"],
+    deps = [
+        ":select_v2",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "softmax",
     srcs = ["softmax.cc"],
     hdrs = ["softmax.h"],

@@ -7,6 +7,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
+    "VERSION_MAJOR",
     "if_google",
     "if_oss",
     "tf_cc_shared_object",
@@ -866,6 +867,7 @@ package_group(
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
@@ -1048,7 +1050,7 @@ cc_import(
     name = "libtensorflow_framework_import_lib",
     shared_library = select({
         "//tensorflow:macos": ":libtensorflow_framework.dylib",
-        "//conditions:default": ":libtensorflow_framework.so",
+        "//conditions:default": ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
     }),
 )
 

@@ -974,6 +974,7 @@ class DepthwiseConv2DBase(test.TestCase):
     cpu_value = _GetVal(use_gpu=False)
     self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
+  @test_util.run_gpu_only
   def testDepthwiseConv2DInputGradCompare(self):
     for index, (input_size, filter_size, output_size, stride, padding,
                 dilations) in enumerate(ConfigsToTest()):
@@ -992,6 +993,7 @@ class DepthwiseConv2DBase(test.TestCase):
       self._CompareBackpropInput(input_size, filter_size, output_size, stride,
                                  padding, "float64")
 
+  @test_util.run_gpu_only
   def testDepthwiseConv2DInputGradExplicitCompare(self):
     for index, (input_size, filter_size, output_size, stride, padding,
                 dilations) in enumerate(ConfigsToTestExplicit()):
@@ -1033,7 +1035,12 @@ class DepthwiseConv2DBase(test.TestCase):
           strides = [1, 1, stride, stride]
           padding = padding_nchw
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
-            t0, t1, t2, strides=strides, padding=padding)
+            t0,
+            t1,
+            t2,
+            strides=strides,
+            padding=padding,
+            data_format=data_format)
         ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
@@ -1043,6 +1050,7 @@ class DepthwiseConv2DBase(test.TestCase):
       gpu_value = _GetVal(use_gpu=True, data_format=data_format)
       self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
+  @test_util.run_gpu_only
   def testDepthwiseConv2DFilterGradCompare(self):
     for index, (input_size, filter_size, output_size, stride, padding,
                 dilations) in enumerate(ConfigsToTest()):
@@ -1061,6 +1069,7 @@ class DepthwiseConv2DBase(test.TestCase):
       self._CompareBackpropFilter(input_size, filter_size, output_size, stride,
                                   padding, "float64")
 
+  @test_util.run_gpu_only
   def testDepthwiseConv2DFilterGradExplicitCompare(self):
     for index, (input_size, filter_size, output_size, stride, padding,
                 dilations) in enumerate(ConfigsToTestExplicit()):

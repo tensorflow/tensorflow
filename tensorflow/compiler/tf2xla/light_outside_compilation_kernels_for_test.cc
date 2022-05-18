@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <string>
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 
 // Sample kernels for the light outside compilation test.
 
@@ -124,7 +126,6 @@ class TestDynamicTfOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_size", &max_size_));
   }
   void Compute(OpKernelContext* ctx) override {
-    Tensor* out_tensor = nullptr;
     const Tensor& input = ctx->input(0);
 
     // Pass through the part of the value specified by the `max_size` attribute.
@@ -138,11 +139,14 @@ class TestDynamicTfOp : public OpKernel {
                        absl::Span<const int>{static_cast<int>(size_to_cpy)},
                        &allocated_shape));
 
+    Tensor* out_tensor = nullptr;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output("output", allocated_shape, &out_tensor));
 
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
+
+    OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
     se::DeviceMemoryBase gpu_dst{out_tensor->data(), size_to_cpy};
     stream->ThenMemcpyD2D(
         /*gpu_dst=*/&gpu_dst,
@@ -157,8 +161,94 @@ class TestDynamicTfOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TestDynamicTf").Device(DEVICE_GPU),
                         TestDynamicTfOp);
 
+class TestDynamicTfXlaOp : public CallTfKernelOp {
+ public:
+  explicit TestDynamicTfXlaOp(OpKernelConstruction* context)
+      : CallTfKernelOp(context) {}
+  StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+      const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
+    OutputDimensionBoundsMap out;
+    TF_ASSIGN_OR_RETURN(auto max_bound, GetNodeAttr<int64_t>(ndef, "max_size"));
+    out[0][0] = max_bound;
+    return out;
+  }
+};
+
 REGISTER_XLA_OP(Name("TestDynamicTf").Device(DEVICE_GPU_XLA_JIT),
-                CallTfKernelOp)
+                TestDynamicTfXlaOp);
+
+REGISTER_OP("DynamicMultidim")
+    .Input("output_shape: int32")
+    .Output("output: float")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(5));
+      return Status::OK();
+    });
+
+// Just fill in the data with ones for a given shape.
+class DynamicMultidimOp : public OpKernel {
+ public:
+  explicit DynamicMultidimOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    TensorShape output_shape;
+    auto vec = ctx->input(0).flat<int32>();
+    for (int i = 0; i < vec.size(); i++) {
+      output_shape.AddDim(vec(i));
+    }
+    Tensor* out_tensor = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("output", output_shape, &out_tensor));
+
+    // Fill in the value with ones.
+    int32_t num_elements = output_shape.num_elements();
+    std::vector<float> host_data(num_elements);
+    for (int i = 0; i < output_shape.num_elements(); i++) {
+      host_data[i] = 1.0;
+    }
+    se::DeviceMemoryBase gpu_dst{out_tensor->data(),
+                                 static_cast<uint64_t>(num_elements)};
+
+    se::Stream* stream =
+        ctx->device()->tensorflow_accelerator_device_info()->stream;
+    stream->ThenMemcpy(
+        /*gpu_dst=*/&gpu_dst, /*host_src=*/host_data.data(),
+        /*size=*/num_elements * sizeof(float));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("DynamicMultidim").Device(DEVICE_GPU).HostMemory("output_shape"),
+    DynamicMultidimOp);
+
+class DynamicMultidimXlaOp : public CallTfKernelOp {
+ public:
+  explicit DynamicMultidimXlaOp(OpKernelConstruction* context)
+      : CallTfKernelOp(context) {}
+  StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+      const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
+    OutputDimensionBoundsMap out;
+    for (int i = 0; i < 5; i++) {
+      out[0][i] = 20;
+    }
+    return out;
+  }
+};
+
+REGISTER_XLA_OP(Name("DynamicMultidim")
+                    .Device(DEVICE_GPU_XLA_JIT)
+                    .CompileTimeConstantInput("output_shape"),
+                DynamicMultidimXlaOp);
+
+REGISTER_OP("DynamicUnranked")
+    .Output("output: float")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    });
+
+REGISTER_XLA_OP(Name("DynamicUnranked").Device(DEVICE_GPU_XLA_JIT),
+                CallTfKernelOp);
 
 // Copies up to `to_copy_bytes` from the input: tests constant storage.
 REGISTER_OP("TestTfMustBeConstant")
@@ -182,13 +272,13 @@ class TestTfMustBeConstantOp : public OpKernel {
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
 
-    float* allocated_host = static_cast<float*>(malloc(allocated_size));
+    std::vector<float> allocated_host(input.NumElements());
 
-    stream->ThenMemcpy(allocated_host,
+    stream->ThenMemcpy(/*host_dst=*/allocated_host.data(),
                        se::DeviceMemoryBase{input.data(), allocated_size},
                        allocated_size);
 
-    for (int i = 0; i < allocated_size / sizeof(float); i++) {
+    for (int i = 0; i < input.NumElements(); i++) {
       allocated_host[i] += constant_to_add;
     }
 
@@ -199,7 +289,7 @@ class TestTfMustBeConstantOp : public OpKernel {
                                  static_cast<uint64_t>(allocated_size)};
 
     stream->ThenMemcpy(
-        /*gpu_dst=*/&gpu_dst, /*host_src=*/allocated_host,
+        /*gpu_dst=*/&gpu_dst, /*host_src=*/allocated_host.data(),
         /*size=*/allocated_size);
   }
 };

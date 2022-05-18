@@ -208,7 +208,7 @@ cc_library(
         ":tpu_initializer_helper",
     ],
     # Always link this in, because even if we don't use it directly we want its
-    #static initializers to dynamically load API symbols exported from libtpu.so
+    # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
 )
 

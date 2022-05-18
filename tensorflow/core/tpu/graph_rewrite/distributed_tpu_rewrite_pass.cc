@@ -2607,6 +2607,12 @@ Status DistributedTPURewritePass::BuildCompileNode(
   VLOG(1) << "BuildCompileNode";
 
   tpu::TPUCompileMetadataProto proto;
+  if (replicate_node) {
+    std::string str;
+    TF_RETURN_IF_ERROR(GetNodeAttr(replicate_node->attrs(),
+                                   "tpu_compile_options_proto", &str));
+    proto.ParseFromString(str);
+  }
   proto.set_num_replicas(params_info.NumReplicas());
   proto.set_num_cores_per_replica(num_cores_per_replica);
   proto.set_function_library_fingerprint(library_fingerprint);

@@ -135,6 +135,11 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
+      // Do not fold FFT. Evaluating it may significantly increase compile time.
+      if (instruction->opcode() == HloOpcode::kFft) {
+        continue;
+      }
+
       // Check for instructions that we can't fold even if they appear inside of
       // a subcomputation (e.g. a kCall).
       if (IsOrContainsIllegalInstr(instruction)) {

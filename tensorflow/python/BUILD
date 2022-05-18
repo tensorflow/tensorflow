@@ -382,6 +382,8 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:headers",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
     ],
+    # TODO(rostam): Why does enabling cc_shared_library bloat the pip package?
+    # static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -668,9 +670,11 @@ tf_gen_op_wrapper_private_py(
     name = "io_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/checkpoint:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/io_ops:__pkg__",
+        "//tensorflow/python/trackable:__pkg__",
         "//tensorflow/python/training:__pkg__",
         "//tensorflow/python/training/tracking:__pkg__",
     ],

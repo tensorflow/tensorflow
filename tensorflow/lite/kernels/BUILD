@@ -649,6 +649,7 @@ BUILTIN_KERNEL_SRCS = [
     "unidirectional_sequence_rnn.cc",
     "unique.cc",
     "unpack.cc",
+    "unsorted_segment_prod.cc",
     "where.cc",
     "while.cc",
     "zeros_like.cc",
@@ -2745,6 +2746,19 @@ cc_test(
     name = "dynamic_update_slice_test",
     size = "small",
     srcs = ["dynamic_update_slice_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_prod_test",
+    size = "small",
+    srcs = ["unsorted_segment_prod_test.cc"],
     deps = [
         ":test_main",
         ":test_util",

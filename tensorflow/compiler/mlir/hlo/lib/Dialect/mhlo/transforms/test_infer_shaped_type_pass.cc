@@ -29,6 +29,38 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+struct InferReturnTypesPattern : public RewritePattern {
+  explicit InferReturnTypesPattern(MLIRContext *context)
+      : RewritePattern("mhlo_test.get_return_types", 1, context) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (op->getNumOperands() != 1) return failure();
+    auto *defining_op = op->getOperand(0).getDefiningOp();
+    auto defining_op_int =
+        llvm::dyn_cast_or_null<InferTypeOpInterface>(defining_op);
+    if (!defining_op_int) return failure();
+    SmallVector<Type, 4> types;
+    if (failed(defining_op_int.inferReturnTypes(
+            op->getContext(), op->getLoc(), defining_op->getOperands(),
+            defining_op->getAttrDictionary(), defining_op->getRegions(),
+            types))) {
+      return failure();
+    }
+
+    // Replace the op with another pass-through op with attributes added.
+    OperationState state(op->getLoc(), "mhlo_test.return_types",
+                         op->getOperands(), op->getResultTypes(),
+                         op->getAttrs());
+    auto *new_op = rewriter.create(state);
+    for (const auto &it : llvm::enumerate(types)) {
+      new_op->setAttr((StringRef("types") + Twine(it.index())).str(),
+                      TypeAttr::get(it.value()));
+    }
+    rewriter.replaceOp(op, {new_op->getResults()});
+    return success();
+  }
+};
+
 struct InferReturnTypeComponentsPattern : public RewritePattern {
   InferReturnTypeComponentsPattern(MLIRContext *context)
       : RewritePattern("mhlo_test.get_return_type_components", 1, context) {}
@@ -94,6 +126,7 @@ struct TestInferShapedTypeMethodsPass
   }
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
+    patterns.add<InferReturnTypesPattern>(&getContext());
     patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
     patterns.add<InferReturnTypeComponentsPattern>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),

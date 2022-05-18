@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -411,24 +410,6 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager.restore_or_initialize()
     with self.assertRaises(StopIteration):
       next(iterator)
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testCheckpointLargeCache(self):
-    # Tensor of size 100M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
-    # Repeat 25 times to exceed the 2G proto limit
-    dataset = dataset.repeat(25)
-    dataset = dataset.cache()
-
-    # Iterate to fill the cache.
-    iterator = iter(dataset)
-    for _ in range(23):
-      next(iterator)
-    ckpt = trackable_utils.Checkpoint(iterator=iterator)
-    manager = checkpoint_management.CheckpointManager(
-        ckpt, self.get_temp_dir(), max_to_keep=1)
-    manager.save()
 
   @combinations.generate(test_base.default_test_combinations())
   def testName(self):

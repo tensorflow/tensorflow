@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
@@ -108,5 +109,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
+        "@com_google_absl//absl/synchronization",
     ],
 )

@@ -16,9 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_GPU_TF_KERNEL_CUSTOM_CALL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_GPU_TF_KERNEL_CUSTOM_CALL_H_
 
+#include <functional>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/platform/status.h"
 namespace tensorflow {
+
+// Using std::map as the maps are presumed to be tiny, and we want a
+// deterministic iteration order.
+//
+// Dimension -> bound.
+using DimensionBoundsMap = std::map<int, int>;
+
+// Output -> dimension -> bound.
+using OutputDimensionBoundsMap = std::map<int, DimensionBoundsMap>;
 
 // Using XLA builder wrapped in XlaOpKernelContext to emit a custom call which
 // will call a TF kernel associated with `node_def`.
@@ -29,18 +40,30 @@ Status CompileToCustomCallCallingTfKernel(int graph_def_version,
                                           const NodeDef& node_def,
                                           XlaOpKernelContext* ctx);
 
-// TF2XLA translation which compiles to a custom-call HLO calling the
-// corresponding TF kernel.
-//
-// Currently does not support dynamic shape or resource variables.
+// Generic kernel for registering TF2XLA kernels which call back into the TF
+// runtime to run a given kernel defined by the wrapped node.
 //
 // Cf. example usages in light_outside_compilation_kernels_for_test.cc.
+//
+// Currently does not support dynamic shape or resource variables. Currently
+// works only on GPU.
 class CallTfKernelOp : public XlaOpKernel {
  public:
   explicit CallTfKernelOp(OpKernelConstruction* context);
   void Compile(XlaOpKernelContext* ctx) override;
 
+  // Override to provide statically known bounds on output in case of dynamic
+  // shapes.
+  virtual StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+      const NodeDef& ndef, XlaOpKernelContext* ctx) const {
+    return OutputDimensionBoundsMap{};
+  }
+
  private:
+  Status CompileToCustomCallCallingTfKernel(int graph_def_version,
+                                            const NodeDef& node_def,
+                                            XlaOpKernelContext* ctx) const;
+
   NodeDef def_;
   int graph_def_version_;
 };

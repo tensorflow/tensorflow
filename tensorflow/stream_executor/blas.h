@@ -228,14 +228,9 @@ class AlgorithmConfig {
 // dimensions.
 struct MatrixDescriptor {
   DeviceMemoryBase data;
+  int64_t leading_dim_stride;
+  int64_t batch_stride;
   Transpose transpose;
-  int64_t num_rows;
-  int64_t num_cols;
-  int64_t stride;
-
-  int64_t reduced_dim() const {
-    return transpose == Transpose::kTranspose ? num_rows : num_cols;
-  }
 
   template <typename T>
   DeviceMemory<T> cast() const {
@@ -1132,7 +1127,7 @@ class BlasSupport {
 
   // Gets a list of supported algorithms for DoBlasGemmWithAlgorithm.
   virtual bool GetBlasGemmAlgorithms(
-      std::vector<AlgorithmType> *out_algorithms) = 0;
+      Stream *stream, std::vector<AlgorithmType> *out_algorithms) = 0;
 
   // Like DoBlasGemm, but accepts an algorithm and an compute type.
   //
@@ -2066,7 +2061,8 @@ class BlasSupport {
       const DeviceMemory<std::complex<double>> &b, int ldb,                    \
       std::complex<double> beta, DeviceMemory<std::complex<double>> *c,        \
       int ldc, blas::ProfileResult *output_profile_result) override;           \
-  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms) \
+  bool GetBlasGemmAlgorithms(Stream *stream,                                   \
+                             std::vector<blas::AlgorithmType> *out_algorithms) \
       override;                                                                \
   port::Status DoBlasGemmWithAlgorithm(                                        \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \

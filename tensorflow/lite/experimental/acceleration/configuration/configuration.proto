@@ -472,6 +472,9 @@ message TFLiteSettings {
 
   // Whether to automatically fall back to TFLite CPU path.
   optional FallbackSettings fallback_settings = 9;
+
+  // Whether to disable default delegates (XNNPack).
+  optional bool disable_default_delegates = 12;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

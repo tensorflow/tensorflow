@@ -746,38 +746,35 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
 }
 
 namespace {
-bool CompareComputationsByContent(const HloComputation* a,
-                                  const HloComputation* b) {
-  if (a->instruction_count() != b->instruction_count()) {
-    return a->instruction_count() < b->instruction_count();
-  }
-  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
-         b->ToString(HloPrintOptions::ModuleFingerprint());
-}
 
-uint64_t GetFingerprint(
-    absl::flat_hash_map<const HloComputation*, uint64_t>& fingerprint_map,
-    const HloComputation* computation) {
-  auto it = fingerprint_map.find(computation);
-  if (it != fingerprint_map.end()) {
-    return it->second;
-  } else {
-    const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::ModuleFingerprint()));
-    fingerprint_map[computation] = fingerprint;
-    return fingerprint;
+class FingerprintMap {
+ public:
+  void Reserve(int capacity) { fingerprint_map_.reserve(capacity); }
+
+  uint64_t GetFingerprint(const HloComputation* computation) {
+    auto result = fingerprint_map_.try_emplace(computation, 0);
+    if (result.second) {
+      result.first->second =
+          tensorflow::Fingerprint64(computation->ToString(print_options_));
+    }
+    return result.first->second;
   }
-}
+
+ private:
+  HloPrintOptions print_options_ = HloPrintOptions::ModuleFingerprint();
+  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map_;
+};
 
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map;
+  FingerprintMap fingerprint_map;
+  fingerprint_map.Reserve(computations->size());
   auto cmp = [&fingerprint_map](const HloComputation* a,
                                 const HloComputation* b) {
     if (a->instruction_count() != b->instruction_count()) {
       return a->instruction_count() < b->instruction_count();
     }
-    return GetFingerprint(fingerprint_map, a) <
-           GetFingerprint(fingerprint_map, b);
+    return fingerprint_map.GetFingerprint(a) <
+           fingerprint_map.GetFingerprint(b);
   };
   absl::c_sort(*computations, cmp);
 }

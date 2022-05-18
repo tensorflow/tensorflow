@@ -47,10 +47,17 @@ struct MatrixLayout {
 
   // Returns the matrix layout for a logical shape (batch, rows, columns).
   static StatusOr<MatrixLayout> For(const Shape& shape);
+  // Returns the matrix layout with the given batch, row, col dimensions.
   static StatusOr<MatrixLayout> For(const Shape& shape,
                                     absl::Span<const int64_t> batch_dims,
                                     absl::Span<const int64_t> row_dims,
                                     absl::Span<const int64_t> col_dims);
+  // Returns the matrix layout for the output.
+  static StatusOr<MatrixLayout> For(const Shape& shape,
+                                    size_t lhs_num_batch_dims,
+                                    size_t lhs_num_row_dims,
+                                    size_t rhs_num_batch_dims,
+                                    size_t rhs_num_col_dims);
 
   PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
@@ -64,9 +71,21 @@ struct MatrixLayout {
   int64_t batch_stride;  // `batch_stride` is set to `0` when `batch_size == 1`.
 };
 
+// GPU folding rule for the `TransposeFolding` pass.
+StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
+                                              int64_t operand_idx);
+
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
   static StatusOr<GemmConfig> For(mlir::Operation* op, bool use_cublaslt);
+
+  static StatusOr<GemmConfig> For(
+      const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
+      absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
+      absl::Span<const int64_t> rhs_batch_dims,
+      absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
+      double alpha_real, double alpha_imag, double beta,
+      absl::optional<int64_t> algorithm, bool use_cublaslt);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -80,7 +99,8 @@ struct GemmConfig {
 se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
                                          se::DeviceMemoryBase data);
 
-void MakeBlasGemmCompatible(se::blas::MatrixDescriptor& lhs,
+void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
+                            se::blas::MatrixDescriptor& lhs,
                             se::blas::MatrixDescriptor& rhs,
                             se::blas::MatrixDescriptor& output);
 

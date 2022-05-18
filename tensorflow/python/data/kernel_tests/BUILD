@@ -72,7 +72,7 @@ tf_py_test(
     srcs = ["cache_test.py"],
     tags = [
         "noasan",  # TODO(b/231479582): re-enable after flakiness resolved.
-        "notap",  # b/231165995
+        "notap",  # TODO(b/231479582): re-enable after flakiness resolved.
         "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
     ],
     deps = [
@@ -707,6 +707,9 @@ tf_py_test(
     name = "prefetch_test",
     size = "small",
     srcs = ["prefetch_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231979296)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",

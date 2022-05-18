@@ -694,6 +694,14 @@ func.func @cholesky_invalid_elt(%arg0: tensor<1x2x2xi32>) -> tensor<1x2x2xi32> {
 
 // -----
 
+func.func @cholesky_wrong_infer_shape(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2x2xf32> {
+  // expected-error@+1 {{'mhlo.cholesky' op inferred type(s) 'tensor<1x2x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2x2x2xf32>'}}
+  %0 = "mhlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %0: tensor<1x2x2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @dot_vector
 func.func @dot_vector(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) -> tensor<1x1xi32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<1x1xi32>
@@ -1504,7 +1512,7 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // -----
 
 func.func @sort_no_operands() {
-  // expected-error @+1 {{expected named operation to have atleast 1 result}}
+  // expected-error @+1 {{expected named operation to have at least 1 result}}
   %0:0 = "mhlo.sort"() ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<i32>, %arg4: tensor<i32>):
     %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -1722,6 +1730,114 @@ func.func @cbrt(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 func.func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.bitcast"(%arg) : (tensor<2x4xf32>) -> tensor<2x4xf32>
   func.return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+func.func @bitcast_convert_int(%arg: tensor<2xf32>) -> tensor<2x4xi8> {
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2xf32>) -> tensor<2x4xi8>
+  return %0 : tensor<2x4xi8>
+}
+
+// -----
+
+func.func @bitcast_convert_from_int(%arg: tensor<2x4xi8>) -> tensor<2xf32> {
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xi8>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+
+func.func @bitcast_convert_complex(%arg: tensor<complex<f64>>) -> tensor<2xcomplex<f32>> {
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<complex<f64>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
+}
+
+// -----
+
+func.func @invalid_bitcast_convert_decomplex(%arg: tensor<2x4xcomplex<f32>>) -> tensor<2x4xf64> {
+  // expected-error@+1 {{cannot convert between real and complex types}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xcomplex<f32>>) -> tensor<2x2xf64>
+  return %0 : tensor<2x2xf64>
+}
+
+// -----
+
+func.func @bitcast_convert_scalar(%arg: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @bitcast_convert_invalid_scalar(%arg: tensor<f64>) -> tensor<f32> {
+  // expected-error@+1 {{does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<f64>' and 'tensor<f32>'.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f64>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @bitcast_convert(%arg: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @invalid_bitcast_convert_width_mismatch(%arg: tensor<2x4xf64>) -> tensor<2x4xf32> {
+  // expected-error@+1 {{requires compatible bitwidths. Got: 'tensor<2x4xf64>' and 'tensor<2x4xf32>', but 32 * 4 != 64.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf64>) -> tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+func.func @bitcast_convert_width_mismatch(%arg: tensor<f32>) -> tensor<f64> {
+  // expected-error@+1 {{does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<f32>' and 'tensor<f64>'.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f32>) -> tensor<f64>
+  return %0 : tensor<f64>
+}
+
+// -----
+
+func.func @bitcast_convert_empty_target(%arg: tensor<1xf64>) -> tensor<f32> {
+  // expected-error@+1 {{op does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<1xf64>' and 'tensor<f32>'.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<1xf64>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @bitcast_convert_empty_operand(%arg: tensor<f32>) -> tensor<1xf64> {
+  // expected-error@+1 {{op does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<f32>' and 'tensor<1xf64>'.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f32>) -> tensor<1xf64>
+  return %0 : tensor<1xf64>
+}
+
+// -----
+
+func.func @invalid_bitcast_convert_width_mismatch(%arg: tensor<2x4xf32>) -> tensor<2x4xf64> {
+  // expected-error@+1 {{requires compatible bitwidths. Got: 'tensor<2x4xf32>' and 'tensor<2x4xf64>', but 32 * 4 != 64.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<2x4xf64>
+  return %0 : tensor<2x4xf64>
+}
+
+// -----
+
+func.func @invalid_bitcast_convert_shape_mismatch(%arg: tensor<2x4xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{operand and result shapes must match except for the innermost dimension of the shape with the smaller element type. Got: 'tensor<2x4xf32>' and 'tensor<4x4xf32>'.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func.func @invalid_bitcast_convert_divisible(%arg: tensor<2x4xf32>) -> tensor<4x4xf80> {
+  // expected-error@+1 {{bitwidth of a bigger element type needs to be divisible by the bitwidth of a smaller element type, but got: 'tensor<2x4xf32>' and 'tensor<4x4xf80>'.}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<4x4xf80>
+  return %0 : tensor<4x4xf80>
 }
 
 // -----
@@ -2425,13 +2541,13 @@ module attributes { mhlo.conv = #mhlo.conv<raw
 // CHECK: mhlo.convolution
 // CHECK-SAME: dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]
 // CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
-func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x2x4x3xf32>) -> tensor<2x1x1x3xf32> {
   %0 = mhlo.convolution(%arg0, %arg1)
      dim_numbers = [b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f],
      window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
      { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
-  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
-  func.return %0 : tensor<3x5x5x4xf32>
+  : (tensor<2x2x3x4xf32>, tensor<3x2x4x3xf32>) -> tensor<2x1x1x3xf32>
+  func.return %0 : tensor<2x1x1x3xf32>
 }
 
 // -----
@@ -2792,7 +2908,7 @@ module attributes {
 // -----
 
 module attributes {
-  // expected-error@+4 {{expected '>'}}
+  // expected-error@+3 {{expected '>'}}
   // expected-error@+3 {{failed parsing dot dimension numbers}}
   mhlo.dot = #mhlo.dot<
       rhs_batching_dimensions = [1]

@@ -368,16 +368,15 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::Argument, 4> regionArgs;
 
   for (auto argAndType : llvm::zip(regionOperands, regionTypes)) {
-    OpAsmParser::Argument arg;
+    auto &arg = regionArgs.emplace_back();
     arg.ssaName = std::get<0>(argAndType);
     arg.type = std::get<1>(argAndType);
-    regionArgs.push_back(arg);
   }
 
   if (parser.parseRegion(*body, regionArgs)) return failure();
 
   // Parse optional attributes.
-  parser.parseOptionalAttrDict(result.attributes);
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
 
   return success();
 }

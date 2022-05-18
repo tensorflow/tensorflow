@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -53,6 +55,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     if (!s.ok()) {
       LOG(ERROR) << "Agent shutdown failed with status: " << s;
     }
+    // Cancel all pending GetKeyValue() RPC calls.
+    cancellation_manager_.StartCancel();
   }
   Status Initialize(Env* env, const ServerDef& server_def,
                     std::unique_ptr<CoordinationClientCache> client_cache,
@@ -136,6 +140,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   condition_variable heartbeat_thread_cv_;
   bool shutting_down_ TF_GUARDED_BY(heartbeat_thread_shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
+  CancellationManager cancellation_manager_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceAgentImpl);
 };
@@ -555,9 +560,25 @@ void CoordinationServiceAgentImpl::GetKeyValueAsync(
   auto request = std::make_shared<GetKeyValueRequest>();
   request->set_key(key);
   auto response = std::make_shared<GetKeyValueResponse>();
+  auto call_opts = std::make_shared<CallOptions>();
+
+  const CancellationToken token =
+      cancellation_manager_.get_cancellation_token();
+  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
+      token, [call_opts]() { call_opts->StartCancel(); });
+  if (already_cancelled) {
+    done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
+    return;
+  }
   leader_client_->GetKeyValueAsync(
-      request.get(), response.get(),
-      [request, response, done = std::move(done)](const Status& s) {
+      call_opts.get(), request.get(), response.get(),
+      [call_opts, request, response, done = std::move(done),
+       &cm = cancellation_manager_, token](const Status& s) {
+        // RPC call has completed (no longer needs to be cancelled if agent is
+        // destroyed).
+        cm.TryDeregisterCallback(token);
+
+        // Retrieve server response.
         if (!s.ok()) {
           done(s);
         } else {
