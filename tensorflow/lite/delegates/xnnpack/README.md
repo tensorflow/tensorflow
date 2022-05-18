@@ -404,12 +404,6 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
-#### `TRANSPOSE`
-
-* The first input and the output must be in 32-bit floating-point format.
-* The second input (the input with the permutation specification) must be
-  static (use `kTfLiteMmapRo` allocation type).
-
 #### `TRANSPOSE_CONV`
 
 * Input, filter, bias (if present) and output tensors must be in 32-bit
@@ -621,10 +615,6 @@ Below is the list of operators supported in IEEE FP16 inference:
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
-#### `TRANSPOSE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
 #### `TRANSPOSE_CONV`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -760,12 +750,6 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
-
-#### `TRANSPOSE`
-
-* The first input and the output must be in 8-bit quantized format.
-* The second input (the input with the permutation specification) must be
-  static (use `kTfLiteMmapRo` allocation type).
 
 #### `TRANSPOSE_CONV`
 

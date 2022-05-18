@@ -237,14 +237,6 @@ class Subgraph {
             tensors[t] = t;
             break;
           }
-        case kTfLiteBuiltinTranspose:
-          // Ignore the second input (perm), as it is represented as
-          // parameters of the XNNPACK operator rather than extra input.
-          {
-            const int t = node->inputs->data[0];
-            tensors[t] = t;
-            break;
-          }
         default:
           // All other operators: process all inputs
           for (int k = 0; k < node->inputs->size; k++) {
@@ -1903,11 +1895,6 @@ class Subgraph {
         return VisitSubNode(subgraph, delegate, logging_context, node_index,
                             node, context->tensors, sub_params,
                             xnnpack_tensors);
-      }
-      case kTfLiteBuiltinTranspose: {
-        return VisitTransposeNode(subgraph, delegate, logging_context,
-                                  node_index, node, context->tensors,
-                                  xnnpack_tensors);
       }
       case kTfLiteBuiltinTransposeConv: {
         const TfLiteTransposeConvParams* deconv_params =
@@ -4065,46 +4052,6 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate SQUARE node #%d", node_index);
-        return kTfLiteError;
-      }
-    }
-
-    return kTfLiteOk;
-  }
-
-  static TfLiteStatus VisitTransposeNode(
-      xnn_subgraph_t subgraph, const Delegate& delegate,
-      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
-      const TfLiteTensor* tensors,
-      const std::vector<uint32_t>& xnnpack_tensors) {
-    TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
-
-    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, input_tensor, node->inputs->data[0], node_index));
-
-    const TfLiteTensor& perm_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, perm_tensor, node->inputs->data[1], node_index));
-
-    const int* perm_data = GetTensorData<int32_t>(&perm_tensor);
-
-    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, output_tensor, node->outputs->data[0], node_index));
-    const int dims_count = NumDimensions(&input_tensor);
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> perm;
-    std::copy(&perm_data[0], &perm_data[dims_count], perm.begin());
-    if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_static_transpose(
-          subgraph, dims_count, perm.data(),
-          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
-          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
-          /*flags=*/0);
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate TRANSPOSE node #%d", node_index);
         return kTfLiteError;
       }
     }
