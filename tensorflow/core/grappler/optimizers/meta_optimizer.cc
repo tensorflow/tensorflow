@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
@@ -942,7 +943,12 @@ Status MetaOptimizer::RunOptimizer(
   OptimizerResult optimizer_result{optimizer->name(), message, status};
   optimization_result->results.push_back(optimizer_result);
 
-  if (!status.ok() && cfg_.fail_on_optimizer_errors()) return status;
+  if (!status.ok()) {
+    if (cfg_.fail_on_optimizer_errors()) return status;
+
+    // Non-aborted failures in the TFG optimizer are always fatal.
+    if (absl::StartsWith(optimizer->name(), "tfg_optimizer")) return status;
+  }
 
   return Status::OK();
 }
@@ -1237,8 +1243,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     }
   }
 
-  // Run module-level TFG optimizations at the end of the meta-optimizer, but
-  // skip TPU graphs.
+  // Run module-level TFG optimizations at the end of the meta-optimizer.
   // TODO(jeffniu): None of the TFG optimizations are meant to create new
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.

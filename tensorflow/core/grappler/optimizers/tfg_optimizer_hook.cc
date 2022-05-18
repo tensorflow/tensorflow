@@ -123,17 +123,20 @@ Status TFGGrapplerOptimizer::Optimize(
     auto status = error_or_module.status();
     tensorflow::errors::AppendToMessage(
         &status, "when importing GraphDef to MLIR module in GrapplerHook");
-    VLOG(4) << "GraphDef import error: " << status.ToString();
-    return status;
+    // Import errors are not fatal. Log the error here and return `Aborted` so
+    // the meta optimizer knows to swallow the error.
+    LOG(ERROR) << name() << " failed: " << status.ToString();
+    return tensorflow::errors::Aborted(status.error_message());
   }
   metrics.ReportAndStop();
 
   // Run the pipeline on the graph.
   ModuleOp module = (*error_or_module).get();
   StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
-  if (failed(impl_->RunPipeline(module)))
+  if (failed(impl_->RunPipeline(module))) {
     return error_handler.Combine(
         InvalidArgument("MLIR Graph Optimizer failed: "));
+  }
   // While pass execution, it may use emitError to return a failure status, this
   // will be caught by the error_handler. As a result, even if the pass left
   // without failure, there may still have some message cached in the handler.
