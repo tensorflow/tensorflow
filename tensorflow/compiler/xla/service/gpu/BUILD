@@ -2776,6 +2776,14 @@ test_suite(
     ]),
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_jitrt_executable
+test_suite(
+    name = "jitrt_executable_tests",
+    tests = [
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_fusion_test",
+    ],
+)
+
 cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
