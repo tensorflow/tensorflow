@@ -848,10 +848,10 @@ def central_crop(image, central_fraction):
   """Crop the central region of the image(s).
 
   Remove the outer parts of an image but retain the central region of the image
-  along each dimension. If we specify central_fraction = 0.5, this function
+  along each dimension. If we specify `central_fraction = 0.5`, this function
   returns the region marked with "X" in the below diagram. Larger the value of 
-  central_fraction, larger the dimension of bounding box of the region to be
-  cropped and retained.
+  `central_fraction`, larger the dimension of the region to be cropped and 
+  retained.
 
        --------
       |        |
