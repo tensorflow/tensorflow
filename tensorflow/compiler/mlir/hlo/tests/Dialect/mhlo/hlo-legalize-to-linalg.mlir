@@ -4298,10 +4298,45 @@ func.func @concatenate_unsigned(%a: tensor<?x?xui32>, %b: tensor<?x?xui32>, %c: 
 
 // -----
 
+// CHECK-LABEL: signed_divide
+func.func @signed_divide(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: ^bb0(%[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_7:.*]] = arith.constant -1 : i32
+  // CHECK-DAG:   %[[VAL_8:.*]] = arith.constant -2147483648 : i32
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_10:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_11:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_9]] : i32
+  // CHECK-DAG:   %[[VAL_12:.*]] = arith.constant -2147483648 : i32
+  // CHECK:   %[[VAL_13:.*]] = arith.cmpi eq, %[[VAL_4]], %[[VAL_12]] : i32
+  // CHECK-DAG:   %[[VAL_14:.*]] = arith.constant -1 : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_14]] : i32
+  // CHECK:   %[[VAL_16:.*]] = arith.andi %[[VAL_13]], %[[VAL_15]] : i1
+  // CHECK:   %[[VAL_17:.*]] = arith.ori %[[VAL_11]], %[[VAL_16]] : i1
+  // CHECK:   %[[VAL_18:.*]] = arith.select %[[VAL_17]], %[[VAL_10]], %[[VAL_5]] : i32
+  // CHECK:   %[[VAL_19:.*]] = arith.divsi %[[VAL_4]], %[[VAL_18]] : i32
+  // CHECK:   %[[VAL_20:.*]] = arith.select %[[VAL_16]], %[[VAL_8]], %[[VAL_19]] : i32
+  // CHECK:   %[[VAL_21:.*]] = arith.select %[[VAL_11]], %[[VAL_7]], %[[VAL_20]] : i32
+  // CHECK:   linalg.yield %[[VAL_21]] : i32
+  %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: unsigned_divide
 func.func @unsigned_divide(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
   // CHECK: linalg.generic
-  // CHECK: arith.divui
+  // CHECK: ^bb0(%[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant -1 : i32
+  // CHECK-DAG:   %[[VAL_10:.*]] = arith.constant -2147483648 : i32
+  // CHECK-DAG:   %[[VAL_11:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_12:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_13:.*]] = arith.cmpi eq, %[[VAL_7]], %[[VAL_11]] : i32
+  // CHECK:   %[[VAL_14:.*]] = arith.select %[[VAL_13]], %[[VAL_12]], %[[VAL_7]] : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.divui %[[VAL_6]], %[[VAL_14]] : i32
+  // CHECK:   %[[VAL_16:.*]] = arith.select %[[VAL_13]], %[[VAL_9]], %[[VAL_15]] : i32
+  // CHECK:   linalg.yield %[[VAL_16]] : i32
   %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
   func.return %0 : tensor<2x2xui32>
 }
@@ -4319,10 +4354,43 @@ func.func @complex_divide(%lhs: tensor<2xcomplex<f32>>,
 
 // -----
 
+// CHECK-LABEL: signed_remainder
+func.func @signed_remainder(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: ^bb0(%[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_7:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_8:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_10:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_8]] : i32
+  // CHECK-DAG:   %[[VAL_11:.*]] = arith.constant -2147483648 : i32
+  // CHECK:   %[[VAL_12:.*]] = arith.cmpi eq, %[[VAL_4]], %[[VAL_11]] : i32
+  // CHECK-DAG:   %[[VAL_13:.*]] = arith.constant -1 : i32
+  // CHECK:   %[[VAL_14:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_13]] : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.andi %[[VAL_12]], %[[VAL_14]] : i1
+  // CHECK:   %[[VAL_16:.*]] = arith.ori %[[VAL_10]], %[[VAL_15]] : i1
+  // CHECK:   %[[VAL_17:.*]] = arith.select %[[VAL_16]], %[[VAL_9]], %[[VAL_5]] : i32
+  // CHECK:   %[[VAL_18:.*]] = arith.remsi %[[VAL_4]], %[[VAL_17]] : i32
+  // CHECK:   %[[VAL_19:.*]] = arith.select %[[VAL_15]], %[[VAL_7]], %[[VAL_18]] : i32
+  // CHECK:   %[[VAL_20:.*]] = arith.select %[[VAL_10]], %[[VAL_4]], %[[VAL_19]] : i32
+  // CHECK:   linalg.yield %[[VAL_20]] : i32
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: unsigned_remainder
 func.func @unsigned_remainder(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
   // CHECK: linalg.generic
-  // CHECK: arith.remui
+  // CHECK: ^bb0(%[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_10:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_11:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_12:.*]] = arith.cmpi eq, %[[VAL_7]], %[[VAL_10]] : i32
+  // CHECK:   %[[VAL_13:.*]] = arith.select %[[VAL_12]], %[[VAL_11]], %[[VAL_7]] : i32
+  // CHECK:   %[[VAL_14:.*]] = arith.remui %[[VAL_6]], %[[VAL_13]] : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.select %[[VAL_12]], %[[VAL_6]], %[[VAL_14]] : i32
+  // CHECK:   linalg.yield %[[VAL_15]] : i32
   %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
   func.return %0 : tensor<2x2xui32>
 }

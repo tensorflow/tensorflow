@@ -76,13 +76,6 @@ struct MhloToScalarOp<mhlo::CosOp> {
   using COp = ::mlir::complex::CosOp;
 };
 template <>
-struct MhloToScalarOp<mhlo::DivOp> {
-  using FOp = ::mlir::arith::DivFOp;
-  using IOp = ::mlir::arith::DivSIOp;
-  using UOp = ::mlir::arith::DivUIOp;
-  using COp = ::mlir::complex::DivOp;
-};
-template <>
 struct MhloToScalarOp<mhlo::ExpOp> {
   using FOp = ::mlir::math::ExpOp;
   using COp = ::mlir::complex::ExpOp;
@@ -133,12 +126,6 @@ template <>
 struct MhloToScalarOp<mhlo::PopulationCountOp> {
   using IOp = ::mlir::math::CtPopOp;
   using UOp = ::mlir::math::CtPopOp;
-};
-template <>
-struct MhloToScalarOp<mhlo::RemOp> {
-  using FOp = ::mlir::arith::RemFOp;
-  using IOp = ::mlir::arith::RemSIOp;
-  using UOp = ::mlir::arith::RemUIOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::RsqrtOp> {
@@ -325,6 +312,15 @@ inline Value MapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
     return b->create<::mlir::arith::SelectOp>(loc, lhs_gt_zero, lhs, neg_val);
   }
   return nullptr;
+}
+
+// Return a constant for v of type t, splat if t is a vector type.
+inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
+                                Attribute v) {
+  if (VectorType vec_type = t.dyn_cast<VectorType>()) {
+    v = SplatElementsAttr::get(vec_type, v);
+  }
+  return b->create<arith::ConstantOp>(loc, t, v);
 }
 
 template <>
@@ -718,6 +714,103 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ClampOp>(Location loc,
                                                        arg_types, {x, ub}, b);
   return MapMhloOpToStdScalarOp<mhlo::MaxOp>(loc, result_types, arg_types,
                                              {min_x_ub, lb}, b);
+}
+
+template <typename U, typename S>
+inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, Type original_type,
+                            Value lhs, Value rhs, Value returned_on_zero,
+                            Value returned_on_signed_overlow) {
+  Type type = lhs.getType();
+  auto element_type = getElementTypeOrSelf(type).cast<IntegerType>();
+  Value zero = lb.create<arith::ConstantOp>(lb.getZeroAttr(type));
+  auto makeConstant = [&](const APInt& i) {
+    return getConstantOrSplat(&lb, lb.getLoc(), type,
+                              lb.getIntegerAttr(element_type, i));
+  };
+  Value one = makeConstant(APInt(element_type.getWidth(), 1));
+  Value rhs_is_zero =
+      lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, rhs, zero);
+
+  // For unsigned just set the divisor to 1 when it would be 0.
+  if (original_type.isUnsignedInteger()) {
+    Value safe_rhs = lb.create<arith::SelectOp>(rhs_is_zero, one, rhs);
+    Value safe_div = lb.create<U>(lhs, safe_rhs);
+    return lb.create<arith::SelectOp>(rhs_is_zero, returned_on_zero, safe_div);
+  }
+
+  // For signed also check for INT_MIN / -1.
+  Value smin = makeConstant(APInt::getSignedMinValue(element_type.getWidth()));
+  Value lhs_is_smin =
+      lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, lhs, smin);
+  Value minus_one =
+      makeConstant(APInt::getAllOnesValue(element_type.getWidth()));
+  Value rhs_is_minus_one =
+      lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, rhs, minus_one);
+  Value has_int_min_overflow =
+      lb.create<arith::AndIOp>(lhs_is_smin, rhs_is_minus_one);
+  Value rhs_is_unsafe =
+      lb.create<arith::OrIOp>(rhs_is_zero, has_int_min_overflow);
+  Value safe_rhs = lb.create<arith::SelectOp>(rhs_is_unsafe, one, rhs);
+  Value safe_div = lb.create<S>(lhs, safe_rhs);
+  Value safe_smin = lb.create<arith::SelectOp>(
+      has_int_min_overflow, returned_on_signed_overlow, safe_div);
+  return lb.create<arith::SelectOp>(rhs_is_zero, returned_on_zero, safe_smin);
+}
+
+template <>
+inline Value MapMhloOpToStdScalarOp<mhlo::DivOp>(Location loc,
+                                                 ArrayRef<Type> result_types,
+                                                 ArrayRef<Type> arg_types,
+                                                 ValueRange args,
+                                                 OpBuilder* b) {
+  Type original_type = getElementTypeOrSelf(arg_types.front());
+  if (original_type.isa<ComplexType, FloatType>()) {
+    return MapMhloOpToScalarOpImpl<isFloatType, arith::DivFOp, isComplexType,
+                                   complex::DivOp>{}(loc, result_types,
+                                                     arg_types, args, b);
+  }
+
+  // Integer division overflow behavior:
+  //
+  // X / 0 == -1
+  // INT_SMIN /s -1 = INT_SMIN
+  ImplicitLocOpBuilder lb(loc, *b);
+  Type type = args.front().getType();
+  auto element_type = getElementTypeOrSelf(type).cast<IntegerType>();
+  auto makeConstant = [&](const APInt& i) {
+    return getConstantOrSplat(&lb, lb.getLoc(), type,
+                              lb.getIntegerAttr(element_type, i));
+  };
+  Value minus_one =
+      makeConstant(APInt::getAllOnesValue(element_type.getWidth()));
+  Value smin = makeConstant(APInt::getSignedMinValue(element_type.getWidth()));
+  return makeSafeIntDiv<arith::DivUIOp, arith::DivSIOp>(
+      lb, original_type, args[0], args[1], /*returned_on_zero=*/minus_one,
+      /*returned_on_signed_overlow=*/smin);
+}
+
+template <>
+inline Value MapMhloOpToStdScalarOp<mhlo::RemOp>(Location loc,
+                                                 ArrayRef<Type> result_types,
+                                                 ArrayRef<Type> arg_types,
+                                                 ValueRange args,
+                                                 OpBuilder* b) {
+  Type original_type = getElementTypeOrSelf(arg_types.front());
+  if (original_type.isa<ComplexType, FloatType>()) {
+    return MapMhloOpToScalarOpImpl<isFloatType, arith::RemFOp>{}(
+        loc, result_types, arg_types, args, b);
+  }
+
+  // Integer remainder overflow behavior:
+  //
+  // X % 0 == X
+  // INT_SMIN %s -1 = 0
+  ImplicitLocOpBuilder lb(loc, *b);
+  Type type = args.front().getType();
+  Value zero = lb.create<arith::ConstantOp>(lb.getZeroAttr(type));
+  return makeSafeIntDiv<arith::RemUIOp, arith::RemSIOp>(
+      lb, original_type, args[0], args[1], /*returned_on_zero=*/args[0],
+      /*returned_on_signed_overlow=*/zero);
 }
 
 template <>
