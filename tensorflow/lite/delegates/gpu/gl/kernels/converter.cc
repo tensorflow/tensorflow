@@ -197,7 +197,7 @@ class ToTensorConverter : public OpenGlConverterImpl {
                   output_def.dimensions.w, output_def.dimensions.c);
     if (shape_.b != 1) {
       return absl::UnimplementedError(
-          "FromTensorConverter: Batch size != 1 is not supported.");
+          "ToTensorConverter: Batch size != 1 is not supported.");
     }
 
     return InitializeProgram(uint3(8, 4, 2), R"(
