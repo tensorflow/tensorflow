@@ -13,18 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -37,8 +33,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-namespace m = ::xla::match;
 
 class GemmRewriteTest : public GpuCodegenTest {
  public:
@@ -65,8 +59,6 @@ class GemmRewriteTest : public GpuCodegenTest {
         .cuda_compute_capability();
   }
 };
-
-class GemmRewriteHloTest : public HloTestBase {};
 
 TEST_F(GemmRewriteTest, SimpleRewrite) {
   const char* hlo_text = R"(
@@ -749,34 +741,6 @@ ENTRY BF16GemmWithBias {
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
-
-TEST_F(GemmRewriteHloTest, MergeBitcastAndAdd) {
-  const char* hlo_text = R"(
-HloModule test
-ENTRY test {
-  x = f32[2,2] parameter(0)
-  y = f32[2,2] parameter(1)
-  bias = f32[4] parameter(2)
-  dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[4] add(f32[4] bitcast(dot), bias)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Bitcast(
-              m::CustomCall("__cublas$gemm", m::Parameter(0), m::Parameter(1),
-                            m::Bitcast(m::Parameter(2)).WithShape(F32, {2, 2})))
-              .WithShape(F32, {4})));
-}
-
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
