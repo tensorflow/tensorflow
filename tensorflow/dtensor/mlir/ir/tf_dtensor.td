@@ -577,6 +577,20 @@ def TF_TPUDenseEmbeddingLookUpOp : TF_Op<"TPUDenseEmbeddingLookUp", [NoSideEffec
   );
 }
 
+def TF_TPUDenseEmbeddingLookUpGradOp : TF_Op<"TPUDenseEmbeddingLookUpGrad", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Float32Tensor:$gradients,
+    TF_Int32Tensor:$ids,
+    TF_Float32Tensor:$table
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$output
+  );
+}
+
 def TF_DTensorAllReduceOp : TF_Op<"DTensorAllReduce", [NoSideEffect]> {
   let summary = "";
 
