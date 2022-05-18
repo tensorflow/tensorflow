@@ -779,6 +779,9 @@ class MklConvOp : public OpKernel {
           (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
           (MklPrimitiveFactory<Tinput>::IsLegacyPlatform() ||
            IsConv1x1StrideNot1(filter_dims, strides));
+#ifdef DNNL_AARCH64_USE_ACL
+      do_not_cache = do_not_cache || !is_filter_const_;
+#endif
 
       // Get a conv2d fwd from primitive pool
       MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Ttemp_output>* conv_fwd =
