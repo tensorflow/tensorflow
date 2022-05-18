@@ -5854,15 +5854,17 @@ func.func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>,
 // -----
 
 // CHECK-LABEL: func @alltoall_basic
-func.func @alltoall_basic(%input: tensor<10xf32>) -> tensor<10xf32> {
+// See https://www.tensorflow.org/api_docs/python/tf/raw_ops/AllToAll
+func.func @alltoall_basic(%input: tensor<1x2xf32>) -> tensor<2x1xf32> {
   %group_assignment = "tf.Const" () {
-    value = dense<[[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi32>
-  } : () -> tensor<3x4xi32>
-  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 1 : i64, split_count = 2 : i64, split_dimension = 0 : i64} :  (tensor<10xf32>, tensor<3x4xi32>)  -> tensor<10xf32>
+    value = dense<[[0, 1]]> : tensor<1x2xi32>
+  } : () -> tensor<1x2xi32>
+  %result = "tf.AllToAll"(%input, %group_assignment) {T = f32, concat_dimension = 0 : i64, split_count = 2 : i64, split_dimension = 1 : i64} :  (tensor<1x2xf32>, tensor<1x2xi32>)  -> tensor<2x1xf32>
   // CHECK: mhlo.all_to_all
-  // CHECK-SAME: replica_groups = dense<{{\[}}[0, 2, 4, 6], [1, 3, 5, 7], [3, 5, 6, 8]]> : tensor<3x4xi64>
-  func.return %result : tensor<10xf32>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  func.return %result : tensor<2x1xf32>
 }
+
 
 //===----------------------------------------------------------------------===//
 // Cumsum op legalizations.

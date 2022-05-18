@@ -2245,18 +2245,49 @@ void TupleOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // AllToAllOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AllToAllOp::verify() {
+LogicalResult AllToAllOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  AllToAllOp::Adaptor adaptor(operands, attributes, regions);
+  Type operand_type = adaptor.operand().getType();
+  RankedTensorType operand_ranked_type =
+      operand_type.dyn_cast<RankedTensorType>();
+  if (!operand_ranked_type) {
+    inferredReturnShapes.emplace_back(
+        operand_type.cast<TensorType>().getElementType());
+    return success();
+  }
+
+  int64_t input_rank = operand_ranked_type.getRank();
+  int64_t split_dimension = static_cast<int64_t>(adaptor.split_dimension());
+  int64_t concat_dimension = static_cast<int64_t>(adaptor.concat_dimension());
+  if (split_dimension >= input_rank || split_dimension < 0) {
+    return emitOptionalError(location, "AllToAll split_dimension ",
+                             split_dimension,
+                             " is out-of-bounds for input rank ", input_rank);
+  }
+  if (concat_dimension >= input_rank || concat_dimension < 0) {
+    return emitOptionalError(location, "AllToAll concat_dimension ",
+                             concat_dimension,
+                             " is out-of-bounds for input rank ", input_rank);
+  }
+
   // If operand is ranked, size of split dimension should be a multiple of split
   // count.
-  auto type = getOperand().getType().dyn_cast<RankedTensorType>();
-  if (!type) return success();
-  auto split_dim_size = type.getDimSize(split_dimension());
-  auto split_count = this->split_count();
+  int64_t split_count = adaptor.split_count();
+  auto split_dim_size = operand_ranked_type.getDimSize(split_dimension);
   if (split_dim_size % split_count != 0) {
-    return emitError() << "split dimension has size " << split_dim_size
-                       << ", expected to be a multiple of split_count "
-                       << split_count;
+    return emitOptionalError(
+        location, "split dimension has size ", split_dim_size,
+        ", expected to be a multiple of split_count ", split_count);
   }
+  SmallVector<int64_t> result_shape(operand_ranked_type.getShape().begin(),
+                                    operand_ranked_type.getShape().end());
+  result_shape[split_dimension] /= split_count;
+  result_shape[concat_dimension] *= split_count;
+  inferredReturnShapes.emplace_back(result_shape,
+                                    operand_ranked_type.getElementType());
   return success();
 }
 

@@ -215,6 +215,58 @@ func.func @alltoall_unranked_input(%data: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
+func.func @alltoall_negative_split_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  // expected-error@+1 {{AllToAll split_dimension -1 is out-of-bounds for input rank 2}}
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = -1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  func.return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+func.func @alltoall_out_bound_split_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  // expected-error@+1 {{AllToAll split_dimension 2 is out-of-bounds for input rank 2}}
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 2 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  func.return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+func.func @alltoall_negative_concat_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  // expected-error@+1 {{AllToAll concat_dimension -1 is out-of-bounds for input rank 2}}
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = -1 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  func.return %0 : tensor<16x4xf32>
+}
+
+// -----
+
+func.func @alltoall_out_bound_concat_dimension(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  // expected-error@+1 {{AllToAll concat_dimension 2 is out-of-bounds for input rank 2}}
+  %0 = "mhlo.all_to_all"(%data) {
+    split_dimension = 1 : i64,
+    concat_dimension = 2 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  func.return %0 : tensor<16x4xf32>
+}
+
+// -----
+
 func.func @alltoall_invalid_split_dim_size(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
 // expected-error@+1 {{split dimension has size 16, expected to be a multiple of split_count 5}}
   %0 = "mhlo.all_to_all"(%data) {

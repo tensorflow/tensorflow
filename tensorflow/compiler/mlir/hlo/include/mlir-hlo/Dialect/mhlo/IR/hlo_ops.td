@@ -1012,7 +1012,8 @@ def HLO_ReduceScatterOp : HLO_Op<"reduce_scatter",
 }
 
 def HLO_AllToAllOp : HLO_Op<"all_to_all",
-    [NoSideEffect, SameOperandsElementType, SameOperandsShape]> {
+    [NoSideEffect, SameOperandsElementType, SameOperandsShape,
+     InferTensorType]> {
 
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -1022,8 +1023,6 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
     I64ElementsAttr:$replica_groups
   );
   let results = (outs HLO_Tensor);
-
-  let hasVerifier = 1;
 }
 
 def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
