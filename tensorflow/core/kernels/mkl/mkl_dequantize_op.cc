@@ -56,21 +56,15 @@ class MklDequantizeOp : public OpKernel {
 
       // Get the inputs
       const Tensor& src_tensor = ctx->input(kSrcIndex);
-      const float min_range = ctx->input(1).flat<float>()(0);
-      const float max_range = ctx->input(2).flat<float>()(0);
+      const float min_range = ctx->input(kMinIndex).flat<float>()(0);
+      const float max_range = ctx->input(kMaxIndex).flat<float>()(0);
 
       // Get MklShape
-      MklDnnShape src_mkl_shape;
-      GetMklShape(ctx, kSrcIndex, &src_mkl_shape, native_format);
-      auto src_tf_shape = src_mkl_shape.IsMklTensor()
-                              ? src_mkl_shape.GetTfShape()
-                              : src_tensor.shape();
+      auto src_tf_shape = src_tensor.shape();
 
       // src_dims is the dimension of src_tensor
       // output_dims are same as src_dims
-      auto src_dims = src_mkl_shape.IsMklTensor()
-                          ? src_mkl_shape.GetSizesAsMklDnnDims()
-                          : TFShapeToMklDnnDims(src_tensor.shape());
+      auto src_dims = TFShapeToMklDnnDims(src_tensor.shape());
       auto output_dims = src_dims;
 
       // Create reorder memory for src and dst
@@ -108,10 +102,7 @@ class MklDequantizeOp : public OpKernel {
       // construct input TF layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout
-      auto src_md =
-          src_mkl_shape.IsMklTensor()
-              ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(), dst_layout_type);
+      auto src_md = memory::desc(src_dims, MklDnnType<T>(), dst_layout_type);
 
       src.SetUsrMem(src_md, &src_tensor);
       src.SetUsrMemDataHandle(&src_tensor, reorder_stream);
@@ -119,30 +110,13 @@ class MklDequantizeOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;
-      memory::desc dst_md = memory::desc();
-      if (src_mkl_shape.IsMklTensor()) {
-        dst_md = memory::desc(src_mkl_shape.GetMklLayout().data);
-        // There is no API in MKL-DNN v1.x to construct memory descriptor with
-        // same .data field but different type.
-        dst_md.data.data_type = memory::convert_to_c(MklDnnType<float>());
-      } else {
-        dst_md = memory::desc(src_dims, MklDnnType<float>(), dst_layout_type);
-      }
+      memory::desc dst_md =
+          memory::desc(src_dims, MklDnnType<float>(), dst_layout_type);
 
       // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
-      if (src_mkl_shape.IsMklTensor()) {
-        output_mkl_shape.SetMklTensor(true);
-        output_mkl_shape.SetMklLayout(&dst_md);
-        output_mkl_shape.SetElemType(MklDnnType<float>());
-        output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
-                                     src_mkl_shape.GetSizesAsMklDnnDims(),
-                                     src_mkl_shape.GetTfDataFormat());
-        output_tf_shape.AddDim(dst_md.get_size() / sizeof(float));
-      } else {
-        output_mkl_shape.SetMklTensor(false);
-        output_tf_shape = MklDnnDimsToTFShape(output_dims);
-      }
+      output_mkl_shape.SetMklTensor(false);
+      output_tf_shape = MklDnnDimsToTFShape(output_dims);
 
       // Allocate MKL or TF output shape based on the above
       AllocateOutputSetMklShape(ctx, 0, &output_tensor, output_tf_shape,
