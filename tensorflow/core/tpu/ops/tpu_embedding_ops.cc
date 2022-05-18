@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <array>
 #include <string>
 
@@ -32,90 +31,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 
 namespace tensorflow {
-namespace {
-
-// Converts int32 Tensor to a single int32
-StatusOr<int32> GetSingleIntElement(const Tensor& t) {
-  if (t.shape().num_elements() != 1) {
-    return errors::InvalidArgument(
-        "Tensor t was expected to have a single value but had ",
-        t.shape().num_elements(), " values.");
-  }
-  if (t.dtype() != DT_INT32) {
-    return errors::InvalidArgument(
-        "Tensor t was expected to be of type int32 but was type ", t.dtype());
-  }
-  return t.flat<int32>()(0);
-}
-
-Status ValidateLoadAllTPUEmbeddingParameters(
-    shape_inference::InferenceContext* c, int32 shard_id) {
-  string config_string;
-  TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
-  tpu::TPUEmbeddingConfiguration config;
-  TF_RET_CHECK(config.ParseFromString(config_string));
-  int num_shards;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
-  std::vector<TensorShapeProto> table_shapes;
-  TF_RETURN_IF_ERROR(tpu::TpuEmbeddingShapeUtil::ComputeTableShapes(
-      config, shard_id, num_shards, &table_shapes));
-  std::array<std::vector<shape_inference::ShapeHandle>,
-             tpu::kMaxAuxiliaryParameterCount + 1>
-      accumulators;
-  TF_RETURN_IF_ERROR(c->input("parameters", &accumulators[0]));
-  for (int i = 1; i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
-    TF_RETURN_IF_ERROR(
-        c->input(absl::StrCat("auxiliary", i), &accumulators[i]));
-  }
-  TF_RET_CHECK(accumulators[0].size() == table_shapes.size());
-  // This should be enforced by Tensorflow's type system.
-  for (int i = 1; i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
-    CHECK_EQ(accumulators[0].size(), accumulators[i].size());  // Crash OK
-  }
-  for (int table_id = 0; table_id < accumulators[0].size(); ++table_id) {
-    // Verify shapes have rank 2 and are compatible when they are required
-    // to be valid.
-    shape_inference::ShapeHandle parameter_shape;
-    TF_RETURN_IF_ERROR(
-        c->WithRank(accumulators[0][table_id], 2, &parameter_shape));
-
-    std::vector<tpu::StateVariableSpecification> state_variable_specs;
-    Status status = tpu::GetOptimizationAlgorithmStateVariables(
-        config.table_descriptor(table_id).optimization_parameters(),
-        &state_variable_specs);
-    TF_RET_CHECK(status.ok());
-
-    for (int i = 1; i < state_variable_specs.size(); ++i) {
-      shape_inference::ShapeHandle accumulator_i_shape;
-      TF_RETURN_IF_ERROR(
-          c->WithRank(accumulators[i][table_id], 2, &accumulator_i_shape));
-      shape_inference::ShapeHandle merged;
-      TF_RETURN_IF_ERROR(
-          c->Merge(accumulators[0][table_id], accumulator_i_shape, &merged));
-      // Verify shapes are compatible with the shapes specified in
-      // the config.
-      shape_inference::ShapeHandle from_config;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(table_shapes[table_id], &from_config));
-      shape_inference::ShapeHandle merged_with_config;
-      TF_RETURN_IF_ERROR(c->Merge(merged, from_config, &merged_with_config));
-    }
-    // Ensure that other state variables are empty to catch bugs in
-    // CombineTPUEmbeddingLoadRetrievePass output or manually-written
-    // equivalent code.
-    for (int i = state_variable_specs.size();
-         i < tpu::kMaxAuxiliaryParameterCount + 1; ++i) {
-      shape_inference::ShapeHandle accumulator_i_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(accumulators[i][table_id], 1,
-                                            &accumulator_i_shape));
-      shape_inference::DimensionHandle dim;
-      TF_RETURN_IF_ERROR(
-          c->WithValue(c->NumElements(accumulator_i_shape), 0, &dim));
-    }
-  }
-  return tensorflow::Status::OK();
-}
-}  // namespace
 
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
@@ -363,35 +278,72 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
     .Attr("shard_id: int")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
+      string config_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      TPUEmbeddingConfiguration config;
+      TF_RET_CHECK(config.ParseFromString(config_string));
+      int num_shards;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
       int shard_id;
       TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-      return ValidateLoadAllTPUEmbeddingParameters(c, shard_id);
-    });
-
-REGISTER_OP("DynamicLoadAllTPUEmbeddingParameters")
-    .Input("parameters: NumTables * float")
-    .Input("auxiliary1: NumTables * float")
-    .Input("auxiliary2: NumTables * float")
-    .Input("auxiliary3: NumTables * float")
-    .Input("auxiliary4: NumTables * float")
-    .Input("auxiliary5: NumTables * float")
-    .Input("auxiliary6: NumTables * float")
-    .Input("auxiliary7: NumTables * float")
-    .Input("shard_id: int32")
-    .Attr("NumTables: int")
-    .Attr("config: string")
-    .Attr("num_shards: int")
-    .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      const Tensor* shard_id_tensor = c->input_tensor(8);
-      if (shard_id_tensor == nullptr) {
-        // The input tensor may not be available at the time of calling
-        // shape fn. Early return the validation if we cannot extract the
-        // the shard id tensor.
-        return Status::OK();
+      std::vector<TensorShapeProto> table_shapes;
+      TF_RETURN_IF_ERROR(tpu::TpuEmbeddingShapeUtil::ComputeTableShapes(
+          config, shard_id, num_shards, &table_shapes));
+      std::array<std::vector<ShapeHandle>, tpu::kMaxAuxiliaryParameterCount + 1>
+          accumulators;
+      TF_RETURN_IF_ERROR(c->input("parameters", &accumulators[0]));
+      for (int i = 1; i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
+        TF_RETURN_IF_ERROR(
+            c->input(absl::StrCat("auxiliary", i), &accumulators[i]));
       }
-      TF_ASSIGN_OR_RETURN(int shard_id, GetSingleIntElement(*shard_id_tensor));
-      return ValidateLoadAllTPUEmbeddingParameters(c, shard_id);
+      TF_RET_CHECK(accumulators[0].size() == table_shapes.size());
+      // This should be enforced by Tensorflow's type system.
+      for (int i = 1; i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
+        CHECK_EQ(accumulators[0].size(), accumulators[i].size());  // Crash OK
+      }
+      for (int table_id = 0; table_id < accumulators[0].size(); ++table_id) {
+        // Verify shapes have rank 2 and are compatible when they are required
+        // to be valid.
+        ShapeHandle parameter_shape;
+        TF_RETURN_IF_ERROR(
+            c->WithRank(accumulators[0][table_id], 2, &parameter_shape));
+
+        std::vector<tpu::StateVariableSpecification> state_variable_specs;
+        Status status = tpu::GetOptimizationAlgorithmStateVariables(
+            config.table_descriptor(table_id).optimization_parameters(),
+            &state_variable_specs);
+        TF_RET_CHECK(status.ok());
+
+        for (int i = 1; i < state_variable_specs.size(); ++i) {
+          ShapeHandle accumulator_i_shape;
+          TF_RETURN_IF_ERROR(
+              c->WithRank(accumulators[i][table_id], 2, &accumulator_i_shape));
+          ShapeHandle merged;
+          TF_RETURN_IF_ERROR(c->Merge(accumulators[0][table_id],
+                                      accumulator_i_shape, &merged));
+          // Verify shapes are compatible with the shapes specified in
+          // the config.
+          ShapeHandle from_config;
+          TF_RETURN_IF_ERROR(
+              c->MakeShapeFromShapeProto(table_shapes[table_id], &from_config));
+          ShapeHandle merged_with_config;
+          TF_RETURN_IF_ERROR(
+              c->Merge(merged, from_config, &merged_with_config));
+        }
+        // Ensure that other state variables are empty to catch bugs in
+        // CombineTPUEmbeddingLoadRetrievePass output or manually-written
+        // equivalent code.
+        for (int i = state_variable_specs.size();
+             i < tpu::kMaxAuxiliaryParameterCount + 1; ++i) {
+          ShapeHandle accumulator_i_shape;
+          TF_RETURN_IF_ERROR(c->WithRankAtLeast(accumulators[i][table_id], 1,
+                                                &accumulator_i_shape));
+          shape_inference::DimensionHandle dim;
+          TF_RETURN_IF_ERROR(
+              c->WithValue(c->NumElements(accumulator_i_shape), 0, &dim));
+        }
+      }
+      return tensorflow::Status::OK();
     });
 
 REGISTER_OP("RetrieveAllTPUEmbeddingParameters")

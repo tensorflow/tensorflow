@@ -29,11 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Computes (and VLOGs) the expected shapes of the embedding table shards.
-Status ComputeExpectedTableShardShapes(
-    const tpu::TPUEmbeddingConfiguration& config, int shard_id, int num_shards,
-    const string& op_name, std::vector<TensorShape>* table_shapes);
-
 // The LoadAllTPUEmbeddingParameters op is used to load initial embedding
 // table parameters onto a host that has already been configured using
 // ConfigureTPUEmbeddingHost. This Op should be used when TPUEmbedding is part
@@ -50,27 +45,15 @@ class LoadAllTPUEmbeddingParametersOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  // Checks if shard_id is a tensor input of `ctx` and if it is, validates and
-  // sets the value to `shard_id`.
-  static Status ValidateAndSetShardId(OpKernelContext* ctx, int* shard_id);
-
   void GetStateVariables(
       OpKernelContext* ctx,
       std::array<std::vector<absl::Span<const float>>,
                  tpu::kMaxAuxiliaryParameterCount + 1>& state_variable_vector);
 
-  // Identifying shard of this operation.
-  int shard_id_ = -1;
-
-  // Number of shards the embedding tables are divided into.
-  int num_shards_ = -1;
-
-  // Flag identifying whether the table_shapes was initialized.
-  bool table_shape_initialized_ = false;
+ private:
   tpu::TPUEmbeddingConfiguration config_;
   std::vector<TensorShape> table_shapes_;
 
- private:
   TF_DISALLOW_COPY_AND_ASSIGN(LoadAllTPUEmbeddingParametersOp);
 };
 
