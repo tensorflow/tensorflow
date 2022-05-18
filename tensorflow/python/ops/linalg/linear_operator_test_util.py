@@ -820,6 +820,7 @@ def add_tests(test_cls):
   """Add tests for LinearOperator methods."""
   test_name_dict = {
       "add_to_tensor": _test_add_to_tensor,
+      "adjoint": _test_adjoint,
       "cholesky": _test_cholesky,
       "cond": _test_cond,
       "composite_tensor": _test_composite_tensor,
