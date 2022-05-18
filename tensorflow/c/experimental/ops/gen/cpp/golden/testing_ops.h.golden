@@ -42,6 +42,9 @@ Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** han
 //
 Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container = "", const char* shared_name = "", absl::Span<string const> allowed_devices = {}, const char* name = nullptr, const char* raw_device_name = nullptr);
 
+//
+Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix, AbstractTensorHandle* const tensor_names, AbstractTensorHandle* const shape_and_slices, absl::Span<AbstractTensorHandle*> tensors, absl::Span<DataType> dtypes, const char* name = nullptr, const char* raw_device_name = nullptr);
+
 }  // namespace ops
 }  // namespace tensorflow
 
