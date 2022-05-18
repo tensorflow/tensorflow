@@ -1346,7 +1346,7 @@ class Trackable(object):
 
     **Rule 1: All children must be convertable to `Trackable`.**
 
-    Must pass `isinstance` check or `tracking.convert_to_trackable`.
+    Must pass `isinstance` check or `converter.convert_to_trackable`.
 
     **Rule 2: [Checkpoint-only] Do not create new objects.**
 

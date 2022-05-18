@@ -19,7 +19,7 @@ import weakref
 
 from tensorflow.python.checkpoint import util
 from tensorflow.python.trackable import base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import converter
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
@@ -76,7 +76,7 @@ class ObjectGraphView(object):
     obj._maybe_initialize_trackable()
     children = []
     for name, ref in obj._trackable_children(save_type, **kwargs).items():
-      ref = tracking.convert_to_trackable(ref, parent=obj)
+      ref = converter.convert_to_trackable(ref, parent=obj)
       children.append(base.TrackableReference(name, ref))
     # pylint: enable=protected-access
 

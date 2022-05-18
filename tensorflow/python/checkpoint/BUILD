@@ -149,6 +149,7 @@ py_library(
         ":util",
         "//tensorflow/python:util",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
     ],
 )
 

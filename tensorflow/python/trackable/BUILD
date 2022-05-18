@@ -47,6 +47,16 @@ tf_py_test(
 )
 
 py_library(
+    name = "converter",
+    srcs = ["converter.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":data_structures",
+        "//tensorflow/python/eager:function_saved_model_utils",
+    ],
+)
+
+py_library(
     name = "trackable_utils",
     srcs = ["trackable_utils.py"],
     srcs_version = "PY3",
