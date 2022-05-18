@@ -176,7 +176,8 @@ PYBIND11_MODULE(xla_extension, m) {
           "__getattr__",
           [](PjRtDevice& device, std::string name) -> py::object {
             const auto& attrs = device.Attributes();
-            if (auto it = attrs.find(name); it != attrs.end()) {
+            auto it = attrs.find(name);
+            if (it != attrs.end()) {
               return absl::visit([](auto&& v) { return py::cast(v); },
                                  it->second);
             }
