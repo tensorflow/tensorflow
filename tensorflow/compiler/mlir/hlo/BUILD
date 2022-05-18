@@ -1346,7 +1346,6 @@ cc_library(
         ":mhlo_pass_details",
         ":type_conversion",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
