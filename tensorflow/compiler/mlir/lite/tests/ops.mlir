@@ -1463,6 +1463,14 @@ func.func @testBatchMatmulHybridQuant(%arg0 : tensor<1x4x384x32xf32>, %arg1 : te
 
 // -----
 
+func.func @testBatchMatmul5DRank(%arg0 : tensor<1x1x4x384x32xf32>, %arg1 : tensor<1x4x384x32xf32>) -> tensor<1x1x4x384x384xf32> {
+  // expected-error @+1 {{'tfl.batch_matmul' op failed to verify that lhs and rhs of this op must have rank between [2, 4]}}
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x1x4x384x32xf32>, tensor<1x4x384x32xf32>) -> tensor<1x1x4x384x384xf32>
+  func.return %0 : tensor<1x1x4x384x384xf32>
+}
+
+// -----
+
 func.func @testConcat(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
   // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
