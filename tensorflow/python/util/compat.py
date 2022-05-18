@@ -154,7 +154,7 @@ def path_to_str(path):
 
   Usage:
     In case a simplified `str` version of the path is needed from an
-    `os.PathLike` object
+    `os.PathLike` object.
 
   Examples:
   ```python
@@ -192,7 +192,7 @@ def path_to_bytes(path):
 
   Usage:
     In case a simplified `bytes` version of the path is needed from an
-    `os.PathLike` object
+    `os.PathLike` object.
   """
   if hasattr(path, '__fspath__'):
     path = path.__fspath__()
