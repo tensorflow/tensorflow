@@ -886,8 +886,14 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return StrFormat("%s %s", shape.ToString(),
-                       constant->literal().ToStringWithoutShape());
+      // In addition to our check that the constant doesn't have too many
+      // elements, also check that the stringified constant isn't too long.  For
+      // example, 8 small ints is okay, but 8 long floats takes up a lot of
+      // horizontal space and probably isn't interesting.
+      std::string literal_str = constant->literal().ToStringWithoutShape();
+      if (literal_str.size() <= 64) {
+        return StrFormat("%s %s", shape.ToString(), literal_str);
+      }
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
