@@ -738,11 +738,8 @@ tf_py_test(
 
 tf_py_test(
     name = "range_test",
-    size = "small",
+    size = "medium",
     srcs = ["range_test.py"],
-    tags = [
-        "noasan",  # TODO(b/233167818): Flaky under asan
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
