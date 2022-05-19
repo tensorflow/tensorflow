@@ -5584,7 +5584,8 @@ def non_max_suppression_padded_v2(boxes,
   else:
     #TODO(mdanatg/bhack) An empty else branch is failing autograph control_flow operator
     # in aug_orelse verify_tf_cond_branch_ check
-    y_1, x_1, y_2, x_2 = array_ops.split(value=boxes, num_or_size_splits=4, axis=2)
+    y_1, x_1, y_2, x_2 = array_ops.split(
+        value=boxes, num_or_size_splits=4, axis=2)
   if not sorted_input:
     scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)
   else:
