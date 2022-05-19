@@ -51,7 +51,7 @@ def for_with_lambda_iter_local_var(l):
   fns = []
   results = []
   for i in l:
-    fns.append(lambda i=i: i+i)
+    fns.append(lambda i=i: i)
   for f in fns:
     results.append(f())
   return results

@@ -314,10 +314,9 @@ class ControlFlowTransformer(converter.Base):
         node, body_scope.bound | iter_scope.bound)
 
     undefined_assigns = self._create_undefined_assigns(undefined)
-    iter_var = [v for v in iter_scope.bound if not v.is_composite()]
-    nonlocal_vars = loop_vars + iter_var
-    nonlocal_declarations = self._create_nonlocal_declarations(nonlocal_vars)
-  
+
+    nonlocal_declarations = self._create_nonlocal_declarations(loop_vars)
+
     reserved = body_scope.referenced | iter_scope.referenced
     state_getter_name = self.ctx.namer.new_symbol('get_state', reserved)
     state_setter_name = self.ctx.namer.new_symbol('set_state', reserved)
