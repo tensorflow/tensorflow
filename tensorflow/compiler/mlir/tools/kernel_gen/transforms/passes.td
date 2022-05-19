@@ -77,16 +77,6 @@ def KernelgenFinalBufferizePass : Pass<"kernelgen-final-bufferize", "ModuleOp"> 
   let constructor = "transforms::CreateKernelgenFinalBufferizePass()";
 }
 
-def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
-  let summary = "Pass to transform a gpu module to nvvm.";
-  let constructor = "transforms::CreateGpuKernelToNvvmPass()";
-}
-
-def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
-  let summary = "Pass to transform a gpu module to rocdl.";
-  let constructor = "transforms::CreateGpuKernelToRocdlPass()";
-}
-
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [

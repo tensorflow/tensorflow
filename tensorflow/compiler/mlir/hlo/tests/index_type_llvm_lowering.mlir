@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s -gpu-kernel-to-nvvm | FileCheck %s
+// RUN: mlir-hlo-opt %s -gpu-kernel-to-nvvm | FileCheck %s
 
 gpu.module @test_module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
   gpu.func @test_kernel() kernel {

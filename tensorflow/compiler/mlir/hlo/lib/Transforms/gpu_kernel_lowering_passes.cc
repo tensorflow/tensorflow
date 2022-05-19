@@ -13,35 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
-#include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
-#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
-#include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "mlir-hlo/Transforms/GPUPassDetail.h"
+#include "mlir-hlo/Transforms/gpu_passes.h"
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
+#include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace kernel_gen {
-namespace transforms {
 
 using gpu::GPUModuleOp;
 
 namespace {
-
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 /// A pass that does the final lowering to NVVM. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
@@ -114,6 +107,4 @@ std::unique_ptr<OperationPass<GPUModuleOp> > CreateGpuKernelToRocdlPass() {
   return std::make_unique<GpuKernelToROCDLPass>();
 }
 
-}  // namespace transforms
-}  // namespace kernel_gen
 }  // namespace mlir
