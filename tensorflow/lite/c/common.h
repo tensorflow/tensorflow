@@ -906,7 +906,7 @@ typedef struct TfLiteRegistration {
 
   // profiling_string is called during summarization of profiling information
   // in order to group executions together. Providing a value here will cause a
-  // given op to appear multiple times is the profiling report. This is
+  // given op to appear multiple times in the profiling report. This is
   // particularly useful for custom ops that can perform significantly
   // different calculations depending on their `user-data`.
   const char* (*profiling_string)(const TfLiteContext* context,
