@@ -66,9 +66,9 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 ```
 
 """
-import builtins
 import numbers
 import numpy as np
+import builtins
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op

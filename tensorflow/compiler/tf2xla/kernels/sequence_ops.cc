@@ -58,10 +58,7 @@ StatusOr<xla::XlaOp> CreateRangeTensor(const xla::LiteralSlice& start_literal,
   }
   int64_t size =
       (std::is_integral<T>::value
-           ? static_cast<T>(
-                 limit == start
-                     ? 0
-                     : (std::abs(limit - start) - 1) / std::abs(delta) + 1)
+           ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
            : std::ceil(std::abs((limit - start) / delta)));
 
   return xla::ConstantR0(builder, start) +
