@@ -21,7 +21,7 @@ import tensorflow as tf
 
 from tensorflow.python.autograph.tests import reference_test_base
 
-#tf.autograph.set_verbosity(10, True)
+
 def for_with_local_var(l):
   s = 0
   for i in l:
