@@ -43,9 +43,16 @@ static inline absl::string_view ToStringView(llvm::StringRef ref) {
 }
 
 static std::string OpResultToSlotName(OpResult value) {
-  return (TFOp(*value.getDefiningOp()).name() + ":" +
-          Twine(value.cast<OpResult>().getResultNumber()))
+  return (TFOp(*value.getDefiningOp()).name() + "_" +
+          Twine(value.getResultNumber()))
       .str();
+}
+
+static ArrayAttr createLiftedValueAttr(OpBuilder &builder, OpResult value) {
+  llvm::SmallVector<Attribute, 2> attrs = {
+      TFOp(*value.getDefiningOp()).nameAttr(),
+      builder.getIndexAttr(value.getResultNumber())};
+  return builder.getArrayAttr(attrs);
 }
 
 tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
@@ -66,6 +73,16 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
                                              /*generic=*/false);
   func_op->setAttr("tfg.lifted_graph_version", graph.version());
   func_op.getRegion().takeBody(graph.getRegion());
+
+  // Create the returnOp first so that if there are nodes in both feeds and
+  // fetches, the fetch value will be replaced with feed argument.
+  OpBuilder body_builder = OpBuilder::atBlockEnd(func_op.getBody());
+  body_builder.create<ReturnOp>(loc, fetches, control_rets);
+
+  auto *dialect = cast<TFGraphDialect>(func_op->getDialect());
+  StringAttr tfg_name = dialect->getTfgNameAttrIdentifier();
+  StringAttr lifted_value_name = builder.getStringAttr("tfg.lifted_value_attr");
+
   Block *body = func_op.getBody();
   llvm::SmallVector<Attribute> args_rets_attrs;
   for (Value feed : feeds) {
@@ -73,8 +90,10 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
     body->addArgument(control_ty, loc);
     llvm::SmallVector<NamedAttribute> arg_attrs;
     std::string slot = OpResultToSlotName(feed.cast<OpResult>());
+    arg_attrs.push_back(NamedAttribute(tfg_name, builder.getStringAttr(slot)));
     arg_attrs.push_back(
-        builder.getNamedAttr("tfg.name", builder.getStringAttr(slot)));
+        NamedAttribute(lifted_value_name,
+                       createLiftedValueAttr(builder, feed.cast<OpResult>())));
     args_rets_attrs.push_back(builder.getDictionaryAttr(arg_attrs));
     args_rets_attrs.push_back(Attribute{});
   }
@@ -84,14 +103,11 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   for (Value fetch : fetches) {
     llvm::SmallVector<NamedAttribute> arg_attrs;
     std::string slot = OpResultToSlotName(fetch.cast<OpResult>());
-    arg_attrs.push_back(
-        builder.getNamedAttr("tfg.name", builder.getStringAttr(slot)));
+    arg_attrs.push_back(NamedAttribute(tfg_name, builder.getStringAttr(slot)));
     args_rets_attrs.push_back(builder.getDictionaryAttr(arg_attrs));
   }
   func_op.setAllResultAttrs(args_rets_attrs);
 
-  OpBuilder body_builder = OpBuilder::atBlockEnd(func_op.getBody());
-  body_builder.create<ReturnOp>(loc, fetches, control_rets);
   graph.erase();
   return Status::OK();
 }
@@ -103,30 +119,19 @@ Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
   feeds_to_position.reserve(feeds_names.size());
   for (const auto &indexed_name : llvm::enumerate(feeds_names)) {
     const std::string &name = indexed_name.value();
-    if (!feeds_to_position.insert({StringRef(name), indexed_name.index()})
-             .second)
-      return InvalidArgument("GraphToFunc: got duplicated feed name: ", name);
+    feeds_to_position.insert({StringRef(name), indexed_name.index()});
   }
   DenseMap<StringRef, int> fetches_to_position;
   fetches_to_position.reserve(fetches_names.size());
   for (const auto &indexed_name : llvm::enumerate(fetches_names)) {
     const std::string &name = indexed_name.value();
-    if (feeds_to_position.count(name))
-      return InvalidArgument("GraphToFunc: name is both a feed and a fetch: '",
-                             name, "'");
-    if (!fetches_to_position.insert({StringRef(name), indexed_name.index()})
-             .second)
-      return InvalidArgument("GraphToFunc: got duplicated fetch name: '", name,
-                             "'");
+    fetches_to_position.insert({StringRef(name), indexed_name.index()});
   }
   DenseMap<StringRef, int> control_rets_to_position;
   control_rets_to_position.reserve(control_rets_names.size());
   for (const auto &indexed_name : llvm::enumerate(control_rets_names)) {
-    if (!control_rets_to_position
-             .insert({StringRef(indexed_name.value()), indexed_name.index()})
-             .second)
-      return InvalidArgument("GraphToFunc: got duplicated control_ret name: '",
-                             indexed_name.value(), "'");
+    control_rets_to_position.insert(
+        {StringRef(indexed_name.value()), indexed_name.index()});
   }
 
   SmallVector<ValueRange> feeds(feeds_names.size());
@@ -145,31 +150,10 @@ Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
     auto feed_pos = feeds_to_position.find(node_name);
     if (feed_pos != feeds_to_position.end()) {
       feeds[feed_pos->second] = op.getResults().drop_back();
-      continue;
     }
     auto fetch_pos = fetches_to_position.find(node_name);
     if (fetch_pos != fetches_to_position.end()) {
       fetches[fetch_pos->second] = op.getResults().drop_back();
-      continue;
-    }
-  }
-
-  for (const auto &feed_info : feeds_to_position) {
-    if (feeds[feed_info.second].empty()) {
-      (void)emitOptionalWarning(graph.getLoc(), "Can't find feed: '",
-                                ToStringView(feed_info.first), "'");
-    }
-  }
-  for (const auto &fetch_info : fetches_to_position) {
-    if (fetches[fetch_info.second].empty()) {
-      (void)emitOptionalWarning(graph.getLoc(), "Can't find fetch: '",
-                                ToStringView(fetch_info.first), "'");
-    }
-  }
-  for (const auto &control_ret_info : control_rets_to_position) {
-    if (!control_rets[control_ret_info.second]) {
-      (void)emitOptionalWarning(graph.getLoc(), "Can't find control rets: '",
-                                ToStringView(control_ret_info.first), "'");
     }
   }
 

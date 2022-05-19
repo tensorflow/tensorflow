@@ -1,14 +1,15 @@
 // RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 fetches=SomeAdd3 control_rets=SomeAdd4}' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2,Placeholder1 fetches=SomeAdd3,SomeAdd3 control_rets=SomeAdd4,SomeAdd4}' %s | FileCheck %s
 
 // Test that we can lift the graph into a function by using the provided feeds
 // as function arguments and the provided fetch as function results.
 
-// CHECK:   tfg.func @_mlir_lifted_graph(%Placeholder13A0: tensor<*xf32> {tfg.name = "Placeholder1:0"},
-// CHECK-NEXT:                           %Placeholder23A0: tensor<*xf32> {tfg.name = "Placeholder2:0"})
+// CHECK:   tfg.func @_mlir_lifted_graph(%Placeholder1_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder1", 0 : index], tfg.name = "Placeholder1_0"},
+// CHECK-NEXT:                           %Placeholder2_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder2", 0 : index], tfg.name = "Placeholder2_0"})
 // CHECK:   tfg.lifted_graph_version = #tf_type.version<producer = 34, min_consumer = 5>
 
 // Feeds substitution:
-// CHECK: Add(%Placeholder13A0, %Placeholder23A0) name("SomeAdd1")
+// CHECK: Add(%Placeholder1_0, %Placeholder2_0) name("SomeAdd1")
 
 // Fetch:
 // CHECK: %[[FETCH:.*]], %ctl_6 = Add{{.*}} name("SomeAdd3")

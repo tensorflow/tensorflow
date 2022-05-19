@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/func_to_graph/pass.h"
 
-#include "absl/strings/numbers.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -32,6 +31,7 @@ class FuncToGraphPass : public FuncToGraphBase<FuncToGraphPass> {
   LogicalResult initialize(MLIRContext *context) override {
     graph_version_attr_name_ =
         StringAttr::get(context, "tfg.lifted_graph_version");
+    lifted_value_attr_name_ = StringAttr::get(context, "tfg.lifted_value_attr");
     return success();
   }
 
@@ -45,6 +45,7 @@ class FuncToGraphPass : public FuncToGraphBase<FuncToGraphPass> {
 
  private:
   StringAttr graph_version_attr_name_;
+  StringAttr lifted_value_attr_name_;
 };
 }  // namespace
 
@@ -61,28 +62,28 @@ void FuncToGraphPass::runOnOperation() {
     } else {
       module.emitError(
           "Only one lifted graph function is allowed in a module, but see ")
-          << lifted_graph_func.sym_nameAttrName() << " and "
-          << func.sym_nameAttrName();
+          << lifted_graph_func.sym_name() << " and " << func.sym_name();
       return signalPassFailure();
     }
   }
 
   if (!lifted_graph_func) return;
 
-  auto *dialect = cast<TFGraphDialect>(lifted_graph_func->getDialect());
-  StringAttr tfg_name = dialect->getTfgNameAttrIdentifier();
-
   DenseMap<StringRef, Operation *> referred_ops;
 
   if (ArrayAttr all_arg_attrs = lifted_graph_func.getAllArgAttrs()) {
     for (auto arg_attr : all_arg_attrs.getAsRange<DictionaryAttr>()) {
-      Attribute name_attr = arg_attr.get(tfg_name);
-      if (!name_attr) continue;
+      auto lifted_value_attr =
+          arg_attr.getAs<ArrayAttr>(lifted_value_attr_name_);
+      // Control arg doesn't have lifted_value_attr, just skip it here. For
+      // non-control arg, this attribute is required. This invariant will be
+      // checked below.
+      if (!lifted_value_attr) continue;
 
-      StringRef arg_name = name_attr.cast<StringAttr>().strref();
       // Init the entry with nullptr and it'll be updated with associated op
       // later.
-      referred_ops.insert({arg_name.split(":").first, /*Operation=*/nullptr});
+      referred_ops.insert({lifted_value_attr[0].cast<StringAttr>().getValue(),
+                           /*Operation=*/nullptr});
     }
   }
 
@@ -92,32 +93,37 @@ void FuncToGraphPass::runOnOperation() {
     if (it != referred_ops.end()) it->second = &op;
   }
 
-  StringRef op_name, index;
   for (auto &it : llvm::enumerate(lifted_graph_func.getArguments())) {
     if (it.value().getType().isa<ControlType>()) continue;
 
-    StringRef arg_name = lifted_graph_func.getArgAttr(it.index(), tfg_name)
-                             .cast<StringAttr>()
-                             .strref();
-    std::tie(op_name, index) = arg_name.split(":");
-    Operation *op = referred_ops[op_name];
+    auto lifted_value_attr = lifted_graph_func.getArgAttrOfType<ArrayAttr>(
+        it.index(), lifted_value_attr_name_);
+    if (!lifted_value_attr) {
+      lifted_graph_func.emitError("arg #")
+          << it.index()
+          << " is missing tfg.lifted_value_attr, can't be lowered";
+      return signalPassFailure();
+    }
+
+    StringRef value_defining_op_name =
+        lifted_value_attr[0].cast<StringAttr>().getValue();
+    Operation *op = referred_ops[value_defining_op_name];
     if (!op) {
       lifted_graph_func.emitError(
           "lifted arg can't find the associated operation: ")
-          << arg_name;
+          << value_defining_op_name;
       return signalPassFailure();
     }
-    int result_index;
-    if (!absl::SimpleAtoi(index.data(), &result_index)) {
-      lifted_graph_func.emitError("Invalid result index format: ") << arg_name;
-      return signalPassFailure();
-    }
+
+    unsigned result_index =
+        lifted_value_attr[1].cast<IntegerAttr>().getValue().getZExtValue();
     if (result_index >= op->getNumResults()) {
       lifted_graph_func.emitError("result index out of bound: seeing index ")
-          << result_index << " from arg: " << arg_name << ", but op only has "
-          << op->getNumResults() << " results";
+          << result_index << " from lifted_value_attr of arg #" << it.index()
+          << ", but op only has " << op->getNumResults() << " results";
       return signalPassFailure();
     }
+
     it.value().replaceAllUsesWith(op->getResult(result_index));
   }
 
