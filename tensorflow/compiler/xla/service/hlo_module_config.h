@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -106,6 +106,11 @@ class HloModuleConfig {
   ComputationLayout* mutable_entry_computation_layout() {
     CHECK(entry_computation_layout_.has_value());
     return &(*entry_computation_layout_);
+  }
+
+  // Clears the entry computation layout.
+  void clear_entry_computation_layout() {
+    entry_computation_layout_ = std::nullopt;
   }
 
   // Returns whether to enable HLO-level profiling.
@@ -343,7 +348,7 @@ class HloModuleConfig {
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  absl::optional<ComputationLayout> entry_computation_layout_;
+  std::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
   uint64_t seed_ = 0;
@@ -385,7 +390,7 @@ class HloModuleConfig {
   DebugOptions debug_options_;
 
   // Compile-time known device assignment.
-  absl::optional<DeviceAssignment> static_device_assignment_;
+  std::optional<DeviceAssignment> static_device_assignment_;
 
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 
