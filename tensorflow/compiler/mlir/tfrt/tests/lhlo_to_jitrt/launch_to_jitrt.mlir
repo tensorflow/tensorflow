@@ -31,12 +31,13 @@ gpu.module @gpu_module attributes {binary = "kernel binary"} {
 // CHECK:   %[[ARG1:.*]]: memref<4x4xf32>
 // CHECK: )
 func.func @func(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
-  // CHECK: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK: %[[C2:.*]] = arith.constant 2 : index
-  // CHECK: %[[C3:.*]] = arith.constant 3 : index
-  // CHECK: %[[C4:.*]] = arith.constant 4 : index
-  // CHECK: %[[C5:.*]] = arith.constant 5 : index
-  // CHECK: %[[C6:.*]] = arith.constant 6 : index
+  // Launch dimensions converted to i32 as a part of the lowering.
+  // CHECK: %[[C1:.*]] = arith.constant 1 : i32
+  // CHECK: %[[C2:.*]] = arith.constant 2 : i32
+  // CHECK: %[[C3:.*]] = arith.constant 3 : i32
+  // CHECK: %[[C4:.*]] = arith.constant 4 : i32
+  // CHECK: %[[C5:.*]] = arith.constant 5 : i32
+  // CHECK: %[[C6:.*]] = arith.constant 6 : i32
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %c3 = arith.constant 3 : index
@@ -44,15 +45,8 @@ func.func @func(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
   %c5 = arith.constant 5 : index
   %c6 = arith.constant 6 : index
 
-  // CHECK: %[[I1:.*]] = arith.index_cast %[[C1]] : index to i32
-  // CHECK: %[[I2:.*]] = arith.index_cast %[[C2]] : index to i32
-  // CHECK: %[[I3:.*]] = arith.index_cast %[[C3]] : index to i32
-  // CHECK: %[[I4:.*]] = arith.index_cast %[[C4]] : index to i32
-  // CHECK: %[[I5:.*]] = arith.index_cast %[[C5]] : index to i32
-  // CHECK: %[[I6:.*]] = arith.index_cast %[[C6]] : index to i32
-
-  // CHECK: call @[[LAUNCH:[_a-z]+]](%[[I1]], %[[I2]], %[[I3]], %[[I4]],
-  // CHECK-SAME: %[[I5]], %[[I6]], %[[ARG0]], %[[ARG1]])
+  // CHECK: call @[[LAUNCH:[_a-z]+]](%[[C1]], %[[C2]], %[[C3]], %[[C4]],
+  // CHECK-SAME: %[[C5]], %[[C6]], %[[ARG0]], %[[ARG1]])
   // CHECK-DAG: kernel = "main"
   // CHECK-DAG: ptx = "kernel binary"
   gpu.launch_func  @gpu_module::@main

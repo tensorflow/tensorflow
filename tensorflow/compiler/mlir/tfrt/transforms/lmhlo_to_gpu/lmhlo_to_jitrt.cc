@@ -59,6 +59,7 @@ using mlir::success;
 using mlir::SymbolTable;
 using mlir::Type;
 using mlir::TypeRange;
+using mlir::arith::ConstantOp;
 using mlir::arith::IndexCastOp;
 using mlir::detail::PassOptions;
 using mlir::func::CallOp;
@@ -70,6 +71,7 @@ using mlir::gpu::MemcpyOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::GEMMOp;
+using mlir::memref::GetGlobalOp;
 
 class ConvertGpuToJitRtPass
     : public ConvertGpuToJitRtPassBase<ConvertGpuToJitRtPass> {
@@ -388,6 +390,61 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
 
 // -------------------------------------------------------------------------- //
 
+using GlobalConstantsArgs = llvm::DenseMap<FuncOp, llvm::StringMap<Value>>;
+
+// Returns a mapping from a global constant name to the function argument.
+//
+// Example:
+//
+//   memref.global "private" constant @cst : memref<2x3xf32>
+//   func @get_global(%arg0: memref<24xi8> {lmhlo.constant_name = "cst"})
+//
+// All memref.get_global operations will be replaced by constant arguments
+// corresponding to the global constant.
+GlobalConstantsArgs GetConstantArgs(ModuleOp m) {
+  GlobalConstantsArgs mapping;
+
+  m.walk([&](FuncOp func) {
+    for (unsigned i = 0; i < func.getNumArguments(); ++i) {
+      auto cst = func.getArgAttrOfType<StringAttr>(i, "lmhlo.constant_name");
+      if (cst) mapping[func][cst] = func.getArgument(i);
+    }
+  });
+
+  return mapping;
+}
+
+class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
+ public:
+  GetGlobalOpLowering(MLIRContext* ctx, const GlobalConstantsArgs& cst_args)
+      : OpRewritePattern<GetGlobalOp>(ctx), cst_args_(cst_args) {}
+
+  LogicalResult matchAndRewrite(GetGlobalOp op,
+                                PatternRewriter& rewriter) const override {
+    // Find global constants mapping for the parent function.
+    auto func_mapping = cst_args_.find(op->getParentOfType<FuncOp>());
+    if (func_mapping == cst_args_.end()) return failure();
+
+    // Check if the global operation correposponds to the LMHLO constant arg.
+    auto arg = func_mapping->second.find(op.name());
+    if (arg == func_mapping->second.end()) return failure();
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Replace all loads from a global with the corresponding argument.
+    Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
+    rewriter.replaceOpWithNewOp<memref::ViewOp>(op, op->getResultTypes(),
+                                                arg->second, c0, ValueRange());
+
+    return success();
+  }
+
+ private:
+  const GlobalConstantsArgs& cst_args_;
+};
+
+// -------------------------------------------------------------------------- //
+
 void ConvertGpuToJitRtPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -397,13 +454,12 @@ void ConvertGpuToJitRtPass::runOnOperation() {
   patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering>(
       ctx);
 
-  // Set up conversion target to rewrite gpu operations.
-  ConversionTarget target(*ctx);
-  target.addIllegalOp<GPUModuleOp, LaunchFuncOp, MemcpyOp>();
-  target.addLegalOp<IndexCastOp, FuncOp, CallOp, ReturnOp>();
+  // Replace memref loads from globals corresponding to the constant arguments.
+  GlobalConstantsArgs cst_args = GetConstantArgs(module);
+  patterns.insert<GetGlobalOpLowering>(ctx, cst_args);
 
-  if (failed(applyPartialConversion(module, target, std::move(patterns))))
-    signalPassFailure();
+  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
+    return signalPassFailure();
 }
 
 void ConvertLmhloGpuToJitRtPass::runOnOperation() {
