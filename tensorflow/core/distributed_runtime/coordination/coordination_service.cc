@@ -478,6 +478,15 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
 void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   {
     mutex_lock l(kv_mu_);
+    for (const auto& keyed_get_kv_callbacks : get_cb_) {
+      absl::string_view key = keyed_get_kv_callbacks.first;
+      for (const auto& get_kv_callback : keyed_get_kv_callbacks.second) {
+        get_kv_callback(errors::Cancelled(
+            absl::StrCat("Coordination service is shutting down. Cancelling "
+                         "GetKeyValue() for key: ",
+                         key)));
+      }
+    }
     get_cb_.clear();
   }
   {

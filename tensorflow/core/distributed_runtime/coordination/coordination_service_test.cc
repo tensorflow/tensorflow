@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -484,11 +485,15 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   // Delete key-values recursively
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("/path"));
   // Get key that is not available
-  absl::Notification n2;
+  auto n2 = std::make_shared<absl::Notification>();
   coord_service_->GetKeyValueAsync(
       "/path/to/key1",
-      [&](const StatusOr<std::string>& status_or_value) { n2.Notify(); });
-  EXPECT_FALSE(n2.HasBeenNotified());
+      // Note: this callback will remain pending until it is cleaned up during
+      // service shutdown. Hence, we use a shared pointer for notification so
+      // that the it will not be deallocated before the pending callback is
+      // cleaned up.
+      [n2](const StatusOr<std::string>& status_or_value) { n2->Notify(); });
+  EXPECT_FALSE(n2->HasBeenNotified());
 }
 
 TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_SingleValueInDirectory) {
