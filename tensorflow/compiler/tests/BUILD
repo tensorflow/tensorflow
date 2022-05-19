@@ -2129,6 +2129,9 @@ tf_xla_py_test(
     name = "image_ops_jit_compile_test",
     size = "medium",
     srcs = ["image_ops_jit_compile_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
     enable_mlir_bridge = False,
     shard_count = 5,
     tags = [
