@@ -187,8 +187,8 @@ class Stream {
   // spit out helpful static_assert error traces with information as to the
   // argument number and types that were mismatched.
   template <typename... Params, typename... Args>
-  Stream &ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                     const TypedKernel<Params...> &kernel, Args... args);
+  port::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
+                          const TypedKernel<Params...> &kernel, Args... args);
 
   // Record a "start" event for the interval timer at this point in the
   // stream's execution (relative to the previously and subsequently enqueued
@@ -2181,29 +2181,23 @@ class Stream {
 // Inlines
 
 template <typename... Params, typename... Args>
-inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                                  const TypedKernel<Params...> &kernel,
-                                  Args... args) {
+inline port::Status Stream::ThenLaunch(ThreadDim thread_dims,
+                                       BlockDim block_dims,
+                                       const TypedKernel<Params...> &kernel,
+                                       Args... args) {
   KernelInvocationChecker<std::tuple<Params...>,
                           std::tuple<Args...>>::CheckAllStaticAssert();
-  if (ok()) {
-    // This is the core that allows type-safe kernel launching.
-    // Since the platforms take kernel arguments as tuples of (void *, size),
-    // we pack the variadic parameters passed as ...args into the desired
-    // tuple form and pass that packed form to the StreamExecutor::Launch()
-    // implementation.
-    KernelArgsArray<sizeof...(args)> kernel_args;
-    kernel.PackParams(&kernel_args, args...);
-    DCHECK(parent_ != nullptr);
-    bool ok =
-        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
-            .ok();
-    if (!ok) {
-      SetError();
-      LOG(WARNING) << "parent failed to launch kernel: " << &kernel;
-    }
-  }
-  return *this;
+
+  // This is the core that allows type-safe kernel launching.
+  // Since the platforms take kernel arguments as tuples of (void *, size),
+  // we pack the variadic parameters passed as ...args into the desired
+  // tuple form and pass that packed form to the StreamExecutor::Launch()
+  // implementation.
+  KernelArgsArray<sizeof...(args)> kernel_args;
+  kernel.PackParams(&kernel_args, args...);
+  TF_RETURN_IF_ERROR(
+      parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args));
+  return port::Status::OK();
 }
 
 template <typename T>
