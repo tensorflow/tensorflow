@@ -20,11 +20,14 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -67,6 +70,30 @@ class ConvertToSignless : public ConversionPattern {
   }
 };
 
+// A pattern that converts the type of the attribute used as an operand for
+// arith.constant
+class ConvertConstantToSignless
+    : public OpConversionPattern<arith::ConstantOp> {
+ public:
+  ConvertConstantToSignless(TypeConverter& type_converter, MLIRContext* context)
+      : OpConversionPattern<arith::ConstantOp>(type_converter, context) {}
+
+  LogicalResult matchAndRewrite(
+      arith::ConstantOp constant_op, arith::ConstantOpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    // We only care about unsigned integers
+    if (!adaptor.getValue().isa<DenseIntElementsAttr>()) return failure();
+
+    auto values = llvm::to_vector(
+        adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
+    auto new_values = DenseIntElementsAttr::get(
+        typeConverter->convertType(constant_op.getType()), values);
+
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(constant_op, new_values);
+    return success();
+  }
+};
+
 struct ConvertToSignlessPass
     : public ConvertToSignlessPassBase<ConvertToSignlessPass> {
  public:
@@ -82,9 +109,14 @@ struct ConvertToSignlessPass
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType());
     });
+    target.addDynamicallyLegalOp<arith::ConstantOp>([&](arith::ConstantOp op) {
+      return converter.isLegal(op.getType()) &&
+             converter.isLegal(op.getValue().getType());
+    });
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<ConvertToSignless>(converter, &context);
+    patterns.add<ConvertToSignless, ConvertConstantToSignless>(converter,
+                                                               &context);
     // FuncOp is special as it has type encoding via attributes.
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                    converter);
