@@ -543,6 +543,9 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 19,
+    tags = [
+        "noasan",  # TODO(b/233167818): Flaky under asan
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -740,6 +743,9 @@ tf_py_test(
     name = "range_test",
     size = "small",
     srcs = ["range_test.py"],
+    tags = [
+        "noasan",  # TODO(b/233167818): Flaky under asan
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
