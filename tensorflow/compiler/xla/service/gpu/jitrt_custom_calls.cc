@@ -175,7 +175,7 @@ static Shape ToShape(const jitrt::MemrefView& memref) {
 static StatusOr<GemmConfig> GetGemmConfig(
     const DebugOptions* debug_options, const jitrt::MemrefView& lhs,
     const jitrt::MemrefView& rhs, const jitrt::MemrefView& out,
-    int64_t algorithm, double alpha_imag, double alpha_real,
+    int64_t algorithm, double alpha_real, double alpha_imag,
     ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
     ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
     llvm::Optional<double> beta = llvm::None) {
@@ -273,8 +273,8 @@ struct Gemm {
                            const DebugOptions* debug_options,
                            JitRtGemmConfigCache* configs, jitrt::MemrefView lhs,
                            jitrt::MemrefView rhs, jitrt::MemrefView out,
-                           int64_t algorithm, double alpha_imag,
-                           double alpha_real, ArrayRef<int64_t> lhs_batch,
+                           int64_t algorithm, double alpha_real,
+                           double alpha_imag, ArrayRef<int64_t> lhs_batch,
                            ArrayRef<int64_t> lhs_contract,
                            ArrayRef<int64_t> rhs_batch,
                            ArrayRef<int64_t> rhs_contract, int64_t uid) const;
@@ -287,7 +287,7 @@ LogicalResult Gemm::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
     jitrt::MemrefView lhs, jitrt::MemrefView rhs, jitrt::MemrefView out,
-    int64_t algorithm, double alpha_imag, double alpha_real,
+    int64_t algorithm, double alpha_real, double alpha_imag,
     ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
     ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
     int64_t uid) const {
@@ -305,7 +305,7 @@ LogicalResult Gemm::operator()(
   const GemmConfig* config = configs->Get(uid);
   if (config == nullptr) {
     auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_imag, alpha_real, lhs_batch, lhs_contract,
+                             alpha_real, alpha_imag, lhs_batch, lhs_contract,
                              rhs_batch, rhs_contract);
     if (!cfg.ok()) return failure();
     config = configs->Set(uid, std::move(*cfg));
@@ -328,8 +328,8 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
           .Arg<jitrt::MemrefView>()  // rhs
           .Arg<jitrt::MemrefView>()  // out
           .Attr<int64_t>("algorithm")
-          .Attr<double>("alpha_imag")
           .Attr<double>("alpha_real")
+          .Attr<double>("alpha_imag")
           .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
           .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
           .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
@@ -349,9 +349,9 @@ struct GemmBias {
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
                            const DebugOptions* debug_options,
                            JitRtGemmConfigCache* configs, jitrt::MemrefView lhs,
-                           jitrt::MemrefView rhs, jitrt::MemrefView out,
-                           jitrt::MemrefView bias, int64_t algorithm,
-                           double alpha_imag, double alpha_real, double beta,
+                           jitrt::MemrefView rhs, jitrt::MemrefView bias,
+                           jitrt::MemrefView out, int64_t algorithm,
+                           double alpha_real, double alpha_imag, double beta,
                            ArrayRef<int64_t> lhs_batch,
                            ArrayRef<int64_t> lhs_contract,
                            ArrayRef<int64_t> rhs_batch,
@@ -363,15 +363,15 @@ struct GemmBias {
 LogicalResult GemmBias::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::MemrefView lhs, jitrt::MemrefView rhs, jitrt::MemrefView out,
-    jitrt::MemrefView bias, int64_t algorithm, double alpha_imag,
-    double alpha_real, double beta, ArrayRef<int64_t> lhs_batch,
+    jitrt::MemrefView lhs, jitrt::MemrefView rhs, jitrt::MemrefView bias,
+    jitrt::MemrefView out, int64_t algorithm, double alpha_real,
+    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
     ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
     ArrayRef<int64_t> rhs_contract, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
-  se::DeviceMemoryBase output_data = GetDeviceAddress(out);
   se::DeviceMemoryBase bias_data = GetDeviceAddress(bias);
+  se::DeviceMemoryBase output_data = GetDeviceAddress(out);
 
   se::OwningScratchAllocator<> scratch_allocator(run_options->device_ordinal(),
                                                  run_options->allocator());
@@ -383,7 +383,7 @@ LogicalResult GemmBias::operator()(
   const GemmConfig* config = configs->Get(uid);
   if (config == nullptr) {
     auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_imag, alpha_real, lhs_batch, lhs_contract,
+                             alpha_real, alpha_imag, lhs_batch, lhs_contract,
                              rhs_batch, rhs_contract, beta);
     if (!cfg.ok()) return failure();
     config = configs->Set(uid, std::move(*cfg));
@@ -408,11 +408,11 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
           .UserData<JitRtGemmConfigCache*>()
           .Arg<jitrt::MemrefView>()  // lhs
           .Arg<jitrt::MemrefView>()  // rhs
-          .Arg<jitrt::MemrefView>()  // out
           .Arg<jitrt::MemrefView>()  // bias
+          .Arg<jitrt::MemrefView>()  // out
           .Attr<int64_t>("algorithm")
-          .Attr<double>("alpha_imag")
           .Attr<double>("alpha_real")
+          .Attr<double>("alpha_imag")
           .Attr<double>("beta")
           .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
           .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
