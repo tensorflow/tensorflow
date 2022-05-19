@@ -78,8 +78,6 @@ class Analyzer(cfg.GraphVisitor):
         live_out |= self.in_[n]
       live_in = live_out
 
-    #print("live_in", live_in)
-    #print("live_out", live_out)
     self.in_[node] = live_in
     self.out[node] = live_out
 
