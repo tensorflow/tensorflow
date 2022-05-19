@@ -514,7 +514,7 @@ class Conv3DTest(test.TestCase):
       elif data_type == dtypes.float32:
         tolerance = 5e-3
       elif data_type == dtypes.float16:
-        tolerance = 1e-3
+        tolerance = 5e-3 if test.is_built_with_rocm() else 1e-3
 
       with self.cached_session(use_gpu=use_gpu):
         orig_input_tensor = constant_op.constant(
