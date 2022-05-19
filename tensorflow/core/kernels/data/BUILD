@@ -424,6 +424,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:finalization_utils",
+        "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:unbounded_thread_pool",
@@ -562,9 +563,12 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:finalization_utils",
+        "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 
@@ -1483,7 +1487,7 @@ filegroup(
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:finalization_utils.h",
-        "//tensorflow/core/data:utils.h",
+        "//tensorflow/core/data:metric_utils.h",
         "//tensorflow/core/data:name_utils.h",
         "//tensorflow/core/data:rewrite_utils.h",
         "//tensorflow/core/data:root_dataset.h",
@@ -1491,6 +1495,7 @@ filegroup(
         "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/data:unbounded_thread_pool.h",
+        "//tensorflow/core/data:utils.h",
         "//tensorflow/core/kernels/data/experimental:portable_all_op_kernels_headers",
     ] + glob(
         [
@@ -1508,14 +1513,15 @@ filegroup(
         "//tensorflow/core/data:captured_function.cc",
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:finalization_utils.cc",
+        "//tensorflow/core/data:metric_utils.cc",
         "//tensorflow/core/data:name_utils.cc",
-        "//tensorflow/core/data:utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
         "//tensorflow/core/data:root_dataset.cc",
         "//tensorflow/core/data:serialization_utils.cc",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:stats_utils.cc",
         "//tensorflow/core/data:unbounded_thread_pool.cc",
+        "//tensorflow/core/data:utils.cc",
         "//tensorflow/core/kernels/data/experimental:portable_all_op_kernels",
     ] + glob(
         [
