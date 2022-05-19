@@ -36,6 +36,18 @@ func.func @rewrite_binary(%arg0: tensor<100xf64>,
   return %1 : tensor<100xf64, #SV>
 }
 
+// CHECK-LABEL: func @rewrite_binary_override(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #{{.*}}>,
+// CHECK-SAME:    %[[ARG1:.*]]: tensor<10x10xf64, #{{.*}}>) -> tensor<10x10xf64, #{{.*}}> {
+// CHECK:         %[[VAL:.*]] = mhlo.multiply(%[[ARG0]], %[[ARG1]]) : (tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>, tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
+// CHECK-NEXT:    return %[[VAL:.*]] : tensor<10x10xf64, #{{.*}}>
+func.func @rewrite_binary_override(%arg0: tensor<10x10xf64, #CSR>,
+                                   %arg1: tensor<10x10xf64, #CSR>) -> tensor<10x10xf64, #DCSR> {
+  %0 = mhlo.multiply(%arg0, %arg1) : (tensor<10x10xf64, #CSR>, tensor<10x10xf64, #CSR>) -> tensor<10x10xf64, #CSR>
+  %1 = sparse_tensor.convert %0 : tensor<10x10xf64, #CSR> to tensor<10x10xf64, #DCSR>
+  return %1 : tensor<10x10xf64, #DCSR>
+}
+
 // CHECK-LABEL: func @rewrite_convert(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64>) -> tensor<10x10xf64, #{{.*}}> {
 // CHECK:         %[[VAL:.*]] = sparse_tensor.convert %[[ARG0]] : tensor<10x10xf64> to tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>
