@@ -92,6 +92,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
+
+  opts.set_xla_gpu_shape_checks(DebugOptions::COMPILE_TIME);
   return opts;
 }
 

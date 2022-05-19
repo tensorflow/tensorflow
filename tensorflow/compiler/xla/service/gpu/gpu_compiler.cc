@@ -439,9 +439,26 @@ Status GpuCompiler::OptimizeHloModule(
         /*expansion_type=*/LogisticExpansionType::kExp);
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicDimensionSimplifier>();
-    auto dynamic_padder_options = DynamicPadderOptions();
-    dynamic_padder_options.shape_check_mode =
-        DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+    DynamicPadderOptions dynamic_padder_options;
+
+    switch (hlo_module->config().debug_options().xla_gpu_shape_checks()) {
+      case DebugOptions::IGNORE:
+        dynamic_padder_options.shape_check_mode =
+            DynamicDimensionInference::ShapeCheckMode::kIgnore;
+        break;
+      case DebugOptions::RUNTIME: {
+        dynamic_padder_options.shape_check_mode =
+            DynamicDimensionInference::ShapeCheckMode::kRuntime;
+        break;
+      }
+      case DebugOptions::COMPILE_TIME:
+        dynamic_padder_options.shape_check_mode =
+            DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+        break;
+      default:
+        LOG(FATAL) << "Unreachable";
+    }
+
     pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
 
     // Build simplification pipeline.  The passes in here are run to a fixed
