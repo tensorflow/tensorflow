@@ -134,8 +134,8 @@ class IteratorResource : public ResourceBase {
     core::RefCountPtr<DatasetBase> dataset_;
   };
 
-  UnboundedThreadPool unbounded_thread_pool_;
   IteratorMetricsCollector metrics_collector_;
+  UnboundedThreadPool unbounded_thread_pool_;
 
   mutex mu_;
   const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);

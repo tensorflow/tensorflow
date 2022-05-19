@@ -89,8 +89,8 @@ IteratorResource::IteratorResource(
     std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* flr)
-    : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
-      metrics_collector_(flr->device()->device_type(), *env),
+    : metrics_collector_(flr->device()->device_type(), *env),
+      unbounded_thread_pool_(env, "tf_data_iterator_resource"),
       device_mgr_(std::move(device_mgr)),
       iterator_state_(std::make_shared<State>(std::move(flib_def),
                                               std::move(pflr), flr,

@@ -80,9 +80,9 @@ class MultiDeviceIterator : public ResourceBase {
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
       FunctionLibraryRuntime* flr,
       std::unique_ptr<FunctionHandleCache> function_handle_cache)
-      : unbounded_thread_pool_(env, "tf_data_multi_device_iterator_resource"),
-        metrics_collector_(flr ? flr->device()->device_type() : DEVICE_DEFAULT,
+      : metrics_collector_(flr ? flr->device()->device_type() : DEVICE_DEFAULT,
                            *env),
+        unbounded_thread_pool_(env, "tf_data_multi_device_iterator_resource"),
         output_types_(output_types),
         output_shapes_(output_shapes),
         devices_(devices),
@@ -452,8 +452,8 @@ class MultiDeviceIterator : public ResourceBase {
     std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
   };
 
-  UnboundedThreadPool unbounded_thread_pool_;
   IteratorMetricsCollector metrics_collector_;
+  UnboundedThreadPool unbounded_thread_pool_;
 
   mutex mu_;
   const DataTypeVector output_types_;
