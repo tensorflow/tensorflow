@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool IsTPUGraphDef(const GraphDef& def) {
+bool IsLegacyTPUBridgeGraphDef(const GraphDef& def) {
   for (const auto& node : def.node()) {
     if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
       return true;
