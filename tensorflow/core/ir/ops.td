@@ -33,7 +33,17 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 // TFGraph op definitions
 //===----------------------------------------------------------------------===//
 
-def TFGraph_GraphOp : TFGraph_Op<"graph",
+// Base class for intrinsic TFG operations. Intrinsic operations exist only in
+// the TFG dialect in MLIR.
+class TFG_IntrinsicOp<string mnemonic, list<Trait> traits = []> :
+    Op<TFGraphDialect, mnemonic, [TraitList<traits>, IntrinsicOperation]>;
+
+// Base class for concrete TFG operations. Concrete operations are registered
+// TFG dialect operations that are imported from TensorFlow.
+class TFGraph_ConcreteOp<string mnemonic, list<Trait> traits = []> :
+    Op<TFGraphDialect, mnemonic, traits>;
+
+def TFGraph_GraphOp : TFG_IntrinsicOp<"graph",
     [HasOnlyGraphRegion, SingleBlock, IsolatedFromAbove,
      OpAsmOpInterface, TraitList<GraphRegionNoTerminator.traits>]> {
   let summary = "Define a flat graph of operations";
@@ -69,7 +79,7 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
 }
 
 
-def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
+def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
     RegionKindInterface, HasOnlyGraphRegion, SingleBlock, CallableOpInterface,
     FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface,
     DeclareOpInterfaceMethods<ControlArgumentInterface>]> {
@@ -209,7 +219,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 def TFGraph_DictionaryArrayAttr
     : TypedArrayAttrBase<DictionaryAttr, "an array of dictionaries">;
 
-def TFGraph_ReturnOp : TFGraph_Op<"return",
+def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
   [NoSideEffect, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
   let summary = "Return values from a Function.";
   let description = [{
@@ -232,7 +242,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
 }
 
 
-def TFGraph_GetResultOp : TFGraph_Op<"get_result",
+def TFGraph_GetResultOp : TFG_IntrinsicOp<"get_result",
   [NoSideEffect]> {
   let summary = "Extract a value out of an opaque tensor in a generic Function.";
   let description = [{
@@ -269,10 +279,6 @@ def TFGraph_GetResultOp : TFGraph_Op<"get_result",
 // auto-generated from the TF op registry, with a mix of hand-written code for
 // op-specific cases.
 // TODO(jeffniu): Also, many of these should be derived attributes (e.g. types).
-
-// Base class for TFGraph concrete ops.
-class TFGraph_ConcreteOp<string mnemonic, list<Trait> traits = []> :
-    TFGraph_Op<mnemonic, traits>;
 
 // Base class for TFGraph if-like operations.
 class TFGraph_IfLikeOp<string mnemonic>
@@ -489,13 +495,13 @@ def TFGraph_RegionAttrs : AttrDef<TFGraphDialect, "Region"> {
 
 // Base class for TFGraph region ops. Region ops contain only single-block graph
 // regions.
-class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []> :
-    TFGraph_Op<mnemonic, [HasOnlyGraphRegion, SingleBlock, RegionKindInterface,
-                          DeclareOpInterfaceMethods<OpAsmOpInterface,
-                              ["getDefaultDialect", "getAsmResultNames"]>,
-                          TraitList<traits>]>;
+class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []> 
+    : TFG_IntrinsicOp<mnemonic, [
+        HasOnlyGraphRegion, SingleBlock, RegionKindInterface,
+        DeclareOpInterfaceMethods<OpAsmOpInterface, 
+          ["getDefaultDialect", "getAsmResultNames"]>, TraitList<traits>]>;
 
-def TFGraph_YieldOp : TFGraph_Op<"yield",
+def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
     [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
@@ -749,7 +755,7 @@ def TFGraph_StatefulCaseRegionOp :
 }
 
 // Special terminator op for while op condition regions.
-def TFGraph_ConditionOp : TFGraph_Op<"condition",
+def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
     [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{

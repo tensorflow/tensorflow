@@ -1262,10 +1262,6 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     *optimized_graph = GraphDef();
     TF_RETURN_IF_ERROR(OptimizeGraph(optimizers, cluster, std::move(tfg_item),
                                      optimized_graph));
-    // Replace the output function library with a minimized one that strips
-    // functions with no references.
-    *optimized_graph->mutable_library() =
-        minimized_flib(*optimized_graph).ToProto();
   }
 #endif
 

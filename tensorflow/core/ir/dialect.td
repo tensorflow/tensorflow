@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef TFG_DIALECT
-#else
+#ifndef TFG_DIALECT
 #define TFG_DIALECT
 
 include "mlir/IR/OpBase.td"
@@ -164,15 +163,5 @@ def TFGraphDialect : Dialect {
   let hasNonDefaultDestructor = 1;
   let hasOperationInterfaceFallback = 1;
 }
-
-//===----------------------------------------------------------------------===//
-// TFGraph dialect types definitions
-//===----------------------------------------------------------------------===//
-
-include "tensorflow/core/ir/types/types.td"
-
-// Base class for the operations in this dialect.
-class TFGraph_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TFGraphDialect, mnemonic, traits>;
 
 #endif // TFG_DIALECT

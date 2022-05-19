@@ -1422,13 +1422,19 @@ FunctionTable::FunctionTable(ModuleOp module) {
   }
 }
 
-bool FunctionTable::MaybeCall(Operation *op) {
-  if (functions.count(op->getName().stripDialect())) return true;
-  for (NamedAttribute named_attr : op->getAttrs()) {
-    // Treat any operation that references a FuncAttr as a call.
-    if (named_attr.getValue().isa<FuncAttr>()) return true;
-  }
-  return false;
+bool FunctionTable::MayBeCall(Operation *op) const {
+  if (IsLegacyCall(op)) return true;
+  // The operation might be a call if it references a symbol.
+  bool references_symbol = false;
+  op->getAttrDictionary().walkSubAttrs(
+      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  return references_symbol;
+}
+
+bool FunctionTable::IsLegacyCall(Operation *op) const {
+  // If the operation name refers to a function in the module, then it is
+  // guaranteed to be a legacy call. Otherwise, it is not.
+  return functions.count(op->getName().stripDialect());
 }
 
 }  // namespace tfg

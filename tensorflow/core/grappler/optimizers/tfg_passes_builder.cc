@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/core/util/util.h"
@@ -48,6 +49,9 @@ void DefaultModuleGrapplerPipeline(PassManager& manager) {
   manager.addPass(CreateFunctionalToRegionPass());
   manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
   manager.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
+  manager.addPass(CreateLiftLegacyCallPass());
+  manager.addPass(createSymbolPrivatizePass());
+  manager.addPass(createSymbolDCEPass());
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.
   manager.addPass(CreatePrepareAttributesForExportPass());

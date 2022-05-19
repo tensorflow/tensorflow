@@ -40,6 +40,15 @@ class TensorFlowRegistryInterfaceBase
   virtual bool isStateful(Operation *op) const = 0;
 };
 }  // namespace tfg
+
+namespace OpTrait {
+// This trait marks intrinsic TFG operations, e.g. terminators, functions,
+// and region control-flow operations. Any TFG operation that has this trait
+// exists only in MLIR.
+template <typename ConcreteType>
+class IntrinsicOperation
+    : public mlir::OpTrait::TraitBase<ConcreteType, IntrinsicOperation> {};
+}  // namespace OpTrait
 }  // namespace mlir
 
 #endif  // TENSORFLOW_CORE_IR_INTERFACES_H_

@@ -96,6 +96,7 @@ cc_library(
         "//tensorflow/core/transforms/func_to_graph:Pass",
         "//tensorflow/core/transforms/functional_to_region:Pass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
+        "//tensorflow/core/transforms/legacy_call:Pass",
         "//tensorflow/core/transforms/region_to_functional:Pass",
         "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/shape_inference:Pass",

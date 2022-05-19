@@ -457,3 +457,35 @@ def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
           "Determine if we should fold quantization emulation ops">
   ];
 }
+
+def LiftLegacyCall : Pass<"tfg-lift-legacy-call", "ModuleOp"> {
+  let summary = "Tag legacy calls with symbol references to add symbol uses";
+  let description = [{
+    A legacy function call is when an operation's name refers to a function in 
+    the function library. For example,
+
+    ```
+    %ctl = tfg.Foo
+
+    tfg.func @Foo() -> ()
+    ```
+
+    This is problematic because the symbol table framework will not recognize
+    `tfg.Foo` as a symbol use of `@Foo`, which can break passes like symbol DCE.
+    The symbol table walks operations' nested attributes for symbol reference
+    attributes to find symbol uses.
+
+    This pass will tag legacy function call operations with a symbol attribute
+    `tfg.legacy_call` so that the symbol table framework can find the symbol use
+    in the operation:
+
+    ```
+    %ctl = tfg.Foo {tfg.legacy_call = @Foo}
+    ```
+
+    Now, symbol table will return this operation when querying the uses of the 
+    function `@Foo`.
+  }];
+
+  let constructor = "CreateLiftLegacyCallPass()";
+}
