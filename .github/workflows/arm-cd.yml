@@ -17,9 +17,10 @@ name: ARM CD
 
 on:
   push:
-    tags: v2.*
+    tags:
+      - v2.**
   schedule:
-    cron: '0 8 * * *'
+    - cron: '0 8 * * *'
 
 jobs:
   build:

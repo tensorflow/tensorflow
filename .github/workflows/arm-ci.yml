@@ -18,7 +18,9 @@ name: ARM CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: [master, r2.*]
+    branches:
+      - master
+      - r2.**
 
 jobs:
   build:
