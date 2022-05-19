@@ -67,6 +67,7 @@ visibility = [
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
+    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
 ]
 
 package(
