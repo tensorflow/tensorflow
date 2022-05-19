@@ -77,22 +77,12 @@ static StatusOr<TfCallbackData> CallbackDataFromProto(const char* opaque,
                                                       size_t opaque_len) {
   TfCallbackData callback_data;
   absl::string_view data{opaque, opaque_len};
-  auto s = HumanReadableJsonToProto(std::string(data), &callback_data);
-  if (!s.ok()) {
-    return se::port::InternalError(
-        absl::StrCat("Failed parsing callback proto: ", s.ToString()));
-  }
+  callback_data.ParseFromString(std::string{data});  // NOLINT: OSS req
   return callback_data;
 }
 
 static StatusOr<std::string> SerializeCallbackData(const TfCallbackData& data) {
-  std::string out;
-  auto status = ProtoToHumanReadableJson(data, &out,
-                                         /*ignore_accuracy_loss=*/true);
-  if (!status.ok()) {
-    return se::port::InternalError("Failed converting proto to JSON");
-  }
-  return out;
+  return data.SerializeAsString();
 }
 
 Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
@@ -420,7 +410,6 @@ static Status CallTfKernel(se::gpu::GpuStreamHandle stream_handle,
                       StreamForRawHandle(executor, stream_handle));
   TF_ASSIGN_OR_RETURN(TfCallbackData callback_data,
                       CallbackDataFromProto(opaque, opaque_len));
-
   TfCallbackDevice device(stream.get(), buffers, callback_data);
 
   std::vector<AllocatorAttributes> allocator_attributes;
