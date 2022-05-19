@@ -73,6 +73,15 @@ using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::GetGlobalOp;
 
+class ConvertLmhloConstantToArgPass
+    : public ConvertLmhloConstantToArgPassBase<ConvertLmhloConstantToArgPass> {
+  void runOnOperation() override;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::memref::MemRefDialect>();
+  }
+};
+
 class ConvertGpuToJitRtPass
     : public ConvertGpuToJitRtPassBase<ConvertGpuToJitRtPass> {
   void runOnOperation() override;
@@ -445,6 +454,25 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
 
 // -------------------------------------------------------------------------- //
 
+void ConvertLmhloConstantToArgPass::runOnOperation() {
+  ModuleOp module = getOperation();
+  MLIRContext* ctx = module.getContext();
+
+  // Replace memref loads from globals corresponding to the constant arguments.
+  RewritePatternSet patterns(ctx);
+  GlobalConstantsArgs cst_args = GetConstantArgs(module);
+  patterns.insert<GetGlobalOpLowering>(ctx, cst_args);
+
+  // Set up conversion target to rewrite only GetGlobalOp and avoid any other
+  // canonicalizations that can break later passes.
+  ConversionTarget target(*ctx);
+  target.addIllegalOp<GetGlobalOp>();
+  target.addLegalOp<ConstantOp, memref::ViewOp>();
+
+  if (failed(applyPartialConversion(module, target, std::move(patterns))))
+    signalPassFailure();
+}
+
 void ConvertGpuToJitRtPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -453,10 +481,6 @@ void ConvertGpuToJitRtPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering>(
       ctx);
-
-  // Replace memref loads from globals corresponding to the constant arguments.
-  GlobalConstantsArgs cst_args = GetConstantArgs(module);
-  patterns.insert<GetGlobalOpLowering>(ctx, cst_args);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -481,11 +505,16 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertGpuToJitRtPass() {
   return std::make_unique<ConvertGpuToJitRtPass>();
 }
 
+std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass() {
+  return std::make_unique<ConvertLmhloConstantToArgPass>();
+}
+
 std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
   return std::make_unique<ConvertLmhloGpuToJitRtPass>();
 }
 
 void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
+  pm.addPass(createConvertLmhloConstantToArgPass());
   pm.addPass(createConvertLmhloToGpuBinaryPass());
   pm.addPass(createConvertLmhloGpuToJitRtPass());
   pm.addPass(createConvertGpuToJitRtPass());
@@ -493,6 +522,7 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
 
 void registerLmhloToJitRtPasses() {
   mlir::registerPass([] { return createConvertGpuToJitRtPass(); });
+  mlir::registerPass([] { return createConvertLmhloConstantToArgPass(); });
   mlir::registerPass([] { return createConvertLmhloGpuToJitRtPass(); });
 
   mlir::registerPassPipeline(

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: lhlo-tfrt-opt %s -gpu-to-jitrt | FileCheck %s
+// RUN: lhlo-tfrt-opt %s -lmhlo-constant-to-arg | FileCheck %s
 
 memref.global "private" constant @cst_buffer : memref<2x3xf32> =
   dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00],
