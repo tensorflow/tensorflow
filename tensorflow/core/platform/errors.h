@@ -230,7 +230,7 @@ inline std::string FormatFunctionForError(const std::string& name) {
 
 inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
                                                   const std::string& op_name) {
-  assert(IsUnavailable(s));
+  assert(tensorflow::IsUnavailable(s));
   return Status(
       error::INTERNAL,
       strings::StrCat(

@@ -22,6 +22,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -194,6 +195,43 @@ class Status {
 
   void SlowCopyFrom(const State* src);
 };
+
+// These convenience functions return `true` if a given status matches the
+// `Code` error code of its associated function.
+bool IsAborted(const Status& status);
+bool IsAlreadyExists(const Status& status);
+bool IsCancelled(const Status& status);
+bool IsDataLoss(const Status& status);
+bool IsDeadlineExceeded(const Status& status);
+bool IsFailedPrecondition(const Status& status);
+bool IsInternal(const Status& status);
+bool IsInvalidArgument(const Status& status);
+bool IsNotFound(const Status& status);
+bool IsOutOfRange(const Status& status);
+bool IsPermissionDenied(const Status& status);
+bool IsResourceExhausted(const Status& status);
+bool IsUnauthenticated(const Status& status);
+bool IsUnavailable(const Status& status);
+bool IsUnimplemented(const Status& status);
+bool IsUnknown(const Status& status);
+
+// Convenience Status constructors, not having to specify the underlying Code.
+Status AbortedError(absl::string_view message);
+Status AlreadyExistsError(absl::string_view message);
+Status CancelledError(absl::string_view message);
+Status DataLossError(absl::string_view message);
+Status DeadlineExceededError(absl::string_view message);
+Status FailedPreconditionError(absl::string_view message);
+Status InternalError(absl::string_view message);
+Status InvalidArgumentError(absl::string_view message);
+Status NotFoundError(absl::string_view message);
+Status OutOfRangeError(absl::string_view message);
+Status PermissionDeniedError(absl::string_view message);
+Status ResourceExhaustedError(absl::string_view message);
+Status UnauthenticatedError(absl::string_view message);
+Status UnavailableError(absl::string_view message);
+Status UnimplementedError(absl::string_view message);
+Status UnknownError(absl::string_view message);
 
 // Helper class to manage multiple child status values.
 class StatusGroup {

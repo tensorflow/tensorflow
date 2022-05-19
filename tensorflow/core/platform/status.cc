@@ -246,6 +246,134 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
   return os;
 }
 
+bool IsAborted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ABORTED;
+}
+
+bool IsAlreadyExists(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ALREADY_EXISTS;
+}
+
+bool IsCancelled(const Status& status) {
+  return status.code() == tensorflow::errors::Code::CANCELLED;
+}
+
+bool IsDataLoss(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DATA_LOSS;
+}
+
+bool IsDeadlineExceeded(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DEADLINE_EXCEEDED;
+}
+
+bool IsFailedPrecondition(const Status& status) {
+  return status.code() == tensorflow::errors::Code::FAILED_PRECONDITION;
+}
+
+bool IsInternal(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INTERNAL;
+}
+
+bool IsInvalidArgument(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INVALID_ARGUMENT;
+}
+
+bool IsNotFound(const Status& status) {
+  return status.code() == tensorflow::errors::Code::NOT_FOUND;
+}
+
+bool IsOutOfRange(const Status& status) {
+  return status.code() == tensorflow::errors::Code::OUT_OF_RANGE;
+}
+
+bool IsPermissionDenied(const Status& status) {
+  return status.code() == tensorflow::errors::Code::PERMISSION_DENIED;
+}
+
+bool IsResourceExhausted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::RESOURCE_EXHAUSTED;
+}
+
+bool IsUnauthenticated(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAUTHENTICATED;
+}
+
+bool IsUnavailable(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAVAILABLE;
+}
+
+bool IsUnimplemented(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNIMPLEMENTED;
+}
+
+bool IsUnknown(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNKNOWN;
+}
+
+Status AbortedError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::ABORTED, message);
+}
+
+Status AlreadyExistsError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::ALREADY_EXISTS, message);
+}
+
+Status CancelledError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::CANCELLED, message);
+}
+
+Status DataLossError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::DATA_LOSS, message);
+}
+
+Status DeadlineExceededError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::DEADLINE_EXCEEDED, message);
+}
+
+Status FailedPreconditionError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::FAILED_PRECONDITION, message);
+}
+
+Status InternalError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::INTERNAL, message);
+}
+
+Status InvalidArgumentError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::INVALID_ARGUMENT, message);
+}
+
+Status NotFoundError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::NOT_FOUND, message);
+}
+
+Status OutOfRangeError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::OUT_OF_RANGE, message);
+}
+
+Status PermissionDeniedError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::PERMISSION_DENIED, message);
+}
+
+Status ResourceExhaustedError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::RESOURCE_EXHAUSTED, message);
+}
+
+Status UnauthenticatedError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::UNAUTHENTICATED, message);
+}
+
+Status UnavailableError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::UNAVAILABLE, message);
+}
+
+Status UnimplementedError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::UNIMPLEMENTED, message);
+}
+
+Status UnknownError(absl::string_view message) {
+  return Status(tensorflow::errors::Code::UNKNOWN, message);
+}
+
 std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
                                       const char* msg) {
   std::string r("Non-OK-status: ");
