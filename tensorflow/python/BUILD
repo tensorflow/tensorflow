@@ -2963,7 +2963,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "noasan",  # TODO(b/233235689): Fails with ASAN.
+    ],
     deps = [
         ":array_ops",
         ":gradients",
