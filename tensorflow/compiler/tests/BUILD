@@ -2126,28 +2126,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "image_ops_jit_compile_test",
-    size = "medium",
-    srcs = ["image_ops_jit_compile_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-    ],
-    enable_mlir_bridge = False,
-    shard_count = 5,
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "optonly",
-    ],
-    use_xla_device = False,
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:math_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_xla_py_test(
     name = "ensure_shape_op_test",
     size = "medium",
     srcs = ["ensure_shape_op_test.py"],

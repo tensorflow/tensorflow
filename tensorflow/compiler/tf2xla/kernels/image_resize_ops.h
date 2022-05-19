@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_IMAGE_RESIZE_OPS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_IMAGE_RESIZE_OPS_H_
 
-#include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
@@ -54,11 +53,6 @@ class ResizeBilinearGradOp : public XlaOpKernel {
   bool align_corners_;
   bool half_pixel_centers_ = true;
   xla::PrimitiveType output_type_;
-
- private:
-  // Fallback light outside compilation kernel for the option combination we do
-  // not support.
-  absl::optional<CallTfKernelOp> fallback_tf_kernel_;
 };
 
 }  // namespace tensorflow
