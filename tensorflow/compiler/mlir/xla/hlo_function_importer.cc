@@ -275,6 +275,28 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   auto visibility = computation_name == "main" ? FuncOp::Visibility::Public
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);
+
+  for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
+    HloInstruction* parameter = entry.value();
+    if (parameter->has_sharding()) {
+      function.setArgAttr(
+          entry.index(), kShardingAttr,
+          builder_->getStringAttr(
+              parameter->sharding().ToProto().SerializeAsString()));
+    }
+  }
+  if (computation.root_instruction()->has_sharding()) {
+    auto result = computation.root_instruction();
+    if (function.getNumResults() != 1) {
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Expected only a single result but got ", function.getNumResults()));
+    }
+    function.setResultAttr(
+        0, kShardingAttr,
+        builder_->getStringAttr(
+            result->sharding().ToProto().SerializeAsString()));
+  }
+
   module_.push_back(function);
 
   // Add to the map right away for function calls.

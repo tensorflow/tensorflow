@@ -737,7 +737,7 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_outfeed_with_sharding
-// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
+// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> (!mhlo.token {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"})
 %test_outfeed_with_sharding (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
   %Arg_0.1 = s32[3] parameter(0)
   %Arg_1.2 = token[] parameter(1)
@@ -1414,4 +1414,11 @@ add {
   // CHECK: %[[TOK:.*]] = "mhlo.create_token"
   // CHECK: "mhlo.add_dependency"(%[[ARG0]], %[[TOK]]) : (tensor<4x4xf32>, !mhlo.token) -> tensor<4x4xf32>
   ROOT %add-dep = f32[4,4] add-dependency(f32[4,4] %Arg_0.1, token[] %after-all)
+}
+
+// CHECK-LABEL: func private @test_args_and_result_with_sharding
+// CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) -> (tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"})
+%test_args_and_result_with_sharding (Arg_0.1: s32[4]) -> s32[4] {
+  %arg0.1 = s32[4] parameter(0), sharding={devices=[2,1]0,1}
+  ROOT %copy.1 = s32[4] copy(%arg0.1), sharding={devices=[2,1]0,1}
 }
