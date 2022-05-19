@@ -231,7 +231,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const std::vector<std::string> coords{x, y, z};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis) &&
+      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis, gpu_info) &&
           block_size[i] != 1) {
         if (!check.empty()) {
           check += " && ";
@@ -336,7 +336,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     for (int z = 0; z < block_size.z; ++z) {
       const std::string zindex = std::to_string(z);
       c += "    int sz" + zindex + " = src_z + " + zindex + ";\n";
-      if (!src_def.SupportsZeroClamp(Axis::DEPTH)) {
+      if (!src_def.SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
         c += "    bool in_z" + zindex + " = sz" + zindex + " >= 0 && sz" +
              zindex + " < args.src_tensor.Depth();\n";
         if (!src_def.CanReadOutOfBorder(Axis::DEPTH)) {
@@ -345,7 +345,8 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
         }
       }
     }
-    if (block_size.z == 1 && !src_def.SupportsZeroClamp(Axis::DEPTH)) {
+    if (block_size.z == 1 &&
+        !src_def.SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
       c += "    if (!in_z0) continue;\n";
     }
     c += "    int kernel_z = kernel_first_dst_z - src_as_dst_z;\n";
@@ -363,7 +364,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const std::string src_y =
         src_def.HasAxis(Axis::DEPTH) ? "src_y_copy" : "src_y";
     c += "    int sy" + yindex + " = " + src_y + " + " + yindex + ";\n";
-    if (!src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_def.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool in_y" + yindex + " = sy" + yindex + " >= 0 && sy" +
            yindex + " < args.src_tensor.Height();\n";
       if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
@@ -372,7 +373,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
       }
     }
   }
-  if (block_size.y == 1 && !src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+  if (block_size.y == 1 && !src_def.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
     c += "      if (!in_y0) continue;\n";
   }
   c += "    int kernel_y = kernel_first_dst_y - src_as_dst_y;\n";
@@ -384,7 +385,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   for (int x = 0; x < block_size.x; ++x) {
     const std::string xindex = std::to_string(x);
     c += "      int sx" + xindex + " = src_x_copy + " + xindex + ";\n";
-    if (!src_def.SupportsZeroClamp(Axis::WIDTH)) {
+    if (!src_def.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
       c += "      bool in_x" + xindex + " = sx" + xindex + " >= 0 && sx" +
            xindex + " < args.src_tensor.Width();\n";
       if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
@@ -393,7 +394,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
       }
     }
   }
-  if (block_size.x == 1 && !src_def.SupportsZeroClamp(Axis::WIDTH)) {
+  if (block_size.x == 1 && !src_def.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
     c += "      if (!in_x0) continue;\n";
   }
   for (int z = 0; z < block_size.z; ++z) {
@@ -412,7 +413,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           c += "      args.src_tensor.GetAddress(addr" + id + ", " + coords +
                ", 0);\n";
         }
-        if (src_def.ReturnsZeroForNegOneRead()) {
+        if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
           c += "      addr" + id + " = select(-1, addr" + id + ", (" + check +
                "));\n";
           c += "      int ds" + id +
@@ -458,7 +459,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           }
           address += ", s";
         }
-        if (src_def.ReturnsZeroForNegOneRead()) {
+        if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
           c += "        FLT4 src" + id + " = args.src_tensor.Read(" + address +
                "); " + address + " += ds" + id + ";\n";
         } else {
