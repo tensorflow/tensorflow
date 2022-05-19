@@ -3222,9 +3222,13 @@ cc_library(
     hdrs = ["dot_merger.h"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla/service/graphcycles",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -3233,6 +3237,7 @@ tf_cc_test(
     srcs = ["dot_merger_test.cc"],
     deps = [
         ":algebraic_simplifier",
+        ":dot_decomposer",
         ":dot_merger",
         ":hlo_matchers",
         ":hlo_parser",

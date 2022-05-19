@@ -23,25 +23,41 @@ limitations under the License.
 
 namespace xla {
 
-// Merges dots that share an operand.  Transforms
+// Merges dots into slice(dot(concat)). Specifically, we do two optimizations:
 //
-//   x = dot(a, b)
-//   y = dot(a, c)
+// 1. Merge dots that share an operand.  Transforms
 //
-// into
+//      x = dot(a, b)
+//      y = dot(a, c)
 //
-//   z = dot(a, concat(b, c))
-//   x = slice(z)
-//   y = slice(z).
+//    into
 //
-// This requires that x and y are independent -- that is, x does not
-// transitively depend on y, and y does not transitively depend on x.
+//      z = dot(a, concat(b, c))
+//      x = slice(z)
+//      y = slice(z).
 //
-// This is a good transformation if the merged dot runs faster than the original
-// dots.  On the other hand, merging the dots results in a single result buffer
-// z whose live range is the union of x and y's live ranges, so can lead to
-// increased memory pressure.  You probably only want to do this optimization on
-// "small" dots which cannot saturate your device when run alone.
+// 2. Merge dots with the same shape into batch-dots.  For example, transforms
+//
+//      x = f32[10,100] dot(f32[10,20] a, f32[20,100] b)
+//      y = f32[10,100] dot(f32[10,20] c, f32[20,100] d)
+//
+//    into
+//
+//      new_lhs = f32[2,10,20] concat(f32[1,10,20] reshape(a),
+//                                    f32[1,10,20] reshape(c))
+//      new_rhs = f32[2,10,20] concat(...)
+//      z = f32[2,10,100] dot(new_lhs, new_rhs), batch_dims={0}
+//      a = slice(z)
+//      b = slice(z)
+//
+// These transformations require that x and y are independent -- that is, x does
+// not transitively depend on y, and y does not transitively depend on x.
+//
+// These are good transformations if the merged dot runs faster than the
+// original dots. On the other hand, merging the dots results in a single result
+// buffer z whose live range is the union of x and y's live ranges, so can lead
+// to increased memory pressure. You probably only want to do this optimization
+// on "small" dots which cannot saturate your device when run alone.
 //
 // We thus allow backends to set a max size above which an op will not be
 // merged.  The input+output bytes of at least one dot must be below the
