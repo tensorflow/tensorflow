@@ -246,6 +246,8 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
   return os;
 }
 
+Status OkStatus() { return Status(); }
+
 bool IsAborted(const Status& status) {
   return status.code() == tensorflow::errors::Code::ABORTED;
 }

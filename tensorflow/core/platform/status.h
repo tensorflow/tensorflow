@@ -72,6 +72,7 @@ class Status {
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
 
+  // Prefer using OkStatus().
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
@@ -195,6 +196,12 @@ class Status {
 
   void SlowCopyFrom(const State* src);
 };
+
+// OkStatus()
+//
+// Returns an OK status, equivalent to a default constructed instance. Prefer
+// usage of `OkStatus()` when constructing such an OK status.
+Status OkStatus();
 
 // These convenience functions return `true` if a given status matches the
 // `Code` error code of its associated function.
