@@ -385,7 +385,6 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   std::vector<int64_t> source_dims_stack(source_shape.rank());
   std::vector<int64_t> target_dims_stack(target_shape.rank());
   std::vector<int64_t> sharding_tile_dims_stack(source_shape.rank());
-  int64_t added_to_partially_replicated = 1;
   for (int64_t i = 0; i < source_shape.rank(); ++i) {
     source_dims_stack[i] = source_shape.dimensions(source_shape.rank() - 1 - i);
     sharding_tile_dims_stack[i] =
@@ -428,7 +427,7 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     } else if (s_size == 1) {
       // Trivial dimension removed.
       if (s_partitions != 1) {
-        added_to_partially_replicated *= s_partitions;
+        return absl::nullopt;
       }
       target_dims_stack.push_back(t_size);
     } else if (s_size > t_size) {
@@ -467,38 +466,19 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       target_dims_stack.push_back(t_size);
     }
   }
-  if (Product(target_tile_assignment_dimensions) == 1) {
-    return absl::nullopt;
-  }
   Array<int64_t> new_tile_assignment = sharding.tile_assignment();
   for (int64_t i = sharding.TiledDataRank();
        i < sharding.tile_assignment().num_dimensions(); ++i) {
     target_tile_assignment_dimensions.push_back(
         sharding.tile_assignment().dim(i));
   }
-
-  auto subgroup_types = sharding.subgroup_types();
-  // If we added dimensions to the partially replicated dimension then add the
-  // additional dimension on the partially replicated tiling.
-  if (added_to_partially_replicated > 1) {
-    if (sharding.ReplicateOnLastTileDim()) {
-      target_tile_assignment_dimensions.back() *= added_to_partially_replicated;
-    } else {
-      target_tile_assignment_dimensions.push_back(
-          added_to_partially_replicated);
-    }
-  }
-  // If subgroup_types doesn't have already partially replicated as a sharding
-  // type then add it.
-  if ((sharding.ReplicateOnLastTileDim() ||
-       added_to_partially_replicated > 1) &&
-      (subgroup_types.empty() ||
-       subgroup_types.back() != OpSharding::REPLICATED)) {
-    subgroup_types.push_back(OpSharding::REPLICATED);
-  }
   new_tile_assignment.Reshape(target_tile_assignment_dimensions);
-  return HloSharding::Subgroup(new_tile_assignment, subgroup_types,
-                               sharding.metadata());
+  return sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment,
+                                        sharding.metadata())
+             : HloSharding::Subgroup(new_tile_assignment,
+                                     sharding.subgroup_types(),
+                                     sharding.metadata());
 }
 
 HloSharding ReverseSharding(const HloSharding& sharding,
