@@ -184,17 +184,7 @@ def _verify_loop_init_vars(init_vars,
       if extra_message:
         error_msg += '\n' + extra_message
 
-    # This only happens when we could not infer a placeholder for the
-    # variable. The canonical case when that happens is when _placeholder_value
-    # couldnot infer a placeholder for it. That means it's of an unknown type
-    # or it's still undefined after staging one iteration.
     if error_msg is not None:
-      if fi_val:
-        error_msg += (", unless it's a {}; got {}".format(
-            LEGAL_LOOP_TYPES, type(fi_val)))
-      else:
-        # TODO(mdan): This can be handled by removing the loop var.
-        error_msg += '.'
       raise ValueError(error_msg)
 
 
@@ -1038,7 +1028,10 @@ def _placeholder_value(like, shape_invariant, original=None):
     Either a zero value of structure, shape and dtype mathing 'like', or
     'original', if no such zero value could be created.
   """
-  if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
+  if like is None:
+    return original, None
+
+  elif isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original, None
 
   elif isinstance(like, (int, float, bool)):
@@ -1095,7 +1088,11 @@ def _placeholder_value(like, shape_invariant, original=None):
     return (nest.pack_sequence_as(like,
                                   vals), nest.pack_sequence_as(like, invars))
 
-  return original, None
+  # This is to be caught by _try_handling_undefineds, to give more context.
+  raise TypeError(
+      "Found an unsupported type '{}' while creating placeholder for {}."
+      ' Supported types include Tensor, int, float, bool, list, tuple or dict.'
+      .format(type(like).__name__, like))
 
 
 def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
@@ -1129,6 +1126,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
        different from the corresponding loop outputs
   """
   state_modified = False
+  first_iter_vars = None
   failure_message = None
 
   try:
@@ -1151,29 +1149,29 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
 
       body()
       first_iter_vars = get_state()
-  except (UnboundLocalError, TypeError, ValueError, KeyError):
-    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
-    # Fall back to the old functionality. It will likely result in an input
-    # validation failure.
-    failure_message = ('Note: AutoGraph tried to determine initial values, but '
-                       'ran into an error and gave up:\n\t' +
-                       '\t'.join(traceback.format_exception(*sys.exc_info())))
-    first_iter_vars = None
-  finally:
-    if state_modified:
-      set_state(init_vars)
 
-  if first_iter_vars is not None:
-    # Note: the actual placeholder value doesn't matter, because as the staging
-    # proved, it will be replaced by an actual value before being read.
+    # Note: the actual placeholder value doesn't matter, because as the
+    # staging proved, it will be replaced by an actual value before being
+    # read.
     inits_and_invariants = tuple(
         (_placeholder_value(iv, i, v) if n else (v, None))
         for v, n, iv, i in zip(init_vars, nulls, first_iter_vars,
                                shape_invariants))
     init_vars, extra_shape_invariants = zip(*inits_and_invariants)
     success = True
-  else:
-    success = False
+
+  except (UnboundLocalError, TypeError, ValueError, KeyError):
+    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
+    # Fall back to the old functionality. It will likely result in an input
+    # validation failure.
+    exc = sys.exc_info()
+    failure_message = (
+        'Note: AutoGraph tried to define it automatically, but ran into a'
+        ' {}: {}'.format(exc[0].__name__, exc[1]))
+
+  finally:
+    if state_modified:
+      set_state(init_vars)
 
   # This check runs regardless, in case we captured non-Tensor inputs.
   _verify_loop_init_vars(
