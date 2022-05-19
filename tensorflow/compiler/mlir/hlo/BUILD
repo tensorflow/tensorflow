@@ -1398,6 +1398,7 @@ cc_library(
         "lib/Dialect/mhlo/transforms/lower_complex.cc",
         "lib/Dialect/mhlo/transforms/lower_general_dot.cc",
         "lib/Dialect/mhlo/transforms/optimize_mhlo.cc",
+        "lib/Dialect/mhlo/transforms/sparse_rewriting.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
@@ -1412,6 +1413,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SparseTensor",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
