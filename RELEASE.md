@@ -1,3 +1,7 @@
+# Release 2.7.3
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.7.2
 
 
