@@ -20,7 +20,6 @@ import functools
 import gc
 import io
 import os
-import subprocess
 import pathlib
 import sys
 import tempfile
@@ -2566,29 +2565,15 @@ class _TestModel(module.Module):
     return x
 
 class SavedModelLoadMemoryTests(test.TestCase):
-
-  def get_gpu_memory(self):
-    command = "nvidia-smi --query-gpu=memory.total --format=csv"
-    mem_free_info = (
-        subprocess.check_output(command.split())
-        .decode('ascii')
-        .split('\n')[:-1][1:]
-    )
-    mem_free_values = [int(x.split()[0]) for i, x in enumerate(mem_free_info)]
-    if isinstance(mem_free_values, list):
-      return int(mem_free_values[0] / 1024)
-    return int(mem_free_values)
-
   @test_util.run_gpu_only
   def test_no_oom_loading_large_tenor(self):
     if not config.get_soft_device_placement():
       self.skipTest("This test only works for soft device placement is on")
-    max_gpu_memory_in_Gb = self.get_gpu_memory()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    ncols = 128
-    nrows = (max_gpu_memory_in_Gb + 1) * 2**30 // ncols // 4
+    ncols = 16
+    nrows = 32
     model = _TestModel(rows=nrows, cols=ncols)
-    x = array_ops.zeros(shape=(ncols, 128), dtype=dtypes.float32)
+    x = array_ops.zeros(shape=(ncols, 2), dtype=dtypes.float32)
     y = model(x)
     save.save(
         model,
@@ -2598,13 +2583,16 @@ class SavedModelLoadMemoryTests(test.TestCase):
                 .SAVE_VARIABLE_DEVICES
         ),
     )
-    loaded = load.load(
+    loaded_on_cpu = load.load(
         export_dir=save_dir,
         options=load_options.LoadOptions(
             experimental_variable_policy=save_options.VariablePolicy
                 .SAVE_VARIABLE_DEVICES
         ),
     )
+    loaded_on_gpu = load.load(export_dir=save_dir)
+    self.assertTrue('CPU' in loaded_on_cpu.table.device)
+    self.assertTrue('GPU' in loaded_on_gpu.table.device)
 
 
 if __name__ == "__main__":
