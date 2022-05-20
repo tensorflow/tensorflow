@@ -593,6 +593,20 @@ string GetProducerName(const string& function_name) {
   return "UNKNOWN";
 }
 
+// Gets the proper tensor dimension from XLA OpSharding.
+// "replicate_on_last_tile_dim" and "last_tile_dims" should be deducted from the
+// real Tensor dimensions when tiled.
+// For example:
+// f32[8,512](sharding={devices=[1,1,2]0,1 last_tile_dims={REPLICATED})
+// also means a replicated tensor over all devices.
+//
+// See xla_data.proto for detailed explanations on the fields.
+int GetDimsFromXLAShardingTiled(const xla::OpSharding xla_sharding) {
+  return xla_sharding.tile_assignment_dimensions_size() -
+         (xla_sharding.replicate_on_last_tile_dim() ? 1 : 0) -
+         xla_sharding.last_tile_dims_size();
+}
+
 }  // end namespace
 
 namespace tpu_functional_internal {
@@ -1762,7 +1776,9 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   if (sharding.has_value() &&
       sharding.value().type() == xla::OpSharding::OTHER) {
     xla_sharding = sharding.value();
-    is_var_sharded = true;
+    for (int dim = 0; dim < GetDimsFromXLAShardingTiled(xla_sharding); dim++) {
+      is_var_sharded |= xla_sharding.tile_assignment_dimensions(dim) > 1;
+    }
   } else {
     xla_sharding.set_type(xla::OpSharding::REPLICATED);
     is_var_sharded = false;
@@ -1775,9 +1791,9 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
 
   int split_dim = -1;
   int split_size = 0;
+
   if (is_var_sharded) {
-    for (int dim = 0; dim < xla_sharding.tile_assignment_dimensions_size();
-         dim++) {
+    for (int dim = 0; dim < GetDimsFromXLAShardingTiled(xla_sharding); dim++) {
       if (xla_sharding.tile_assignment_dimensions(dim) > 1) {
         if (split_dim != -1) {
           return errors::InvalidArgument(
