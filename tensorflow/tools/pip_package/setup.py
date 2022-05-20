@@ -75,20 +75,6 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    'absl-py >= 1.0.0',
-    'astunparse >= 1.6.0',
-    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
-    # issue is resolved.
-    'flatbuffers >= 1.12, <2',
-    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
-    'gast >= 0.2.1, <= 0.4.0',
-    'google_pasta >= 0.1.1',
-    'h5py >= 2.9.0',
-    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
-    'libclang >= 13.0.0',
-    'numpy >= 1.20',
-    'opt_einsum >= 2.3.2',
-    'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
     # Protobuf 4.0 is binary incompatible with what C++ TF uses.
     # We need ~1 quarter to update properly.
