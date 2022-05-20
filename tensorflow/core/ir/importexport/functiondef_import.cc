@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 using tensorflow::AttrValue;
 using tensorflow::FunctionDef;
@@ -40,6 +41,7 @@ using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpDef_AttrDef;
 using tensorflow::Status;
+using tensorflow::StatusOr;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::protobuf::RepeatedPtrField;
 
@@ -166,9 +168,12 @@ Status ImportNodes(ValueMapManager value_manager,
     if (node.op().empty()) return InvalidArgument("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
-    for (const std::string& input : node.input())
+    for (const std::string& input : node.input()) {
+      if (input.empty())
+        return InvalidArgument("Node '", node.name(), "' has an empty input");
       state.operands.push_back(
           value_manager.GetValueOrCreatePlaceholder(input));
+    }
     // Retrieve the entry in the nodes_map for this node and infer the result
     // count from what was inferred during the first traversal above.
     state.types.push_back(placeholder_ty);
@@ -461,21 +466,31 @@ Status ImportGenericFunction(
                               Value());
   for (const auto& ret_val : func.ret()) {
     auto position = output_name_to_position.find(ret_val.first);
-    if (position == output_name_to_position.end())
+    if (position == output_name_to_position.end()) {
       return InvalidArgument(
           "Can't import function, returned value references unknown output "
           "argument ",
           ret_val.first);
+    }
+    if (ret_val.second.empty()) {
+      return InvalidArgument("Function '", func.signature().name(),
+                             "' has empty result name");
+    }
     ret_vals[position->second] =
         value_manager.GetValueOrCreatePlaceholder(ret_val.second);
   }
   for (const auto& ret_val : func.control_ret()) {
     auto position = control_output_to_position.find(ret_val.first);
-    if (position == control_output_to_position.end())
+    if (position == control_output_to_position.end()) {
       return InvalidArgument(
           "Can't import function, returned value references unknown output "
           "argument ",
           ret_val.first);
+    }
+    if (ret_val.second.empty()) {
+      return InvalidArgument("Function '", func.signature().name(),
+                             "' has empty control result name");
+    }
     Value result = value_manager.GetValueOrCreatePlaceholder(
         (Twine("^") + ret_val.second).str());
     if (!result.getType().isa<ControlType>())

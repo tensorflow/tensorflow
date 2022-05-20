@@ -1,0 +1,29 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Function 'foo' has empty result name
+
+library {
+  function {
+    signature {
+      name: "foo"
+      output_arg {
+        name: "output"
+        type: DT_INT32
+      }
+    }
+    node_def {
+      name: "y"
+      op: "NoOp"
+      attr {
+        key: "T"
+        value {
+          placeholder: "T"
+        }
+      }
+    }
+    ret {
+      key: "output"
+      value: ""
+    }
+  }
+}
