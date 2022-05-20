@@ -29,6 +29,17 @@ jobs:
       matrix:
         pyver: ['3.7', '3.8', '3.9', '3.10']
     steps:
+      - name: Stop old running containers (if any)
+        shell: bash
+        run: |
+          running_containers=$(docker ps -q) && \
+          if [[ $running_containers == "" ]]; then
+            echo "No running containers";
+          else
+            echo "Running container(s) found" && \
+            docker stop $running_containers;
+          fi
+          docker container prune -f
       - name: Clean repository
         shell: bash
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
