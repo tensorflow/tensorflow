@@ -141,6 +141,7 @@ struct MhloToScalarOp<mhlo::SubOp> {
 template <>
 struct MhloToScalarOp<mhlo::SqrtOp> {
   using FOp = ::mlir::math::SqrtOp;
+  using COp = ::mlir::complex::SqrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::SinOp> {
@@ -169,6 +170,7 @@ struct MhloToScalarOp<mhlo::Atan2Op> {
 template <>
 struct MhloToScalarOp<mhlo::TanhOp> {
   using FOp = ::mlir::math::TanhOp;
+  using COp = ::mlir::complex::TanhOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::XorOp> {
@@ -845,12 +847,11 @@ inline Value MapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   auto lb = ImplicitLocOpBuilder(loc, *b);
   // Floating point can use std::powf
   auto result_type = result_types.front();
-  if (result_type.isa<::mlir::FloatType>())
-    return MapMhloOpToScalarOpImpl<::mlir::math::PowFOp>{}(loc, result_types,
-                                                           arg_types, args, b);
-
-  assert(result_type.isa<::mlir::IntegerType>() &&
-         "only float and integer `pow` is supported right now");
+  if (result_type.isa<ComplexType, FloatType>()) {
+    return MapMhloOpToScalarOpImpl<isFloatType, math::PowFOp, isComplexType,
+                                   complex::PowOp>{}(loc, result_types,
+                                                     arg_types, args, b);
+  }
 
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;

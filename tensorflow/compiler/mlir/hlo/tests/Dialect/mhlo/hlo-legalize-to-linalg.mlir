@@ -113,6 +113,17 @@ func.func @population_count_integer(%lhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_sqrt
+func.func @complex_sqrt(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.sqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.sqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_rsqrt
 func.func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.rsqrt"(%operand)
@@ -335,6 +346,17 @@ func.func @float_tanh(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: tanh
   %0 = "mhlo.tanh"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_tanh
+func.func @complex_tanh(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.tanh"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.tanh
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -1552,6 +1574,22 @@ func.func @float_pow(%lhs: tensor<2x2xf32>,
   %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xf32>,
                                    tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_pow
+func.func @complex_pow(%lhs: tensor<2x2xcomplex<f32>>,
+                %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: ^{{[a-z0-9_]*}}
+  // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: complex<f32>
+  // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: complex<f32>
+  // CHECK: %[[RESULT:[a-zA-Z0-9_]*]] = complex.pow %[[ARG0]], %[[ARG1]]
+  // CHECK: linalg.yield %[[RESULT]]
+  %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+                                   tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
