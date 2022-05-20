@@ -1634,7 +1634,7 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
   module->AddEmbeddedComputation(std::move(async_computation));
 
   const std::string expected_with_syntax_sugar =
-      R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
+      R"(HloModule StringifyAsyncOps
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
@@ -1646,7 +1646,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 )";
   EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
   const std::string expected_without_syntax_sugar =
-      R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
+      R"(HloModule StringifyAsyncOps
 
 %AsyncOp (p0.1: f32[10]) -> f32[20] {
   %p0.1 = f32[10]{0} parameter(0)
