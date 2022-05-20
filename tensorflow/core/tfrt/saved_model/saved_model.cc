@@ -447,6 +447,15 @@ void GetSignaturesFromSignatureDef(
   }
 }
 
+void UpdateCompileOptions(SavedModel::Options& options) {
+  // Disable DecomposeResourceOpsPass for now, as DecomposeResourceGather does
+  // not work well with GPU (b/232819415).
+  if (options.graph_execution_options.enable_tfrt_gpu) {
+    options.graph_execution_options.compile_options.decompose_resource_ops =
+        false;
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
@@ -457,6 +466,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
+  UpdateCompileOptions(options);
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
