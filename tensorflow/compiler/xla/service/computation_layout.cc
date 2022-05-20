@@ -67,7 +67,7 @@ std::string ComputationLayout::ToString() const {
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }
-  return absl::StrCat("(", absl::StrJoin(params, ","), ")->",
+  return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
                       result_layout_.ToString());
 }
 

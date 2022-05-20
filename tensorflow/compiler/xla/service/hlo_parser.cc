@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -267,7 +266,6 @@ class HloParserImpl : public HloParser {
     kEnum,
     kRandomAlgorithm,
     kAliasing,
-    kComputationLayout,
     kInstructionAliasing,
     kCustomCallSchedule,
     kCustomCallApiVersion,
@@ -510,9 +508,6 @@ class HloParserImpl : public HloParser {
   // Parses the aliasing information from string `s`, returns `false` if it
   // fails.
   bool ParseAliasing(AliasingData* data);
-
-  // Parses the entry computation layout.
-  bool ParseComputationLayout(ComputationLayout* computation_layout);
 
   // Parses the per-instruction aliasing information from string `s`, returns
   // `false` if it fails.
@@ -777,48 +772,6 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
   return true;
 }
 
-bool HloParserImpl::ParseComputationLayout(
-    ComputationLayout* computation_layout) {
-  if (!ParseToken(TokKind::kLbrace,
-                  "Expects '{' at the start of aliasing description")) {
-    return false;
-  }
-  if (!ParseToken(TokKind::kLparen, "Expects ( before parameter shape list")) {
-    return false;
-  }
-  while (lexer_.GetKind() != TokKind::kRparen) {
-    Shape param;
-    if (!ParseShape(&param)) {
-      return false;
-    }
-    computation_layout->add_parameter_layout(ShapeLayout(param));
-    if (lexer_.GetKind() == TokKind::kRparen) {
-      break;
-    }
-    if (!ParseToken(TokKind::kComma, "Expects , between parameter shapes")) {
-      return false;
-    }
-  }
-
-  if (!ParseToken(TokKind::kRparen,
-                  "Expects ) at end of parameter shape list")) {
-    return false;
-  }
-  if (!ParseToken(TokKind::kArrow, "Expects -> before result shape")) {
-    return false;
-  }
-  Shape result;
-  if (!ParseShape(&result)) {
-    return false;
-  }
-  *computation_layout->mutable_result_layout() = ShapeLayout(result);
-  if (!ParseToken(TokKind::kRbrace,
-                  "Expects '}' at the end of computation layouts")) {
-    return false;
-  }
-  return true;
-}
-
 bool HloParserImpl::ParseInstructionOutputOperandAliasing(
     std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>*
         aliasing_output_operand_pairs) {
@@ -923,16 +876,12 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   absl::optional<AliasingData> aliasing_data;
   absl::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
-  absl::optional<ComputationLayout> entry_computation_layout;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
                                  &aliasing_data};
   attrs["alias_passthrough_params"] = {/*required=*/false, AttrTy::kBool,
                                        &alias_passthrough_params};
-  attrs["entry_computation_layout"] = {/*required=*/false,
-                                       AttrTy::kComputationLayout,
-                                       &entry_computation_layout};
   if (!ParseAttributes(attrs)) {
     return false;
   }
@@ -944,17 +893,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
-  HloModuleConfig config = module->config();
-  bool default_config = true;
   if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
+    HloModuleConfig config = module->config();
     config.set_alias_passthrough_params(true);
-    default_config = false;
-  }
-  if (entry_computation_layout.has_value()) {
-    *config.mutable_entry_computation_layout() = *entry_computation_layout;
-    default_config = false;
-  }
-  if (!default_config) {
     module->set_config(config);
   }
   if (aliasing_data) {
@@ -4335,15 +4276,6 @@ bool HloParserImpl::ParseAttributeHelper(
         }
         static_cast<optional<AliasingData>*>(attr_out_ptr)
             ->emplace(aliasing_data);
-        return true;
-      }
-      case AttrTy::kComputationLayout: {
-        ComputationLayout computation_layout(ShapeLayout(Shape{}));
-        if (!ParseComputationLayout(&computation_layout)) {
-          return false;
-        }
-        static_cast<optional<ComputationLayout>*>(attr_out_ptr)
-            ->emplace(computation_layout);
         return true;
       }
       case AttrTy::kInstructionAliasing: {
