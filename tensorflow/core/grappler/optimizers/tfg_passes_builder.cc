@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/core/util/util.h"
 
@@ -42,12 +43,15 @@ void DefaultGrapplerPipeline(PassManager& manager) {
 // Run the consolidate attributes pass. Convert the whole module to region
 // control-flow and run control-flow sinking. Convert the whole module back to
 // functional control-flow and prepare the attributes for export.
-void DefaultModuleGrapplerPipeline(PassManager& manager) {
+void DefaultModuleGrapplerPipeline(PassManager& manager,
+                                   const tensorflow::RewriterConfig& config) {
   // TODO(chiahungduan): This will be the default pass for TFG pipeline, remove
   // this when the default pipeline has added it.
   manager.addPass(CreateConsolidateAttributesPass());
   manager.addPass(CreateFunctionalToRegionPass());
-  manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
+  if (config.experimental_conditional_code_motion() !=
+      tensorflow::RewriterConfig::OFF)
+    manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
   manager.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
   manager.addPass(CreateLiftLegacyCallPass());
   manager.addPass(createSymbolPrivatizePass());

@@ -1254,7 +1254,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
         // For module-level optimizations, use multithreading to process
         // functions in parallel.
-        mlir::tfg::DefaultModuleGrapplerPipeline, /*num_tfg_threads=*/4));
+        [&](mlir::PassManager& manager) {
+          mlir::tfg::DefaultModuleGrapplerPipeline(manager, cfg_);
+        },
+        /*num_tfg_threads=*/4));
     // Wrap the optimized GraphDef in a new GrapplerItem with copied
     // configuration options from the provided item.
     GrapplerItem tfg_item = item.WithGraph(std::move(*optimized_graph));
