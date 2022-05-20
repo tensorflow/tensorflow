@@ -402,12 +402,19 @@ PYBIND11_MODULE(xla_extension, m) {
           "blocking_key_value_get",
           [](DistributedRuntimeClient& client, std::string key,
              int64_t timeout_in_ms) {
+            py::gil_scoped_release gil_release;
             return client.BlockingKeyValueGet(
                 key, absl::Milliseconds(timeout_in_ms));
           },
           py::arg("key"), py::arg("timeout_in_ms"))
-      .def("key_value_set", &DistributedRuntimeClient::KeyValueSet,
-           py::arg("key"), py::arg("value"));
+      .def(
+          "key_value_set",
+          [](DistributedRuntimeClient& client, std::string key,
+             std::string value) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueSet(key, value);
+          },
+          py::arg("key"), py::arg("value"));
 
   m.def(
       "get_distributed_runtime_service",
