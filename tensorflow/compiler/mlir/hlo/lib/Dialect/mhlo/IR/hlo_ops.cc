@@ -2131,12 +2131,6 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   // static shape to non-static shape.
   if (!result_ty.hasStaticShape()) return {};
 
-  // TODO(hinsu): Handle unsigned types.
-  if (operand_ty.getElementType().isUnsignedInteger() ||
-      result_ty.getElementType().isUnsignedInteger()) {
-    return {};
-  }
-
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
     return hlo::ConvertElementsAttr(elementsAttr,

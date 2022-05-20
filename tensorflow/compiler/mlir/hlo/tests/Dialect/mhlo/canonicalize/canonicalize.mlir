@@ -2126,6 +2126,62 @@ func.func @eliminate_identity_convert(%arg : tensor<?x32xi16>) -> tensor<?x32xi1
   func.return %0 : tensor<?x32xi16>
 }
 
+func.func @fold_fptosi() -> tensor<i16> {
+  %0 = mhlo.constant dense<65535.000000e+00> : tensor<f32>
+  // CHECK: mhlo.constant dense<32767> : tensor<i16>
+  %1 = "mhlo.convert"(%0) : (tensor<f32>) -> tensor<i16>
+  func.return %1 : tensor<i16>
+}
+
+func.func @fold_fptoui() -> tensor<ui16> {
+  %0 = mhlo.constant dense<-1.000000e+00> : tensor<f32>
+  // CHECK: mhlo.constant dense<0> : tensor<ui16>
+  %1 = "mhlo.convert"(%0) : (tensor<f32>) -> tensor<ui16>
+  func.return %1 : tensor<ui16>
+}
+
+func.func @fold_sitofp() -> tensor<f32> {
+  %0 = mhlo.constant dense<-1> : tensor<i16>
+  // CHECK: mhlo.constant dense<-1.000000e+00> : tensor<f32>
+  %1 = "mhlo.convert"(%0) : (tensor<i16>) -> tensor<f32>
+  func.return %1 : tensor<f32>
+}
+
+func.func @fold_uitofp() -> tensor<f32> {
+  %0 = mhlo.constant dense<65535> : tensor<ui16>
+  // CHECK: mhlo.constant dense<6.553500e+04> : tensor<f32>
+  %1 = "mhlo.convert"(%0) : (tensor<ui16>) -> tensor<f32>
+  func.return %1 : tensor<f32>
+}
+
+func.func @fold_uitoui() -> tensor<ui32> {
+  %0 = mhlo.constant dense<65535> : tensor<ui16>
+  // CHECK: mhlo.constant dense<65535> : tensor<ui32>
+  %1 = "mhlo.convert"(%0) : (tensor<ui16>) -> tensor<ui32>
+  func.return %1 : tensor<ui32>
+}
+
+func.func @fold_uitosi() -> tensor<i32> {
+  %0 = mhlo.constant dense<65535> : tensor<ui16>
+  // CHECK: mhlo.constant dense<65535> : tensor<i32>
+  %1 = "mhlo.convert"(%0) : (tensor<ui16>) -> tensor<i32>
+  func.return %1 : tensor<i32>
+}
+
+func.func @fold_sitoui() -> tensor<ui32> {
+  %0 = mhlo.constant dense<-1> : tensor<i16>
+  // CHECK: mhlo.constant dense<4294967295> : tensor<ui32>
+  %1 = "mhlo.convert"(%0) : (tensor<i16>) -> tensor<ui32>
+  func.return %1 : tensor<ui32>
+}
+
+func.func @fold_sitosi() -> tensor<i32> {
+  %0 = mhlo.constant dense<-1> : tensor<i16>
+  // CHECK: mhlo.constant dense<-1> : tensor<i32>
+  %1 = "mhlo.convert"(%0) : (tensor<i16>) -> tensor<i32>
+  func.return %1 : tensor<i32>
+}
+
 // CHECK-LABEL: @eliminate_redundant_reshape
 func.func @eliminate_redundant_reshape(%arg : tensor<1x32xi16>) -> tensor<1x32xi16> {
   %0 = "mhlo.reshape"(%arg) : (tensor<1x32xi16>) -> tensor<2x16xi16>
