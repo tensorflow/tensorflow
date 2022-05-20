@@ -320,6 +320,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
     csinfo_.mkl_pad_with_fused_conv2d = "_MklPadWithFusedConv2D";
     csinfo_.mkl_swish = "_MklSwish";
+    csinfo_.mkl_quantized_transpose = "_MklQuantizedTranspose";
     csinfo_.pad = "Pad";
     csinfo_.pad_with_conv2d = "__MklDummyPadWithConv2D";
     csinfo_.pad_with_fused_conv2d = "__MklDummyPadWithFusedConv2D";
@@ -361,6 +362,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedDepthwiseConv2DWithBiasAndRelu";
     csinfo_.quantized_depthwise_conv2d_with_bias_and_relu_and_requantize =
         "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize";
+    csinfo_.quantized_transpose = "_QuantizedTranspose";
     csinfo_.quantize_v2 = "QuantizeV2";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
@@ -685,6 +687,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
              csinfo_
                  .quantized_depthwise_conv2d_with_bias_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
+    rinfo_.push_back({csinfo_.quantized_transpose,
+                      csinfo_.mkl_quantized_transpose, CopyAttrsAll,
+                      AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantize_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
                       CopyAttrsAll, QuantizeOpRewrite,
@@ -946,6 +951,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_pad_with_conv2d;
     string mkl_pad_with_fused_conv2d;
     string mkl_swish;
+    string mkl_quantized_transpose;
     string mul;
     string pad;
     string pad_with_conv2d;
@@ -974,6 +980,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string quantized_depthwise_conv2d_with_bias;
     string quantized_depthwise_conv2d_with_bias_and_relu;
     string quantized_depthwise_conv2d_with_bias_and_relu_and_requantize;
+    string quantized_transpose;
     string quantize_v2;
     string relu;
     string relu_grad;
@@ -3838,7 +3845,8 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
 
   // We make an exception for __MklDummyConv2DWithBias,
   // __MklConv2DBackpropFilterWithBias, and __MklDummyPadWithConv2D since their
-  // names do not match Mkl node names.
+  // names do not match Mkl node names. We also make exceptions for internal
+  // operations that have underscore prefix, for example, _FusedMatMul.
   if (n->type_string() != csinfo_.conv2d_with_bias &&
       n->type_string() != csinfo_.pad_with_conv2d &&
       n->type_string() != csinfo_.pad_with_fused_conv2d &&
@@ -3848,6 +3856,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       n->type_string() != csinfo_.fused_depthwise_conv2d &&
       n->type_string() != csinfo_.fused_matmul &&
       n->type_string() != csinfo_.fused_conv3d &&
+      n->type_string() != csinfo_.quantized_transpose &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;

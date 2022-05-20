@@ -72,6 +72,7 @@ class QuantizedReshapeOp : public ReshapeOp {
                           QuantizedReshapeOp)
 
 REGISTER_CPU_KERNEL(::tensorflow::quint8);
+REGISTER_CPU_KERNEL(::tensorflow::qint8);
 REGISTER_CPU_KERNEL(::tensorflow::qint32);
 
 #undef REGISTER_CPU_KERNEL

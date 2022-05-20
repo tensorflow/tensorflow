@@ -25,7 +25,7 @@ class TransposeOp : public OpKernel {
  public:
   explicit TransposeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override;
+  virtual void Compute(OpKernelContext* ctx) override;
 
  protected:
   virtual Status DoTranspose(OpKernelContext* ctx, const Tensor& in,

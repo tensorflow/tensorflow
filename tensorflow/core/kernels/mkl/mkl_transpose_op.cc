@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -123,7 +125,10 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
       case DT_BFLOAT16:
         return MKLTransposeND<bfloat16>(ctx, in, out, perm);
         break;
-      // TODO(intel-tf): support other types such as INT8.
+      case DT_QINT8:
+        return MKLTransposeND<qint8>(ctx, in, out, perm);
+      case DT_QUINT8:
+        return MKLTransposeND<quint8>(ctx, in, out, perm);
       default:
         break;
     }
@@ -134,6 +139,25 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
 }
+
+class MklQuantizedTransposeCpuOp : public MklTransposeCpuOp {
+ public:
+  explicit MklQuantizedTransposeCpuOp(OpKernelConstruction* ctx)
+      : MklTransposeCpuOp(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    MklTransposeCpuOp::Compute(ctx);
+
+    Tensor* output_min = nullptr;
+    Tensor* output_max = nullptr;
+
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(1, {}, &output_min));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(2, {}, &output_max));
+
+    output_min->flat<float>()(0) = ctx->input(2).flat<float>()(0);
+    output_max->flat<float>()(0) = ctx->input(3).flat<float>()(0);
+  }
+};
 
 Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                                const Tensor& in,
@@ -176,7 +200,21 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                           MklConjugateTransposeCpuOp);
 
 TF_CALL_ALL_TYPES(REGISTER)
+TF_CALL_qint8(REGISTER) TF_CALL_quint8(REGISTER)
 #undef REGISTER
+
+    REGISTER_KERNEL_BUILDER(Name("_QuantizedTranspose")
+                                .Device(DEVICE_CPU)
+                                .TypeConstraint("T", {DT_QINT8, DT_QUINT8})
+                                .HostMemory("perm"),
+                            NoOp);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedTranspose")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint("T", {DT_QINT8, DT_QUINT8})
+                            .HostMemory("perm")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklQuantizedTransposeCpuOp);
 
 }  // namespace tensorflow
 

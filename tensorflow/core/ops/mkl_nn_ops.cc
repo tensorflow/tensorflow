@@ -1937,6 +1937,126 @@ operation.
 expected to invoke these operators.
 )doc");
 
+template <typename T>
+std::vector<int64> AsInt64(const Tensor* tensor, int64 num_elements) {
+  std::vector<int64> ret(num_elements);
+  auto data = tensor->vec<T>();
+  for (int64 i = 0; i < num_elements; ++i) {
+    ret[i] = data(i);
+  }
+  return ret;
+}
+
+Status TransposeShapeFn(InferenceContext* c) {
+  ShapeHandle input = c->input(0);
+  ShapeHandle perm_shape = c->input(1);
+  const Tensor* perm = c->input_tensor(1);
+  DimensionHandle perm_elems = c->NumElements(perm_shape);
+  // If we don't have rank information on the input or value information on
+  // perm we can't return any shape information, otherwise we have enough
+  // information to at least find the rank of the output.
+  if (!c->RankKnown(input) && !c->ValueKnown(perm_elems) && perm == nullptr) {
+    c->set_output(0, c->UnknownShape());
+    return OkStatus();
+  }
+
+  // Find our value of the rank.
+  int64 rank;
+  if (c->RankKnown(input)) {
+    rank = c->Rank(input);
+  } else if (c->ValueKnown(perm_elems)) {
+    rank = c->Value(perm_elems);
+  } else {
+    rank = perm->NumElements();
+  }
+  if (!c->RankKnown(input) && rank < 2) {
+    // A permutation array containing a single element is ambiguous. It could
+    // indicate either a scalar or a 1-dimensional array, both of which the
+    // transpose op returns unchanged.
+    c->set_output(0, input);
+    return OkStatus();
+  }
+
+  std::vector<DimensionHandle> dims;
+  dims.resize(rank);
+  TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
+  // Ensure that perm is a vector and has rank elements.
+  TF_RETURN_IF_ERROR(c->WithRank(perm_shape, 1, &perm_shape));
+  TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
+
+  // If we know the rank of the input and the value of perm, we can return
+  // all shape information, otherwise we can only return rank information,
+  // but no information for the dimensions.
+  if (perm != nullptr) {
+    std::vector<int64> data;
+    if (perm->dtype() == DT_INT32) {
+      data = AsInt64<int32>(perm, rank);
+    } else {
+      data = AsInt64<int64>(perm, rank);
+    }
+
+    for (int32 i = 0; i < rank; ++i) {
+      int64 in_idx = data[i];
+      if (in_idx >= rank) {
+        return errors::InvalidArgument("perm dim ", in_idx,
+                                       " is out of range of input rank ", rank);
+      }
+      dims[i] = c->Dim(input, in_idx);
+    }
+  } else {
+    for (int i = 0; i < rank; ++i) {
+      dims[i] = c->UnknownDim();
+    }
+  }
+
+  c->set_output(0, c->MakeShape(dims));
+  return OkStatus();
+}
+
+REGISTER_OP("_QuantizedTranspose")
+    .Input("x: T")
+    .Input("perm: Tperm")
+    .Input("min_x: float")
+    .Input("max_x: float")
+    .Output("y: T")
+    .Output("min_y: float")
+    .Output("max_y: float")
+    .Attr("T: quantizedtype")
+    .Attr("Tperm: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(TransposeShapeFn(c));
+      ShapeHandle scalar_shape_handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &scalar_shape_handle));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &scalar_shape_handle));
+      c->set_output(1, scalar_shape_handle);
+      c->set_output(2, scalar_shape_handle);
+      return OkStatus();
+    });
+
+REGISTER_OP("_MklQuantizedTranspose")
+    .Input("x: T")
+    .Input("perm: Tperm")
+    .Input("min_x: float")
+    .Input("max_x: float")
+    .Output("y: T")
+    .Output("min_y: float")
+    .Output("max_y: float")
+    .Attr("T: quantizedtype")
+    .Attr("Tperm: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(TransposeShapeFn(c));
+      ShapeHandle scalar_shape_handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &scalar_shape_handle));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &scalar_shape_handle));
+      c->set_output(1, scalar_shape_handle);
+      c->set_output(2, scalar_shape_handle);
+      return OkStatus();
+    })
+    .Doc(R"doc(
+MKL version of _QuantizedTranspose. Graph rewrite pass is expected to invoke
+these operators.
+)doc");
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
