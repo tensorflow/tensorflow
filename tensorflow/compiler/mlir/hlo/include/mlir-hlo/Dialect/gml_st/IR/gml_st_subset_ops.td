@@ -87,4 +87,30 @@ def GMLST_TileOp : GMLST_Op<"tile", [AttrSizedOperandSegments]> {
   let hasVerifier = 0;
 }
 
+def GMLST_OperandTileForDynamicBroadcastInDimOp : GMLST_Op<
+    "operand_tile_for_dynamic_broadcast_in_dim", []> {
+  let summary = [{
+    Computes the minimal operand tile for `dynamic_broadcast_in_dim`
+  }];
+  let description = [{
+    Based on a subset of interest for the result of a `dynamic_broadcast_in_dim`
+    op, computes the minimal operand subset that is needed to perform the tiled
+    broadcast.
+  }];
+  let arguments = (ins
+    AnySubset:$dst_tile,
+    AnySubset:$src_space,
+    AnySubset:$dst_space,
+    I64ElementsAttr:$broadcast_dimensions,
+    OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
+    OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions);
+  let results = (outs AnySubset:$result);
+  let assemblyFormat = [{
+    $dst_tile `,` $src_space `,` $dst_space `,`
+    custom<I64ElementsAttr>($broadcast_dimensions)  attr-dict `:`
+    type($dst_tile) `,` type($src_space) `,` type($dst_space) `->` type($result)
+  }];
+  let hasVerifier = 0;
+}
+
 #endif // GML_ST_SUBSET_OPS

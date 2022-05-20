@@ -36,9 +36,6 @@ namespace {
 
 void printShapeTypeDimensionsList(AsmPrinter &printer,
                                   ArrayRef<int64_t> integers) {
-  if (integers.empty()) {
-    return;
-  }
   llvm::interleave(
       integers, printer,
       [&](int64_t val) {
@@ -53,20 +50,59 @@ void printShapeTypeDimensionsList(AsmPrinter &printer,
 ParseResult parseShapeTypeDimensionsList(
     AsmParser &parser, FailureOr<SmallVector<int64_t>> &dims) {
   SmallVector<int64_t> vals;
-  int64_t val;
-  while (true) {
-    auto maybeInteger = parser.parseOptionalInteger(val);
-    if (maybeInteger.hasValue() && succeeded(*maybeInteger)) {
-      vals.push_back(val);
-    } else if (succeeded(parser.parseOptionalQuestion())) {
-      vals.push_back(ShapedType::kDynamicSize);
-    } else {
-      break;
-    }
-    if (failed(parser.parseOptionalKeyword("x"))) break;
+  if (failed(parser.parseDimensionList(vals, /*allowDynamic=*/true,
+                                       /*withTrailingX=*/false))) {
+    return failure();
   }
   dims = vals;
   return success();
+}
+
+// TODO(frgossen): Move this to MHLO or even to MLIR.
+ParseResult parseI64ElementsAttr(OpAsmParser &parser,
+                                 DenseIntElementsAttr &attr) {
+  SmallVector<int64_t> values;
+
+  // Parse opening bracket.
+  if (failed(parser.parseLSquare())) return failure();
+
+  auto try_parse_int = [&]() {
+    int64_t val;
+    auto parsing_res = parser.parseOptionalInteger(val);
+    if (parsing_res.hasValue() && succeeded(*parsing_res)) {
+      values.push_back(val);
+      return true;
+    }
+    return false;
+  };
+
+  // Parse comma-separated ints.
+  if (try_parse_int()) {
+    while (succeeded(parser.parseOptionalComma())) {
+      int64_t val;
+      if (failed(parser.parseInteger(val))) return failure();
+      values.push_back(val);
+    }
+  }
+
+  // Parse closing bracket.
+  if (failed(parser.parseRSquare())) return failure();
+
+  // Build attribute.
+  OpBuilder b(parser.getContext());
+  attr = b.getI64TensorAttr(values);
+  return success();
+}
+
+// TODO(frgossen): Move this to MHLO or even to MLIR.
+template <class OpTy>
+void printI64ElementsAttr(OpAsmPrinter &printer, OpTy op,
+                          DenseIntElementsAttr attr) {
+  printer << "[";
+  llvm::interleave(
+      attr.getValues<int64_t>(), printer, [&](int64_t val) { printer << val; },
+      ", ");
+  printer << "]";
 }
 
 }  // namespace

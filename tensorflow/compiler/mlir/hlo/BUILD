@@ -1642,9 +1642,9 @@ cc_library(
         ":convert_to_signless_pass",
         ":copy_removal",
         ":expand_hlo_tuples",
+        ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_to_scf",
-        ":greedy_tiling",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
         ":hlo_legalize_to_arithmetic",
@@ -1653,6 +1653,7 @@ cc_library(
         ":legalize_control_flow",
         ":legalize_einsum_to_dot_general",
         ":legalize_gather_to_torch_index_select",
+        ":legalize_mhlo_to_gml",
         ":legalize_shape_computations",
         ":legalize_to_linalg",
         ":legalize_to_standard",
@@ -2440,10 +2441,10 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "greedy_tiling",
+    name = "gml_st_fusion",
     srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/greedy_tiling.cc",
+        "lib/Dialect/gml_st/transforms/fusion.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
@@ -2454,10 +2455,41 @@ cc_library(
         ":gml_st_passes_inc_gen",
         ":hlo",
         ":tiling_interface",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "legalize_mhlo_to_gml",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/legalize_mhlo_to_gml.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        ":hlo",
+        ":tiling_interface",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
