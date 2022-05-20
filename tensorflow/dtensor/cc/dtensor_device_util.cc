@@ -491,6 +491,16 @@ Status PrepareGraphForMlir(
     // Delegate TensorWithLayout to encode attributes if applicable.
     input->EncodeAttributes(builder);
 
+    // Here we set each arg node's `index` attribute to the position of
+    // the dtensor inputs. This is important for later use when we create
+    // a mapping from the graph argument node to the corresponding argument
+    // index of the list of dtensor inputs. Thus, even if the argument node
+    // orderings change within the graph, we can always correctly
+    // find the dtensor input corresponding to that arg node.
+    //
+    // This assumes that the dtensor inputs stay unchanged in ordering,
+    // and if there is an ordering change of dtensor inputs, then special
+    // care must be taken.
     TF_RETURN_IF_ERROR(
         builder.Attr("shape", partial_shape)
             .Attr("T", dtype)
