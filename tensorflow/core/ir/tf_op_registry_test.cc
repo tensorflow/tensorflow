@@ -42,7 +42,7 @@ void PrepareContext(MLIRContext *context) {
   context->appendDialectRegistry(registry);
 }
 
-TEST(TensorFlowOpRegistryInterface, TestStatelessFuncAndReturn) {
+TEST(TensorFlowOpRegistryInterface, TestIntrinsicOps) {
   MLIRContext context(MLIRContext::Threading::DISABLED);
   PrepareContext(&context);
 
@@ -57,8 +57,8 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessFuncAndReturn) {
 
   auto func_op = cast<GraphFuncOp>(&module->front());
   auto ret_op = cast<ReturnOp>(func_op.body().front().getTerminator());
-  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*func_op).isStateful());
-  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*ret_op).isStateful());
+  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*func_op));
+  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*ret_op));
 }
 
 TEST(TensorFlowOpRegistryInterface, TestStatelessTFOps) {

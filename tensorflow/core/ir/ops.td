@@ -495,10 +495,10 @@ def TFGraph_RegionAttrs : AttrDef<TFGraphDialect, "Region"> {
 
 // Base class for TFGraph region ops. Region ops contain only single-block graph
 // regions.
-class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []> 
-    : TFG_IntrinsicOp<mnemonic, [
+class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []>
+    : TFGraph_ConcreteOp<mnemonic, [
         HasOnlyGraphRegion, SingleBlock, RegionKindInterface,
-        DeclareOpInterfaceMethods<OpAsmOpInterface, 
+        DeclareOpInterfaceMethods<OpAsmOpInterface,
           ["getDefaultDialect", "getAsmResultNames"]>, TraitList<traits>]>;
 
 def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
