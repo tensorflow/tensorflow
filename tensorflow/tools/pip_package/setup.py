@@ -81,7 +81,6 @@ REQUIRED_PACKAGES = [
     'libclang >= 9.0.1',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
-    'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
     # Protobuf 4.0 is binary incompatible with what C++ TF uses.
     # We need ~1 quarter to update properly.
