@@ -5582,9 +5582,6 @@ def non_max_suppression_padded_v2(boxes,
           x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
       boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
   else:
-    # TODO(mdanatg/bhack) Without initzializing control_flow_ops.cond variable
-    # in the else branch it is failing autograph control_flow operator
-    # in aug_orelse() verify_tf_cond_branch_ check
     y_1, x_1, y_2, x_2 = array_ops.split(
         value=boxes, num_or_size_splits=4, axis=2)
 
