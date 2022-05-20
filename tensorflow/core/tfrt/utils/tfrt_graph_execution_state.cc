@@ -291,6 +291,26 @@ Status PlaceInputOutputNodesOnHost(const std::vector<std::string>& inputs,
   return Status::OK();
 }
 
+Status AdjustDeviceAssignment(const std::vector<std::string>& inputs,
+                              const std::vector<std::string>& outputs,
+                              const std::vector<std::string>& control_outputs,
+                              const Device* cpu_device, Graph* graph) {
+  // TODO(b/232299232): We don't inline and partition v2 control flow currently.
+  // All ops within control flow are placed on CPU for now. Figure out a better
+  // way to handle v2 control flow.
+  for (Node* node : graph->op_nodes()) {
+    if (node->IsWhileNode() || node->IsIfNode()) {
+      LOG(WARNING) << "The control flow node " << node->name()
+                   << " is placed on CPU.";
+      node->set_assigned_device_name(cpu_device->name());
+    }
+  }
+
+  TF_RETURN_IF_ERROR(
+      PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph));
+  return Status::OK();
+}
+
 bool IsTpuGraph(const Graph* graph) {
   static const auto* const kTpuOps = new absl::flat_hash_set<std::string>{
       "TPUPartitionedCall", "TPUCompile", "TPUReplicateMetadata"};
@@ -350,8 +370,8 @@ StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
     DumpGraphToFile("after_placer", *graph);
   }
 
-  TF_RETURN_IF_ERROR(
-      PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph.get()));
+  TF_RETURN_IF_ERROR(AdjustDeviceAssignment(inputs, outputs, control_outputs,
+                                            cpu_device, graph.get()));
 
   // Insert send/recv ops to the graph.
   TF_ASSIGN_OR_RETURN(
