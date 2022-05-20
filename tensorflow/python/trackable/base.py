@@ -273,7 +273,7 @@ class PythonStringStateSaveable(PythonStateSaveable):
 class CheckpointPosition(object):
   """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
-  __slots__ = ["_checkpoint", "_proto_id"]
+  __slots__ = ["_checkpoint", "_proto_id", "skip_restore"]
 
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
@@ -284,6 +284,9 @@ class CheckpointPosition(object):
     """
     self._checkpoint = checkpoint
     self._proto_id = proto_id
+    # This may be set to True if the registered saver cannot be used with this
+    # object.
+    self.skip_restore = False
 
   def restore(self, trackable):
     """Restore this value into `trackable`."""
@@ -511,9 +514,15 @@ class CheckpointPosition(object):
     return bool(self.object_proto.registered_saver.name)
 
   def get_registered_saver_name(self):
+    """Returns the registered saver name defined in the Checkpoint."""
     if self._has_registered_saver():
       saver_name = self.object_proto.registered_saver.name
-      registration.validate_restore_function(self.trackable, saver_name)
+      try:
+        registration.validate_restore_function(self.trackable, saver_name)
+      except ValueError as e:
+        if registration.get_strict_predicate_restore(saver_name):
+          raise e
+        self.skip_restore = True
       return saver_name
     return None
 
@@ -1040,9 +1049,10 @@ class Trackable(object):
       # Restore using the ops defined in a Saveable or registered function.
       registered_saver = current_position.get_registered_saver_name()
       if registered_saver:
-        object_name = (
-            current_position.object_proto.registered_saver.object_name)
-        registered_savers[registered_saver][object_name] = trackable
+        if not current_position.skip_restore:
+          object_name = (
+              current_position.object_proto.registered_saver.object_name)
+          registered_savers[registered_saver][object_name] = trackable
         trackable._self_update_uid = current_position.checkpoint.restore_uid  # pylint: disable=protected-access
       else:
         new_restore_ops, new_tensor_saveables, new_python_saveables = (
