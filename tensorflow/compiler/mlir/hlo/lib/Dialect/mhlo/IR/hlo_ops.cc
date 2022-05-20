@@ -5847,6 +5847,12 @@ void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   p << " : " << resultType;
 }
 
+static const APFloat& addSign(const APFloat& v, Type) { return v; }
+static APSInt addSign(const APInt& v, Type t) {
+  // Add signedness information to the value, treating signless as signed.
+  return APSInt(v, t.isUnsignedInteger());
+}
+
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
 static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
@@ -5874,8 +5880,9 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   SplatElementsAttr splat_lhs = lhs.dyn_cast<SplatElementsAttr>();
   SplatElementsAttr splat_rhs = rhs.dyn_cast<SplatElementsAttr>();
   if (splat_lhs && splat_rhs) {
-    FailureOr<ValType> result(Convert()(splat_lhs.getSplatValue<ValType>(),
-                                        splat_rhs.getSplatValue<ValType>()));
+    auto signed_lhs = addSign(splat_lhs.getSplatValue<ValType>(), etype);
+    auto signed_rhs = addSign(splat_rhs.getSplatValue<ValType>(), etype);
+    FailureOr<decltype(signed_lhs)> result(Convert()(signed_lhs, signed_rhs));
     return succeeded(result) ? SplatElementsAttr::get(type, *result)
                              : Attribute();
   }
@@ -5889,7 +5896,9 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   values.reserve(lhs.getNumElements());
   for (const auto zip :
        llvm::zip(lhs.getValues<ValType>(), rhs.getValues<ValType>())) {
-    FailureOr<ValType> result(Convert()(std::get<0>(zip), std::get<1>(zip)));
+    auto signed_lhs = addSign(std::get<0>(zip), etype);
+    auto signed_rhs = addSign(std::get<1>(zip), etype);
+    FailureOr<decltype(signed_lhs)> result(Convert()(signed_lhs, signed_rhs));
     if (failed(result)) {
       return {};
     }
@@ -5903,10 +5912,10 @@ template <typename T>
 struct divide : std::divides<T> {};
 
 template <>
-struct divide<APInt> {
-  FailureOr<APInt> operator()(const APInt& a, const APInt& b) const {
+struct divide<APSInt> {
+  FailureOr<APSInt> operator()(const APSInt& a, const APSInt& b) const {
     if (b.isZero()) return failure();
-    return a.sdiv(b);
+    return a / b;
   }
 };
 
@@ -5914,10 +5923,10 @@ template <typename T>
 struct remainder : std::modulus<T> {};
 
 template <>
-struct remainder<APInt> {
-  FailureOr<APInt> operator()(const APInt& a, const APInt& b) const {
+struct remainder<APSInt> {
+  FailureOr<APSInt> operator()(const APSInt& a, const APSInt& b) const {
     if (b.isZero()) return failure();
-    return a.srem(b);
+    return a % b;
   }
 };
 
@@ -5935,30 +5944,16 @@ struct max {
   T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
 };
 
-template <>
-struct max<APInt> {
-  APInt operator()(const APInt& a, const APInt& b) const {
-    return llvm::APIntOps::smax(a, b);
-  }
-};
-
 template <typename T>
 struct min {
   T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
-};
-
-template <>
-struct min<APInt> {
-  APInt operator()(const APInt& a, const APInt& b) const {
-    return llvm::APIntOps::smin(a, b);
-  }
 };
 
 #define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
   if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
     return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
   if (getElementTypeOrSelf(getType()).isa<IntegerType>())                    \
-    return BinaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
+    return BinaryFolder<Op, IntegerType, APInt, Func<APSInt>>(this, attrs);  \
   return {};
 
 #define BINARY_FOLDER(Op, Func)                      \

@@ -120,6 +120,28 @@ func.func @divide_scalar_fold_by_zero() -> tensor<4xi64> {
   func.return %2 : tensor<4xi64>
 }
 
+// CHECK-LABEL: divide_fold_int
+func.func @divide_fold_int() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[1, -2, 3, 4]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[-1, -2, -3, 2]> : tensor<4xi32>
+  // CHECK: %[[RESULT:.+]] = mhlo.constant dense<[-1, 1, -1, 2]>
+  %2 = "mhlo.divide"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>)
+  // CHECK: return %[[RESULT]]
+  func.return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: divide_fold_unsigned
+func.func @divide_fold_unsigned() -> tensor<4xui32> {
+  %0 = mhlo.constant dense<[1, -2, 3, 4]> : tensor<4xi32>
+  %1 = "mhlo.convert"(%0) : (tensor<4xi32>) -> tensor<4xui32>
+  %2 = mhlo.constant dense<[-1, -2, -3, 2]> : tensor<4xi32>
+  %3 = "mhlo.convert"(%2) : (tensor<4xi32>) -> tensor<4xui32>
+  // CHECK: %[[RESULT:.+]] = mhlo.constant dense<[0, 1, 0, 2]>
+  %4 = "mhlo.divide"(%1, %3) : (tensor<4xui32>, tensor<4xui32>) -> (tensor<4xui32>)
+  // CHECK: return %[[RESULT]]
+  func.return %4 : tensor<4xui32>
+}
+
 // CHECK-LABEL: divide_fold_float
 func.func @divide_fold_float() -> tensor<4xf64> {
   %0 = mhlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
@@ -149,10 +171,11 @@ func.func @remainder_scalar_fold_by_zero() -> tensor<4xi64> {
 
 // CHECK-LABEL: remainder_fold_int
 func.func @remainder_fold_int() -> tensor<4xi32> {
-  %0 = mhlo.constant dense<[5, 66, 5, 1]> : tensor<4xi32>
-  %1 = mhlo.constant dense<[3, 5, 1, 2]> : tensor<4xi32>
-  // CHECK: mhlo.constant dense<[2, 1, 0, 1]>
+  %0 = mhlo.constant dense<[5, 66, 5, -1]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[3, 5, 1, -2]> : tensor<4xi32>
+  // CHECK: %[[RESULT:.+]] = mhlo.constant dense<[2, 1, 0, -1]>
   %2 = "mhlo.remainder"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>)
+  // CHECK: return %[[RESULT]]
   func.return %2 : tensor<4xi32>
 }
 
@@ -176,10 +199,22 @@ func.func @round_fold() -> tensor<4xf32> {
 // CHECK-LABEL: max_scalar_fold
 func.func @max_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<7> : tensor<4xi64>
-  %1 = mhlo.constant dense<5> : tensor<4xi64>
-  // CHECK: mhlo.constant dense<7>
+  %1 = mhlo.constant dense<-5> : tensor<4xi64>
+  // CHECK: %[[RESULT:.+]] = mhlo.constant dense<7>
   %2 = "mhlo.maximum"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> (tensor<4xi64>)
+  // CHECK: return %[[RESULT]]
   func.return %2 : tensor<4xi64>
+}
+
+// CHECK-LABEL: max_scalar_fold_unsigned
+func.func @max_scalar_fold_unsigned() -> tensor<4xui32> {
+  %0 = mhlo.constant dense<7> : tensor<4xui32>
+  %1 = mhlo.constant dense<-5> : tensor<4xi32>
+  %2 = "mhlo.convert"(%1) : (tensor<4xi32>) -> tensor<4xui32>
+  // CHECK: %[[RESULT:.+]] = mhlo.constant dense<4294967291>
+  %3 = "mhlo.maximum"(%0, %2) : (tensor<4xui32>, tensor<4xui32>) -> (tensor<4xui32>)
+  // CHECK: return %[[RESULT]]
+  func.return %3 : tensor<4xui32>
 }
 
 // CHECK-LABEL: max_fold_float
