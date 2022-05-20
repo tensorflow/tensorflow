@@ -489,3 +489,8 @@ def LiftLegacyCall : Pass<"tfg-lift-legacy-call", "ModuleOp"> {
 
   let constructor = "CreateLiftLegacyCallPass()";
 }
+
+def CSEPass : Pass<"tfg-cse", "GraphFuncOp"> {
+  let summary = "Common sub-expression elimination, ignoring op names";
+  let constructor = "CreateCSEPass()";
+}
