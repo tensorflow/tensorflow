@@ -12,6 +12,23 @@ package(
 
 py_library(
     name = "trackable",
+    deps = [
+        ":asset",
+        ":autotrackable",
+        ":base",
+        ":base_delegate",
+        ":converter",
+        ":data_structures",
+        ":layer_utils",
+        ":python_state",
+        ":resource",
+        ":trackable_init",
+        ":trackable_utils",
+    ],
+)
+
+py_library(
+    name = "trackable_init",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
 )

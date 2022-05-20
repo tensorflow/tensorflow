@@ -4521,6 +4521,21 @@ alias(
 )
 
 alias(
+    name = "checkpoint",
+    actual = "//tensorflow/python/checkpoint:checkpoint",
+)
+
+alias(
+    name = "checkpoint_lib",
+    actual = "//tensorflow/python/checkpoint:checkpoint_lib",
+)
+
+alias(
+    name = "trackable",
+    actual = "//tensorflow/python/trackable:trackable",
+)
+
+alias(
     name = "training",
     actual = "//tensorflow/python/training:training",
 )
