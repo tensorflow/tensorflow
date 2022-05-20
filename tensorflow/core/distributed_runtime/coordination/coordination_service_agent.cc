@@ -86,6 +86,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                                     absl::Duration timeout) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
+  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
       const std::string& key) override;
   void GetKeyValueDirAsync(const std::string& key,
@@ -505,6 +506,58 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   return *result;
 }
 
+void CoordinationServiceAgentImpl::GetKeyValueAsync(
+    const std::string& key, StatusOrValueCallback done) {
+  auto request = std::make_shared<GetKeyValueRequest>();
+  request->set_key(key);
+  auto response = std::make_shared<GetKeyValueResponse>();
+  auto call_opts = std::make_shared<CallOptions>();
+
+  const CancellationToken token =
+      cancellation_manager_.get_cancellation_token();
+  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
+      token, [call_opts]() { call_opts->StartCancel(); });
+  if (already_cancelled) {
+    done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
+    return;
+  }
+  leader_client_->GetKeyValueAsync(
+      call_opts.get(), request.get(), response.get(),
+      [call_opts, request, response, done = std::move(done),
+       &cm = cancellation_manager_, token](const Status& s) {
+        // RPC call has completed (no longer needs to be cancelled if agent is
+        // destroyed).
+        cm.TryDeregisterCallback(token);
+
+        // Retrieve server response.
+        if (!s.ok()) {
+          done(s);
+        } else {
+          done(response->kv().value());
+        }
+      });
+}
+
+StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
+    const std::string& key) {
+  absl::Notification n;
+  StatusOr<std::string> result;
+  TryGetKeyValueRequest request;
+  request.set_key(key);
+  TryGetKeyValueResponse response;
+  leader_client_->TryGetKeyValueAsync(&request, &response,
+                                      [&](const Status& s) {
+                                        if (s.ok()) {
+                                          result = response.kv().value();
+                                        } else {
+                                          result = s;
+                                        }
+                                        n.Notify();
+                                      });
+  n.WaitForNotification();
+  return result;
+}
+
 StatusOr<std::vector<KeyValueEntry>>
 CoordinationServiceAgentImpl::GetKeyValueDir(const std::string& key) {
   absl::Notification n;
@@ -553,38 +606,6 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
   });
   n.WaitForNotification();
   return status;
-}
-
-void CoordinationServiceAgentImpl::GetKeyValueAsync(
-    const std::string& key, StatusOrValueCallback done) {
-  auto request = std::make_shared<GetKeyValueRequest>();
-  request->set_key(key);
-  auto response = std::make_shared<GetKeyValueResponse>();
-  auto call_opts = std::make_shared<CallOptions>();
-
-  const CancellationToken token =
-      cancellation_manager_.get_cancellation_token();
-  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
-      token, [call_opts]() { call_opts->StartCancel(); });
-  if (already_cancelled) {
-    done(errors::Cancelled("GetKeyValueAsync() was cancelled."));
-    return;
-  }
-  leader_client_->GetKeyValueAsync(
-      call_opts.get(), request.get(), response.get(),
-      [call_opts, request, response, done = std::move(done),
-       &cm = cancellation_manager_, token](const Status& s) {
-        // RPC call has completed (no longer needs to be cancelled if agent is
-        // destroyed).
-        cm.TryDeregisterCallback(token);
-
-        // Retrieve server response.
-        if (!s.ok()) {
-          done(s);
-        } else {
-          done(response->kv().value());
-        }
-      });
 }
 
 Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {

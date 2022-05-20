@@ -61,6 +61,9 @@ class TestCoordinationClient : public CoordinationClient {
   MOCK_METHOD4(GetKeyValueAsync,
                void(CallOptions* call_opts, const GetKeyValueRequest*,
                     GetKeyValueResponse*, StatusCallback));
+  MOCK_METHOD3(TryGetKeyValueAsync,
+               void(const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
+                    StatusCallback));
   MOCK_METHOD3(GetKeyValueDirAsync,
                void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
                     StatusCallback));
@@ -262,6 +265,25 @@ TEST_F(CoordinationServiceAgentTest,
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
   TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie(), test_value);
+}
+
+TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
+  const std::string& test_key = "test_key";
+  const std::string& test_value = "test_value";
+  // Mock server response: set key-value pair and invoke done callback.
+  TryGetKeyValueResponse mocked_response;
+  auto kv = mocked_response.mutable_kv();
+  kv->set_key(test_key);
+  kv->set_value(test_value);
+  ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(Status::OK())));
+
+  // Initialize coordination agent.
+  InitializeAgent();
+  auto result = agent_->TryGetKeyValue(test_key);
+  TF_ASSERT_OK(result.status());
   EXPECT_EQ(result.ValueOrDie(), test_value);
 }
 

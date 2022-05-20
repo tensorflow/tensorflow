@@ -143,13 +143,14 @@ class CoordinationServiceInterface {
   virtual Status InsertKeyValue(const std::string& key,
                                 const std::string& value) = 0;
 
-  // Get a configuration key-value from the coordination service. Block until
-  // the key-value is available.
-  virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   // Get a configuration key-value from the coordination service. The `done`
   // callback is invoked when the key-value becomes available.
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
+
+  // Get a configuration key-value from the coordination service. If the key
+  // does not exist, return NotFound error.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
 
   // Gets all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with

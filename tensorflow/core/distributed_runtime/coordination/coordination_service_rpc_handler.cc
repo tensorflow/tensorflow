@@ -195,6 +195,26 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
       });
 }
 
+void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
+    const TryGetKeyValueRequest* request, TryGetKeyValueResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  auto result = service->TryGetKeyValue(request->key());
+  if (!result.ok()) {
+    done(MakeCoordinationError(result.status()));
+    return;
+  }
+  response->mutable_kv()->set_key(request->key());
+  response->mutable_kv()->set_value(result.ValueOrDie());
+  done(Status::OK());
+}
+
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
     const GetKeyValueDirRequest* request, GetKeyValueDirResponse* response,
     StatusCallback done) {

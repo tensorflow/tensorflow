@@ -164,6 +164,13 @@ class CoordinationServiceAgent {
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
 
+  // Get config key-value from the service.
+  // If the key-value does not exist, this call returns NotFound error.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  //   - errors::NotFound: the requested key does not exist.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
+
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.

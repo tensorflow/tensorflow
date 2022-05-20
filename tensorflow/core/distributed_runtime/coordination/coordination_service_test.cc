@@ -93,6 +93,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
+  UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
@@ -460,40 +461,76 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
       coord_service_->InsertKeyValue("/path/to/key1/", "value2")));
 
   // Get simple key
-  auto ret = coord_service_->GetKeyValue("key0");
+  absl::Notification n1;
+  StatusOr<std::string> ret;
+  coord_service_->GetKeyValueAsync(
+      "key0", [&](const StatusOr<std::string>& status_or_value) {
+        ret = status_or_value;
+        n1.Notify();
+      });
+  n1.WaitForNotification();
   TF_ASSERT_OK(ret.status());
   EXPECT_EQ(ret.ValueOrDie(), "value0");
   // Get key with redundant slashes
-  ret = coord_service_->GetKeyValue("path//to///key1////");
+  absl::Notification n2;
+  coord_service_->GetKeyValueAsync(
+      "path//to///key1////", [&](const StatusOr<std::string>& status_or_value) {
+        ret = status_or_value;
+        n2.Notify();
+      });
+  n2.WaitForNotification();
   EXPECT_EQ(ret.ValueOrDie(), "value1");
 
   // Delete single key-value
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("key0"));
   // Get key that is not available
-  absl::Notification n;
+  absl::Notification n3;
   coord_service_->GetKeyValueAsync(
       "key0", [&](const StatusOr<std::string>& status_or_value) {
         ret = status_or_value;
-        n.Notify();
+        n3.Notify();
       });
-  EXPECT_FALSE(n.HasBeenNotified());
+  EXPECT_FALSE(n3.HasBeenNotified());
   // Insert the previously deleted key again
   TF_ASSERT_OK(coord_service_->InsertKeyValue("key0", "value0_new"));
-  n.WaitForNotification();
+  n3.WaitForNotification();
   EXPECT_EQ(ret.ValueOrDie(), "value0_new");
 
   // Delete key-values recursively
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("/path"));
   // Get key that is not available
-  auto n2 = std::make_shared<absl::Notification>();
+  auto n4 = std::make_shared<absl::Notification>();
   coord_service_->GetKeyValueAsync(
       "/path/to/key1",
       // Note: this callback will remain pending until it is cleaned up during
       // service shutdown. Hence, we use a shared pointer for notification so
       // that the it will not be deallocated before the pending callback is
       // cleaned up.
-      [n2](const StatusOr<std::string>& status_or_value) { n2->Notify(); });
-  EXPECT_FALSE(n2->HasBeenNotified());
+      [n4](const StatusOr<std::string>& status_or_value) { n4->Notify(); });
+  EXPECT_FALSE(n4->HasBeenNotified());
+}
+
+TEST(CoordinationServiceTest, TryGetKeyValue) {
+  const ServerDef& server_def = GetMultiClientServerDef("worker", 1);
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          std::move(client_cache));
+
+  // Try to get nonexistent key.
+  StatusOr<std::string> result = coord_service->TryGetKeyValue("test_key");
+  EXPECT_TRUE(errors::IsNotFound(result.status()));
+
+  // Insert key value.
+  TF_ASSERT_OK(coord_service->InsertKeyValue("test_key", "test_value"));
+  result = coord_service->TryGetKeyValue("test_key");
+  EXPECT_EQ(result.ValueOrDie(), "test_value");
+
+  // Delete Key, and try to get the key again.
+  TF_ASSERT_OK(coord_service->DeleteKeyValue("test_key"));
+  result = coord_service->TryGetKeyValue("test_key");
+  EXPECT_TRUE(errors::IsNotFound(result.status()));
 }
 
 TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_SingleValueInDirectory) {

@@ -152,6 +152,14 @@ message GetKeyValueResponse {
   KeyValueEntry kv = 1;
 }
 
+message TryGetKeyValueRequest {
+  string key = 1;
+}
+
+message TryGetKeyValueResponse {
+  KeyValueEntry kv = 1;
+}
+
 message GetKeyValueDirRequest {
   string directory_key = 1;
 }
@@ -246,6 +254,11 @@ service CoordinationService {
   // Get configuration key-value. The request blocks until the key-value data
   // becomes available (i.e., set by a task in the cluster).
   rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse);
+
+  // Get configuration key-value. The request does not block, but returns an
+  // error if the requested key does not exist.
+  rpc TryGetKeyValue(TryGetKeyValueRequest) returns (TryGetKeyValueResponse);
+
   // Same as GetKeyValue, but returns all values that have keys which are
   // prefixed with the directory key.
   rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse);

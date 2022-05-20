@@ -128,9 +128,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Status ReportTaskError(const CoordinatedTask& task, Status error) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
-  StatusOr<std::string> GetKeyValue(const std::string& key) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
+  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   std::vector<KeyValueEntry> GetKeyValueDir(
       absl::string_view directory_key) override;
   Status DeleteKeyValue(const std::string& key) override;
@@ -828,18 +828,6 @@ Status CoordinationServiceStandaloneImpl::InsertKeyValue(
   return Status::OK();
 }
 
-StatusOr<std::string> CoordinationServiceStandaloneImpl::GetKeyValue(
-    const std::string& key) {
-  absl::Notification n;
-  StatusOr<std::string> result;
-  GetKeyValueAsync(key, [&](const StatusOr<std::string>& status_or_value) {
-    result = status_or_value;
-    n.Notify();
-  });
-  n.WaitForNotification();
-  return result;
-}
-
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
   const std::string& norm_key = NormalizeKey(key);
@@ -855,6 +843,17 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
         get_cb_.emplace(norm_key, std::vector<StatusOrValueCallback>()).first;
   }
   cb_iter->second.emplace_back(std::move(done));
+}
+
+StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
+    const std::string& key) {
+  const std::string& norm_key = NormalizeKey(key);
+  mutex_lock l(kv_mu_);
+  const auto& iter = kv_store_.find(norm_key);
+  if (iter == kv_store_.end()) {
+    return errors::NotFound("Config key ", key, " not found.");
+  }
+  return iter->second;
 }
 
 std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
