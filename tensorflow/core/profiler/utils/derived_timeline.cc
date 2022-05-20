@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/core/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -268,52 +269,38 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
                                std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
-    int32 num_launches = 0;
-    uint64 max_launch_time_ps = 0ULL;
-    uint64 total_launch_time_ps = 0ULL;
-  };
-  typedef absl::flat_hash_map<int64_t /*group_id*/, GroupLaunchInfo>
-      DeviceLaunchInfo;
+    Stat<uint64_t> stat;
 
-  int num_devices = device_traces.size();
+    void AddEventTimespan(Timespan event_span) {
+      if (stat.count() == 0) {
+        timespan = event_span;
+      } else {
+        timespan.ExpandToInclude(event_span);
+      }
+      stat.UpdateStat(event_span.duration_ps());
+    }
+  };
+  using DeviceLaunchInfo =
+      absl::flat_hash_map<int64_t /*group_id*/, GroupLaunchInfo>;
+
+  const int num_devices = device_traces.size();
   std::vector<DeviceLaunchInfo> per_device_launch_info(num_devices);
 
   XPlaneVisitor host_plane = CreateTfXPlaneVisitor(host_trace);
   host_plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     line.ForEachEvent([&](const XEventVisitor& event) {
-      absl::optional<int64_t> group_id;
-      absl::optional<int64_t> device_id;
-      absl::optional<int64_t> correlation_id;
       // Filter out API calls for cuEventRecord/cuEventQuery/cuCtxSynchronize
       // etc for now. TODO: find a better way to filter out only the memcpy and
       // kernel launch events.
       if (absl::StartsWith(event.Name(), "cu")) return;
-      event.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.Type() == StatType::kGroupId) {
-          group_id = stat.IntValue();
-        } else if (stat.Type() == StatType::kDeviceId) {
-          device_id = stat.IntOrUintValue();
-        } else if (stat.Type() == StatType::kCorrelationId) {
-          correlation_id = stat.IntValue();
-        }
-      });
-      if (group_id && device_id && correlation_id && *device_id >= 0 &&
-          *device_id < num_devices) {
+      LaunchEventStats stats(&event);
+      if (stats.group_id.has_value() && stats.IsLaunch() &&
+          0 <= *stats.device_id && *stats.device_id < num_devices) {
         // This is a launch event on a known device.
         GroupLaunchInfo& group_launch_info =
-            per_device_launch_info[*device_id][*group_id];
-        Timespan& group_span = group_launch_info.timespan;
-        Timespan event_span = event.GetTimespan();
-        if (group_launch_info.num_launches) {  // Existing group.
-          group_span.ExpandToInclude(event_span);
-        } else {
-          group_span = event_span;
-        }
-        ++group_launch_info.num_launches;
-        group_launch_info.max_launch_time_ps = std::max(
-            group_launch_info.max_launch_time_ps, event_span.duration_ps());
-        group_launch_info.total_launch_time_ps += event_span.duration_ps();
+            per_device_launch_info[*stats.device_id][*stats.group_id];
+        group_launch_info.AddEventTimespan(event.GetTimespan());
       }
     });
   });
@@ -322,7 +309,18 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
   for (int i = 0; i < num_devices; ++i) {
     if (per_device_launch_info[i].empty()) continue;
     uint64 device_plane_start = GetStartTimestampNs(*device_traces[i]);
+
     XPlaneBuilder device_plane(device_traces[i]);
+    const XStatMetadata& group_id_stat_metadata =
+        *device_plane.GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kGroupId));
+    const XStatMetadata& num_launches_stat_metadata =
+        *device_plane.GetOrCreateStatMetadata("num_launches");
+    const XStatMetadata& max_launch_time_us_stat_metadata =
+        *device_plane.GetOrCreateStatMetadata("max_launch_time_us");
+    const XStatMetadata& avg_launch_time_us_stat_metadata =
+        *device_plane.GetOrCreateStatMetadata("avg_launch_time_us");
+
     XLineBuilder launch_line =
         device_plane.GetOrCreateLine(kThreadIdKernelLaunch);
     launch_line.SetName(kKernelLaunchLineName);
@@ -334,22 +332,14 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
                 absl::StrCat("Launch Stats for ", group_metadata->name)));
-        device_event.SetTimestampNs(host_plane_start +
-                                    PicoToNano(group_info.timespan.begin_ps()));
-        device_event.SetDurationPs(group_info.timespan.duration_ps());
-        device_event.AddStatValue(*device_plane.GetOrCreateStatMetadata(
-                                      GetStatTypeStr(StatType::kGroupId)),
-                                  group_id);
-        device_event.AddStatValue(
-            *device_plane.GetOrCreateStatMetadata("num_launches"),
-            group_info.num_launches);
-        device_event.AddStatValue(
-            *device_plane.GetOrCreateStatMetadata("max_launch_time_us"),
-            PicoToMicro(group_info.max_launch_time_ps));
-        device_event.AddStatValue(
-            *device_plane.GetOrCreateStatMetadata("avg_launch_time_us"),
-            PicoToMicro(group_info.total_launch_time_ps /
-                        group_info.num_launches));
+        device_event.SetTimespan(group_info.timespan);
+        device_event.AddStatValue(group_id_stat_metadata, group_id);
+        device_event.AddStatValue(num_launches_stat_metadata,
+                                  group_info.stat.count());
+        device_event.AddStatValue(max_launch_time_us_stat_metadata,
+                                  PicoToMicro(group_info.stat.max()));
+        device_event.AddStatValue(avg_launch_time_us_stat_metadata,
+                                  PicoToMicro(group_info.stat.avg()));
       }
     }
   }
