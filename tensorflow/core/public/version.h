@@ -22,7 +22,7 @@ limitations under the License.
 // tensorflow/tools/pip_package/setup.py
 #define TF_MAJOR_VERSION 2
 #define TF_MINOR_VERSION 6
-#define TF_PATCH_VERSION 4
+#define TF_PATCH_VERSION 5
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
