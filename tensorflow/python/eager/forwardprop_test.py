@@ -690,8 +690,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
               math_ops.matmul(mat, tangent, transpose_b=True))
 
     self.assertAllClose(result1, result2)
-    self.assertAllClose(_expected(m1, tangent1), acc.jvp(result1), rtol=1e-5)
-    self.assertAllClose(_expected(m2, tangent2), acc.jvp(result2), rtol=1e-5)
+    self.assertAllClose(_expected(m1, tangent1), acc.jvp(result1))
+    self.assertAllClose(_expected(m2, tangent2), acc.jvp(result2))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testHVPMemory(self):

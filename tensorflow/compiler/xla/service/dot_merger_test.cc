@@ -26,7 +26,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::ElementsAre;
 namespace m = ::xla::match;
 
 class DotMergerTest : public HloTestBase {
@@ -251,7 +250,9 @@ TEST_F(DotMergerTest, MergeWithUnsortedBatchDims) {
                           ParseAndReturnVerifiedModule(module_string));
   DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Slice(), m::Slice())));
 }
 
 TEST_F(DotMergerTest, NoMergeDueToIsMergeCandidate) {
@@ -518,201 +519,6 @@ TEST_F(DotMergerTest, MergeWithTypeUpgrade) {
                        .WithShape(F32, {20, 10})),
           m::Slice(m::Op(&d1)))));
   EXPECT_EQ(d0, d1);
-}
-
-TEST_F(DotMergerTest, MergeBatchDotNoBatchDims) {
-  absl::string_view module_string = R"(
-  HloModule module
-
-  ENTRY main {
-    dot0 = f32[200, 50] dot(f32[200,100] parameter(0), f32[100,50] parameter(1)),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    dot1 = f32[200, 50] dot(f32[200,100] parameter(2), f32[100,50] parameter(3)),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    ROOT tuple = tuple(dot0, dot1)
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-  SCOPED_TRACE(module->ToString());
-  const HloInstruction* dot0 = nullptr;
-  const HloInstruction* dot1 = nullptr;
-  const HloInstruction* slice0 = nullptr;
-  const HloInstruction* slice1 = nullptr;
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(m::Reshape(m::Slice(&slice0, m::Op(&dot0))),
-                          m::Reshape(m::Slice(&slice1, m::Op(&dot1))))));
-  EXPECT_EQ(dot0, dot1);
-
-  EXPECT_THAT(slice0->slice_starts(), ElementsAre(0, 0, 0));
-  EXPECT_THAT(slice1->slice_starts(), ElementsAre(1, 0, 0));
-  EXPECT_THAT(slice0->slice_limits(), ElementsAre(1, 200, 50));
-  EXPECT_THAT(slice1->slice_limits(), ElementsAre(2, 200, 50));
-  EXPECT_THAT(slice0->slice_strides(), ElementsAre(1, 1, 1));
-  EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1, 1));
-
-  EXPECT_THAT(dot0,
-              GmockMatch(m::Dot(m::Concatenate(m::Reshape(m::Parameter(0)),
-                                               m::Reshape(m::Parameter(2))),
-                                m::Concatenate(m::Reshape(m::Parameter(1)),
-                                               m::Reshape(m::Parameter(3))))));
-}
-
-TEST_F(DotMergerTest, MergeBatchDotSameBatchDims) {
-  absl::string_view module_string = R"(
-  HloModule module
-
-  ENTRY main {
-    dot0 = f32[3,3,200,50] dot(f32[3,3,200,100] parameter(0), f32[3,3,100,50] parameter(1)),
-      lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}
-    dot1 = f32[3,3,200, 50] dot(f32[3,3,200,100] parameter(2), f32[3,3,100,50] parameter(3)),
-      lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}
-    ROOT tuple = tuple(dot0, dot1)
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-  SCOPED_TRACE(module->ToString());
-  const HloInstruction* dot0 = nullptr;
-  const HloInstruction* dot1 = nullptr;
-  const HloInstruction* slice0 = nullptr;
-  const HloInstruction* slice1 = nullptr;
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::Slice(&slice0, m::Op(&dot0)),
-                                  m::Slice(&slice1, m::Op(&dot1)))));
-  EXPECT_EQ(dot0, dot1);
-
-  EXPECT_THAT(slice0->slice_starts(), ElementsAre(0, 0, 0, 0));
-  EXPECT_THAT(slice1->slice_starts(), ElementsAre(3, 0, 0, 0));
-  EXPECT_THAT(slice0->slice_limits(), ElementsAre(3, 3, 200, 50));
-  EXPECT_THAT(slice1->slice_limits(), ElementsAre(6, 3, 200, 50));
-  EXPECT_THAT(slice0->slice_strides(), ElementsAre(1, 1, 1, 1));
-  EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1, 1, 1));
-
-  EXPECT_THAT(dot0, GmockMatch(m::Dot(
-                        m::Concatenate(m::Parameter(0), m::Parameter(2)),
-                        m::Concatenate(m::Parameter(1), m::Parameter(3)))));
-}
-
-TEST_F(DotMergerTest, MergeBatchDotBatchDimsSameRank) {
-  absl::string_view module_string = R"(
-  HloModule module
-
-  ENTRY main {
-    dot0 = f32[3,3,200,50] dot(f32[3,3,200,100] parameter(0), f32[3,3,100,50] parameter(1)),
-      lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}
-    dot1 = f32[3,6,200,50] dot(f32[3,6,200,100] parameter(2), f32[3,6,100,50] parameter(3)),
-      lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}
-    ROOT tuple = tuple(dot0, dot1)
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-  SCOPED_TRACE(module->ToString());
-  const HloInstruction* dot0 = nullptr;
-  const HloInstruction* dot1 = nullptr;
-  const HloInstruction* slice0 = nullptr;
-  const HloInstruction* slice1 = nullptr;
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::Slice(&slice0, m::Op(&dot0)),
-                                  m::Slice(&slice1, m::Op(&dot1)))));
-  EXPECT_EQ(dot0, dot1);
-
-  EXPECT_THAT(slice0->slice_starts(), ElementsAre(0, 0, 0, 0));
-  EXPECT_THAT(slice1->slice_starts(), ElementsAre(0, 3, 0, 0));
-  EXPECT_THAT(slice0->slice_limits(), ElementsAre(3, 3, 200, 50));
-  EXPECT_THAT(slice1->slice_limits(), ElementsAre(3, 9, 200, 50));
-  EXPECT_THAT(slice0->slice_strides(), ElementsAre(1, 1, 1, 1));
-  EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1, 1, 1));
-
-  EXPECT_THAT(dot0, GmockMatch(m::Dot(
-                        m::Concatenate(m::Parameter(0), m::Parameter(2)),
-                        m::Concatenate(m::Parameter(1), m::Parameter(3)))));
-}
-
-TEST_F(DotMergerTest, MergeBatchDotsOneIsNotBatched) {
-  absl::string_view module_string = R"(
-  HloModule module
-
-  ENTRY main {
-    dot0 = f32[200,50] dot(f32[200,100] parameter(0), f32[100,50] parameter(1)),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    dot1 = f32[3,200,50] dot(f32[3,200,100] parameter(2), f32[3,100,50] parameter(3)),
-      lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-    ROOT tuple = tuple(dot0, dot1)
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-  SCOPED_TRACE(module->ToString());
-  const HloInstruction* dot0 = nullptr;
-  const HloInstruction* dot1 = nullptr;
-  const HloInstruction* slice0 = nullptr;
-  const HloInstruction* slice1 = nullptr;
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::Reshape(m::Slice(&slice0, m::Op(&dot0))),
-                                  m::Slice(&slice1, m::Op(&dot1)))));
-  EXPECT_EQ(dot0, dot1);
-
-  EXPECT_THAT(slice0->slice_starts(), ElementsAre(0, 0, 0));
-  EXPECT_THAT(slice1->slice_starts(), ElementsAre(1, 0, 0));
-  EXPECT_THAT(slice0->slice_limits(), ElementsAre(1, 200, 50));
-  EXPECT_THAT(slice1->slice_limits(), ElementsAre(4, 200, 50));
-  EXPECT_THAT(slice0->slice_strides(), ElementsAre(1, 1, 1));
-  EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1, 1));
-
-  EXPECT_THAT(
-      dot0, GmockMatch(m::Dot(
-                m::Concatenate(m::Reshape(m::Parameter(0)), m::Parameter(2)),
-                m::Concatenate(m::Reshape(m::Parameter(1)), m::Parameter(3)))));
-}
-
-TEST_F(DotMergerTest, MergeBatchDotsAddDegenerateDimInMiddle) {
-  absl::string_view module_string = R"(
-  HloModule module
-
-  ENTRY main {
-    dot0 = f32[3,5,200,50] dot(f32[3,5,200,100] parameter(0), f32[3,5,100,50] parameter(1)),
-      lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}
-    dot1 = f32[3,4,5,200,50] dot(f32[3,4,5,200,100] parameter(2), f32[3,4,5,100,50] parameter(3)),
-      lhs_batch_dims={0,1,2}, rhs_batch_dims={0,1,2}, lhs_contracting_dims={4}, rhs_contracting_dims={3}
-    ROOT tuple = tuple(dot0, dot1)
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
-  EXPECT_TRUE(changed);
-  SCOPED_TRACE(module->ToString());
-  const HloInstruction* dot0 = nullptr;
-  const HloInstruction* dot1 = nullptr;
-  const HloInstruction* slice0 = nullptr;
-  const HloInstruction* slice1 = nullptr;
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::Reshape(m::Slice(&slice0, m::Op(&dot0))),
-                                  m::Slice(&slice1, m::Op(&dot1)))));
-  EXPECT_EQ(dot0, dot1);
-
-  EXPECT_THAT(slice0->slice_starts(), ElementsAre(0, 0, 0, 0, 0));
-  EXPECT_THAT(slice1->slice_starts(), ElementsAre(0, 1, 0, 0, 0));
-  EXPECT_THAT(slice0->slice_limits(), ElementsAre(3, 1, 5, 200, 50));
-  EXPECT_THAT(slice1->slice_limits(), ElementsAre(3, 5, 5, 200, 50));
-  EXPECT_THAT(slice0->slice_strides(), ElementsAre(1, 1, 1, 1, 1));
-  EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1, 1, 1, 1));
-
-  EXPECT_THAT(
-      dot0, GmockMatch(m::Dot(
-                m::Concatenate(m::Reshape(m::Parameter(0)), m::Parameter(2)),
-                m::Concatenate(m::Reshape(m::Parameter(1)), m::Parameter(3)))));
 }
 
 }  // namespace
