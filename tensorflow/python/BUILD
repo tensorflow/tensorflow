@@ -2965,7 +2965,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "noasan",  # TODO(b/233235689): Fails with ASAN.
     ],
     deps = [
         ":array_ops",
