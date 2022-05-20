@@ -73,8 +73,6 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
           ->id();
   TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
   Category category = tf_op.category;
-  int64_t group_id_or_invalid =
-      group_id.value_or(DerivedXLineBuilder::kInvalidGroupId);
   if (category == Category::kTensorFlow || category == Category::kJax) {
     std::vector<XEvent> name_scope_event_per_level;
     for (const auto& tf_name_scope : ParseTfNameScopes(tf_op)) {
@@ -83,7 +81,7 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
           duration_ps, group_id_stat_metadata_id, group_id));
     }
     tf_name_scope_line_builder->ExpandOrAddEvents(
-        name_scope_event_per_level, group_id_or_invalid, low_level_event_name);
+        name_scope_event_per_level, group_id, low_level_event_name);
   }
   XEventMetadata* tf_op_event_metadata =
       plane_builder->GetOrCreateEventMetadata(tf_op_full_name);
@@ -93,70 +91,72 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
   tf_op_line_builder->ExpandOrAddEvent(
       CreateXEvent(*tf_op_event_metadata, offset_ps, duration_ps,
                    group_id_stat_metadata_id, group_id),
-      group_id_or_invalid, low_level_event_name);
+      group_id, low_level_event_name);
 }
 
-/* static */ constexpr int64_t DerivedXLineBuilder::kInvalidGroupId;
+DerivedXEventBuilder::DerivedXEventBuilder(
+    XEventBuilder event, absl::optional<int64_t> group_id,
+    absl::string_view low_level_event_name)
+    : event_(std::move(event)), group_id_(group_id) {
+  if (!low_level_event_name.empty()) {
+    low_level_event_names_.insert(std::string(low_level_event_name));
+  }
+}
+
+bool DerivedXEventBuilder::ShouldExpand(
+    const XEvent& event, absl::optional<int64_t> group_id,
+    absl::string_view low_level_event_name) const {
+  return event_.MetadataId() == event.metadata_id() && group_id_ == group_id &&
+         !low_level_event_names_.contains(low_level_event_name);
+}
+
+void DerivedXEventBuilder::Expand(const XEvent& event,
+                                  absl::string_view low_level_event_name) {
+  DCHECK_LE(event_.OffsetPs(), event.offset_ps());
+  event_.SetDurationPs((event.offset_ps() + event.duration_ps()) -
+                       event_.OffsetPs());
+  if (!low_level_event_name.empty()) {
+    low_level_event_names_.insert(std::string(low_level_event_name));
+  }
+}
 
 DerivedXLineBuilder::DerivedXLineBuilder(
     XPlaneBuilder* plane, int64_t line_id, absl::string_view name,
     int64_t timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
-    : line_(plane->GetOrCreateLine(line_id)) {
+    : level_stats_(plane->GetOrCreateStatMetadata("l")),
+      line_(plane->GetOrCreateLine(line_id)),
+      dependent_lines_(std::move(dependent_lines)) {
   line_.SetName(name);
   line_.SetTimestampNs(timestamp_ns);
-  dependent_lines_ = std::move(dependent_lines);
-  level_stats_ = plane->GetOrCreateStatMetadata("l");
 }
 
 void DerivedXLineBuilder::ExpandOrAddLevelEvent(
-    const XEvent& event, int64_t group_id,
+    const XEvent& event, absl::optional<int64_t> group_id,
     absl::string_view low_level_event_name, int level) {
-  int64_t offset_ps = event.offset_ps();
-  int64_t duration_ps = event.duration_ps();
   auto& last_event = last_event_by_level_[level];
-  // If last_event is not nullptr, its offset must be less than or equal to
-  // the given event's offset.
-  DCHECK(!last_event || last_event->OffsetPs() <= offset_ps);
-  auto& last_eventinfo = last_eventinfo_by_level_[level];
-  bool merge_last_event = false;
-  if (last_event && last_event->MetadataId() == event.metadata_id()) {
-    // If last_event is not nullptr and metadata is same, merge the given
-    // event into last_event.
-    DCHECK(last_eventinfo);  // last_eventinfo must be valid as well.
-    // Merges event with last_event if (1) they have the same group_id
-    // and (2) low_level_event_name hasn't been seen before. If
-    // low_level_event has been seen before, event and last_event are actually
-    // different invocations of the same Op, and so they shouldn't be merged.
-    merge_last_event =
-        (group_id == last_eventinfo->group_id) &&
-        !last_eventinfo->low_level_event_names.contains(low_level_event_name);
-  }
-  if (merge_last_event) {
-    // Merge event with last_event.
-    last_event->SetDurationPs((offset_ps + duration_ps) -
-                              last_event->OffsetPs());
-    if (!low_level_event_name.empty()) {
-      // One more low_level_event_name associated with last_event.
-      last_eventinfo->low_level_event_names.insert(
-          std::string(low_level_event_name));
-    }
+  if (last_event &&
+      last_event->ShouldExpand(event, group_id, low_level_event_name)) {
+    // Expand the last event to cover the given event.
+    last_event->Expand(event, low_level_event_name);
   } else {
     // Otherwise, reset the last events lower than or equal to the given level.
     ResetLastEvents(level);
     // And create a new event for the given level.
-    last_event = line_.AddEvent(event);
-    last_event->AddStatValue(*level_stats_, level);
-    // Also create a new XEventInfo for this level.
-    last_eventinfo = XEventInfo(group_id, low_level_event_name);
+    auto new_event = line_.AddEvent(event);
+    new_event.AddStatValue(*level_stats_, level);
+    last_event.emplace(new_event, group_id, low_level_event_name);
   }
 }
 
 void DerivedXLineBuilder::ResetLastEvents(int level) {
   for (int i = level, end = last_event_by_level_.size(); i < end; ++i) {
-    last_event_by_level_[i] = absl::nullopt;
-    last_eventinfo_by_level_[i] = absl::nullopt;
+    last_event_by_level_[i].reset();
   }
-  if (level == 0) ResetDependentLines();
+  if (level == 0) {
+    for (DerivedXLineBuilder* line : dependent_lines_) {
+      line->ResetLastEvents(0);
+    }
+  }
 }
 
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
@@ -200,8 +200,6 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     int64_t offset_ps = event.OffsetPs();
     int64_t duration_ps = event.DurationPs();
     GpuEventStats stats(&event);
-    int64_t group_id_or_invalid =
-        stats.group_id.value_or(DerivedXLineBuilder::kInvalidGroupId);
     if (stats.group_id) {
       XEvent step_event = CreateXEvent(
           *plane.GetOrCreateEventMetadata(absl::StrCat(*stats.group_id)),
@@ -212,7 +210,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
         stat->set_metadata_id(step_name_stat_metadata_id);
         stat->set_str_value(group_metadata->name);
       }
-      steps.ExpandOrAddEvent(step_event, group_id_or_invalid);
+      steps.ExpandOrAddEvent(step_event, stats.group_id);
     }
 
     if (step_info_only) continue;
@@ -240,7 +238,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
             *plane.GetOrCreateEventMetadata(hlo_op_name), offset_ps,
             duration_ps, group_id_stat_metadata_id, stats.group_id));
       }
-      hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level, group_id_or_invalid);
+      hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level, stats.group_id);
       auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
                                     stats.hlo_op_names.back());
       if (!symbol.tf_op_name.empty()) {

@@ -30,30 +30,30 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// Additional information of an XEvent used to separate consecutive invocations
-// of the same Op on the XLine.
-struct XEventInfo {
-  int64_t group_id;  // group ID of this XEvent or kInvalidGroupId.
+// Helper for deriving XEvents.
+class DerivedXEventBuilder {
+ public:
+  DerivedXEventBuilder(XEventBuilder event, absl::optional<int64_t> group_id,
+                       absl::string_view low_level_event_name);
 
+  bool ShouldExpand(const XEvent& event, absl::optional<int64_t> group_id,
+                    absl::string_view low_level_event_name) const;
+
+  void Expand(const XEvent& event, absl::string_view low_level_event_name);
+
+ private:
+  XEventBuilder event_;
+  absl::optional<int64_t> group_id_;
   // The set of low level events associated with this XEvent.
   // For a TF op that is compiled by XLA, these are its composing HLO op names.
   // For a TF op that is not compiled by XLA, these are its composing kernel
   // names.
-  absl::flat_hash_set<std::string> low_level_event_names;
-
-  XEventInfo(int64_t gid, absl::string_view low_level_event_name) {
-    group_id = gid;
-    if (!low_level_event_name.empty()) {
-      low_level_event_names.insert(std::string(low_level_event_name));
-    }
-  }
+  absl::flat_hash_set<std::string> low_level_event_names_;
 };
 
 // Helper for deriving an XLine from events in another XLine.
 class DerivedXLineBuilder {
  public:
-  static constexpr int64_t kInvalidGroupId = -1;
-
   DerivedXLineBuilder(XPlaneBuilder* plane, int64_t line_id,
                       absl::string_view name, int64_t timestamp_ns,
                       std::vector<DerivedXLineBuilder*> dependent_lines);
@@ -64,7 +64,8 @@ class DerivedXLineBuilder {
   //   TF-op, TF name scope: both group_id and low_level_event_name are used.
   //   HLO-op, step: only group_id is used.
   //   HLO module, source: both group_id and low_level_event_name are NOT used.
-  void ExpandOrAddEvent(const XEvent& event, int64_t group_id = kInvalidGroupId,
+  void ExpandOrAddEvent(const XEvent& event,
+                        absl::optional<int64_t> group_id = absl::nullopt,
                         absl::string_view low_level_event_name = "") {
     ExpandOrAddLevelEvent(event, group_id, low_level_event_name,
                           /*level=*/0);
@@ -73,7 +74,7 @@ class DerivedXLineBuilder {
   // The multi-level version of ExpandOrAddEvent. Here, the XEvents at different
   // levels all share the same group_id and low_level_event_name.
   void ExpandOrAddEvents(const std::vector<XEvent>& event_per_level,
-                         int64_t group_id = kInvalidGroupId,
+                         absl::optional<int64_t> group_id = absl::nullopt,
                          absl::string_view low_level_event_name = "") {
     size_t current_nested_level = event_per_level.size();
     for (size_t level = 0; level < current_nested_level; ++level) {
@@ -93,19 +94,14 @@ class DerivedXLineBuilder {
   // below the given level and all levels of the dependent lines. Clearing
   // last_event_by_level_ prevents a nested event from growing larger than the
   // parent event(s).
-  void ExpandOrAddLevelEvent(const XEvent& event, int64_t group_id,
+  void ExpandOrAddLevelEvent(const XEvent& event,
+                             absl::optional<int64_t> group_id,
                              absl::string_view low_level_event_name, int level);
-
-  void ResetDependentLines() {
-    for (DerivedXLineBuilder* line : dependent_lines_) {
-      line->ResetLastEvents();
-    }
-  }
 
   const XStatMetadata* level_stats_ = nullptr;
   XLineBuilder line_;
-  absl::flat_hash_map<int, absl::optional<XEventBuilder>> last_event_by_level_;
-  absl::flat_hash_map<int, absl::optional<XEventInfo>> last_eventinfo_by_level_;
+  absl::flat_hash_map<int, absl::optional<DerivedXEventBuilder>>
+      last_event_by_level_;
   std::vector<DerivedXLineBuilder*> dependent_lines_;
 };
 
