@@ -88,7 +88,14 @@ REQUIRED_PACKAGES = [
     'h5py ~= 3.1.0',
     'keras_preprocessing ~= 1.1.2',
     'opt_einsum ~= 3.3.0',
-    'protobuf >= 3.9.2',
+    # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
+    # Protobuf 4.0 is binary incompatible with what C++ TF uses.
+    # We need ~1 quarter to update properly.
+    # See also: https://github.com/tensorflow/tensorflow/issues/53234
+    # See also: https://github.com/protocolbuffers/protobuf/issues/9954
+    # See also: https://github.com/tensorflow/tensorflow/issues/56077
+    # This is a temporary patch for now, to patch previous TF releases.
+    'protobuf >= 3.9.2, < 3.20',
     'six ~= 1.15.0',
     'termcolor ~= 1.1.0',
     # Some packages like black and pylint require typing-extensions >= 3.10, so
