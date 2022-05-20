@@ -57,8 +57,7 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
         new_type, [&](const APFloat& float_val) -> APInt {
           bool ignored;
           APSInt int_val(bit_width, is_new_type_unsigned);
-          float_val.convertToInteger(int_val, APFloat::rmNearestTiesToEven,
-                                     &ignored);
+          float_val.convertToInteger(int_val, APFloat::rmTowardZero, &ignored);
           return int_val;
         });
   }

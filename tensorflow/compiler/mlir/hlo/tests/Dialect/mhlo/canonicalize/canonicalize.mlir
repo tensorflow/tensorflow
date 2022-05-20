@@ -2168,6 +2168,13 @@ func.func @fold_fptosi() -> tensor<i16> {
   func.return %1 : tensor<i16>
 }
 
+func.func @fold_fptosi_rounding() -> tensor<i16> {
+  %0 = mhlo.constant dense<-1.5> : tensor<f32>
+  // CHECK: mhlo.constant dense<-1> : tensor<i16>
+  %1 = "mhlo.convert"(%0) : (tensor<f32>) -> tensor<i16>
+  func.return %1 : tensor<i16>
+}
+
 func.func @fold_fptoui() -> tensor<ui16> {
   %0 = mhlo.constant dense<-1.000000e+00> : tensor<f32>
   // CHECK: mhlo.constant dense<0> : tensor<ui16>
