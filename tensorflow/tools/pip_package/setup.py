@@ -85,6 +85,9 @@ REQUIRED_PACKAGES = [
     'libclang >= 9.0.1',
     'flatbuffers >= 1.12, < 3.0', # capped as jax 0.1.71 needs < 3.0
     'google_pasta >= 0.1.1',
+    'h5py >= 2.9.0', # capped since 3.3.0 lacks py3.6
+    'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
+    'opt_einsum >= 2.3.2', # sphinx pin not removed up til 3.3.0 release
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
     # Protobuf 4.0 is binary incompatible with what C++ TF uses.
     # We need ~1 quarter to update properly.
