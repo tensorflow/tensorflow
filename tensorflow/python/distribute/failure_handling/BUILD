@@ -15,6 +15,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":gce_util",
+        "//tensorflow/python:lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
