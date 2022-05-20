@@ -5674,11 +5674,13 @@ cc_library(
     srcs = ["hlo_parser.cc"],
     hdrs = ["hlo_parser.h"],
     deps = [
+        ":computation_layout",
         ":hlo",
         ":hlo_lexer",
         ":shape_inference",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
