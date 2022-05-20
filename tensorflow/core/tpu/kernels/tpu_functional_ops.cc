@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 #define EIGEN_USE_THREADS
 
@@ -2280,6 +2282,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
         int num_cores = topology.device_coordinates_size() / 4;
 
         if (device_assignment.empty()) {
+          VLOG(1) << "Auto assigning device assignment";
           // Number of devices match the cores per replica, so we can just use
           // the device assignment from the existing topology instead of
           // generating our own.
@@ -2289,26 +2292,52 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
           // check that the device coordinates for a donut is always in
           // natural order.
           std::vector<int> natural_order;
+          // Be smart about mesh choice considering TPU platform, given V4
+          // has potentially different mesh shapes.
+          tpu::TpuPlatformInterface* tpu_platform =
+              tpu::TpuPlatformInterface::GetRegisteredPlatform();
+          tpu::TpuTopologyExternal tpu_topology = tpu_platform->topology();
+          bool single_logic_device_per_chip =
+              tpu_topology.LogicalDevicesPerChip(
+                  TpuCoreTypeEnum::kTensorCore) == 1;
           switch (num_cores) {
             case 2:
-              TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                  /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
-                  /*num_cores_per_chip=*/2, &natural_order));
+              if (single_logic_device_per_chip) {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/1, &natural_order));
+              } else {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/2, &natural_order));
+              }
               break;
-            case 4:  // we assume this is a device with one core per chip.
-              TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                  /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                  /*num_cores_per_chip=*/1, &natural_order));
+            case 4:
+              if (single_logic_device_per_chip) {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/1, &natural_order));
+              } else {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/2, &natural_order));
+              }
               break;
             case 8:
-              TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                  /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                  /*num_cores_per_chip=*/2, &natural_order));
-              break;
+              if (!single_logic_device_per_chip) {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/2, &natural_order));
+                break;
+              }
+              // Intentionally fall through since with v4 shape and 8 cores per
+              // replica, we're crossing host bounds -- so we ask for a explicit
+              // device assignment.
+              ABSL_FALLTHROUGH_INTENDED;
             default:
               return errors::Unimplemented(
-                  "You must specify a device assignment for all TPU "
-                  "configurations.");
+                  "Unable to auto assign device assignment. For topology cross "
+                  "host bounds, you must explicit specify an assignment.");
           }
           if (*num_core_per_replica != num_cores &&
               !std::equal(natural_order.begin(), natural_order.end(),
