@@ -1,5 +1,8 @@
-# Release 2.8.1
+# Release 2.8.2
 
+Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
+
+# Release 2.8.1
 
 This releases introduces several vulnerability fixes:
 
