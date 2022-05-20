@@ -45,8 +45,7 @@ struct GraphToFuncPass : GraphToFuncBase<GraphToFuncPass> {
       return;
     }
     GraphOp graph = *ops_list.begin();
-    auto status = GraphToFunc(graph, feeds_, fetches_, control_rets_,
-                              "_mlir_lifted_graph");
+    auto status = GraphToFunc(graph, feeds_, fetches_, control_rets_);
     if (!status.ok()) {
       emitError(graph.getLoc())
           << "GraphToFunc failed: " << status.error_message();

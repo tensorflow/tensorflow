@@ -116,6 +116,13 @@ def TFGraphDialect : Dialect {
       return {"tfg.experimental_full_type"};
     }
 
+    StringAttr getLiftedGraphFuncNameAttrIdentifier() const {
+      return lifted_graph_func_name_;
+    }
+    static constexpr StringRef getLiftedGraphFuncNameKey() {
+      return {"_mlir_lifted_graph"};
+    }
+
     // Cached accessor for the control type.
     ControlType getControlType() const { return control_ty_; }
 
@@ -148,6 +155,7 @@ def TFGraphDialect : Dialect {
     StringAttr assigned_device_key_;
     StringAttr device_key_;
     StringAttr fulltype_key_;
+    StringAttr lifted_graph_func_name_;
     StringAttr name_key_;
     StringAttr tfg_description_key_;
     StringAttr tfg_full_type_key_;

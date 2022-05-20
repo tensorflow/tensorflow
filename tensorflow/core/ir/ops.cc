@@ -127,6 +127,8 @@ void TFGraphDialect::initialize() {
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  lifted_graph_func_name_ =
+      StringAttr::get(getContext(), getLiftedGraphFuncNameKey());
   tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
   tfg_description_key_ =
       StringAttr::get(getContext(), getTfgDescriptionAttrKey());
