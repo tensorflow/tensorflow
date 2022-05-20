@@ -25,11 +25,6 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/ControlFlowInterfaces.h"
-#include "mlir/Interfaces/LoopLikeInterface.h"
-#include "mlir/Interfaces/SideEffectInterfaces.h"
-#include "mlir/Interfaces/ViewLikeInterface.h"
-#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace {
@@ -128,6 +123,10 @@ void GmlStDialect::initialize() {
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
       >();
 }
+
+//===----------------------------------------------------------------------===//
+// MaterializeOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult MaterializeOp::inferReturnTypes(
     MLIRContext *, Optional<Location>, ValueRange operands,
@@ -981,6 +980,31 @@ LogicalResult YieldOp::verify() {
              << index << " with type = " << resultType
              << " to match output arg type = " << outType;
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CollapseTileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CollapseTileOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> loc, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Get argument tile type.
+  Value arg_tile = operands.front();
+  auto arg_ty = arg_tile.getType().dyn_cast<TileType>();
+  if (!arg_ty) return failure();
+  auto arg_shape = arg_ty.getShape();
+
+  // Derive result shape.
+  CollapseTileOp::Adaptor adaptor(operands, attributes, regions);
+  SmallVector<int64_t> shape = llvm::to_vector(llvm::map_range(
+      adaptor.remaining_dims(),
+      [&](const auto &d) { return arg_shape[d.getLimitedValue()]; }));
+
+  auto result_ty = TileType::get(ctx, shape);
+  inferredReturnTypes.push_back(result_ty);
   return success();
 }
 
