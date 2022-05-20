@@ -99,11 +99,7 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
   """
 
   def __init__(self, root):
-    if (not context.executing_eagerly() and not ops.inside_function()):
-      saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
-    else:
-      saveables_cache = None
-    super(_AugmentedGraphView, self).__init__(root, saveables_cache)
+    super(_AugmentedGraphView, self).__init__(root)
 
     # Cache the results of `GraphView.list_children()` to ensure that the
     # `Trackable` children are gathered exactly once.
