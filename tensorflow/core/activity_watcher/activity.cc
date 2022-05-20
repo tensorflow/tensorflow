@@ -17,11 +17,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace activity_watcher {
-ActivityScope::ActivityScope(std::unique_ptr<Activity>) {}
-ActivityScope::~ActivityScope() {}
+namespace internal {
 
-ActivityId ActivityStart(std::unique_ptr<Activity>) { return 0; }
-void ActivityEnd(ActivityId id) {}
+std::atomic<bool> g_watcher_enabled(false);
+ActivityId RecordActivityStart(std::unique_ptr<Activity>) {
+  return kActivityNotRecorded;
+}
+void RecordActivityEnd(ActivityId id) {}
+
+}  // namespace internal
 
 }  // namespace activity_watcher
 }  // namespace tensorflow
