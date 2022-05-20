@@ -75,70 +75,50 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    # NOTE: As numpy has releases that break semver guarantees and several other
-    # deps depend on numpy without an upper bound, we must install numpy before
-    # everything else.
-    'numpy ~= 1.19.2',
-    # Install other dependencies
-    'absl-py ~= 0.10',
-    'astunparse ~= 1.6.3',
-    'clang ~= 5.0',
-    'flatbuffers ~= 1.12.0',
-    'google_pasta ~= 0.2',
-    'h5py ~= 3.1.0',
-    'keras_preprocessing ~= 1.1.2',
-    'opt_einsum ~= 3.3.0',
-    'protobuf >= 3.9.2',
-    'six ~= 1.15.0',
-    'termcolor ~= 1.1.0',
-    # Some packages like black and pylint require typing-extensions >= 3.10, so
-    # we allow higher typing-extensions versions here to prevent conflicts
-    'typing-extensions >= 3.7, < 3.11',
-    'wheel ~= 0.35',
-    'wrapt ~= 1.12.1',
-    # These packages need to be pinned exactly as newer versions are
-    # incompatible with the rest of the ecosystem
-    'gast == 0.4.0',
-    # TensorFlow ecosystem packages that TF exposes API for
-    # These need to be in sync with the existing TF version
-    # They are updated during the release process
-    # When updating these, please also update the nightly versions below
-    'tensorboard >= 2.6.0, < 2.7',
-    'tensorflow_estimator >= 2.6.0, < 2.7',
-    'keras >= 2.6.0, < 2.7',
-]
-
-
-# For nightly packages, instead of depending on tensorboard,
-# tensorflow_estimator and keras, we depend on their nightly equivalent.
-# When updating these, make sure to also update the release versions above.
-# NOTE: the nightly versions are one version ahead of the release ones!
-# NOTE: the nightly versions specify alpha/dev!
-if 'tf_nightly' in project_name:
-  for i, pkg in enumerate(REQUIRED_PACKAGES):
-    if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.7.0.a'
-    elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.7.0.dev'
-    elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.7.0.dev'
-
-
-# grpcio does not build correctly on big-endian machines due to lack of
-# BoringSSL support.
-# See https://github.com/tensorflow/tensorflow/issues/17882.
-if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio >= 1.37.0, < 2.0')
-
-
-# Packages which are only needed for testing code.
-# Please don't add test-only packages to `REQUIRED_PACKAGES`!
-# Follows the same conventions as `REQUIRED_PACKAGES`
-TEST_PACKAGES = [
-    'portpicker ~= 1.3.1',
-    'scipy ~= 1.5.2',
-    'tblib ~= 1.7.0',
-    'dill ~= 0.3.2',
+    'absl-py >= 1.0.0',
+    'astunparse >= 1.6.0',
+    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
+    # issue is resolved.
+    'flatbuffers >= 1.12, <2',
+    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
+    'gast >= 0.2.1, <= 0.4.0',
+    'google_pasta >= 0.1.1',
+    'h5py >= 2.9.0',
+    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
+    'libclang >= 13.0.0',
+    'numpy >= 1.20',
+    'opt_einsum >= 2.3.2',
+    'packaging',
+    # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
+    # Protobuf 4.0 is binary incompatible with what C++ TF uses.
+    # We need ~1 quarter to update properly.
+    # See also: https://github.com/tensorflow/tensorflow/issues/53234
+    # See also: https://github.com/protocolbuffers/protobuf/issues/9954
+    # See also: https://github.com/tensorflow/tensorflow/issues/56077
+    # This is a temporary patch for now, to patch previous TF releases.
+    'protobuf >= 3.9.2, < 3.20',
+    'setuptools',
+    'six >= 1.12.0',
+    'termcolor >= 1.1.0',
+    'typing_extensions >= 3.6.6',
+    'wrapt >= 1.11.0',
+    'tensorflow-io-gcs-filesystem >= 0.23.1',
+    # grpcio does not build correctly on big-endian machines due to lack of
+    # BoringSSL support.
+    # See https://github.com/tensorflow/tensorflow/issues/17882.
+    'grpcio >= 1.24.3, < 2.0' if sys.byteorder == 'little' else None,
+    # TensorFlow exposes the TF API for certain TF ecosystem packages like
+    # keras.  When TF depends on those packages, the package version needs to
+    # match the current TF version. For tf_nightly, we install the nightly
+    # variant of each package instead, which must be one version ahead of the
+    # current release version. These also usually have "alpha" or "dev" in their
+    # version name.
+    # These are all updated during the TF release process.
+    standard_or_nightly('tensorboard >= 2.9, < 2.10', 'tb-nightly ~= 2.10.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.9.0rc0, < 2.10',
+                        'tf-estimator-nightly ~= 2.10.0.dev'),
+    standard_or_nightly('keras >= 2.9.0rc0, < 2.10',
+                        'keras-nightly ~= 2.10.0.dev'),
 ]
 
 
