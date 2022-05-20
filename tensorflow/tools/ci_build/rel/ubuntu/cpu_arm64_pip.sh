@@ -66,12 +66,10 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/compiler/mlir/lite/tests:const-fold.mlir.test \
     -//tensorflow/compiler/mlir/lite/tests:prepare-tf.mlir.test \
     -//tensorflow/python:nn_grad_test \
-    -//tensorflow/python:dequantize_op_test \
-    -//tensorflow/python:quantized_ops_test \
-    -//tensorflow/python/data/experimental/kernel_tests/service:cross_trainer_cache_test \
     -//tensorflow/python/eager:forwardprop_test \
     -//tensorflow/python/framework:node_file_writer_test \
     -//tensorflow/python/grappler:memory_optimizer_test \
+    -//tensorflow/python/keras/engine:training_arrays_test \
     -//tensorflow/python/kernel_tests/linalg:linear_operator_householder_test \
     -//tensorflow/python/kernel_tests/linalg:linear_operator_inversion_test \
     -//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test \
