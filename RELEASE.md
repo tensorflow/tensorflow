@@ -1,3 +1,9 @@
+# Release 2.6.5
+
+Add an upper bound for `protobuf` in `setup.py` since `protobuf` after version 3.20 is currently incompatible with TensorFlow. See https://github.com/tensorflow/tensorflow/issues/53234, https://github.com/protocolbuffers/protobuf/issues/9954 and https://github.com/tensorflow/tensorflow/issues/56077.
+
+This is the final release in the 2.6.x series.
+
 # Release 2.6.4
 
 This releases introduces several vulnerability fixes:
