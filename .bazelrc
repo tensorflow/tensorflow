@@ -151,6 +151,7 @@ build --experimental_cc_shared_library
 
 # cc_shared_library ensures no library is linked statically more than once.
 build --experimental_link_static_libraries_once=true
+build:macos --experimental_link_static_libraries_once=false  # b/228273415
 
 # Default options should come above this line.
 
