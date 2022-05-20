@@ -160,6 +160,12 @@ class Status {
   absl::optional<absl::string_view> GetPayload(
       absl::string_view type_url) const;
 
+// OkStatus()
+//
+// Returns an OK status, equivalent to a default constructed instance. Prefer
+// usage of `OkStatus()` when constructing such an OK status.
+Status OkStatus();
+
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
@@ -203,24 +209,6 @@ class Status {
 // usage of `OkStatus()` when constructing such an OK status.
 Status OkStatus();
 
-// These convenience functions return `true` if a given status matches the
-// `Code` error code of its associated function.
-bool IsAborted(const Status& status);
-bool IsAlreadyExists(const Status& status);
-bool IsCancelled(const Status& status);
-bool IsDataLoss(const Status& status);
-bool IsDeadlineExceeded(const Status& status);
-bool IsFailedPrecondition(const Status& status);
-bool IsInternal(const Status& status);
-bool IsInvalidArgument(const Status& status);
-bool IsNotFound(const Status& status);
-bool IsOutOfRange(const Status& status);
-bool IsPermissionDenied(const Status& status);
-bool IsResourceExhausted(const Status& status);
-bool IsUnauthenticated(const Status& status);
-bool IsUnavailable(const Status& status);
-bool IsUnimplemented(const Status& status);
-bool IsUnknown(const Status& status);
 
 // Convenience Status constructors, not having to specify the underlying Code.
 Status AbortedError(absl::string_view message);
