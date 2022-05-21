@@ -93,7 +93,7 @@ py_test(
     srcs = ["pytree_test.py"],
     main = "pytree_test.py",
     python_version = "PY3",
-#    tags = ["no_oss"],  # TODO(awf,phawkins): This test passes, but requires --config=monolithic.
+    tags = ["no_oss"],  # TODO(awf,phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":xla_extension",
         "@absl_py//absl/testing:absltest",
