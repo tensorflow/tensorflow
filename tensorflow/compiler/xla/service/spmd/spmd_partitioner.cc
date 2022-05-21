@@ -2294,7 +2294,10 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   absl::optional<HloSharding> desired_operand_sharding =
       hlo_sharding_util::ReshapeSharding(hlo->shape(), hlo->operand(0)->shape(),
                                          hlo->sharding());
-  if (desired_operand_sharding.has_value()) {
+  // Use the desired operand sharding only if the number of tiles returned
+  // matches the number of tiles in the output.
+  if (desired_operand_sharding.has_value() &&
+      hlo->sharding().NumTiles() == desired_operand_sharding->NumTiles()) {
     auto operand_hlo = operand.Reshard(*desired_operand_sharding).hlo();
     SetPartitionedHlo(hlo, [&] {
       return b_.AddInstruction(hlo->CloneWithNewOperands(
