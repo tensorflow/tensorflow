@@ -15,18 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
 
-#include <utility>
-
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -39,26 +42,68 @@ namespace tfg {
 namespace {
 // This is a MLIR TFG "test pass", it will just rename all the nodes with the
 // suffix "_visited".
-class TestPass : public PassWrapper<TestPass, OperationPass<GraphOp>> {
+class TestPass : public PassWrapper<TestPass, OperationPass<GraphFuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestPass);
 
   StringRef getArgument() const override { return "grappler-hook-test-pass"; }
   void runOnOperation() override {
-    GraphOp graph = getOperation();
-    for (TFOp op : graph.getOps()) op.setName(op.name() + "_visited");
+    GraphFuncOp func = getOperation();
+    for (Operation &op : func.getBody()->without_terminator())
+      TFOp(op).setName(TFOp(op).name() + "_visited");
   }
 };
 
 // This test pass always fails.
 class AlwaysFailPass
-    : public PassWrapper<AlwaysFailPass, OperationPass<GraphOp>> {
+    : public PassWrapper<AlwaysFailPass, OperationPass<GraphFuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AlwaysFailPass);
 
   StringRef getArgument() const override { return "grappler-hook-fail-pass"; }
   void runOnOperation() override { signalPassFailure(); }
 };
+
+// Remove the `tfg.lifted_graph_version` which will cause func-to-graph failure.
+class InvalidateLiftedGraphFuncPass
+    : public PassWrapper<InvalidateLiftedGraphFuncPass,
+                         OperationPass<GraphFuncOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InvalidateLiftedGraphFuncPass);
+
+  StringRef getArgument() const override {
+    return "grappler-invalidate-lifted-graph-func-pass";
+  }
+  void runOnOperation() override {
+    // Remove the `tfg.lifted_graph_version` will cause the func-to-graph
+    // failure which it can't restore the graph version.
+    getOperation()->removeAttr("tfg.lifted_graph_version");
+  }
+};
+
+// Remove the graph will invalidate the module.
+class RemoveLiftedGraphFuncPass
+    : public PassWrapper<RemoveLiftedGraphFuncPass, OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RemoveLiftedGraphFuncPass);
+
+  StringRef getArgument() const override {
+    return "grappler-remove-lifted-graph-func-pass";
+  }
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    GraphFuncOp lifted_graph_func;
+    for (GraphFuncOp func : module.getOps<GraphFuncOp>()) {
+      auto &dialect = *cast<TFGraphDialect>(func.getDialect());
+      if (func.sym_name() == dialect.getLiftedGraphFuncNameAttrIdentifier()) {
+        lifted_graph_func = func;
+      }
+    }
+
+    if (lifted_graph_func) lifted_graph_func.erase();
+  }
+};
+
 }  // namespace
 }  // namespace tfg
 }  // namespace mlir
@@ -81,7 +126,7 @@ TEST(TFGOptimizerTest, TestCustomPipeline) {
   // This is testing that we can invoke an arbitrary pipeline, here the pass
   // registered above.
   mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
-    mgr.addNestedPass<mlir::tfg::GraphOp>(
+    mgr.addNestedPass<mlir::tfg::GraphFuncOp>(
         std::make_unique<mlir::tfg::TestPass>());
   });
   GraphDef output;
@@ -94,11 +139,67 @@ TEST(TFGOptimizerTest, TestCustomPipeline) {
 TEST(TFGOptimizerTest, TestCustomPipelineName) {
   // Test printing the name of a custom pipeline.
   mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
-    mgr.addNestedPass<mlir::tfg::GraphOp>(
+    mgr.addNestedPass<mlir::tfg::GraphFuncOp>(
         std::make_unique<mlir::tfg::TestPass>());
   });
   EXPECT_EQ(optimizer.name(),
-            "tfg_optimizer{tfg.graph(grappler-hook-test-pass)}");
+            "tfg_optimizer{tfg.func(grappler-hook-test-pass)}");
+}
+
+TEST(TFGOptimizerTest, TestFuncToGraphError) {
+  Scope s = Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addNestedPass<mlir::tfg::GraphFuncOp>(
+        std::make_unique<mlir::tfg::InvalidateLiftedGraphFuncPass>());
+  });
+
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+
+  EXPECT_FALSE(status.ok());
+}
+
+TEST(TFGOptimizerTest, TestMissingLiftedGraphFunc) {
+  Scope s = Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addPass(std::make_unique<mlir::tfg::RemoveLiftedGraphFuncPass>());
+  });
+
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+
+  EXPECT_FALSE(status.ok());
+}
+
+TEST(TFGOptimizerTest, TestPreserveGraphFunc) {
+  Scope s = Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.graph.mutable_versions()->set_producer(1100);
+  item.graph.mutable_versions()->set_min_consumer(101);
+
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addPass(mlir::createSymbolPrivatizePass(
+        {mlir::tfg::TFGraphDialect::getLiftedGraphFuncNameKey().str()}));
+    mgr.addPass(mlir::createSymbolDCEPass());
+  });
+
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(output.node_size(), 1);
+  EXPECT_EQ(output.versions().producer(), 1100);
+  EXPECT_EQ(output.versions().min_consumer(), 101);
 }
 
 TEST(TFGOptimizerTest, TestImportErrorReturnsAborted) {
@@ -129,7 +230,7 @@ TEST(TFGOptimizerTest, TestPassErrorIsFatal) {
 
   // Initialize the pipeline with a pass that always fails.
   mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
-    mgr.addNestedPass<mlir::tfg::GraphOp>(
+    mgr.addNestedPass<mlir::tfg::GraphFuncOp>(
         std::make_unique<mlir::tfg::AlwaysFailPass>());
   });
 

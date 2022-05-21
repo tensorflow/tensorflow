@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
@@ -54,7 +55,9 @@ void DefaultModuleGrapplerPipeline(PassManager& manager,
     manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
   manager.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
   manager.addPass(CreateLiftLegacyCallPass());
-  manager.addPass(createSymbolPrivatizePass());
+  // Graph will be lifted as a function, don't mark it as private.
+  manager.addPass(createSymbolPrivatizePass(
+      {TFGraphDialect::getLiftedGraphFuncNameKey().str()}));
   manager.addPass(createSymbolDCEPass());
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.

@@ -716,8 +716,14 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/transforms:PassRegistration",
+        "//tensorflow/core/transforms/func_to_graph:FuncToGraph",
+        "//tensorflow/core/transforms/graph_to_func:GraphToFunc",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -730,6 +736,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/grappler:grappler_item",
         "@llvm-project//mlir:Pass",
     ],

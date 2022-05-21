@@ -19,9 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -37,16 +39,66 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/transforms/func_to_graph/func_to_graph.h"
+#include "tensorflow/core/transforms/graph_to_func/graph_to_func.h"
 
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
 namespace mlir {
 namespace tfg {
+
+// Lift the graph into a function to embed the semantic of feeds, fetches and
+// nodes-to-preserve nodes in GrapplerItem.
+static Status LiftGraphToFunc(GraphOp graph,
+                              const tensorflow::grappler::GrapplerItem& item) {
+  SmallVector<std::string> feed = llvm::to_vector<4>(llvm::map_range(
+      item.feed, [](const std::pair<std::string, tensorflow::Tensor>& item) {
+        return item.first;
+      }));
+  SmallVector<std::string> control_rets =
+      llvm::to_vector<4>(item.NodesToPreserve());
+
+  Status status = GraphToFunc(graph, feed, item.fetch, control_rets);
+  if (!status.ok()) {
+    return InvalidArgument(
+        "MLIR Graph optimizer failed: Can't lift graph into function: ",
+        status.error_message());
+  }
+  return Status::OK();
+}
+
+// Lower the lifted graph function back to the graph.
+static Status LowerFuncToGraph(ModuleOp module) {
+  auto* dialect = module->getContext()->getLoadedDialect<TFGraphDialect>();
+  StringAttr lifted_graph_func_name =
+      dialect->getLiftedGraphFuncNameAttrIdentifier();
+  GraphFuncOp lifted_graph_func;
+  for (auto func : module.getOps<GraphFuncOp>()) {
+    if (func.sym_name() == lifted_graph_func_name) {
+      lifted_graph_func = func;
+      break;
+    }
+  }
+
+  if (!lifted_graph_func) {
+    return InvalidArgument(
+        "MLIR Graph Optimizer failed: module is missing lifted graph func op");
+  }
+
+  Status status = FuncToGraph(lifted_graph_func);
+  if (!status.ok()) {
+    return InvalidArgument(
+        "MLIR Graph Optimizer failed: Can't lower function into graph: ",
+        status.error_message());
+  }
+  return Status::OK();
+}
 
 // The implementation of the TFG optimizer. It holds the MLIR context and the
 // pass manager.
@@ -130,8 +182,12 @@ Status TFGGrapplerOptimizer::Optimize(
   }
   metrics.ReportAndStop();
 
-  // Run the pipeline on the graph.
   ModuleOp module = (*error_or_module).get();
+
+  // Lift the graph to a func to embed the semantic of feeds, fetches and
+  // nodes-to-preserve nodes in GrapplerItem.
+  TF_RETURN_IF_ERROR(LiftGraphToFunc(*module.getOps<GraphOp>().begin(), item));
+
   StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
   if (failed(impl_->RunPipeline(module))) {
     return error_handler.Combine(
@@ -140,7 +196,7 @@ Status TFGGrapplerOptimizer::Optimize(
   // While pass execution, it may use emitError to return a failure status, this
   // will be caught by the error_handler. As a result, even if the pass left
   // without failure, there may still have some message cached in the handler.
-  tensorflow::Status status = error_handler.ConsumeStatus();
+  Status status = error_handler.ConsumeStatus();
   if (!status.ok()) {
     VLOG(4) << "Pass execution leftover diagnostics: " << status.error_message()
             << "\n These message doesn't imply any failure of the pipeline "
@@ -148,6 +204,9 @@ Status TFGGrapplerOptimizer::Optimize(
                "were used to pass the internal execution result. Use warning "
                "diagnostic when possible if you want to avoid this.";
   }
+
+  // Convert the lifted graph function back to the graph.
+  TF_RETURN_IF_ERROR(LowerFuncToGraph(module));
 
   // Export the TFG module to GraphDef.
   tensorflow::GraphDef graphdef;
