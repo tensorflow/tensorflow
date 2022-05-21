@@ -36,5 +36,3 @@ mlir_tablegen(hlo_ops_base_enums.cc.inc -gen-enum-defs)
 mlir_tablegen(hlo_ops_base_attrs.h.inc -gen-attrdef-decls)
 mlir_tablegen(hlo_ops_base_attrs.cc.inc -gen-attrdef-defs)
 add_public_tablegen_target(MLIRhlo_opsIncGen)
-
-add_mlir_interface(infer_shape_equality_op_interface)

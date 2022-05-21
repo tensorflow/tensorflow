@@ -29,12 +29,12 @@ namespace tf_framework {
 namespace {
 
 // Prepends argument type list of the function with an OpKernelContextType arg.
-class FuncOpConverter : public OpConversionPattern<FuncOp> {
+class FuncOpConverter : public OpConversionPattern<func::FuncOp> {
  public:
-  using OpConversionPattern<FuncOp>::OpConversionPattern;
+  using OpConversionPattern<func::FuncOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FuncOp func, OpAdaptor /*adaptor*/,
+      func::FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
     auto func_type = func.getFunctionType();
@@ -57,7 +57,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
 };
 
 llvm::Optional<Value> FindOpKernelContext(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   if (func.getNumArguments() == 0) {
     return llvm::None;
   }

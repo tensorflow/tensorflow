@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -164,6 +165,20 @@ class HloModuleConfig {
   }
   bool use_auto_spmd_partitioning() const {
     return use_auto_spmd_partitioning_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
+    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return auto_spmd_partitioning_mesh_shape_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
+    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return auto_spmd_partitioning_mesh_ids_;
   }
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
@@ -317,6 +332,14 @@ class HloModuleConfig {
     analysis_allowance_map_[pass_name] = allowance;
   }
 
+  PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return matrix_unit_operand_precision_;
+  }
+  void set_matrix_unit_operand_precision(
+      PrecisionConfig::Precision matrix_unit_operand_precision) {
+    matrix_unit_operand_precision_ = matrix_unit_operand_precision;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -343,6 +366,11 @@ class HloModuleConfig {
 
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_partitioning_ = false;
+
+  // Mesh shape and mesh ids used by auto spmd partitioning.
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
@@ -415,6 +443,9 @@ class HloModuleConfig {
   // Each Hlo analysis is allowed at least a constant number of
   // abstract cost units, before it is considered for early termination.
   absl::flat_hash_map<absl::string_view, int64_t> analysis_allowance_map_;
+
+  PrecisionConfig::Precision matrix_unit_operand_precision_ =
+      PrecisionConfig::DEFAULT;
 };
 
 }  // namespace xla

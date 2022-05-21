@@ -183,13 +183,7 @@ ENTRY DotOperationFusion_TransposeFusion {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      TransposeFolding::NeverFoldTranspose);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -213,13 +207,7 @@ ENTRY DotOperationFusion_TransposeFusion {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      TransposeFolding::NeverFoldTranspose);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -244,13 +232,7 @@ ENTRY DotOperationFusion_TransposeFusion {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      TransposeFolding::NeverFoldTranspose);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),

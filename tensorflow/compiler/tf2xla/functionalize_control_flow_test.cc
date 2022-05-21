@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 
+#include <string>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -130,9 +133,13 @@ void ConditionalTestFixture::BuildCondGraph(Graph* cond_graph) {
 
     TF_EXPECT_OK(scope.ToGraph(cond_graph));
 
-    // Set `_tpu_replicate` attribute for all nodes.
+    // Set all attributes that need propagation for all nodes. This is to test
+    // if propagation works. Note that this includes `_tpu_replicate`.
     for (Node* n : cond_graph->nodes()) {
-      n->AddAttr("_tpu_replicate", "cluster");
+      std::string dummy_value = "value";
+      for (absl::string_view attr_name : kAttrsToPropagate) {
+        n->AddAttr(std::string(attr_name), dummy_value);
+      }
     }
   }
 }
@@ -207,6 +214,18 @@ void ConditionalTestFixture::CheckGraphDef(
     EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
     EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
     TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+
+    // Check that internal attributes were correctly propagated to `If` node
+    // (such attributes are ignored in the above graph equality check).
+    for (const NodeDef& node : graph_def.node()) {
+      if (node.op() == "If") {
+        for (absl::string_view attr_name : kAttrsToPropagate) {
+          std::string attr_val;
+          TF_EXPECT_OK(GetNodeAttr(node, attr_name, &attr_val));
+          EXPECT_EQ(attr_val, "value");
+        }
+      }
+    }
   }
 }
 

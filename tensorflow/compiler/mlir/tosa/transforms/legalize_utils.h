@@ -128,7 +128,7 @@ bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 // means patterns can performed shape inference while not altering immutable
 // types.
 LogicalResult ApplyPatternsWithShapeResolution(
-    FuncOp func, const FrozenRewritePatternSet& patterns);
+    func::FuncOp func, const FrozenRewritePatternSet& patterns);
 
 // Creates a TOSA operation and performs shape inference on the individual
 // op. This allows shape inference during the TFLite to TOSA lowering.

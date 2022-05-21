@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests to improve the the of tensorflow.
+"""Tests to improve the consistency of tensorflow.
 
 Basic tests show how to use the consistency test to test against function,
 eager, and xla function modes.

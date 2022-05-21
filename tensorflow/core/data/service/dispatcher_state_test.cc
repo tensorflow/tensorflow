@@ -304,6 +304,7 @@ TEST(DispatcherState, JobName) {
   EXPECT_EQ(state.NextAvailableJobId(), job_id + 1);
   EXPECT_EQ(job->dataset_id, dataset_id);
   EXPECT_EQ(job->job_id, job_id);
+  EXPECT_FALSE(job->use_cross_trainer_cache);
   EXPECT_FALSE(job->finished);
 }
 
@@ -326,6 +327,49 @@ TEST(DispatcherState, NumConsumersJob) {
   EXPECT_EQ(job->num_consumers, num_consumers);
 }
 
+TEST(DispatcherState, MultiTrainerCacheJob) {
+  int64_t dataset_id = 10;
+  DispatcherState state;
+  int64_t job_id = state.NextAvailableJobId();
+  TF_ASSERT_OK(RegisterDataset(dataset_id, state));
+  Update update;
+  CreateJobUpdate* create_job = update.mutable_create_job();
+  create_job->set_job_id(job_id);
+  create_job->set_dataset_id(dataset_id);
+  create_job->mutable_processing_mode_def()->set_sharding_policy(
+      ProcessingModeDef::OFF);
+  create_job->set_use_cross_trainer_cache(true);
+  TF_ASSERT_OK(state.Apply(update));
+  std::shared_ptr<const Job> job;
+  TF_ASSERT_OK(state.JobFromId(job_id, job));
+  EXPECT_TRUE(job->use_cross_trainer_cache);
+}
+
+TEST(DispatcherState, MultiTrainerCacheTask) {
+  int64_t dataset_id = 10;
+  std::string worker_address = "test_worker_address";
+  DispatcherState state;
+  int64_t job_id = state.NextAvailableJobId();
+  TF_ASSERT_OK(RegisterDataset(dataset_id, state));
+  Update update;
+  CreateJobUpdate* create_job = update.mutable_create_job();
+  create_job->set_job_id(job_id);
+  create_job->set_dataset_id(dataset_id);
+  create_job->mutable_processing_mode_def()->set_sharding_policy(
+      ProcessingModeDef::OFF);
+  create_job->set_use_cross_trainer_cache(true);
+  TF_ASSERT_OK(state.Apply(update));
+
+  int64_t task_id = state.NextAvailableTaskId();
+  TF_EXPECT_OK(CreateTask(task_id, job_id, worker_address, state));
+  std::shared_ptr<const Task> task;
+  TF_EXPECT_OK(state.TaskFromId(task_id, task));
+  EXPECT_EQ(task->job->job_id, job_id);
+  EXPECT_EQ(task->task_id, task_id);
+  EXPECT_EQ(task->worker_address, worker_address);
+  EXPECT_TRUE(task->job->use_cross_trainer_cache);
+}
+
 TEST(DispatcherState, CreateTask) {
   int64_t job_id = 3;
   int64_t dataset_id = 10;
@@ -342,6 +386,7 @@ TEST(DispatcherState, CreateTask) {
     EXPECT_EQ(task->job->job_id, job_id);
     EXPECT_EQ(task->task_id, task_id);
     EXPECT_EQ(task->worker_address, worker_address);
+    EXPECT_FALSE(task->job->use_cross_trainer_cache);
   }
   {
     std::vector<std::shared_ptr<const Task>> tasks;

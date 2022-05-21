@@ -1,0 +1,62 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Result #1 of segment 'const2:output' is out of bounds
+
+node {
+  name: "const1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "const2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "merge"
+  op: "Merge"
+  input: "const1:output:0"
+  input: "const2:output:1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}

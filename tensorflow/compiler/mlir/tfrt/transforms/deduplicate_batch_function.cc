@@ -39,7 +39,6 @@ namespace tfrt_compiler {
 namespace {
 
 using ::mlir::ArrayRef;
-using ::mlir::FuncOp;
 using ::mlir::ModuleOp;
 using ::mlir::Operation;
 using ::mlir::SymbolTable;
@@ -47,7 +46,7 @@ using ::mlir::SymbolTableCollection;
 using ::mlir::SymbolUserMap;
 
 // This only includes some preliminary checks as this is a short term solution.
-bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
+bool AreEquivalent(mlir::func::FuncOp& lhs, mlir::func::FuncOp& rhs) {
   if (lhs.getFunctionType() != rhs.getFunctionType()) return false;
 
   for (auto arg_pair : llvm::zip(lhs.getArguments(), rhs.getArguments())) {
@@ -90,6 +89,11 @@ bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
 class DeduplicateFunctionsInovkedByBatchFunction
     : public mlir::PassWrapper<DeduplicateFunctionsInovkedByBatchFunction,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      DeduplicateFunctionsInovkedByBatchFunction)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-deduplicate-functions-invoked-by-batch-function";
   }
@@ -113,9 +117,11 @@ mlir::LogicalResult DeduplicateFunctionsInovkedByBatchFunction::Run() {
   SymbolUserMap symbol_users(symbol_table_collection, module);
 
   // Categorize the functions invoked by BatchFunctionOp by its shared_name.
-  llvm::StringMap<llvm::SmallVector<FuncOp, 2>> shared_name_to_func_ops;
+  llvm::StringMap<llvm::SmallVector<mlir::func::FuncOp, 2>>
+      shared_name_to_func_ops;
 
-  for (auto func : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
+  for (auto func :
+       llvm::make_early_inc_range(module.getOps<mlir::func::FuncOp>())) {
     ArrayRef<Operation*> users = symbol_users.getUsers(func);
     llvm::StringRef shared_name;
     // Deduplicate the function only if all users are BatchFunctionOp and have
@@ -136,8 +142,8 @@ mlir::LogicalResult DeduplicateFunctionsInovkedByBatchFunction::Run() {
 
   for (auto& it : shared_name_to_func_ops) {
     auto& func_ops = it.second;
-    FuncOp& func_op_to_keep = func_ops.front();
-    for (FuncOp& func_op_to_remove : llvm::drop_begin(func_ops)) {
+    mlir::func::FuncOp& func_op_to_keep = func_ops.front();
+    for (mlir::func::FuncOp& func_op_to_remove : llvm::drop_begin(func_ops)) {
       if (!AreEquivalent(func_op_to_keep, func_op_to_remove)) {
         return func_op_to_remove.emitError(
             "func_ops for BatchFunctionOp with the same shared name are "

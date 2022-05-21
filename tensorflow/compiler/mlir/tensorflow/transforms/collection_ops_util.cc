@@ -192,7 +192,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
           infer_from_op);
       if (type_from_else.hasValue()) return type_from_else;
     } else if (auto call = llvm::dyn_cast<CallOpInterface>(use.getOwner())) {
-      auto callee = dyn_cast<FuncOp>(call.resolveCallable());
+      auto callee = dyn_cast<func::FuncOp>(call.resolveCallable());
       auto type_from_callee = GetElementTypeFromAccess(
           callee.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_callee.hasValue()) return type_from_callee;

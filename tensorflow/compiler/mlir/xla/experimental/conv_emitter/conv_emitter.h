@@ -36,7 +36,7 @@ namespace experimental {
 // that already exists in XLA/GPU backend.
 //
 // `input`, `filter`, `output` are convolution inputs.
-StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
+StatusOr<mlir::func::FuncOp> EmitConvolutionForwardAsMlir(
     HloInstruction* conv, absl::string_view function_name,
     mlir::MLIRContext* context);
 

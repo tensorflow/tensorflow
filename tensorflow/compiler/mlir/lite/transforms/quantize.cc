@@ -261,8 +261,11 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
 };
 
 // Applies quantization on the model in TFL dialect.
-struct QuantizePass : public PassWrapper<QuantizePass, OperationPass<FuncOp>> {
+struct QuantizePass
+    : public PassWrapper<QuantizePass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
+
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() {
     quant_specs.inference_type = tensorflow::DT_QINT8;
@@ -334,7 +337,7 @@ void QuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     const quant::QuantizationSpecs& quant_specs, const StringSet& ops_blocklist,
     const StringSet& nodes_blocklist) {
   quant::QuantizationSpecs updated_quant_specs;
@@ -349,7 +352,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
   return std::make_unique<QuantizePass>(updated_quant_specs);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     bool verify_numeric, bool whole_model_verify, bool legacy_float_scale,
     const StringSet& ops_blocklist, const StringSet& nodes_blocklist) {
   quant::QuantizationSpecs quant_specs;

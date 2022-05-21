@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 namespace mlir {
@@ -204,7 +206,7 @@ struct HloCanonicalizeReductionPass
           b.create<tensor::FromElementsOp>(loc, new_operand_dims);
 
       SmallVector<Value, 4> new_operands;
-      for (Value operand : op.inputs()) {
+      for (Value operand : op.operands()) {
         new_operands.push_back(b.create<DynamicReshapeOp>(
             loc,
             RankedTensorType::get(
@@ -248,7 +250,8 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

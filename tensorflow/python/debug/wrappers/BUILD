@@ -23,10 +23,7 @@ py_library(
     name = "dumping_wrapper",
     srcs = ["dumping_wrapper.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":framework",
         "//tensorflow/core:protos_all_py",

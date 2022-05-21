@@ -780,6 +780,34 @@ TEST_F(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
       << result_shape;
 }
 
+TEST_F(XlaBuilderTest, SelectIntoConditional) {
+  XlaBuilder b(TestName());
+  Shape selector_shape = ShapeUtil::MakeShape(PRED, {});
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {})});
+  XlaOp p0 = Parameter(&b, 0, selector_shape, "p0");
+  XlaOp p1 = Parameter(&b, 1, tuple_param_shape, "p1");
+  XlaOp p2 = Parameter(&b, 2, tuple_param_shape, "p2");
+
+  Select(p0, p1, p2);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          BuildHloModule(&b));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Conditional(op::Parameter(0), op::Parameter(1), op::Parameter(2)));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->branch_computation(0)
+                  ->root_instruction(),
+              op::Parameter(0));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->branch_computation(1)
+                  ->root_instruction(),
+              op::Parameter(0));
+}
+
 TEST_F(XlaBuilderTest, DynamicPad) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(

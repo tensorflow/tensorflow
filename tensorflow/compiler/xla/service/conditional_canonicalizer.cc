@@ -32,8 +32,8 @@ Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
     branch->set_root_instruction(tuple, /*accept_different_shape=*/true);
   }
   auto parent = conditional->parent();
-  auto root_shape = conditional->shape();
-  auto new_shape = ShapeUtil::MakeTupleShape({root_shape});
+  const Shape& root_shape = conditional->shape();
+  auto new_shape = ShapeUtil::MakeTupleShape(absl::MakeSpan(&root_shape, 1));
   auto new_conditional =
       parent->AddInstruction(conditional->CloneWithNewShape(new_shape));
   auto gte = parent->AddInstruction(

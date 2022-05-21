@@ -147,4 +147,18 @@ class SparseSliceGradOp : public OpKernel {
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+#define REGISTER_KERNELS(type)                                              \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("SparseSliceGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SparseSliceGradOp<GPUDevice, type>)
+TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

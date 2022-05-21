@@ -56,10 +56,9 @@ message GemmBackendConfig {
 
   xla.DotDimensionNumbers dot_dimension_numbers = 7;
 
-  int64 batch_size = 8;
-
-  int64 lhs_stride = 10;
-  int64 rhs_stride = 11;
+  // Deleted fields.
+  reserved 8, 10, 11;
+  reserved "batch_size", "lhs_stride", "rhs_stride";
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.

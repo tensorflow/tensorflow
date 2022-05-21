@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {

@@ -24,11 +24,14 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import stateful_random_ops as rng
@@ -36,6 +39,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.tracking import util as tracking_util
+from tensorflow.python.util import deprecation
 
 
 def get_num_local_replicas(strat, values=None):
@@ -88,6 +92,58 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
     values = self.evaluate(values)
     values = values.tolist()
     self.assertAllEqual(len(values), len(set(values)))
+
+  @test_util.run_v2_only
+  def testCreateOutsideMirroredStrat(self):
+    """Tests RNG/MirrorStrategy interaction #1.
+
+    If an RNG is created outside a DS scope, all replicas will access the
+    same RNG object, and accesses are serialized.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    gen = rng.Generator.from_seed(1234)
+    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
+    with strat.scope():
+
+      def f():
+        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t = array_ops.stack([t1, t2])
+        return t
+
+      results = strat.extended.call_for_each_replica(fn=f)
+      values = results.values
+      self.assertAllEqual(2, len(values))
+      self.assertAllDifferent(values)
+
+  @test_util.run_v2_only
+  def testMirroredStratParaAsync(self):
+    """Tests RNG/MirrorStrategy interaction #2.
+
+    The user can create n independent RNGs outside strategy.scope(), where n
+    is the number of replicas, and give one to each replica. The replicas can
+    thus get different random-number streams.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    gens = rng.get_global_generator().split(count=2)
+    devices = ["cpu:0", "cpu:1"]
+    strat = MirroredStrategy(devices=devices)
+    # Use `PerReplica` to specify which `gen` is sent to which replica
+    gens = dist_values.PerReplica([[g] for g in gens])
+    with strat.scope():
+
+      def f(gen):
+        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t = array_ops.stack([t1, t2])
+        return t
+
+      results = strat.extended.call_for_each_replica(fn=f, args=gens)
+      local_results = strat.experimental_local_results(results)
+      self.assertAllEqual(2, len(local_results))
+      self.assertAllDifferent(local_results)
 
   @ds_combinations.generate(
       combinations.combine(
@@ -304,4 +360,5 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  multi_process_runner.test_main()
+  with deprecation.silence():
+    multi_process_runner.test_main()

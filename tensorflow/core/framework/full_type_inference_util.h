@@ -43,6 +43,12 @@ namespace full_type {
 // functions are meant to modify the type information of specific nodes (i.e.
 // NodeDef proto).
 
+// Helper for a no-op type inference function that indicates type inference
+// should never alter the node's existing type.
+// This is the same as not defining a type inference function at all, but
+// explicitly communicates that intent.
+ForwardTypeInferenceFn KeepExisting();
+
 // Helper for a type inference function which has the same type as the i'th
 // input.
 // The n arg allows multiple outputs, e.g. (T -> Product[T, T]).
@@ -56,6 +62,14 @@ ForwardTypeInferenceFn ReplicateInput(int i = 0, int n = 1);
 // https://en.wikipedia.org/wiki/Join_and_meet). This implementation is
 // simplified to require the two inputs are a subtype of another.
 ForwardTypeInferenceFn Merge();
+
+// Helper for ops with semantics of encoding an input, that is,
+// `T -> Encoded[T, <t>]`, where <t> is the encoded type.
+ForwardTypeInferenceFn Encode(FullTypeId t, int i);
+
+// Helper for ops with semantics of encoding an input, that is,
+// `Encoded[T, <t>] -> T`, where <t> is the encoded type.
+ForwardTypeInferenceFn Decode(FullTypeId t, int i);
 
 // Helper for the type inference counterpart of Unary, that is (U ->
 // PRODUCT[<t>[U]]), where <t> is parameterized by this factory, and U is the
@@ -93,6 +107,15 @@ ForwardTypeInferenceFn ContainerMap(
     FullTypeId t, int input_idx,
     std::function<FullTypeDef(const FullTypeDef&)> map);
 
+// Helper for ops with semantics of repacking some element from a container to
+// another `<t> -> <u>`, in a covariant way, that is, `<t>[T] -> <u>[T]`. <t>
+// and <u> are parameterized by this factory. The input type is specified by
+// element_idx.
+ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx);
+
+// Auxiliary constructs to help creation of type inference functions.
+// TODO(mdan): define these as type inference functions as well.
+
 // Mapping function representing the type function for unstacking of
 // Tensor (or Tensor-like) types. Note that this is a helper to use with
 // other type inference functions; it's not a function itself.
@@ -111,7 +134,6 @@ FullTypeDef BatchTensor(const FullTypeDef& t);
 // function itself.
 // TODO(mdan): Replace with a trait, when available.
 FullTypeDef ShardTensor(const FullTypeDef& t);
-
 }  // namespace full_type
 
 }  // namespace tensorflow

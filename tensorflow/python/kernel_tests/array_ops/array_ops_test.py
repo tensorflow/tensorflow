@@ -351,6 +351,15 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
                                 "must be a tensor with a single value"):
       array_ops.expand_dims(1, axis=[0, 1])
 
+  def testReshapeWithManyDims(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "too many dimensions"):
+      self.evaluate(
+          array_ops.reshape(
+              tensor=[[1]],
+              shape=constant_op.constant([1 for i in range(254)],
+                                         dtype=dtypes.int64)))
+
 
 @test_util.with_eager_op_as_function
 class ReverseV2Test(test_util.TensorFlowTestCase):
@@ -2351,9 +2360,7 @@ class StopGradientTest(test_util.TensorFlowTestCase):
     with backprop.GradientTape() as tape:
       y = array_ops.stop_gradient(x)
 
-    # TODO(b/202162002): Once GradientTape supports composiste tensors, use
-    # tape.gradient(y, x).
-    self.assertIsNone(tape.gradient(y.values, x.values))
+    self.assertIsNone(tape.gradient(y, x))
 
 
 if __name__ == "__main__":

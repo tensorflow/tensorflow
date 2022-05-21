@@ -238,10 +238,6 @@ Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleTupleSelect(const HloInstruction*) {
-  return Status::OK();
-}
-
 Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return Status::OK();
 }
@@ -950,8 +946,11 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
       SetOutputBytesAccessed(shape_index, bytes_accessed);
       return bytes_accessed;
     };
-    current_properties_.erase(
-        current_properties_.find(GetOutputBytesAccessedKey()));
+    auto output_bytes_it =
+        current_properties_.find(GetOutputBytesAccessedKey());
+    if (output_bytes_it != current_properties_.end()) {
+      current_properties_.erase(output_bytes_it);
+    }
     propagate_output_size_to_parent(fusion->shape(), {});
   }
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -23,10 +24,12 @@ namespace {
 
 class SetShapeInvariantInWhileOps
     : public mlir::PassWrapper<SetShapeInvariantInWhileOps,
-                               mlir::OperationPass<mlir::FuncOp>> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SetShapeInvariantInWhileOps)
+
   void runOnOperation() override {
-    mlir::FuncOp func_op = getOperation();
+    mlir::func::FuncOp func_op = getOperation();
 
     auto shape_invariant = mlir::UnitAttr::get(&getContext());
 
@@ -41,7 +44,7 @@ class SetShapeInvariantInWhileOps
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateSetShapeInvariantInWhileOps() {
   return std::make_unique<SetShapeInvariantInWhileOps>();
 }

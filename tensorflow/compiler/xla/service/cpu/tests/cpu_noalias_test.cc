@@ -88,9 +88,10 @@ TEST_F(CpuNoAliasTest, Concat) {
       llvm::ArrayType::get(llvm::Type::getFloatTy(context), 100), 100);
 
   {
-    llvm::Value* param_x_val =
-        ir_module.getOrInsertGlobal("param_x", array2d_type);
-    llvm_ir::IrArray param_x_array(param_x_val, param_shape);
+    auto param_x_val = llvm::cast<llvm::GlobalVariable>(
+        ir_module.getOrInsertGlobal("param_x", array2d_type));
+    llvm_ir::IrArray param_x_array(param_x_val, param_x_val->getValueType(),
+                                   param_shape);
     aa.AddAliasingInformationToIrArray(*param_x, &param_x_array);
     llvm_ir::IrArray::Index zero_2d({zero, zero}, param_shape, zero->getType());
     param_x_array.EmitReadArrayElement(zero_2d, &b)
@@ -98,10 +99,11 @@ TEST_F(CpuNoAliasTest, Concat) {
   }
 
   {
-    llvm::Value* concat1_val =
-        ir_module.getOrInsertGlobal("concat1", array2d_type);
+    auto concat1_val = llvm::cast<llvm::GlobalVariable>(
+        ir_module.getOrInsertGlobal("concat1", array2d_type));
     auto shape = ShapeUtil::MakeShape(F32, {2, 4});
-    llvm_ir::IrArray concat1_array(concat1_val, shape);
+    llvm_ir::IrArray concat1_array(concat1_val, concat1_val->getValueType(),
+                                   shape);
     aa.AddAliasingInformationToIrArray(*concat1, &concat1_array);
     llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
     concat1_array.EmitReadArrayElement(zero_2d, &b)
@@ -109,10 +111,11 @@ TEST_F(CpuNoAliasTest, Concat) {
   }
 
   {
-    llvm::Value* concat2_val =
-        ir_module.getOrInsertGlobal("concat2", array2d_type);
+    auto concat2_val = llvm::cast<llvm::GlobalVariable>(
+        ir_module.getOrInsertGlobal("concat2", array2d_type));
     auto shape = ShapeUtil::MakeShape(F32, {2, 6});
-    llvm_ir::IrArray concat2_array(concat2_val, shape);
+    llvm_ir::IrArray concat2_array(concat2_val, concat2_val->getValueType(),
+                                   shape);
     aa.AddAliasingInformationToIrArray(*concat2, &concat2_array);
     llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
     concat2_array.EmitReadArrayElement(zero_2d, &b)
@@ -120,9 +123,10 @@ TEST_F(CpuNoAliasTest, Concat) {
   }
 
   {
-    llvm::Value* concat2_val = ir_module.getOrInsertGlobal("add", array2d_type);
+    auto concat2_val = llvm::cast<llvm::GlobalVariable>(
+        ir_module.getOrInsertGlobal("add", array2d_type));
     auto shape = ShapeUtil::MakeShape(F32, {2, 6});
-    llvm_ir::IrArray add_array(concat2_val, shape);
+    llvm_ir::IrArray add_array(concat2_val, concat2_val->getValueType(), shape);
     aa.AddAliasingInformationToIrArray(*add, &add_array);
     llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
     add_array.EmitReadArrayElement(zero_2d, &b)->setName("read_add_array");

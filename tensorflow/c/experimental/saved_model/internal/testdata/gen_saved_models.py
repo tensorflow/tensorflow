@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Lint as: python3
 """Creates saved models used for testing.
 
 This executable should be run with an argument pointing to the testdata/ folder

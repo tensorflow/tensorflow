@@ -161,12 +161,14 @@ class DeviceBase {
   };
 
   // Does not take ownership.
-  void set_tensorflow_accelerator_device_info(AcceleratorDeviceInfo* g) {
-    gpu_device_info_ = g;
+  void set_tensorflow_accelerator_device_info(
+      AcceleratorDeviceInfo* device_info) {
+    accelerator_device_info_ = device_info;
   }
 
-  virtual const AcceleratorDeviceInfo* tensorflow_gpu_device_info() const {
-    return gpu_device_info_;
+  virtual const AcceleratorDeviceInfo* tensorflow_accelerator_device_info()
+      const {
+    return accelerator_device_info_;
   }
 
   // The preferred thread pool for this device. If it is nullptr, the system
@@ -286,7 +288,7 @@ class DeviceBase {
   Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   // Set by GPUs as well as by TPU devices.
-  AcceleratorDeviceInfo* gpu_device_info_ = nullptr;
+  AcceleratorDeviceInfo* accelerator_device_info_ = nullptr;
   thread::ThreadPool* device_thread_pool_ = nullptr;
   std::vector<Eigen::ThreadPoolDevice*> eigen_cpu_devices_;
 };

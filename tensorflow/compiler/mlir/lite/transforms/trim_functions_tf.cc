@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -46,6 +47,8 @@ namespace {
 class TrimFunctionsPass
     : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TrimFunctionsPass)
+
   explicit TrimFunctionsPass() : trim_funcs_allowlist_(trim_funcs_allowlist) {}
   explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist)
       : trim_funcs_allowlist_(trim_funcs_allowlist) {}
@@ -83,8 +86,8 @@ bool TrimFunctionsPass::TrimModule() {
   // if no trim_funcs_allowlist_ is specified, this pass is a no-op.
   if (trim_funcs_allowlist_.empty()) return false;
 
-  llvm::SmallVector<FuncOp, 4> funcs_to_trim;
-  for (auto func : getOperation().getOps<FuncOp>()) {
+  llvm::SmallVector<func::FuncOp, 4> funcs_to_trim;
+  for (auto func : getOperation().getOps<func::FuncOp>()) {
     if (llvm::is_contained(trim_funcs_allowlist_, func.getName())) {
       // If no main is specified in the allowlist, use the 1st func
       // in trim_funcs_allowlist as the main.
@@ -114,10 +117,10 @@ void TrimFunctionsPass::Verify() {
   // TODO(ashwinm): Instead, we should make sure that references to all
   // SymbolRefAttrs of all ops are present.
   SymbolTable symbol_table = SymbolTable(getOperation());
-  llvm::SetVector<FuncOp> reachable_funcs;
-  for (auto func : getOperation().getOps<FuncOp>()) {
+  llvm::SetVector<func::FuncOp> reachable_funcs;
+  for (auto func : getOperation().getOps<func::FuncOp>()) {
     auto walk_result = func.walk([&](func::CallOp op) -> WalkResult {
-      if (!symbol_table.lookup<FuncOp>(op.getCallee()))
+      if (!symbol_table.lookup<func::FuncOp>(op.getCallee()))
         return getOperation().emitError()
                << func.getName() << " is not in the funcs allowlist";
       return WalkResult::advance();

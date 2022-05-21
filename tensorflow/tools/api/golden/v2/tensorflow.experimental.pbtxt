@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "dtensor"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "numpy"
     mtype: "<type \'module\'>"
   }
@@ -50,6 +54,10 @@ tf_module {
   }
   member_method {
     name: "dispatch_for_binary_elementwise_apis"
+    argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_binary_elementwise_assert_apis"
     argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

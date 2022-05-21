@@ -143,8 +143,9 @@ class BatchMatMulMkl : public OpKernel {
     // For matmul, the previous approach (PR #47775) of using Tensor addresses
     // does not work, as the addresses are re-used in matmul with different data
     // The counter  ensure we still benefit from caching via SetMklMatmul().
-    static int counter = 1;
-    params->aarch64_counter = counter++;
+    params->aarch64_counter =
+        MklMatMulPrimitiveFactory<float, Tlhs, Trhs,
+                                  Toutput>::IncrementCounter();
 #endif
     this->ExtendMklMatMulParams(ctx, *params);
 

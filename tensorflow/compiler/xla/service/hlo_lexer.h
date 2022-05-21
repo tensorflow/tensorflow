@@ -88,7 +88,7 @@ std::string TokKindToString(TokKind kind);
 class HloLexer {
  public:
   explicit HloLexer(absl::string_view buf) : buf_(buf) {
-    current_ptr_ = buf_.begin();
+    current_ptr_ = buf_.data();
   }
 
   TokKind Lex() { return token_state_.current_kind = LexToken(); }

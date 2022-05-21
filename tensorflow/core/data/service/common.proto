@@ -18,7 +18,7 @@ message JobKeyDef {
   int64 iteration = 2;
 }
 
-// Next tag: 13
+// Next tag: 14
 message TaskDef {
   reserved 6;
   // The dataset to iterate over.
@@ -45,6 +45,8 @@ message TaskDef {
   // `processing_mode_def` specifies a static sharding policy.
   int64 num_workers = 11;
   int64 worker_index = 12;
+  // True if cross-trainer cache is enabled.
+  bool use_cross_trainer_cache = 13;
 }
 
 // Next tag: 8

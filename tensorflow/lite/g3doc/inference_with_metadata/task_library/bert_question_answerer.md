@@ -3,7 +3,7 @@
 The Task Library `BertQuestionAnswerer` API loads a Bert model and answers
 questions based on the content of a given passage. For more information, see the
 documentation for the Question-Answer model
-<a href="../../models/bert_qa/overview.md">here</a>.
+<a href="../../examples/bert_qa/overview">here</a>.
 
 ## Key features of the BertQuestionAnswerer API
 
@@ -18,7 +18,7 @@ documentation for the Question-Answer model
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for BERT Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
+    [TensorFlow Lite Model Maker for BERT Question Answer](https://www.tensorflow.org/lite/models/modify/model_maker/question_answer).
 
 *   The
     [pretrained BERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/bert-question-answerer/1).
@@ -119,7 +119,7 @@ std::vector<QaAnswer> positive_results = answerer->Answer(context_of_question, q
 ```
 
 See the
-[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/qa/bert_question_answerer.h)
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_question_answerer.h)
 for more details.
 
 ## Example results
@@ -159,7 +159,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `BertQuestionAnswerer` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../convert/metadata).
 
 The Metadata should meet the following requirements:
 

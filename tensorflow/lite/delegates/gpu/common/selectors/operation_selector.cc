@@ -401,6 +401,9 @@ absl::Status GPUOperationFromNodePart0(
                             inputs[0]->id, -1, outputs[0]->id, gpu_subgraph,
                             &attr);
     }
+    case OperationType::CAST:
+      SelectCast(op_def, gpu_info, gpu_op);
+      return absl::OkStatus();
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
       const int max_inputs = gpu_info.GetMaxImageArguments() - 8;
@@ -462,14 +465,6 @@ absl::Status GPUOperationFromNodePart0(
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (attr.groups != 1) {
-          const int src_group_size = attr.weights.shape.i;
-          const int dst_group_size = attr.weights.shape.o / attr.groups;
-          if (src_group_size % 4 != 0 || dst_group_size % 4 != 0) {
-            return absl::UnimplementedError(
-                "No support of grouped convolution for this channels sizes.");
-          }
-        }
         if (!hints.Check(ModelHints::kNoWinogradOptimizations) &&
             WinogradFromNode(gpu_info, inputs, outputs, op_def, hints,
                              input_shape, output_shape, attr, gpu_subgraph)
@@ -477,7 +472,10 @@ absl::Status GPUOperationFromNodePart0(
           return absl::OkStatus();
         } else {
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-          if (!shared_conv_weights) {
+          if (attr.groups != 1) {
+            gpu_subgraph->operations[0].name = "convolution_2d_grouped";
+          }
+          if (!shared_conv_weights || attr.weights.id == -1) {
             *gpu_op =
                 SelectConvolution(attr, output_shape, gpu_info, op_def, hints);
           } else {
@@ -642,7 +640,7 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::RESAMPLER: {
-      *gpu_op = SelectResampler(op_def);
+      *gpu_op = SelectResampler(op_def, gpu_info);
       return absl::OkStatus();
     }
     case OperationType::RESHAPE: {
@@ -671,8 +669,13 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::SPLIT: {
+      std::vector<int> channels;
+      channels.reserve(outputs.size());
+      for (const auto& output : outputs) {
+        channels.push_back(output->tensor.shape.c);
+      }
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
-      SelectSplit(attr, op_def, gpu_op);
+      SelectSplit(attr, channels, op_def, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::TILE: {

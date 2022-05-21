@@ -1068,6 +1068,56 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
                 nvals=12, uniform_row_length=3)),
         RowPartitionSpec(nvals=12, uniform_row_length=3))
 
+  @parameterized.parameters([
+      dict(original=RowPartitionSpec(),
+           dtype=dtypes.int32,
+           expected=RowPartitionSpec(dtype=dtypes.int32)),
+      dict(original=RowPartitionSpec(dtype=dtypes.int32),
+           dtype=dtypes.int64,
+           expected=RowPartitionSpec()),
+      dict(original=RowPartitionSpec(nvals=20, nrows=4, uniform_row_length=5),
+           dtype=dtypes.int32,
+           expected=RowPartitionSpec(nvals=20, nrows=4, uniform_row_length=5,
+                                     dtype=dtypes.int32)),
+  ])
+  def testWithDType(self, original, dtype, expected):
+    actual = original.with_dtype(dtype)
+    self.assertEqual(actual, expected)
+
+  @parameterized.parameters([
+      dict(a=RowPartitionSpec(),
+           b=RowPartitionSpec(nrows=3, uniform_row_length=5),
+           expected=RowPartitionSpec(nrows=3, uniform_row_length=5)),
+      dict(a=RowPartitionSpec(nrows=3),
+           b=RowPartitionSpec(uniform_row_length=5),
+           expected=RowPartitionSpec(nrows=3, uniform_row_length=5)),
+      dict(a=RowPartitionSpec(nvals=20),
+           b=RowPartitionSpec(nrows=3),
+           expected=RowPartitionSpec(nvals=20, nrows=3)),
+      dict(a=RowPartitionSpec(nvals=20, dtype=dtypes.int32),
+           b=RowPartitionSpec(nrows=3, dtype=dtypes.int32),
+           expected=RowPartitionSpec(nvals=20, nrows=3, dtype=dtypes.int32)),
+  ])
+  def testMergeWith(self, a, b, expected):
+    actual = a._merge_with(b)
+    actual_rev = b._merge_with(a)
+    self.assertEqual(actual, expected)
+    self.assertEqual(actual_rev, expected)
+
+  @parameterized.parameters([
+      dict(a=RowPartitionSpec(nrows=3, nvals=10),
+           b=RowPartitionSpec(uniform_row_length=5),
+           error_type=ValueError,
+           error_regex='Merging incompatible RowPartitionSpecs'),
+      dict(a=RowPartitionSpec(uniform_row_length=5, dtype=dtypes.int32),
+           b=RowPartitionSpec(uniform_row_length=5, dtype=dtypes.int64),
+           error_type=ValueError,
+           error_regex='Merging RowPartitionSpecs with incompatible dtypes'),
+  ])
+  def testMergeWithRaises(self, a, b, error_type, error_regex):
+    with self.assertRaisesRegex(error_type, error_regex):
+      a._merge_with(b)
+
 
 def _assert_row_partition_equal(test_class, actual, expected):
   assert isinstance(test_class, test_util.TensorFlowTestCase)

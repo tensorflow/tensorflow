@@ -473,10 +473,10 @@ func.func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // -----
 
 // CHECK-LABEL: func @conv
-func.func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
-    -> tensor<3x5x5x4xf32> {
+func.func @conv(%input: tensor<3x2x4x3xf32>, %filter : tensor<2x2x3x4xf32>)
+    -> tensor<2x1x2x3xf32> {
   %c0 = arith.constant 0 : index
-  // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x5x5x4xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc() : memref<2x1x2x3xf32>
   // CHECK: lmhlo.convolution(%{{.+}}, %{{.+}}, %[[OUT]])
   // CHECK-SAME{LITERAL}: window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
   %out = "mhlo.convolution"(%filter, %input) {
@@ -496,8 +496,8 @@ func.func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
     padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
     rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
     window_strides = dense<[2, 1]> : tensor<2xi64>
-  } : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
-  func.return %out : tensor<3x5x5x4xf32>
+  } : (tensor<2x2x3x4xf32>, tensor<3x2x4x3xf32>) -> tensor<2x1x2x3xf32>
+  func.return %out : tensor<2x1x2x3xf32>
 }
 
 // -----

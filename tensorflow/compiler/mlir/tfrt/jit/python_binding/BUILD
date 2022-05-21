@@ -38,7 +38,6 @@ pybind_extension(
     name = "_tf_jitrt_executor",
     srcs = ["tf_jitrt_executor.cc"],
     hdrs = ["tf_jitrt_executor.h"],
-    module_name = "_tf_jitrt_executor",
     deps = [
         ":conversion_utils",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -74,7 +73,6 @@ pybind_extension(
     testonly = True,
     srcs = ["tfrt_fallback.cc"],
     hdrs = ["tfrt_fallback.h"],
-    module_name = "_tfrt_fallback",
     deps = [
         ":conversion_utils",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",

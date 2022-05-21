@@ -31,7 +31,7 @@ bool IsAsyncWaitForRemoteFunctionEnabled() {
 }
 }  // namespace
 
-EagerExecutor::EagerExecutor(bool async)
+EagerExecutor::EagerExecutor(bool async, bool enable_streaming_enqueue)
     : next_node_id_(0),
       ok_(true),
       thread_(async ? tensorflow::Env::Default()->StartThread(
@@ -40,7 +40,8 @@ EagerExecutor::EagerExecutor(bool async)
                     : nullptr),
       last_eager_client_(nullptr),
       enable_async_wait_for_remote_function_(
-          IsAsyncWaitForRemoteFunctionEnabled()) {}
+          IsAsyncWaitForRemoteFunctionEnabled()),
+      enable_streaming_enqueue_(enable_streaming_enqueue) {}
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);

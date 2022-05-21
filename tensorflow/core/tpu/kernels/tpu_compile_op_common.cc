@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -158,6 +160,21 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
 }
 
 Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
+    FunctionLibraryRuntime* flib_runtime,
+    const SessionMetadata* session_metadata,
+    const TpuMeshStateInterface* mesh_state,
+    const std::vector<TensorShape>& dynamic_shapes,
+    const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
+    TpuProgramGroupInterface* tpu_program_group) {
+  Status status = CompileLocallyAndFillHostCacheInternal(
+      flib_runtime, session_metadata, mesh_state, dynamic_shapes,
+      guaranteed_constants, key, tpu_program_group);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
+  return status;
+}
+
+Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
     FunctionLibraryRuntime* flib_runtime,
     const SessionMetadata* session_metadata,
     const TpuMeshStateInterface* mesh_state,

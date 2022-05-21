@@ -73,7 +73,6 @@ pybind_extension(
     hdrs = ["gradient_ops.h"],
     additional_exported_symbols = ["GradientOpsRegisterer"],
     link_in_framework = True,
-    module_name = "pywrap_gradient_ops",
     deps = [
         ":gradient_ops",
         "//tensorflow/lite:mutable_op_resolver",

@@ -1531,6 +1531,28 @@ TEST(CastOperationParserTest, TestIsSupported) {
   context = std::make_unique<StubTfLiteContext>(kTfLiteBuiltinCast,
                                                 /*op_version=*/1,
                                                 /*num_inputs=*/1);
+
+  context->tensor(1)->type = kTfLiteFloat32;
+  context->tensor(2)->type = kTfLiteInt32;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  context->tensor(1)->type = kTfLiteInt32;
+  context->tensor(2)->type = kTfLiteFloat32;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  context->tensor(1)->type = kTfLiteInt8;
+  context->tensor(2)->type = kTfLiteFloat32;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
   context->tensor(1)->type = kTfLiteBool;
   EXPECT_FALSE(
       parser

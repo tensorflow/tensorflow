@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -40,7 +41,8 @@ namespace tensorflow {
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes);
+        custom_legalization_passes,
+    bool allow_partial_conversion = false);
 
 // Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
 // should only contain operations in tf dialect. If the input module contains
@@ -65,9 +67,9 @@ void CreateConvertMlirToXlaHloPipeline(
 //   native kernels for legalization to HLO.
 // return_tuple: when this is true, always create a tuple result for the
 //   entry computation.
-// shape_representation_fn: when this is set, this shape representation function
-//   will be used to determine argument and result shapes. Otherwise the
-//   original shape will be used as is.
+// shape_determination_fns: Contains layout preference fn and shape
+//   representation fn. The two functions are used to determine argument and
+//   result shapes.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
 //
@@ -76,7 +78,8 @@ Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool prefer_tf2xla, bool return_tuple,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn = nullptr,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns =
+        {},
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
 
@@ -107,7 +110,7 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
 Status PopulateResultIOInfo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     bool use_tuple_args, bool use_resource_updates_for_aliases,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result);
 
 // Compiles a MLIR module into XLA HLO, generates all accompanying metadata and
@@ -119,7 +122,7 @@ Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
@@ -129,7 +132,7 @@ Status CompileMlirToXlaHlo(
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
@@ -143,7 +146,7 @@ Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
     bool use_return_tuple,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);
@@ -155,7 +158,7 @@ Status CompileGraphToXlaHlo(
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
     bool use_tuple_args, bool analyse_graph,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});

@@ -29,7 +29,7 @@
 // CHECK:         %[[VAL_31:.*]] = icmp eq i32 0, %[[VAL_30]]
 // CHECK:         %[[VAL_32:.*]] = and i1 %[[VAL_29]], %[[VAL_31]]
 // CHECK:         br i1 %[[VAL_32]], label %[[VAL_33:.*]], label %[[VAL_34:.*]]
-// CHECK:       is_thred_0-after:                                 ; preds = %[[VAL_33]], %[[VAL_35:.*]]
+// CHECK:       is_thread_0-after:                                 ; preds = %[[VAL_33]], %[[VAL_35:.*]]
 // CHECK:         %[[VAL_36:.*]] = mul i32 1, %[[VAL_21]]
 // CHECK:         %[[VAL_37:.*]] = mul i32 %[[VAL_36]], %[[VAL_24]]
 // CHECK:         %[[VAL_38:.*]] = mul i32 %[[VAL_37]], %[[VAL_27]]
@@ -48,7 +48,7 @@
 // CHECK:         br i1 %[[VAL_49]], label %[[VAL_50:.*]], label %[[VAL_51:.*]]
 // CHECK:       custom_call_2.in_bounds-after:                    ; preds = %[[VAL_52:.*]], %[[VAL_34]]
 // CHECK:         ret void
-// CHECK:       is_thred_0-true:                                  ; preds = %[[VAL_35]]
+// CHECK:       is_thread_0-true:                                  ; preds = %[[VAL_35]]
 // CHECK:         store i32 %[[VAL_21]], i32* %[[VAL_8]], align 4
 // CHECK:         store i32 %[[VAL_24]], i32* %[[VAL_11]], align 4
 // CHECK:         store i32 %[[VAL_27]], i32* %[[VAL_14]], align 4

@@ -298,6 +298,9 @@ class CastOperationParser : public TFLiteOperationParser {
     }
     if (IsLogicalCode(input_tensor_info.producers[0].second->builtin_code)) {
       return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    } else if (context->tensors[tflite_node->inputs->data[0]].type !=
+               kTfLiteBool) {
+      return CheckGpuDelegateCompatibility(context, tflite_node, registration);
     }
     return absl::UnimplementedError("Not supported Cast case.");
   }
@@ -306,14 +309,23 @@ class CastOperationParser : public TFLiteOperationParser {
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    // Adding Identity reshape that will be removed.
-    node->operation.type = ToString(OperationType::RESHAPE);
+    TfLiteType tflite_type = reader->GetInputTensor(0)->type;
+    if (tflite_type == kTfLiteBool) {
+      // Adding Identity reshape that will be removed with bool type.
+      node->operation.type = ToString(OperationType::RESHAPE);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      // New shape comes from output shape.
+      ReshapeAttributes attr;
+      attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+    node->operation.type = ToString(OperationType::CAST);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    // New shape comes from output shape.
-    ReshapeAttributes attr;
-    attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
-    node->operation.attributes = attr;
+    Value* output = graph->FindOutputs(node->id)[0];
+    output->tensor.type = ToDataType(reader->GetOutputTensor(0)->type);
     return absl::OkStatus();
   }
 };
@@ -501,36 +513,183 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 5));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 6));
     return CheckGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::CONVOLUTION_2D);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    Convolution2DAttributes attr;
-    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
-    if (runtime_inputs == 2) {
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
-    } else {  // runtime_inputs == 1;
-      RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-    }
-    reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
-
     const TfLiteConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    attr.strides = ToHW(tf_options->stride_height, tf_options->stride_width);
-    attr.dilations = HW(tf_options->dilation_height_factor,
-                        tf_options->dilation_width_factor);
-    UpdatePadding(tf_options->padding,
-                  graph->FindInputs(node->id)[0]->tensor.shape, &attr);
-    RETURN_IF_ERROR(MaybeFuseActivation(tf_options->activation, graph, node));
-    node->operation.attributes = std::move(attr);
+    Convolution2DAttributes attr;
+    RETURN_IF_ERROR(ReadAttributes(tflite_node, tf_options, reader, &attr));
+
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 2) {
+      // weights are second runtime input
+      const TfLiteTensor* src_tensor = reader->GetInputTensor(0);
+      const TfLiteTensor* weights_tensor = reader->GetInputTensor(1);
+      BHWC src_shape, weights_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*src_tensor, &src_shape));
+      RETURN_IF_ERROR(ExtractTensorShape(*weights_tensor, &weights_shape));
+      if (src_shape.c != weights_shape.c) {
+        return absl::InternalError(
+            "No support of CONVOLUTION_2D with runtime grouped weights.");
+      }
+
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::CONVOLUTION_2D);
+      node->operation.attributes = std::move(attr);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      RETURN_IF_ERROR(MaybeFuseActivation(tf_options->activation, graph, node));
+      return absl::OkStatus();
+    } else {
+      // weights are constants
+      const int src_group_size = attr.weights.shape.i;
+      const int dst_group_size = attr.weights.shape.o / attr.groups;
+      const bool supported_grouped_conv =
+          src_group_size % 4 == 0 && dst_group_size % 4 == 0;
+      if (attr.groups != 1 && !supported_grouped_conv) {
+        // Not supported case, replace with usual convolutions:
+        return ResolveGroupedConvolution(attr, tf_options, reader, graph);
+      } else {
+        Node* node = graph->NewNode();
+        node->operation.type = ToString(OperationType::CONVOLUTION_2D);
+        node->operation.attributes = std::move(attr);
+        RETURN_IF_ERROR(reader->AddInput(node, 0));
+        RETURN_IF_ERROR(reader->AddOutputs(node));
+        RETURN_IF_ERROR(
+            MaybeFuseActivation(tf_options->activation, graph, node));
+        return absl::OkStatus();
+      }
+    }
+  }
+
+ private:
+  absl::Status ReadAttributes(const TfLiteNode* tflite_node,
+                              const TfLiteConvParams* tf_options,
+                              ObjectReader* reader,
+                              Convolution2DAttributes* attr) {
+    const TfLiteTensor* src_tensor = reader->GetInputTensor(0);
+    BHWC src_shape;
+    RETURN_IF_ERROR(ExtractTensorShape(*src_tensor, &src_shape));
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 1) {
+      RETURN_IF_ERROR(reader->ReadTensor(1, &attr->weights));
+      attr->groups = src_shape.c / attr->weights.shape.i;
+    } else {
+      attr->groups = 1;
+    }
+    reader->ReadTensor(2, &attr->bias).IgnoreError();  // bias is optional
+    attr->strides = ToHW(tf_options->stride_height, tf_options->stride_width);
+    attr->dilations = HW(tf_options->dilation_height_factor,
+                         tf_options->dilation_width_factor);
+    UpdatePadding(tf_options->padding, src_shape, attr);
+    return absl::OkStatus();
+  }
+
+  // Replace single grouped convolution(N = groups count) with this sequence:
+  //  split input to N tensors in channels dim
+  //  N usual convs
+  //  concat N tensors to 1 output in channels dim
+  absl::Status ResolveGroupedConvolution(const Convolution2DAttributes& attr,
+                                         const TfLiteConvParams* tf_options,
+                                         ObjectReader* reader,
+                                         GraphFloat32* graph) {
+    const TfLiteTensor* src_tensor = reader->GetInputTensor(0);
+    const TfLiteTensor* dst_tensor = reader->GetOutputTensor(0);
+    BHWC src_shape, dst_shape;
+    RETURN_IF_ERROR(ExtractTensorShape(*src_tensor, &src_shape));
+    RETURN_IF_ERROR(ExtractTensorShape(*dst_tensor, &dst_shape));
+
+    DataType src_type = DataType::FLOAT32;
+    if (src_tensor->type == kTfLiteFloat16) {
+      src_type = DataType::FLOAT16;
+    }
+    DataType dst_type = DataType::FLOAT32;
+    if (dst_tensor->type == kTfLiteFloat16) {
+      dst_type = DataType::FLOAT16;
+    }
+
+    const int src_group_size = attr.weights.shape.i;
+    const int dst_group_size = attr.weights.shape.o / attr.groups;
+
+    Node* split_node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(split_node, 0));
+    {
+      SplitAttributes split_attr;
+      split_attr.axis = Axis::CHANNELS;
+      split_node->operation.type = ToString(OperationType::SPLIT);
+      split_node->operation.attributes = split_attr;
+    }
+
+    std::vector<Node*> conv_nodes(attr.groups);
+    std::vector<Value*> conv_src(attr.groups);
+    std::vector<Value*> conv_dst(attr.groups);
+    for (int i = 0; i < attr.groups; ++i) {
+      conv_nodes[i] = graph->NewNode();
+      conv_src[i] = graph->NewValue();
+      conv_dst[i] = graph->NewValue();
+      conv_src[i]->tensor.shape = src_shape;
+      conv_src[i]->tensor.type = src_type;
+      conv_src[i]->tensor.shape.c = src_group_size;
+      conv_dst[i]->tensor.shape = dst_shape;
+      conv_dst[i]->tensor.type = dst_type;
+      conv_dst[i]->tensor.shape.c = dst_group_size;
+      Convolution2DAttributes conv_attr;
+      conv_attr = attr;
+      conv_attr.groups = 1;
+      conv_attr.weights.id = -1;
+      conv_attr.weights.shape.o = dst_group_size;
+      conv_attr.weights.data.resize(
+          conv_attr.weights.shape.DimensionsProduct());
+      for (int out_i = 0; out_i < dst_group_size; ++out_i) {
+        for (int in_i = 0; in_i < src_group_size; ++in_i) {
+          for (int ky = 0; ky < attr.weights.shape.h; ++ky) {
+            for (int kx = 0; kx < attr.weights.shape.w; ++kx) {
+              const int src_index = attr.weights.shape.LinearIndex(
+                  {{i * dst_group_size + out_i, ky, kx, in_i}});
+              const int dst_index =
+                  conv_attr.weights.shape.LinearIndex({{out_i, ky, kx, in_i}});
+              conv_attr.weights.data[dst_index] = attr.weights.data[src_index];
+            }
+          }
+        }
+      }
+      conv_attr.bias.shape.v = dst_group_size;
+      conv_attr.bias.data.resize(conv_attr.bias.shape.DimensionsProduct());
+      for (int out_i = 0; out_i < dst_group_size; ++out_i) {
+        if (i * dst_group_size + out_i < attr.bias.data.size()) {
+          conv_attr.bias.data[out_i] =
+              attr.bias.data[i * dst_group_size + out_i];
+        } else {
+          conv_attr.bias.data[out_i] = 0.0f;
+        }
+      }
+      conv_nodes[i]->operation.type = ToString(OperationType::CONVOLUTION_2D);
+      conv_nodes[i]->operation.attributes = conv_attr;
+
+      RETURN_IF_ERROR(graph->SetProducer(split_node->id, conv_src[i]->id));
+      RETURN_IF_ERROR(graph->AddConsumer(conv_nodes[i]->id, conv_src[i]->id));
+      RETURN_IF_ERROR(graph->SetProducer(conv_nodes[i]->id, conv_dst[i]->id));
+    }
+
+    Node* concat_node = graph->NewNode();
+    {
+      ConcatAttributes concat_attr;
+      concat_attr.axis = Axis::CHANNELS;
+      concat_node->operation.type = ToString(OperationType::CONCAT);
+      concat_node->operation.attributes = concat_attr;
+    }
+    for (int i = 0; i < attr.groups; ++i) {
+      RETURN_IF_ERROR(graph->AddConsumer(concat_node->id, conv_dst[i]->id));
+    }
+    RETURN_IF_ERROR(reader->AddOutputs(concat_node));
+    RETURN_IF_ERROR(
+        MaybeFuseActivation(tf_options->activation, graph, concat_node));
     return absl::OkStatus();
   }
 };
@@ -2659,6 +2818,10 @@ TfLiteIntArray* GetOpsToReplace(
     }
     if (registration->builtin_code == kTfLiteBuiltinCast) {
       allowed_in_types.push_back(kTfLiteBool);
+      allowed_in_types.push_back(kTfLiteFloat32);
+      allowed_in_types.push_back(kTfLiteInt32);
+      allowed_out_types.push_back(kTfLiteFloat32);
+      allowed_out_types.push_back(kTfLiteInt32);
     }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
@@ -2890,7 +3053,7 @@ class DelegateContext {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  TfLiteRegistration registration;
+  TfLiteRegistration registration{};
   registration.init = [](TfLiteContext* context, const char* buffer,
                          size_t) -> void* {
     auto* delegate_context = new DelegateContext();
@@ -2908,8 +3071,6 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
                             TfLiteNode* node) -> TfLiteStatus {
     return node->user_data ? kTfLiteOk : kTfLiteError;
   };
-  registration.invoke = nullptr;
-  registration.custom_name = nullptr;
 
   const auto* delegate_data =
       reinterpret_cast<const DelegateContext::DelegateData*>(delegate->data_);

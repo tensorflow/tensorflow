@@ -292,11 +292,9 @@ cc_library(
     hdrs = ["prng.h"],
     deps = [
         ":constants",
-        ":math",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "@com_google_absl//absl/base",
     ],
 )
 

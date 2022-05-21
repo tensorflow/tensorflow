@@ -67,7 +67,7 @@ TEST(ShapeOpTest, OutTypeInt) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({5}));
 
   // Invoke is superfluous and shouldn't change the output.
-  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 3, 1, 3, 5}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({5}));

@@ -230,7 +230,8 @@ void populateShapeComputationPatterns(MLIRContext *context,
                 GetDimSizeConverter, ReshapeConverter>(context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeShapeComputationsPass() {
   return std::make_unique<HloLegalizeShapeComputationsPass>();
 }
 

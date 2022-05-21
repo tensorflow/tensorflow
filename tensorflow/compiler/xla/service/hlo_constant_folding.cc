@@ -135,6 +135,11 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
+      // Do not fold FFT. Evaluating it may significantly increase compile time.
+      if (instruction->opcode() == HloOpcode::kFft) {
+        continue;
+      }
+
       // Check for instructions that we can't fold even if they appear inside of
       // a subcomputation (e.g. a kCall).
       if (IsOrContainsIllegalInstr(instruction)) {
@@ -190,7 +195,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                 : "XLA was built without compiler optimizations, which can be "
                   "slow.  Try rebuilding with -c opt.";
         return absl::StrFormat(
-            "Constant folding an instrution is taking > %s:\n\n"
+            "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->ToString()
             "%s",       // explanation_msg
             absl::FormatDuration(slow_timeout), instruction->ToString(),

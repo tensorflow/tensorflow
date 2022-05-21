@@ -749,6 +749,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "slicing_test",
+    size = "small",
+    srcs = ["slicing_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/ops/linalg",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],

@@ -73,13 +73,22 @@ TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInput, &input));
   const TfLiteTensor* axis;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxis, &axis));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
   output->type = input->type;
+  TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
+  TF_LITE_ENSURE_EQ(context, input->params.zero_point,
+                    output->params.zero_point);
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+  }
+
   if (IsConstantTensor(axis)) {
     int axis_value;
     TF_LITE_ENSURE_OK(context,
@@ -87,6 +96,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return ExpandTensorDim(context, *input, axis_value, output);
   }
   SetTensorToDynamic(output);
+
   return kTfLiteOk;
 }
 

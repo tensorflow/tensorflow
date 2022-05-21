@@ -550,8 +550,8 @@ func.func @lower_rfft_to_rfft2d(%input: tensor<10x20x30xf32>, %fft_len: tensor<1
 // CHECK:  %[[SQE:.*]] = "tf.Squeeze"(%[[RFF]]) {squeeze_dims = [-2]} : (tensor<10x20x1x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f64>>
 }
 
-// CHECK-LABEL: xla_gather_to_slice
-func.func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: xla_gather_to_strided_slice
+func.func @xla_gather_to_strided_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   %1 = "tf.Const"() {value = dense<[1, 9, 23, 768]> : tensor<4xi32>} : () -> tensor<4xi32>
   %2 = "tf.XlaGather"(%arg0, %0, %1) {device = "", dimension_numbers = "\0A\04\00\01\02\03\1A\01\02", indices_are_sorted = false} : (tensor<1x9x104x768xf32>, tensor<1xi32>, tensor<4xi32>) -> tensor<*xf32>
@@ -559,7 +559,8 @@ func.func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32>
 
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<4xi64>
 // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<[1, 9, 23, 768]> : tensor<4xi64>
-// CHECK: %[[V0:.*]] = "tf.Slice"(%arg0, %[[CST]], %[[CST0]]) : (tensor<1x9x104x768xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<*xf32>
+// CHECK-DAG: %[[CST1:.*]] = arith.constant dense<1> : tensor<4xi64>
+// CHECK: %[[V0:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST0]], %[[CST1]]) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x9x104x768xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<*xf32>
 // CHECK: return %[[V0]] : tensor<*xf32>
 }
 
@@ -696,31 +697,14 @@ func.func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
   // CHECK: return %[[MATMUL]] : tensor<2x4xf32>
 }
 
-func.func @UnsupportedGroupConv(%arg0: tensor<?x128x24xf32>) -> (tensor<?x6x14xf32>) {
-  %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<3x2x14xf32>} : () -> tensor<3x2x14xf32>
-  %cst_0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<14xf32>
-  %cst_1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<3x24x14xf32>} : () -> tensor<3x24x14xf32>
-  %cst_2 = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<14xf32>
-  %cst_3 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  %cst_4 = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
-  %0 = "tf.ExpandDims"(%arg0, %cst_4) {device = ""} : (tensor<?x128x24xf32>, tensor<i32>) -> tensor<?x1x128x24xf32>
-  %1 = "tf.ExpandDims"(%cst, %cst_3) {device = ""} : (tensor<3x2x14xf32>, tensor<i32>) -> tensor<1x3x2x14xf32>
-  %2 = "tf.ExpandDims"(%cst_1, %cst_3) {device = ""} : (tensor<3x24x14xf32>, tensor<i32>) -> tensor<1x3x24x14xf32>
-  %3 = "tf.Conv2D"(%0, %2) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x128x24xf32>, tensor<1x3x24x14xf32>) -> tensor<?x1x26x14xf32>
-  %4 = "tf.Squeeze"(%3) {device = "", squeeze_dims = [-3]} : (tensor<?x1x26x14xf32>) -> tensor<?x26x14xf32>
-  %5 = "tf.BiasAdd"(%4, %cst_2) {data_format = "NHWC", device = ""} : (tensor<?x26x14xf32>, tensor<14xf32>) -> tensor<?x26x14xf32>
-  %6 = "tf.ExpandDims"(%5, %cst_4) {device = ""} : (tensor<?x26x14xf32>, tensor<i32>) -> tensor<?x1x26x14xf32>
-  %7 = "tf.Conv2D"(%6, %1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x14xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
-  %8 = "tf.Squeeze"(%7) {device = "", squeeze_dims = [-3]} : (tensor<?x1x6x14xf32>) -> tensor<?x6x14xf32>
-  %9 = "tf.BiasAdd"(%8, %cst_0) {data_format = "NHWC", device = ""} : (tensor<?x6x14xf32>, tensor<14xf32>) -> tensor<?x6x14xf32>
-  %10 = "tf.Identity"(%9) {device = ""} : (tensor<?x6x14xf32>) -> tensor<?x6x14xf32>
-  %11 = "tf.Identity"(%10) {device = ""} : (tensor<?x6x14xf32>) -> tensor<?x6x14xf32>
-  func.return %11 : tensor<?x6x14xf32>
-
-  // CHECK-LABEL: UnsupportedGroupConv
-  // CHECK: "tfl.conv_2d"
-  // CHECK-NOT: "tfl.conv_2d"
-  // CHECK: "tf.Conv2D"
+func.func @GroupConv(%arg0: tensor<?x1x26x14xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x14xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
+  func.return %0 : tensor<?x1x6x14xf32>
+  // CHECK-LABEL: GroupConv
+  // CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<14xf32>
+  // CHECK-DAG:  %[[CONSTANT0:.*]] = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
+  // CHECK:  %0 = "tf.Transpose"(%arg1, %[[CONSTANT0]]) : (tensor<1x3x2x14xf32>, tensor<4xi32>) -> tensor<14x1x3x2xf32>
+  // CHECK:  %1 = "tfl.conv_2d"(%arg0, %0, %[[CONSTANT]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 5 : i32} : (tensor<?x1x26x14xf32>, tensor<14x1x3x2xf32>, tensor<14xf32>) -> tensor<?x1x6x14xf32>
 }
 
 func.func @UnsupportedGroupConv_UnrankedTensorType(%arg0: tensor<*xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
@@ -737,15 +721,6 @@ func.func @UnsupportedGroupConv_DynamicDimAtInputDimThree(%arg0: tensor<?x1x26x?
   func.return %0 : tensor<?x1x6x14xf32>
 
   // CHECK-LABEL: UnsupportedGroupConv_DynamicDimAtInputDimThree
-  // CHECK-NOT: "tfl.conv_2d"
-  // CHECK: "tf.Conv2D"
-}
-
-func.func @UnsupportedGroupConv_MultipleGroup(%arg0: tensor<?x1x26x14xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x14xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
-  func.return %0 : tensor<?x1x6x14xf32>
-
-  // CHECK-LABEL: UnsupportedGroupConv_MultipleGroup
   // CHECK-NOT: "tfl.conv_2d"
   // CHECK: "tf.Conv2D"
 }

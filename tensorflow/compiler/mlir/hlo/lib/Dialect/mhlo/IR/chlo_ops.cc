@@ -16,14 +16,19 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 namespace mlir {
 namespace chlo {
@@ -55,17 +60,53 @@ Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
 }
 
 //===----------------------------------------------------------------------===//
+// CompatibleOperandsAndResultType
+//===----------------------------------------------------------------------===//
+
+// TODO(b/231358795): Review the use of InferTypeOpInterface for ops that
+// support quantization or sparsity.
+#define INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Op)                        \
+  LogicalResult Op::inferReturnTypeComponents(                                \
+      MLIRContext* context, Optional<Location> location,                      \
+      ValueShapeRange operands, DictionaryAttr attributes,                    \
+      RegionRange regions,                                                    \
+      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {          \
+    return inferReturnTypeComponentsFromOperands(context, location, operands, \
+                                                 attributes, regions,         \
+                                                 inferredReturnShapes);       \
+  }
+
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcosOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcoshOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ConjOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NextAfterOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PolygammaOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ZetaOp)
+
+//===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
 
 namespace {
 // Gets the resulting type from a broadcast between two types.
-static Type GetBroadcastType(Type x, Type y, Type element_type,
-                             DenseIntElementsAttr broadcast_dimensions_attr) {
+ShapedTypeComponents GetBroadcastType(
+    Type x, Type y, Type element_type,
+    DenseIntElementsAttr broadcast_dimensions_attr) {
   auto x_ranked = x.dyn_cast<RankedTensorType>();
   auto y_ranked = y.dyn_cast<RankedTensorType>();
   if (!x_ranked || !y_ranked) {
-    return UnrankedTensorType::get(element_type);
+    return {element_type};
   }
 
   auto shape_x = x_ranked.getShape();
@@ -77,9 +118,9 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
     if (!mlir::OpTrait::util::getBroadcastedShape(shape_x, shape_y,
                                                   out_shape)) {
       // Signal illegal broadcast_dimensions as unranked.
-      return UnrankedTensorType::get(element_type);
+      return {element_type};
     }
-    return RankedTensorType::get(out_shape, element_type);
+    return {out_shape, element_type};
   }
 
   auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
@@ -88,19 +129,20 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
   auto broadcast_dimensions = broadcast_dimensions_attr.getValues<APInt>();
   if (broadcast_dimensions.size() != shape_small.size()) {
     // Signal illegal broadcast_dimensions as unranked.
-    return UnrankedTensorType::get(element_type);
+    return {element_type};
   }
 
   llvm::SmallVector<int64_t, 4> shape_large_filtered;
   shape_large_filtered.reserve(shape_small.size());
   for (const auto& dim : broadcast_dimensions) {
+    if (dim.getZExtValue() >= shape_large.size()) return {element_type};
     shape_large_filtered.push_back(shape_large[dim.getZExtValue()]);
   }
   llvm::SmallVector<int64_t, 4> out_shape_filtered;
   if (!mlir::OpTrait::util::getBroadcastedShape(
           shape_small, shape_large_filtered, out_shape_filtered)) {
     // Signal illegal broadcast_dimensions as unranked.
-    return UnrankedTensorType::get(element_type);
+    return {element_type};
   }
 
   // Update according to the broadcast dimensions.
@@ -111,13 +153,13 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
     out_shape[index_pair.value().getZExtValue()] = new_value;
   }
 
-  return RankedTensorType::get(out_shape, element_type);
+  return {out_shape, element_type};
 }
 
 LogicalResult InferBroadcastBinaryOpReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, Type element_type,
-    SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   // Find broadcast_dimensions.
   DenseIntElementsAttr broadcast_dimensions =
       attributes.get("broadcast_dimensions")
@@ -130,18 +172,8 @@ LogicalResult InferBroadcastBinaryOpReturnTypeComponents(
     return emitOptionalError(location, "mismatched operand types");
   }
   if (!element_type) element_type = lhs_type.getElementType();
-  Type result_type =
-      GetBroadcastType(lhs_type, rhs_type, element_type, broadcast_dimensions);
-
-  if (auto ranked_result_type = result_type.dyn_cast<RankedTensorType>()) {
-    inferedReturnShapes.emplace_back(ranked_result_type.getShape(),
-                                     element_type);
-    return success();
-  }
-
-  // TODO(laurenzo): This should be constructing with `element_type` but that
-  // constructor variant needs to be added upstream.
-  inferedReturnShapes.emplace_back(/* element_type */);
+  inferredReturnShapes.push_back(
+      GetBroadcastType(lhs_type, rhs_type, element_type, broadcast_dimensions));
   return success();
 }
 
@@ -209,23 +241,10 @@ void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                DenseIntElementsAttr broadcast_dimensions,
                                mhlo::ComparisonDirection comparison_direction,
                                mhlo::ComparisonType compare_type) {
-  auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
-                                   builder.getI1Type(), broadcast_dimensions);
-  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
+  build(builder, result, lhs, rhs, broadcast_dimensions,
         mhlo::ComparisonDirectionAttr::get(builder.getContext(),
                                            comparison_direction),
         mhlo::ComparisonTypeAttr::get(builder.getContext(), compare_type));
-}
-
-void BroadcastCompareOp::build(
-    OpBuilder& builder, OperationState& result, Value lhs, Value rhs,
-    DenseIntElementsAttr broadcast_dimensions,
-    mhlo::ComparisonDirectionAttr comparison_direction,
-    mhlo::ComparisonTypeAttr compare_type) {
-  auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
-                                   builder.getI1Type(), broadcast_dimensions);
-  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
-        comparison_direction, compare_type);
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
@@ -288,7 +307,7 @@ LogicalResult IsPosInfOp::inferReturnTypes(
 // Macros for method definitions that are common to most broadcasting ops.
 //===----------------------------------------------------------------------===//
 
-#define BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(Op)                             \
+#define BROADCAST_BINARY_OP_DEFS(Op)                                       \
   LogicalResult Op::inferReturnTypeComponents(                             \
       MLIRContext* context, Optional<Location> location,                   \
       ValueShapeRange operands, DictionaryAttr attributes,                 \
@@ -304,17 +323,6 @@ LogicalResult IsPosInfOp::inferReturnTypes(
     return ReifyBroadcastBinaryOpReturnTypeShapes(                         \
         builder, getOperation(), operands, reifiedReturnShapes);           \
   }
-
-#define BROADCAST_BINARY_OP_DEFS(Op)                                           \
-  void Op::build(OpBuilder& builder, OperationState& result, Value left,       \
-                 Value right, DenseIntElementsAttr broadcast_dimensions) {     \
-    auto type = GetBroadcastType(                                              \
-        left.getType().cast<ShapedType>(), right.getType().cast<ShapedType>(), \
-        getElementTypeOrSelf(right.getType()), broadcast_dimensions);          \
-    return Op::build(builder, result, type, left, right,                       \
-                     broadcast_dimensions);                                    \
-  }                                                                            \
-  BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(Op)
 
 BROADCAST_BINARY_OP_DEFS(BroadcastAddOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastAndOp);
@@ -335,7 +343,6 @@ BROADCAST_BINARY_OP_DEFS(BroadcastSubOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastZetaOp);
 
-#undef BROADCAST_INFER_SHAPE_TYPE_OP_DEFS
 #undef BROADCAST_BINARY_OP_DEFS
 
 LogicalResult ConstantLikeOp::verify() {
@@ -412,11 +419,13 @@ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
   Type element_type = on_true_type.getElementType();
 
   // Compute the result shape as two binary broadcasts.
-  Type other =
-      GetBroadcastType(on_true_type, on_false_type, element_type, nullptr);
-  Type output = GetBroadcastType(other, pred_type, element_type, nullptr);
-
-  inferredReturnShapes.push_back(output);
+  ShapedTypeComponents& components = inferredReturnShapes.emplace_back(
+      GetBroadcastType(on_true_type, on_false_type, element_type, nullptr));
+  if (components.hasRank()) {
+    components = GetBroadcastType(
+        RankedTensorType::get(components.getDims(), element_type), pred_type,
+        element_type, nullptr);
+  }
   return success();
 }
 
@@ -464,6 +473,45 @@ LogicalResult RankSpecializationClusterOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// TopKOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TopKOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  Builder builder(context);
+  TopKOp::Adaptor adaptor(operands, attributes, regions);
+  Value operand = adaptor.operand();
+  uint64_t k = adaptor.k();
+
+  auto operand_ty = operand.getType().dyn_cast<RankedTensorType>();
+  if (!operand_ty) {
+    return emitOptionalError(location, "operand must be ranked");
+  }
+  if (operand_ty.getRank() < 1) {
+    return emitOptionalError(location, "operand's rank must be at least 1");
+  }
+  auto operand_last_dim = operand_ty.getShape()[operand_ty.getRank() - 1];
+  if (operand_last_dim == ShapedType::kDynamicSize) {
+    return emitOptionalError(location,
+                             "operand's last dimension must be static");
+  }
+  if (operand_last_dim < k) {
+    return emitOptionalError(location,
+                             "operand's last dimension must be at least ", k);
+  }
+
+  SmallVector<int64_t> result_shape;
+  append_range(result_shape, operand_ty.getShape());
+  result_shape[operand_ty.getRank() - 1] = k;
+
+  inferredReturnShapes.emplace_back(result_shape, operand_ty.getElementType());
+  inferredReturnShapes.emplace_back(result_shape, builder.getI32Type());
+  return success();
+}
+
 }  // namespace chlo
 }  // namespace mlir
 
@@ -477,16 +525,15 @@ namespace chlo {
 // chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-Operation* HloClientDialect::materializeConstant(OpBuilder& builder,
-                                                 Attribute value, Type type,
-                                                 Location loc) {
+Operation* ChloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // Mirror MHLO dialect here.
   if (value.isa<ElementsAttr>())
     return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
 }
 
-void HloClientDialect::initialize() {
+void ChloDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"

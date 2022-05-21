@@ -34,7 +34,6 @@ using mlir::ConversionPatternRewriter;
 using mlir::ConversionTarget;
 using mlir::DenseElementsAttr;
 using mlir::DenseIntElementsAttr;
-using mlir::FuncOp;
 using mlir::IntegerType;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -49,6 +48,7 @@ using mlir::ShapedType;
 using mlir::Type;
 using mlir::TypeConverter;
 using mlir::Value;
+using mlir::func::FuncOp;
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"

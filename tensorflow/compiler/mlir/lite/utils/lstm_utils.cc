@@ -418,7 +418,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       forget_layer_norm_coefficients_, cell_layer_norm_coefficients_,
       output_layer_norm_coefficients_, builder_.getStringAttr("TANH"),
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
-      builder_.getStringAttr("FULL"),
+      mlir::TFL::LSTMKernelTypeAttr::get(builder_.getContext(),
+                                         mlir::TFL::LSTMKernelType::FULL),
       /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
@@ -627,7 +628,8 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
 }
 
 // TODO(b/147436982): Consider refactor this to be more general.
-LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
+LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
+                                    OpBuilder* builder) {
   // For argument order, please check out standard_lstm under
   // tensorflow/python/keras/layers/recurrent_v2.py
   Value input = func_op.getArgument(0);

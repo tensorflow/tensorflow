@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -362,10 +363,10 @@ bool CanImplement(lmhlo::CollectivePermuteOp op) {
 }
 
 template <class CclOpType>
-struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
-  using typename tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      CclOpType>::GpuAsyncOpConversionPattern;
+struct CclRewritePattern : tfrt::gpu::StreamifyOpConversionPattern<CclOpType> {
+  using typename tfrt::gpu::StreamifyOpConversionPattern<CclOpType>::OpAdaptor;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      CclOpType>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       CclOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -381,7 +382,8 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
     for (auto pair : llvm::zip_first(op->getOperands(), adaptor.getOperands()))
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
-    mlir::FuncOp func = op->template getParentOfType<mlir::FuncOp>();
+    mlir::func::FuncOp func =
+        op->template getParentOfType<mlir::func::FuncOp>();
     mlir::IntegerAttr replica_count_attr =
         func->getAttrOfType<mlir::IntegerAttr>("replica_count");
     mlir::IntegerAttr num_partitions_attr =
@@ -425,7 +427,7 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
     auto context =
         rewriter.create<tfrt::gpu::StreamGetContextOp>(op.getLoc(), stream);
     auto handle = rewriter.create<xla::gpu::CclCreateOp>(
-        op.getLoc(), ValueRange{context}, attributes);
+        op.getLoc(), ValueRange{context, chain}, attributes);
 
     out_chain_or =
         CclOpConversionRewrite(op, chain, handle, config, mapping, rewriter);

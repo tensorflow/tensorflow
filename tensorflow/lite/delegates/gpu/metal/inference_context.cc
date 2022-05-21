@@ -452,6 +452,10 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       },
       &buffer_usages);
 
+  if (buffer_usages.empty()) {
+    return absl::OkStatus();
+  }
+
   // From Apple documentation:
   // For buffers in the device address space, align the offset to the data type
   // consumed by the compute function (which is always less than or equal to 16
@@ -473,8 +477,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size =
-        descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
+    const size_t element_size = SizeOf(descriptor.data_type);
     size_t buffer_size;
     size_t row_bytes_alignment = [device->device()
         minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(

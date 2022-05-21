@@ -3354,7 +3354,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
     ArrayRef<std::string> disabled_patterns,
     ArrayRef<std::string> enabled_patterns) {
   return std::make_unique<LegalizeTFL>(disabled_patterns, enabled_patterns);

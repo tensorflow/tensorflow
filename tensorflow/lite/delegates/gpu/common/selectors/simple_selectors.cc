@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
@@ -93,8 +95,9 @@ absl::Status SelectGather(const GatherAttributes& attr,
   return absl::OkStatus();
 }
 
-std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def) {
-  GPUOperation operation = CreateResampler(op_def);
+std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def,
+                                              const GpuInfo& gpu_info) {
+  GPUOperation operation = CreateResampler(gpu_info, op_def);
   return absl::make_unique<GPUOperation>(std::move(operation));
 }
 
@@ -162,9 +165,10 @@ void SelectDepthToSpace(const SpaceToDepthAttributes& attr,
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
-void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
+void SelectSplit(const SplitAttributes& attr, const std::vector<int>& channels,
+                 const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr) {
-  Split operation = CreateSplit(op_def, attr);
+  Split operation = CreateSplit(op_def, attr, channels);
   *ptr = absl::make_unique<Split>(std::move(operation));
 }
 
@@ -216,7 +220,8 @@ std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const GpuInfo& gpu_info, const Padding2D& padding,
     const OperationDef& op_def) {
   if (gpu_info.IsApple() || gpu_info.IsAMD()) {
-    Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+    Winograd4x4To36 operation =
+        CreateWinograd4x4To36(op_def, padding, gpu_info);
     return absl::make_unique<Winograd4x4To36>(std::move(operation));
   }
   return absl::make_unique<Winograd4x4To36TileX6>(
@@ -238,6 +243,12 @@ std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
     const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def) {
   return absl::make_unique<GPUOperation>(
       CreateQuantizeAndDequantize(op_def, attr));
+}
+
+void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
+                std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateCast(op_def, gpu_info);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 }  // namespace gpu

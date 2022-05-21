@@ -35,10 +35,10 @@ RewritePatternSet GetHardwareRewritePatterns(MLIRContext* context,
 
 // Convert quantized ops to float, this will essentially insert dequantize &
 // quantize pair around the op.
-void ConvertQuantizedOpToFloat(FuncOp func, OpBuilder* builder);
+void ConvertQuantizedOpToFloat(func::FuncOp func, OpBuilder* builder);
 
 // This will optimize the quantized ops -> float graph.
-void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context);
+void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context);
 
 }  // namespace tac
 }  // namespace TFL

@@ -333,8 +333,9 @@ struct SparseSplitFunctor<GPUDevice, T> {
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, async_finish_computation);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, async_finish_computation);
   }
 
  private:

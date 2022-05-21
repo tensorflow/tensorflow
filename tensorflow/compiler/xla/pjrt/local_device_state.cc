@@ -88,6 +88,9 @@ Status LocalDeviceState::SynchronizeAllActivity() {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
   }
+  for (auto& stream : device_to_host_streams_) {
+    status.Update(stream->BlockHostUntilDone());
+  }
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {
     status.Update(Unknown("SynchronizeAllActivity failed."));

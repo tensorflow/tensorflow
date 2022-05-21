@@ -103,6 +103,20 @@ inline void Relu(const RuntimeShape& input_shape, const T* input_data,
 }
 
 template <typename T>
+inline void Relu0To1(const RuntimeShape& input_shape, const T* input_data,
+                     const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Relu0To1 (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const T val = input_data[i];
+    const T upper = 1;
+    const T lower = 0;
+    const T clamped = val > upper ? upper : val < lower ? lower : val;
+    output_data[i] = clamped;
+  }
+}
+
+template <typename T>
 inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Relu1 (not fused)");
@@ -565,6 +579,8 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   for (int i = 0; i < indices_dims - 1; ++i) {
     ret.n_slices *= indices_shape.Dims(i);
   }
+  if (ret.n_slices == 0) return ret;
+
   for (int i = ret.indices_nd; i < params_dims; ++i) {
     ret.slice_size *= params_shape.Dims(i);
   }
@@ -1064,6 +1080,28 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
     int output_index = segment_ids_data[i];
     for (int j = 0; j < segment_flat_size; ++j) {
       output_data[output_index * segment_flat_size + j] +=
+          input_data[i * segment_flat_size + j];
+    }
+  }
+}
+
+template <typename T>
+inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
+                                const T* input_data,
+                                const RuntimeShape& segment_ids_shape,
+                                const int32_t* segment_ids_data,
+                                const int32_t num_segments,
+                                const RuntimeShape& output_shape,
+                                T* output_data) {
+  for (int i = 0; i < output_shape.FlatSize(); ++i) {
+    output_data[i] = 1;
+  }
+  const int segment_flat_size =
+      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
+  for (int i = 0; i < input_shape.Dims(0); i++) {
+    int output_index = segment_ids_data[i];
+    for (int j = 0; j < segment_flat_size; ++j) {
+      output_data[output_index * segment_flat_size + j] *=
           input_data[i * segment_flat_size + j];
     }
   }

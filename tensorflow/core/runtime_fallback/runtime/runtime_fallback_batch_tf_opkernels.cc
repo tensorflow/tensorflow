@@ -570,7 +570,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
   batch_exec_ctx.set_location(exec_ctx.location());
 
-  bef_func_->Execute(batch_exec_ctx, arguments, results);
+  bef_func_->ExecuteAsync(batch_exec_ctx, arguments, results);
   // There is a comment in tensorflow/core/kernels/batch_kernels.cc
   // counterpart of this method that blocking here seems to improve
   // latency/throughput in practice with how the batching library manage
@@ -602,12 +602,19 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
       auto last = std::unique(errors.begin(), errors.end());
       errors.erase(last, errors.end());
     }
-    std::string msg;
-    llvm::raw_string_ostream os(msg);
-    for (auto* error : errors) {
-      os << *error << ";\n";
+
+    // If there is only 1 error after deduplication, we emit the error with
+    // proper error code mapping from TFRT to TF.
+    if (errors.size() == 1) {
+      final_status = tfrt::CreateTfErrorStatus(*errors[0]);
+    } else {
+      std::string msg;
+      llvm::raw_string_ostream os(msg);
+      for (auto* error : errors) {
+        os << *error << ";\n";
+      }
+      final_status = errors::Internal(std::move(os.str()));
     }
-    final_status = errors::Internal(std::move(os.str()));
   }
   done(final_status);
 }

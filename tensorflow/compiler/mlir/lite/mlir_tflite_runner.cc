@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.
-  mlir::FuncOp main = module->lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   QCHECK(main) << "No 'main' function specified.";
   if (main.getFunctionType().getNumInputs() != 0)
     LOG(QFATAL) << "NYI: Only nullary functions supported.";

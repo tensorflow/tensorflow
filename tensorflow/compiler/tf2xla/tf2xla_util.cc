@@ -482,9 +482,6 @@ StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
                          /*fallback_fld=*/nullptr, &cache);
 }
 
-const char kTpuReplicateAttrName[] = "_tpu_replicate";
-const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
-
 Status ValidateConfig(const tf2xla::Config& config) {
   std::set<string> names;
   for (const tf2xla::Feed& feed : config.feed()) {

@@ -34,12 +34,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.types import distribute as ds_types
 from tensorflow.python.types import trace
-from tensorflow.python.util.tf_export import tf_export
 
 
 def _on_write_update_replica(var, update_fn, value, **kwargs):
@@ -122,73 +121,8 @@ def apply_aggregation_replica_context(value, aggregation, destinations):
     return aggregated_value
 
 
-@tf_export("distribute.DistributedValues", v1=[])
-class DistributedValues(object):
-  """Base class for representing distributed values.
-
-  A subclass instance of `tf.distribute.DistributedValues` is created when
-  creating variables within a distribution strategy, iterating a
-  `tf.distribute.DistributedDataset` or through `tf.distribute.Strategy.run`.
-  This base class should never be instantiated directly.
-  `tf.distribute.DistributedValues` contains a value per replica. Depending on
-  the subclass, the values could either be synced on update, synced on demand,
-  or never synced.
-
-  `tf.distribute.DistributedValues` can be reduced to obtain single value across
-  replicas, as input into `tf.distribute.Strategy.run` or the per-replica values
-  inspected using `tf.distribute.Strategy.experimental_local_results`.
-
-  Example usage:
-
-  1. Created from a `tf.distribute.DistributedDataset`:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> distributed_values = next(dataset_iterator)
-
-  2. Returned by `run`:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> @tf.function
-  ... def run():
-  ...   ctx = tf.distribute.get_replica_context()
-  ...   return ctx.replica_id_in_sync_group
-  >>> distributed_values = strategy.run(run)
-
-  3. As input into `run`:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> distributed_values = next(dataset_iterator)
-  >>> @tf.function
-  ... def run(input):
-  ...   return input + 1.0
-  >>> updated_value = strategy.run(run, args=(distributed_values,))
-
-  4. Reduce value:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> distributed_values = next(dataset_iterator)
-  >>> reduced_value = strategy.reduce(tf.distribute.ReduceOp.SUM,
-  ...                                 distributed_values,
-  ...                                 axis = 0)
-
-  5. Inspect local replica values:
-
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
-  >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
-  >>> per_replica_values = strategy.experimental_local_results(
-  ...    distributed_values)
-  >>> per_replica_values
-  (<tf.Tensor: shape=(1,), dtype=float32, numpy=array([5.], dtype=float32)>,
-   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>)
-
-  """
+class DistributedValues(ds_types.DistributedValues):
+  """Base class for representing distributed values."""
 
   def __init__(self, values):
     """Should only be called by subclass __init__."""
@@ -408,7 +342,8 @@ class DistributedDelegate(DistributedValues):
   # TODO(josh11b): Even more operator overloads.
 
 
-class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
+class PerReplica(DistributedValues, composite_tensor.CompositeTensor,
+                 ds_types.PerReplica):
   """Holds a map from replica to unsynchronized values."""
 
   @property
@@ -478,7 +413,7 @@ class PerReplicaSpec(type_spec.TypeSpec):
 # Note that unlike PerReplica, Mirrored values inherit from
 # DistributedDelegate and so can be used directly in cross-replica mode.
 # TODO(tomhennigan) Should this extend CompositeTensor?
-class Mirrored(DistributedDelegate):
+class Mirrored(DistributedDelegate, ds_types.Mirrored):
   """Holds a map from replica to values which are kept in sync."""
 
   def _get_cross_replica(self):
@@ -622,7 +557,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   def _use_packed_variable(self):
     # Don't use packed variable when under a SaveContext to avoid explicit
     # device placement on variable consuming ops.
-    return self._packed_var is not None and not save_context.in_save_context()
+    return self._packed_var is not None and (
+        not values_util.is_saving_non_distributed())
 
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
@@ -1803,6 +1739,8 @@ class PerWorkerResource():
   """
 
   def __init__(self, strategy, host_to_resources):
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
+        "PerWorkerResource", "TPUDistributedLookupTable").increase_by(1)
     self._strategy = strategy
     self._host_to_resources = host_to_resources
 

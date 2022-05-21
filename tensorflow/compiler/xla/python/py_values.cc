@@ -65,6 +65,9 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
     ptr = &squashed_data;
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -106,6 +109,9 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
     ptr = &data_int64;
     type = S64;
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -136,6 +142,9 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
     ptr = &data_squashed;
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer> buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -183,6 +192,9 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
             std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
     host_buffer_semantics = PjRtClient::HostBufferSemantics::kZeroCopy;
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(

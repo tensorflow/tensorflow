@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -233,7 +235,7 @@ Status DataServiceDispatcherImpl::Start() {
 
 size_t DataServiceDispatcherImpl::NumActiveJobs() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  int64 count = 0;
+  size_t count = 0;
   for (const auto& job : state_.ListJobs()) {
     if (!job->finished) {
       count++;
@@ -629,25 +631,31 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
     std::shared_ptr<const Job> job, const GetOrCreateJobRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::string job_name = job->job_key.name;
-
+  std::string diff;
   if (!MessageDifferencer::Equals(job->processing_mode,
                                   request.processing_mode_def())) {
-    return errors::FailedPrecondition(
-        "Tried to create a job with name ", job_name, " and processing_mode <",
-        request.processing_mode_def().ShortDebugString(),
-        "> but there is already an existing job with that name using "
-        "processing mode <",
-        job->processing_mode.ShortDebugString(), ">");
+    strings::StrAppend(&diff, "Existing processing mode: <",
+                       job->processing_mode.ShortDebugString(), ">; got <",
+                       request.processing_mode_def().ShortDebugString(), ">. ");
+  }
+
+  if (job->use_cross_trainer_cache != request.use_cross_trainer_cache()) {
+    strings::StrAppend(
+        &diff, "Existing cross-trainer cache: <",
+        (job->use_cross_trainer_cache ? "enabled" : "disabled"), ">; got <",
+        (request.use_cross_trainer_cache() ? "enabled" : "disabled"), ">. ");
   }
 
   if (job->target_workers != request.target_workers()) {
+    strings::StrAppend(&diff, "Existing target workers: <",
+                       TargetWorkersToString(job->target_workers), ">; got <",
+                       TargetWorkersToString(request.target_workers()), ">. ");
+  }
+
+  if (!diff.empty()) {
     return errors::InvalidArgument(
-        "Tried to create job with name ", job_name, " and target_workers <",
-        TargetWorkersToString(request.target_workers()),
-        ">, but there is already an existing job "
-        "with that name using target_workers <",
-        TargetWorkersToString(job->target_workers), ">.");
+        "Tried to create job with name ", job->job_key.name,
+        ", but found an existing job with different parameters: ", diff);
   }
   return Status::OK();
 }
@@ -677,6 +685,7 @@ Status DataServiceDispatcherImpl::CreateJob(
     create_job->set_num_consumers(request.num_consumers());
   }
   create_job->set_target_workers(request.target_workers());
+  create_job->set_use_cross_trainer_cache(request.use_cross_trainer_cache());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   tensorflow::metrics::RecordTFDataServiceJobsCreated(
@@ -963,6 +972,7 @@ Status DataServiceDispatcherImpl::PopulateTaskDef(
   if (task->job->num_consumers.has_value()) {
     task_def->set_num_consumers(task->job->num_consumers.value());
   }
+  task_def->set_use_cross_trainer_cache(task->job->use_cross_trainer_cache);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
   std::string dataset_key =
@@ -1092,6 +1102,38 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
   return dataset_store_->Get(key, dataset_def);
+}
+
+DispatcherStateExport DataServiceDispatcherImpl::ExportState() const
+    TF_LOCKS_EXCLUDED(mu_) {
+  DispatcherStateExport dispatcher_state_export;
+  *dispatcher_state_export.mutable_dispatcher_config() = config_;
+  mutex_lock l(mu_);
+  if (!started_) {
+    return dispatcher_state_export;
+  }
+
+  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  for (const auto& worker : workers) {
+    dispatcher_state_export.add_worker_addresses(worker->address);
+  }
+
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  for (const auto& job : jobs) {
+    DispatcherStateExport::Job* job_export = dispatcher_state_export.add_jobs();
+    job_export->set_dataset_id(job->dataset_id);
+    job_export->set_job_id(job->job_id);
+    job_export->mutable_job_key()->set_name(job->job_key.name);
+    job_export->mutable_job_key()->set_iteration(job->job_key.iteration);
+    *job_export->mutable_processing_mode() = job->processing_mode;
+    if (job->num_consumers) {
+      job_export->set_num_consumers(*job->num_consumers);
+    }
+    job_export->set_num_clients(job->num_clients);
+    job_export->set_finished(job->finished);
+    job_export->set_garbage_collected(job->garbage_collected);
+  }
+  return dispatcher_state_export;
 }
 
 }  // namespace data

@@ -533,6 +533,9 @@ tf_cuda_library(
 cc_library(
     name = "overflow",
     hdrs = ["overflow.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -587,6 +590,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )

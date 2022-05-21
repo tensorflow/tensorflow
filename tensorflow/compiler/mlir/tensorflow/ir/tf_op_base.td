@@ -30,7 +30,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 // TensorFlow dialect definitions
 //===----------------------------------------------------------------------===//
 
-def TF_Dialect : Dialect {
+def TensorFlowDialect : Dialect {
   let name = "tf";
 
   let description = [{
@@ -169,6 +169,7 @@ def TF_SendResource : TF_ResourceBase<"Send">;
 def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
+def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
 
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
@@ -227,6 +228,7 @@ def TF_TPUEmbeddingReadEffect : MemoryEffects<[MemRead<TF_TPUEmbeddingResource>]
 
 def TF_SendSideEffect : MemoryEffects<[MemWrite<TF_SendResource>]>;
 def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
+def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
 
@@ -245,7 +247,7 @@ def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 //===----------------------------------------------------------------------===//
 
 class TF_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TF_Dialect, mnemonic, traits>;
+    Op<TensorFlowDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow attribute definitions
@@ -479,7 +481,7 @@ def TF_Tensor : TensorOf<[TF_ElementType]>;
 // Tensorflow devices metadata
 
 // Tensorflow GPU device metadata.
-def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TF_Dialect, [
+def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TensorFlowDialect, [
     // GPU device compute capability: major:minor.
     StructFieldAttr<"cc_major", I32Attr>,
     StructFieldAttr<"cc_minor", I32Attr>

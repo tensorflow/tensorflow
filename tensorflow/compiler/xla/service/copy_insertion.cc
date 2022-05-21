@@ -350,7 +350,8 @@ Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                       in_place_op->parent()->DeepCopyInstruction(operand));
-  TF_RETURN_IF_ERROR(operand->ReplaceUseWith(in_place_op, deep_copy));
+  TF_RETURN_IF_ERROR(
+      operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
   return Status::OK();
 }
 
@@ -397,6 +398,10 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
     TF_ASSIGN_OR_RETURN(HloInstruction * copied,
                         entry->DeepCopyInstruction(
                             param, &param_indices_to_copy, &param_copy_tree));
+    if (param == root) {
+      entry->set_root_instruction(copied);
+      root = copied;
+    }
     for (HloInstruction* user : users) {
       TF_RETURN_IF_ERROR(param->ReplaceUseWith(user, copied));
     }
@@ -864,8 +869,10 @@ class ComputeRelativeLocation {
         return false;
       }
       return absl::c_any_of(
-          in_place, [&](const std::pair<HloUse, ShapeIndex>& a) {
-            auto* op2 = instr->operand(a.first.operand_number);
+          in_place, [&](const std::pair<HloOperandIndex, ShapeIndex>&
+                            operand_and_output_index) {
+            auto* op2 =
+                instr->operand(operand_and_output_index.first.operand_number);
             return (op == nullptr) ? (op2->opcode() == HloOpcode::kCopy)
                                    : (op2 == op);
           });
@@ -962,7 +969,6 @@ class ComputeRelativeLocation {
       case HloOpcode::kWhile:
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
-      case HloOpcode::kTupleSelect:
         return false;
       default:
         return true;
@@ -1569,6 +1575,14 @@ class CopyRemover {
     }
     VLOG(3) << "Checking live ranges before :" << ValueListToString(&a)
             << " vs " << ValueListToString(&b) << "\n";
+    // If any of the positions of the "a" value is a root of the same
+    // computation as "b", "a"'s live range cannot be before "b"'s. This catches
+    // the cases where the root may not be the last instruction in the
+    // computation.
+    if (a.value->IsRootOf(b.value->defining_instruction()->parent())) {
+      VLOG(3) << "Value is root of the same computation";
+      return false;
+    }
     return ordering_->UsesBeforeValueDefinition(
         a.uses, *b.value, dataflow_,
         /* use_is_always_before_def_in_same_instr=*/false);
@@ -1799,7 +1813,6 @@ Status CopyInsertion::AddCopiesForConditional(
 Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
-
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
@@ -1815,13 +1828,13 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
         absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
-          const HloUse& operand = operand_and_output_index.first;
-          if (copied_operands.contains(operand.operand_number)) {
+          const HloOperandIndex& operand_index = operand_and_output_index.first;
+          if (copied_operands.contains(operand_index.operand_number)) {
             continue;
           }
-          copied_operands.insert(operand.operand_number);
+          copied_operands.insert(operand_index.operand_number);
           TF_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
-              *alias_analysis, instruction, operand.operand_number));
+              *alias_analysis, instruction, operand_index.operand_number));
         }
       }
     }

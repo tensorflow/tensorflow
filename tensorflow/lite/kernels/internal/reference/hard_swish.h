@@ -23,9 +23,9 @@ namespace tflite {
 namespace reference_ops {
 
 inline int16_t SaturatingLeftShift(int16_t value, int amount) {
-  int32_t result = static_cast<int32_t>(value) * (1 << amount);
-  result = std::min<int32_t>(result, std::numeric_limits<int16_t>::max());
-  result = std::max<int32_t>(result, std::numeric_limits<int16_t>::min());
+  int64_t result = static_cast<int64_t>(value) * (1 << amount);
+  result = std::min<int64_t>(result, std::numeric_limits<int16_t>::max());
+  result = std::max<int64_t>(result, std::numeric_limits<int16_t>::min());
   return result;
 }
 

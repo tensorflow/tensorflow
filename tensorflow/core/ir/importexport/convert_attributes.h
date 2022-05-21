@@ -18,22 +18,17 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
-namespace tf_type {
-class FullTypeAttr;
-}  // namespace tf_type
-
 namespace tfg {
 
 // Convert the list of MLIR Attributes `attrs` to the `tensorflow::AttrValueMap`
@@ -77,13 +72,17 @@ tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
     const tensorflow::FullTypeDef& full_type, Builder& builder,
     TFGraphDialect* tfgDialect);
 
-// Certain load-bearing TF attributes are promoted to TFG attributes by dropping
-// the underscore and adding a `tfg.` prefix. This is so that transformations
-// are made aware that these are attributes that must be handled with care.
-StringRef PromoteToTFGAttribute(StringRef tf_attr_name);
-// Prepare promoted TFG attributes for export by converting them back to their
-// original names.
-StringRef PrepareTFGAttributeForExport(StringRef tfg_attr_name);
+// Convert an array of handle data (pairs of data types and shapes) to an array
+// attribute of tensor types.
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const tensorflow::protobuf::RepeatedPtrField<
+        tensorflow::ResourceHandleProto_DtypeAndShape>& handle_data);
+
+// Convert an array of handle data into the `handle_data` field of the provided
+// ArgDef. Each entry of the array is expected to be a TensorType.
+tensorflow::Status ConvertHandleData(ArrayAttr handle_data_arr,
+                                     tensorflow::OpDef::ArgDef* arg);
 
 }  // namespace tfg
 }  // namespace mlir

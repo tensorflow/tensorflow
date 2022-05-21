@@ -56,7 +56,7 @@ int64_t AllReduceCount(const HloModule& module) {
 }
 
 // inputs[i] will be some op producing a shape of size sizes_in_kib[i] which
-// feeds into a a all reduce op in all_reduces[i]. Returns a tuple
+// feeds into all reduce op in all_reduces[i]. Returns a tuple
 // of the all_reduces.
 HloInstruction* MakeCrossReplicaReductions(
     std::vector<int64_t> sizes_in_kib, std::vector<HloComputation*> reductions,

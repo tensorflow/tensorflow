@@ -319,6 +319,9 @@ TFTPU_CAPI_EXPORT void TpuCompiler_Compile(
 TFTPU_CAPI_EXPORT int64_t TpuCompiler_ShapeSize(Tpu_Compiler* compiler,
                                                 XLA_Shape* c_shape);
 
+TFTPU_CAPI_EXPORT void TpuCompiler_DefaultDeviceShapeRepresentation(
+    Tpu_Compiler* compiler, XLA_Shape* host_shape, XLA_Shape* device_shape);
+
 TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_Executable* executable, SE_ExecutableRunOptions* se_options,
     SE_ExecutionInput** se_arguments, int se_arguments_size,
@@ -530,6 +533,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_DefaultDeviceShapeRepresentation);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeXlaShapeIndexArray);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceMemoryArray);

@@ -25,6 +25,9 @@ cc_library(
     hdrs = ["grpc_eager_client.h"],
     deps = [
         ":grpc_eager_service",
+        "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",

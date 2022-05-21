@@ -1909,7 +1909,12 @@ _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 @tf_export("__internal__.create_c_op", v1=[])
 @traceback_utils.filter_traceback
-def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
+def _create_c_op(graph,
+                 node_def,
+                 inputs,
+                 control_inputs,
+                 op_def=None,
+                 extract_traceback=True):
   """Creates a TF_Operation.
 
   Args:
@@ -1920,6 +1925,8 @@ def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
     control_inputs: A list of `Operation`s to set as control dependencies.
     op_def: Optional. `op_def_pb2.OpDef` for the operation to create. If not
       specified, is looked up from the `graph` using `node_def.op`.
+    extract_traceback: if True, extract the current Python traceback to the
+      TF_Operation.
 
   Returns:
     A wrapped TF_Operation*.
@@ -1961,6 +1968,11 @@ def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   except errors.InvalidArgumentError as e:
     # Convert to ValueError for backwards compatibility.
     raise ValueError(e.message)
+
+  # Record the current Python stack trace as the creating stacktrace of this
+  # TF_Operation.
+  if extract_traceback:
+    tf_stack.extract_stack_for_op(c_op, stacklevel=3)
 
   return c_op
 
@@ -2031,38 +2043,34 @@ class Operation(object):
         or if `inputs` and `input_types` are incompatible.
       ValueError: if the `node_def` name is not valid.
     """
-    # For internal use only: `node_def` can be set to a TF_Operation to create
-    # an Operation for that op. This is useful for creating Operations for ops
-    # indirectly created by C API methods, e.g. the ops created by
-    # TF_ImportGraphDef. When `node_def` is a TF_Operation, all optional fields
-    # should be None.
-
-    if isinstance(node_def, node_def_pb2.NodeDef):
-      if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
-        raise ValueError(
-            f"Cannot create a tensor proto whose content is larger than 2GB. "
-            f"Size of tensor is {node_def.ByteSize()} bytes.")
-      if not _VALID_OP_NAME_REGEX.match(node_def.name):
-        raise ValueError(
-            f"`{node_def.name}` is not a valid node name. "
-            f"Accepted names conform to Regex /{_VALID_OP_NAME_REGEX}/")
-      c_op = None
-    elif type(node_def).__name__ == "TF_Operation":
-      assert inputs is None
-      assert output_types is None
-      assert control_inputs is None
-      assert input_types is None
-      assert original_op is None
-      assert op_def is None
-      c_op = node_def
-    else:
-      raise TypeError(f"Argument node_def must be a NodeDef. "
-                      f"Received an instance of type: {type(node_def)}.")
-
     if not isinstance(g, Graph):
       raise TypeError(f"Argument g must be a Graph. "
                       f"Received an instance of type {type(g)}")
-    self._graph = g
+
+    # TODO(feyu): This message is redundant with the check below. We raise it
+    # to help users to migrate. Remove this after 07/01/2022.
+    if isinstance(node_def, pywrap_tf_session.TF_Operation):
+      raise ValueError(
+          "Calling Operation() with node_def of a TF_Operation is deprecated. "
+          "Please switch to Operation.from_c_op.")
+
+    if not isinstance(node_def, node_def_pb2.NodeDef):
+      raise TypeError(f"Argument node_def must be a NodeDef. "
+                      f"Received an instance of type: {type(node_def)}.")
+    if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
+      raise ValueError(
+          f"Cannot create a tensor proto whose content is larger than 2GB. "
+          f"Size of tensor is {node_def.ByteSize()} bytes.")
+
+    # TODO(mdan): This does not belong here. Graph::AddNode should handle it.
+    if not _VALID_OP_NAME_REGEX.match(node_def.name):
+      raise ValueError(
+          f"`{node_def.name}` is not a valid node name. "
+          f"Accepted names conform to Regex /{_VALID_OP_NAME_REGEX}/")
+
+    # FIXME(b/225400189): output_types is unused. Consider remove it from
+    # the argument list.
+    del output_types
 
     if inputs is None:
       inputs = []
@@ -2097,11 +2105,57 @@ class Operation(object):
                           f"Received an instance of type {type(c)}.")
         control_input_ops.append(control_op)
 
+    # Initialize c_op from node_def and other inputs
+    c_op = _create_c_op(g, node_def, inputs, control_input_ops, op_def=op_def)
+    self._init_from_c_op(c_op=c_op, g=g)
+
+    self._original_op = original_op
+
+    # Post process for control flows.
+    self._control_flow_post_processing(input_tensors=inputs)
+
+    # Removes this frame from the Python traceback.
+    # We adjust stacklevel directly to avoid triggering serialization.
+    self.traceback._stacklevel += 1  # pylint: disable=protected-access
+
+  @classmethod
+  def _from_c_op(cls, c_op, g):
+    """Create an Operation from a TF_Operation.
+
+    For internal use only: This is useful for creating Operation for ops
+    indirectly created by C API methods, e.g. the ops created by
+    TF_ImportGraphDef.
+
+    Args:
+      c_op: a TF_Operation.
+      g: A Graph.
+
+    Returns:
+      an Operation object.
+    """
+    self = object.__new__(cls)
+
+    self._init_from_c_op(c_op=c_op, g=g)  # pylint: disable=protected-access
+    return self
+
+  def _init_from_c_op(self, c_op, g):
+    """Initializes Operation from a TF_Operation."""
+
+    if not isinstance(g, Graph):
+      raise TypeError(f"Operation initialization requires a Graph, "
+                      f"got {type(g)} for argument g.")
+
+    if not isinstance(c_op, pywrap_tf_session.TF_Operation):
+      raise TypeError(f"Operation initialization requires a TF_Operation, "
+                      f"got {type(c_op)} for argument c_op.")
+
+    self._original_op = None
+
+    self._graph = g
+    self._c_op = c_op
+
     # This will be set by self.inputs.
     self._inputs_val = None
-
-    # pylint: disable=protected-access
-    self._original_op = original_op
 
     # List of _UserDevSpecs holding code location of device context manager
     # invocations and the users original argument to them.
@@ -2109,7 +2163,7 @@ class Operation(object):
     # Dict mapping op name to file and line information for op colocation
     # context managers.
     self._colocation_code_locations = None
-    self._control_flow_context = self.graph._get_control_flow_context()
+    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
 
     # Gradient function for this op. There are three ways to specify gradient
     # function, and first available gradient gets used, in the following order.
@@ -2118,21 +2172,7 @@ class Operation(object):
     # 3. Gradient name registered by op.type.
     self._gradient_function = None
 
-    # Initialize self._c_op.
-    if c_op:
-      self._c_op = c_op
-      op_def = g._get_op_def(pywrap_tf_session.TF_OperationOpType(c_op))
-      name = self.name
-    else:
-      if op_def is None:
-        op_def = self._graph._get_op_def(node_def.op)
-      self._c_op = _create_c_op(self._graph, node_def, inputs,
-                                control_input_ops, op_def)
-      name = compat.as_str(node_def.name)
-
-    self._traceback = tf_stack.extract_stack_for_node(self._c_op)
-
-    # pylint: enable=protected-access
+    op_def = g._get_op_def(pywrap_tf_session.TF_OperationOpType(c_op))  # pylint: disable=protected-access
 
     self._is_stateful = op_def.is_stateful
 
@@ -2145,10 +2185,7 @@ class Operation(object):
       tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
       self._outputs.append(tensor)
 
-    self._id_value = self._graph._add_op(self, name)  # pylint: disable=protected-access
-
-    if not c_op:
-      self._control_flow_post_processing(input_tensors=inputs)
+    self._id_value = g._add_op(self, self.name)  # pylint: disable=protected-access
 
   def _control_flow_post_processing(self, input_tensors=None):
     """Add this op to its control flow context.
@@ -2579,7 +2616,9 @@ class Operation(object):
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return self._traceback
+    # FIXME(b/225423591): This object contains a dangling reference if _c_op
+    # goes out of scope.
+    return pywrap_tf_session.TF_OperationGetStackTrace(self._c_op)
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
@@ -3133,7 +3172,7 @@ class Graph(object):
     # will be shared when defining function graphs, for example, so optimizers
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
-    self._graph_key = "grap-key-%d/" % (uid(),)
+    self._graph_key = "graph-key-%d/" % (uid(),)
     # A string with the last reduction method passed to
     # losses.compute_weighted_loss(), or None. This is required only for
     # backward compatibility with Estimator and optimizer V1 use cases.
@@ -3784,7 +3823,7 @@ class Graph(object):
       An `Operation` object.
     """
     self._check_not_finalized()
-    ret = Operation(c_op, self)
+    ret = Operation._from_c_op(c_op=c_op, g=self)  # pylint: disable=protected-access
     # If a name_scope was created with ret.name but no nodes were created in it,
     # the name will still appear in _names_in_use even though the name hasn't
     # been used. This is ok, just leave _names_in_use as-is in this case.

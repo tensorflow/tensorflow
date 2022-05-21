@@ -89,20 +89,12 @@ const HostEventTypeMap& GetHostEventTypeMap() {
        kTfDataCapturedFunctionRunInstantiated},
       {"InstantiatedCapturedFunction::RunAsync",
        kTfDataCapturedFunctionRunAsync},
-      // Functional ops.
-      {"CallOp", kCallOp},
+      // Loop ops.
       {"ParallelForOp", kParallelForOp},
       {"ForeverOp", kForeverOp},
-      {"NumericalGradientOp-EvalRight", kNumericalGradientOpEvalRight},
-      {"NumericalGradientOp-EvalLeft", kNumericalGradientOpEvalLeft},
-      {"SymbolicGradientOp", kSymbolicGradientOp},
-      {"RemoteCallOp", kRemoteCallOp},
-      {"IfOp", kIfOp},
-      {"CaseOp", kCaseOp},
       {"WhileOp-EvalCond", kWhileOpEvalCond},
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
-      {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -141,19 +133,19 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // TPU related.
       {"EnqueueRequestLocked", kEnqueueRequestLocked},
       {"RunProgramRequest", kRunProgramRequest},
-      {"StartProgramRequest", kStartProgramRequest},
       {"HostCallbackRequest", kHostCallbackRequest},
       {"TransferH2DRequest", kTransferH2DRequest},
       {"TransferPreprocessedH2DRequest", kTransferPreprocessedH2DRequest},
       {"TransferD2HRequest", kTransferD2HRequest},
-      {"TransferD2DRequest", kTransferD2DRequest},
-      {"TransferD2DRemoteRequest", kTransferD2DRemoteRequest},
       {"OnDeviceSendRequest", kOnDeviceSendRequest},
       {"OnDeviceRecvRequest", kOnDeviceRecvRequest},
       {"OnDeviceSendRecvLocalRequest", kOnDeviceSendRecvLocalRequest},
+      {"CustomWait", kCustomWait},
+      {"OnDeviceSendRequestMulti", kOnDeviceSendRequestMulti},
+      {"OnDeviceRecvRequestMulti", kOnDeviceRecvRequestMulti},
+      {"PjrtAsyncWait", kPjrtAsyncWait},
       {"DoEnqueueProgram", kDoEnqueueProgram},
       {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
-      {"StartProgram", kStartProgram},
       {"WriteHbm", kWriteHbm},
       {"ReadHbm", kReadHbm},
       {"TpuExecuteOp", kTpuExecuteOp},
@@ -185,8 +177,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"UnknownStatType", kUnknownStatType},
       // TraceMe arguments.
       {"id", kStepId},
-      {"parent_step_id", kParentStepId},
-      {"function_step_id", kFunctionStepId},
       {"device_ordinal", kDeviceOrdinal},
       {"chip_ordinal", kChipOrdinal},
       {"node_ordinal", kNodeOrdinal},
@@ -252,7 +242,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
-      {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
@@ -367,7 +356,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;
@@ -375,6 +363,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
       return false;
   }
 }
+
+/*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 }  // namespace profiler
 }  // namespace tensorflow

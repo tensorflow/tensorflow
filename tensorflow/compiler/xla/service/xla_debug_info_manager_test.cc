@@ -14,11 +14,57 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 
+class XlaDebugInfoManagerTestPeer {
+ public:
+  void RegisterModule(
+      ModuleIdentifier module_id, std::shared_ptr<const HloModule> hlo_module,
+      std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
+    return xla_debug_info_manager_.RegisterModule(module_id, hlo_module,
+                                                  buffer_assignment);
+  }
+
+  void UnregisterModule(ModuleIdentifier module_id) {
+    return xla_debug_info_manager_.UnregisterModule(module_id);
+  }
+
+  void StartTracing() { return xla_debug_info_manager_.StartTracing(); }
+
+  absl::flat_hash_set<ModuleIdentifier> StopTracing() {
+    std::vector<std::unique_ptr<HloProto>> module_debug_info;
+    xla_debug_info_manager_.StopTracing(&module_debug_info);
+    absl::flat_hash_set<ModuleIdentifier> module_ids;
+    for (const auto& hlo_proto : module_debug_info) {
+      module_ids.insert(hlo_proto->hlo_module().id());
+    }
+    return module_ids;
+  }
+
+  absl::flat_hash_set<ModuleIdentifier> GetModuleIds() {
+    absl::flat_hash_set<ModuleIdentifier> module_ids;
+    absl::MutexLock lock(&xla_debug_info_manager_.mutex_);
+    for (const auto& it : xla_debug_info_manager_.modules_) {
+      module_ids.insert(it.first);
+    }
+    return module_ids;
+  }
+
+ private:
+  XlaDebugInfoManager xla_debug_info_manager_;
+};
+
+namespace {
+
+using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
 class XlaDebugInfoManagerTest : public HloTestBase {
@@ -26,125 +72,79 @@ class XlaDebugInfoManagerTest : public HloTestBase {
   struct DebugMetadata {
     // We allow same id to be registered multiple times. we need unique id to
     // know which program is referenced (such as in UnregisterProgram).
-    int unique_id;
-    std::string id;
+    ModuleIdentifier unique_id;
     std::shared_ptr<HloModule> module;
     std::shared_ptr<BufferAssignmentProto> buffer_assignment;
   };
 
   // Return unique id of this module.
-  int RegisterProgram(const std::string& module_id) {
+  ModuleIdentifier RegisterProgram(const std::string& module_name) {
     DebugMetadata debug_info;
     HloModuleConfig config;
-    debug_info.unique_id = ++serial_;
-    debug_info.id = module_id;
-    debug_info.module = std::make_shared<HloModule>(module_id, config);
+    debug_info.module = std::make_shared<HloModule>(module_name, config);
     debug_info.buffer_assignment = nullptr;
-    xla_debug_info_manager_.RegisterModule(module_id, debug_info.module,
+    ModuleIdentifier unique_id = debug_info.module->unique_id();
+    debug_info.unique_id = unique_id;
+    xla_debug_info_manager_.RegisterModule(unique_id, debug_info.module,
                                            debug_info.buffer_assignment);
     external_references_.push_back(std::move(debug_info));
-    return serial_;
+    return unique_id;
   }
 
-  void UnregisterProgram(int unique_id) {
+  void UnregisterProgram(ModuleIdentifier unique_id) {
     for (int i = 0; i < external_references_.size(); i++) {
       if (external_references_[i].unique_id == unique_id) {
-        xla_debug_info_manager_.UnregisterModule(
-            external_references_[i].id, external_references_[i].module,
-            external_references_[i].buffer_assignment);
+        xla_debug_info_manager_.UnregisterModule(unique_id);
         external_references_.erase(external_references_.begin() + i);
         break;
       }
     }
   }
 
-  void StartProgram(int unique_id) {
-    for (int i = 0; i < external_references_.size(); i++) {
-      if (external_references_[i].unique_id == unique_id) {
-        xla_debug_info_manager_.OnModuleStart(external_references_[i].id);
-        break;
-      }
-    }
-  }
-
-  void StopProgram(int unique_id) {
-    for (int i = 0; i < external_references_.size(); i++) {
-      if (external_references_[i].unique_id == unique_id) {
-        xla_debug_info_manager_.OnModuleStop(external_references_[i].id);
-        break;
-      }
-    }
-  }
-
-  void StartAndStopProgram(int unique_id) {
-    StartProgram(unique_id);
-    StopProgram(unique_id);
-  }
-
-  std::set<ModuleIdentifier> GetActiveModule() {
-    return xla_debug_info_manager_.GetActiveModules();
+  absl::flat_hash_set<ModuleIdentifier> GetModuleIds() {
+    return xla_debug_info_manager_.GetModuleIds();
   }
 
   void StartTrace() { xla_debug_info_manager_.StartTracing(); }
 
-  std::set<ModuleIdentifier> StopTrace() {
-    std::vector<XlaModuleDebugInfo> module_debug_info;
-    xla_debug_info_manager_.StopTracing(&module_debug_info);
-    std::set<ModuleIdentifier> serialized;
-    for (const auto& module : module_debug_info) {
-      serialized.insert(module.module_id);
-    }
-    return serialized;
+  absl::flat_hash_set<ModuleIdentifier> StopTrace() {
+    return xla_debug_info_manager_.StopTracing();
   }
-
-  int serial_ = 0;
 
   // Simulation of compilation cache.
   std::vector<DebugMetadata> external_references_;
 
   // Use an instance per test instead of singleton to avoid interferences.
-  XlaDebugInfoManager xla_debug_info_manager_;
+  XlaDebugInfoManagerTestPeer xla_debug_info_manager_;
 };
 
 // Test the cases where no trace session is involved.
 TEST_F(XlaDebugInfoManagerTest, NoTraceBasic) {
   auto program0 = RegisterProgram("program0");
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0));
 
   auto program1 = RegisterProgram("program1");
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0, program1));
 
-  StartAndStopProgram(program0);
-  StartProgram(program0);
-  StopProgram(program0);
   UnregisterProgram(program0);
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program1"));
-  StartAndStopProgram(program1);
-  StartProgram(program1);
-  StopProgram(program1);
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program1));
   UnregisterProgram(program1);
-  EXPECT_TRUE(GetActiveModule().empty());
+  EXPECT_TRUE(GetModuleIds().empty());
 }
 
 TEST_F(XlaDebugInfoManagerTest, NoTraceDuplicateIds) {
   auto program0A = RegisterProgram("program0");
   auto program0B = RegisterProgram("program0");  // duplicates
   auto program1 = RegisterProgram("program1");
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
-
-  StartProgram(program0A);
-  StartProgram(program0B);
-  StartProgram(program1);
-  StopProgram(program0A);
-  StopProgram(program0B);
-  StopProgram(program1);
+  EXPECT_THAT(GetModuleIds(),
+              UnorderedElementsAre(program0A, program0B, program1));
 
   UnregisterProgram(program1);
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0A, program0B));
   UnregisterProgram(program0A);
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0B));
   UnregisterProgram(program0B);
-  EXPECT_TRUE(GetActiveModule().empty());
+  EXPECT_THAT(GetModuleIds(), IsEmpty());
 }
 
 // Test the cases where an active trace session is involved.
@@ -153,31 +153,24 @@ TEST_F(XlaDebugInfoManagerTest, ActiveTrace) {
   auto program0B = RegisterProgram("program0");  // duplicates
   auto program1 = RegisterProgram("program1");
 
-  // Case 1: Trace starts when no program is running.
-  StartAndStopProgram(program0A);
   StartTrace();
-  StartAndStopProgram(program1);
   auto program2 = RegisterProgram("program2");
-  StartAndStopProgram(program0B);
   EXPECT_THAT(StopTrace(),
-              UnorderedElementsAre("program0", "program1", "program2"));
+              UnorderedElementsAre(program0A, program0B, program1, program2));
 
-  // Case 1: Trace starts during program is running.
-  StartProgram(program0A);
   StartTrace();
-  StopProgram(program0A);
-  StartAndStopProgram(program1);
   EXPECT_THAT(StopTrace(),
-              UnorderedElementsAre("program0", "program1", "program2"));
+              UnorderedElementsAre(program0A, program0B, program1, program2));
 
   UnregisterProgram(program2);
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
+  EXPECT_THAT(GetModuleIds(),
+              UnorderedElementsAre(program0A, program0B, program1));
   UnregisterProgram(program0A);
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0B, program1));
   UnregisterProgram(program0B);
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program1"));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program1));
   UnregisterProgram(program1);
-  EXPECT_TRUE(GetActiveModule().empty());
+  EXPECT_THAT(GetModuleIds(), IsEmpty());
 }
 
 TEST_F(XlaDebugInfoManagerTest, UnregisterDuringTrace) {
@@ -186,13 +179,14 @@ TEST_F(XlaDebugInfoManagerTest, UnregisterDuringTrace) {
   auto program1 = RegisterProgram("program1");
 
   StartTrace();
-  StartAndStopProgram(program1);
   UnregisterProgram(program1);
   UnregisterProgram(program0B);
-  EXPECT_THAT(StopTrace(), UnorderedElementsAre("program0", "program1"));
-  EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
+  EXPECT_THAT(StopTrace(),
+              UnorderedElementsAre(program0A, program0B, program1));
+  EXPECT_THAT(GetModuleIds(), UnorderedElementsAre(program0A));
 
   UnregisterProgram(program0A);
 }
 
+}  // namespace
 }  // namespace xla

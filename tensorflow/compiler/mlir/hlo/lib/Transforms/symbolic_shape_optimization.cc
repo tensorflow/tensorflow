@@ -27,8 +27,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -817,7 +820,8 @@ class SymbolicShapeOptimizationPass final
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createSymbolicShapeOptimizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass() {
   return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 

@@ -27,7 +27,6 @@ tf_python_pybind_extension(
     name = "test_pass_pybind",
     testonly = 1,
     srcs = ["test_pass_pybind.cc"],
-    module_name = "test_pass_pybind",
     deps = [
         ":test_pass_cc",
         "@pybind11",

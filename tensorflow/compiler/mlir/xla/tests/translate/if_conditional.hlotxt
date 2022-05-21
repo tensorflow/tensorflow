@@ -33,10 +33,10 @@ ENTRY %tfcompile.0 {
   %tuple.5 = (f32[]) tuple(%arg0.1), metadata={op_type="If" op_name="cond/Merge_if"}
 
   // CHECK: [[R2:%.+]] = "mhlo.if"([[R1]]) ({
-  // CHECK:   [[R3:%.+]] = "mhlo.log"([[A0]])
+  // CHECK:   [[R3:%.+]] = mhlo.log [[A0]]
   // CHECK:   "mhlo.return"([[R3]])
   // CHECK: },  {
-  // CHECK:   [[R3:%.+]] = "mhlo.exponential"([[A0]])
+  // CHECK:   [[R3:%.+]] = mhlo.exponential [[A0]]
   // CHECK:   "mhlo.return"([[R3]])
   // CHECK: })
   %conditional.16 = (f32[]) conditional(%compare.4, %tuple.5, %tuple.5), true_computation=%then_branch0, false_computation=%else_branch0, metadata={op_type="If" op_name="cond/Merge_if"}
@@ -83,13 +83,13 @@ ENTRY %tfcompile.0 {
 //CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
 //CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<"comparison_direction LT">}
 //CHECK-NEXT:    %[[IF:.*]]:3 = "mhlo.if"(%[[CMP]]) ({
-//CHECK-NEXT:      %[[LOG0:.*]] = "mhlo.log"(%[[A0]]) : (tensor<f32>) -> tensor<f32>
-//CHECK-NEXT:      %[[LOG1:.*]] = "mhlo.log"(%[[A1]]) : (tensor<f32>) -> tensor<f32>
+//CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
+//CHECK-NEXT:      %[[LOG1:.*]] = mhlo.log %[[A1]] : tensor<f32>
 //CHECK-NEXT:      "mhlo.return"(%[[LOG0]], %[[LOG1]], %[[A0]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
 //CHECK-NEXT:    },  {
-//CHECK-NEXT:      %[[EXP0:.*]] = "mhlo.exponential"(%[[A0]]) : (tensor<f32>) -> tensor<f32>
-//CHECK-NEXT:      %[[EXP1:.*]] = "mhlo.exponential"(%[[A1]]) : (tensor<f32>) -> tensor<f32>
-//CHECK-NEXT:      %[[EXP2:.*]] = "mhlo.exponential"(%[[A2]]) : (tensor<f32>) -> tensor<f32>
+//CHECK-NEXT:      %[[EXP0:.*]] = mhlo.exponential %[[A0]] : tensor<f32>
+//CHECK-NEXT:      %[[EXP1:.*]] = mhlo.exponential %[[A1]] : tensor<f32>
+//CHECK-NEXT:      %[[EXP2:.*]] = mhlo.exponential %[[A2]] : tensor<f32>
 //CHECK-NEXT:      "mhlo.return"(%[[EXP0]], %[[EXP1]], %[[EXP2]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
 //CHECK-NEXT:    }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
 //CHECK-NEXT:    %[[R0:.*]] = "mhlo.tuple"(%[[IF]]#0, %[[IF]]#1)
@@ -130,10 +130,10 @@ ENTRY %tfcompile.0 {
 // CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
 // CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<"comparison_direction LT">}
 // CHECK-NEXT:    %[[IF:.*]] = "mhlo.if"(%[[CMP]]) ({
-// CHECK-NEXT:      %[[LOG0:.*]] = "mhlo.log"(%[[A0]]) : (tensor<f32>) -> tensor<f32>
+// CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
 // CHECK-NEXT:      "mhlo.return"(%[[LOG0]]) : (tensor<f32>) -> ()
 // CHECK-NEXT:    },  {
-// CHECK-NEXT:      %[[EXP0:.*]] = "mhlo.exponential"(%[[A0]]) : (tensor<f32>) -> tensor<f32>
+// CHECK-NEXT:      %[[EXP0:.*]] = mhlo.exponential %[[A0]] : tensor<f32>
 // CHECK-NEXT:      "mhlo.return"(%[[EXP0]]) : (tensor<f32>) -> ()
 // CHECK-NEXT:    }) : (tensor<i1>) -> tensor<f32>
 // CHECK-NEXT:    return %[[IF]] : tensor<f32>
@@ -164,8 +164,8 @@ ENTRY %tfcompile.0 {
   %arg_empty_tuple.13 = () parameter(0)
   %constant.14 = pred[] constant(false)
   %constant.15 = f32[] constant(10)
-  %tuple.16 = () tuple(), metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=8}
-  %conditional.17 = f32[] conditional(pred[] %constant.14, f32[] %constant.15, () %tuple.16), true_computation=%region_1.7, false_computation=%region_2.9, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=8}
+  %tuple.16 = () tuple()
+  %conditional.17 = f32[] conditional(pred[] %constant.14, f32[] %constant.15, () %tuple.16), true_computation=%region_1.7, false_computation=%region_2.9
   ROOT %tuple.18 = (f32[], f32[]) tuple(f32[] %conditional.17, f32[] %conditional.17)
 }
 
@@ -197,11 +197,11 @@ ENTRY %tfcompile.0 {
 %tfcompile.3 (Arg_0.1: pred[], Arg_1.2: f32[], Arg_2.3: f32[]) -> f32[] {
   %constant.4 = f32[] constant(10)
   %Arg_0.1 = pred[] parameter(0)
-  %tuple.5 = () tuple(), metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
+  %tuple.5 = () tuple()
   %Arg_1.2 = f32[] parameter(1)
   %Arg_2.3 = f32[] parameter(2)
-  %tuple.6 = (f32[], f32[]) tuple(f32[] %Arg_1.2, f32[] %Arg_2.3), metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
-  %conditional.24 = (f32[], f32[]) conditional(pred[] %Arg_0.1, () %tuple.5, (f32[], f32[]) %tuple.6), true_computation=%region_0.12, false_computation=%region_3.19, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
-  %get-tuple-element.25 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=0, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
-  ROOT %get-tuple-element.26 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=1, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
+  %tuple.6 = (f32[], f32[]) tuple(f32[] %Arg_1.2, f32[] %Arg_2.3)
+  %conditional.24 = (f32[], f32[]) conditional(pred[] %Arg_0.1, () %tuple.5, (f32[], f32[]) %tuple.6), true_computation=%region_0.12, false_computation=%region_3.19
+  %get-tuple-element.25 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=0
+  ROOT %get-tuple-element.26 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=1
 }
