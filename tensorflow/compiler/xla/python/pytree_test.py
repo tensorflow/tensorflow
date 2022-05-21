@@ -24,14 +24,14 @@ from tensorflow.compiler.xla.python import xla_extension
 pytree = xla_extension.pytree
 
 class SNWrap(types.SimpleNamespace):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
 
 def tree_flatten(x : SNWrap):
-    return pytree.flatten(x.__dict__, lambda a: a is not x.__dict__) # only flatten one step
+  return pytree.flatten(x.__dict__, lambda a: a is not x.__dict__) # only flatten one step
 
 def tree_unflatten(aux, values):
-    return SNWrap(**pytree.unflatten(aux, values))
+  return SNWrap(**pytree.unflatten(aux, values))
 
 pytree.register_node(SNWrap, tree_flatten, tree_unflatten)
 
@@ -59,7 +59,11 @@ class PyTreeTest(absltest.TestCase):
     self.assertEqual(out, len(leaves))
 
     out = td.walk(lambda n,_:n, lambda x:3, leaves)
-    self.assertEqual(out, (3, ((3, 3, 3), 3, (3, (3, 3))), ((3, ((3, 3),), 3), (3, ((3, 3),))), 3))
+    expect = (3, 
+              ((3, 3, 3), 3, (3, (3, 3))), 
+              ((3, ((3, 3),), 3), (3, ((3, 3),))), 
+              3)
+    self.assertEqual(out, expect)
 
 
 if __name__ == "__main__":
