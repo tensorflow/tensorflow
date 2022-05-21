@@ -2,7 +2,7 @@
 
 module attributes {tf.versions = {producer = 179 : i32}} {
   func.func @main(%arg0: tensor<128x8xf32> {mhlo.sharding = "bad_sharding"}) {
-    return
+    func.return
   }
 }
 

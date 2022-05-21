@@ -4,7 +4,7 @@
 #empty = affine_map<(d0) -> ()>
 
 // CHECK-LABEL: func @detensorize
-func @detensorize(%arg : tensor<100xi32>) -> (tensor<100xi1>) attributes {} {
+func.func @detensorize(%arg : tensor<100xi32>) -> (tensor<100xi1>) attributes {} {
   %c10 = arith.constant 10 : i32
   %tensor = tensor.from_elements %c10 : tensor<i32>
   %init = linalg.init_tensor [100] : tensor<100xi1>

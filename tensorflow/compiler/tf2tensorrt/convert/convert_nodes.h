@@ -385,7 +385,8 @@ class Converter {
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(ITensorProxyPtr input, std::vector<int>* input_dims,
-                       OpConverterParams* params, ITensorProxyPtr* output);
+                       OpConverterParams* params, ITensorProxyPtr* output,
+                       absl::optional<int> op_instance = absl::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -507,27 +508,27 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
-// Map of all supported UnaryOperations
-const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
-// Map of all supported ActivationTypes
-const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
-// Map of all supported BinaryOperations
-const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
-BinaryOperationMap();
+template <typename T>
+using OperationMap = std::unordered_map<std::string, T>;
 
-constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
-    kBinaryOperations = {{
-        {"Add", nvinfer1::ElementWiseOperation::kSUM},
-        {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
-        {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-        {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-        {"Div", nvinfer1::ElementWiseOperation::kDIV},
-        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
-        {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-        {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-        {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-        {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-    }};
+// Map from Tensorflow operation names to TensorRT unary operations.
+using UnaryOperationMapType = OperationMap<nvinfer1::UnaryOperation>;
+const UnaryOperationMapType* UnaryOperationMap();
+
+// Map from Tensorflow boolean operation names to TensorRT unary operations.
+const UnaryOperationMapType* UnaryBooleanOperationMap();
+
+// Map of all supported ActivationTypes.
+const OperationMap<nvinfer1::ActivationType>* ActivationTypeMap();
+
+// Map from Tensorflow binary operation names to TensorRT binary operations
+// types.
+using BinaryOperationMapType = OperationMap<nvinfer1::ElementWiseOperation>;
+const BinaryOperationMapType* BinaryOperationMap();
+
+// Map from Tensorflow boolean binary operation names to TensorRT binary
+// operations types.
+const BinaryOperationMapType* BinaryBooleanOperationMap();
 
 template <typename T>
 absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
@@ -544,6 +545,9 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
                                             TRT_TensorOrWeights input_a,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);
+
+std::string convert_range_error_msg(float start, float limit, float delta);
+std::string convert_range_expected_msg(const NodeDef& node_def);
 
 }  // namespace convert
 }  // namespace tensorrt

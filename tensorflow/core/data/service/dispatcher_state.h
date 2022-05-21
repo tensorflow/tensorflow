@@ -156,12 +156,13 @@ class DispatcherState {
                  const ProcessingModeDef& processing_mode,
                  int64_t num_split_providers, JobKey job_key,
                  absl::optional<int64_t> num_consumers,
-                 TargetWorkers target_workers)
+                 bool use_cross_trainer_cache, TargetWorkers target_workers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
           job_key(job_key),
           num_consumers(num_consumers),
+          use_cross_trainer_cache(use_cross_trainer_cache),
           target_workers(target_workers) {
       if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
@@ -180,6 +181,7 @@ class DispatcherState {
     const JobKey job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
     const absl::optional<int64_t> num_consumers;
+    const bool use_cross_trainer_cache;
     const TargetWorkers target_workers;
     std::queue<PendingTask> pending_tasks;
     int64_t num_clients = 0;
@@ -232,7 +234,7 @@ class DispatcherState {
   // Returns the next available job id.
   int64_t NextAvailableJobId() const;
   // Returns a list of all jobs.
-  std::vector<std::shared_ptr<const Job>> ListJobs();
+  std::vector<std::shared_ptr<const Job>> ListJobs() const;
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64_t id, std::shared_ptr<const Job>& job) const;
   // Gets a job by key. Returns NOT_FOUND if there is no such job.

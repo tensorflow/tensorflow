@@ -29,13 +29,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct ArrayInfo {
+struct ArrayInfoBase {
   // The node type when the input node is imported. Typically needs to be
   // specified when passing arbitrary nodes (some node attributes are removed).
   DataType imported_dtype;
 
   // Node "shape" attribute value.
   TensorShapeProto shape;
+};
+
+struct ArrayInfo : public ArrayInfoBase {
+  using SubTypeInfo = ArrayInfoBase;
+  // DT_RESOURCE and DT_VARIANT have subtypes
+  std::vector<SubTypeInfo> subtypes;
 };
 
 struct GraphImportConfig {
@@ -66,12 +72,15 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
-  // If true, functionalization is restricted to TPU nodes. This is only needed
-  // if upgrade_legacy is true and if upgrading legacy features of the graph
-  // (which includes functionalization) runs before TPU cluster extraction, as
-  // for example in the MLIR-based TPU bridge. Otherwise, this parameter should
-  // stay false.
-  bool restrict_functionalization_to_tpu_nodes = false;
+  // If true, functionalization is restricted to nodes that will be
+  // XLA-compiled. This is only needed if
+  // - `upgrade_legacy` is true
+  // - upgrading legacy features of the graph (which includes functionalization)
+  //   runs before compilation cluster extraction (as for MLIR-based TPU bridge)
+  // - session runtime is used (session runtime has issues with function names
+  //   rewritten by functionalization).
+  // Otherwise, this parameter should be set to false.
+  bool restrict_functionalization_to_compiled_nodes = false;
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.
   bool enable_shape_inference = true;

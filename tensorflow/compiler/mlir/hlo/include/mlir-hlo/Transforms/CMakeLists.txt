@@ -17,3 +17,7 @@
 set(LLVM_TARGET_DEFINITIONS passes.td)
 mlir_tablegen(passes.h.inc -gen-pass-decls -name LMHLOTransforms)
 add_public_tablegen_target(LMHLOTransformsPassIncGen)
+
+set(LLVM_TARGET_DEFINITIONS gpu_passes.td)
+mlir_tablegen(gpu_passes.h.inc -gen-pass-decls -name LMHLOGPUTransforms)
+add_public_tablegen_target(LMHLOGPUTransformsPassIncGen)

@@ -166,7 +166,7 @@ TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
   m.SetInput(CreateRangeVector<float>(32));
   m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
                1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 5, 2));
   EXPECT_THAT(
@@ -190,7 +190,7 @@ TEST_P(Conv3dTransposeOpTest, PaddingValidTest) {
   m.SetInput(CreateRangeVector<float>(120));
   m.SetFilter({-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 1,  1, -1, -1,
                1,  1,  -1, 1,  -1, 1,  -1, 1,  -1, -1, -1, 1, -1, 1, 1,  1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 5, 6, 2));
   EXPECT_THAT(
@@ -229,7 +229,7 @@ TEST_P(Conv3dTransposeOpTest, PaddingSameTest) {
   m.SetInput(CreateRangeVector<float>(120));
   m.SetFilter({1,  -1, 1,  -1, 1,  -1, -1, 1, 1, -1, -1, 1, 1,  -1, -1, 1,
                -1, 1,  -1, 1,  -1, -1, -1, 1, 1, 1,  1,  1, -1, 1,  -1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 4, 5, 2));
   EXPECT_THAT(
@@ -255,7 +255,7 @@ TEST_P(Conv3dTransposeOpTest, PaddingValidComplexTest) {
   m.SetInput(CreateRangeVector<float>(24));
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
                1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 3, 2, 2));
   EXPECT_THAT(
@@ -280,7 +280,7 @@ TEST_P(Conv3dTransposeOpTest, StrideTest) {
   m.SetInput(CreateRangeVector<float>(16));
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
                1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 3, 2, 2));
   EXPECT_THAT(
@@ -305,7 +305,7 @@ TEST_P(Conv3dTransposeOpTest, StrideAndPaddingSameTest) {
   m.SetInput(CreateRangeVector<float>(16));
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
                1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 2, 1, 2));
   EXPECT_THAT(m.GetOutput(),
@@ -327,7 +327,7 @@ TEST_P(Conv3dTransposeOpTest, DilationTest) {
 
   m.SetInput(CreateRangeVector<float>(3));
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 2, 2));
   EXPECT_THAT(m.GetOutput(),
@@ -347,7 +347,7 @@ TEST_P(Conv3dTransposeOpTest, BiasTest) {
   m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
                1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
   m.SetBias({1, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4, 3, 2, 2));
   EXPECT_THAT(

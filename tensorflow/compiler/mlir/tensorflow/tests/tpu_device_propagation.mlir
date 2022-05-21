@@ -108,7 +108,7 @@ func.func @testSwitchOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:
     %3 = tf_executor.ControlTrigger %1#1, %2#1
     tf_executor.fetch %3 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests unsupported op does not have TPU device propagated.
@@ -183,7 +183,7 @@ func.func @testDifferentOperandAndOpDevice(%arg0: tensor<i64> {tf.device = "/job
     %0:2 = tf_executor.island wraps "tf.Identity"(%arg0) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %0#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testDifferentOperandAndResultDevice
@@ -206,7 +206,7 @@ func.func @testNonTPUDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/repl
     %0:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %0#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests control dependencies are ignored for propagating devices.
@@ -220,7 +220,7 @@ func.func @testControlDependenciesIgnored(%arg0: tensor<i64>) {
     %1:2 = tf_executor.island(%0#1) wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testControlDependenciesMismatchedDevices
@@ -232,7 +232,7 @@ func.func @testControlDependenciesMismatchedDevices(%arg0: tensor<i64> {tf.devic
     %1:2 = tf_executor.island(%0#1) wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests LoopCond -> Switch where LoopCond has a different device is ignored.
@@ -255,7 +255,7 @@ func.func @testLoopCondSwitchLinkDifferentDevice() {
     %6 = tf_executor.ControlTrigger %4#1, %5#1
     tf_executor.fetch %6 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests tf_executor.NextIteration.Source/tf_executor.NextIteration.Sink has a
@@ -278,7 +278,7 @@ func.func @testNextIterationNoDevice() {
     tf_executor.NextIteration.Sink [%0#1] %2#0 : tensor<i64> {T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests tf_executor.NextIteration with mismatched devices does not propagate
@@ -297,7 +297,7 @@ func.func @testNextIterationMismatchedDevices() {
     tf_executor.NextIteration.Sink [%0#1] %1#0 : tensor<i64> {device = "/job:localhost/replica:0/task:0/device:TPU:0", T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testNextIterationMissingSourceDevice
@@ -312,7 +312,7 @@ func.func @testNextIterationMissingSourceDevice() {
     tf_executor.NextIteration.Sink [%0#1] %1#0 : tensor<i64> {device = "/job:localhost/replica:0/task:0/device:TPU:0", T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testNextIterationMissingSinkDevice
@@ -327,7 +327,7 @@ func.func @testNextIterationMissingSinkDevice() {
     tf_executor.NextIteration.Sink [%0#1] %1#0 : tensor<i64> {T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests unsupported functions are not modified.
@@ -343,7 +343,7 @@ func.func @testMultipleBlockFunc() {
   }
   cf.br ^bb1
 ^bb1:
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testMultipleGraphs
@@ -358,7 +358,7 @@ func.func @testMultipleGraphs() {
   tf_executor.graph {
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testNoGraph
@@ -379,5 +379,5 @@ func.func @testMismatchedGraphResults() {
     %2:2 = tf_executor.island wraps "tf.Identity"(%1#0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %2#0 : tensor<i64>
   }
-  return
+  func.return
 }

@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -111,7 +112,7 @@ bool isNonTiledFill(Operation *op) {
 
 static constexpr llvm::StringRef kTiledId = "tiled";
 
-void Tile(mlir::FuncOp func, int64_t tile_size,
+void Tile(mlir::func::FuncOp func, int64_t tile_size,
           LinalgTransformationFilter &filter) {
   LinalgTilingOptions tiling_options;
   // Tile the innermost dimension by `tile_size` for vectorization and scalarize
@@ -170,20 +171,20 @@ struct TileFillPass : public TileFillBase<TileFillPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass() {
   return std::make_unique<TileCWisePass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass(
     int64_t cwise_tile_size) {
   return std::make_unique<TileCWisePass>(cwise_tile_size);
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass() {
   return std::make_unique<TileFillPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass(
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass(
     int64_t cwise_tile_size) {
   return std::make_unique<TileFillPass>(cwise_tile_size);
 }

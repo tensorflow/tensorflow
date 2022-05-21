@@ -1571,7 +1571,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
     # Invalid shape change.
     with self.assertRaisesRegex(
-        ValueError, r"\('c'.*incompatible with the shape that was specified"):
+        ValueError,
+        r"`StructuredTensor.with_updates` failed for field \('c',\)"):
       st_with_shape = StructuredTensor.from_pyval([[{
           "c": {
               "a": 5,

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/task_runner.h"
@@ -104,6 +105,38 @@ WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
     new_config.set_dispatcher_timeout_ms(kDefaultDispatcherTimeoutMs);
   }
   return new_config;
+}
+
+TaskDef Export(const TaskDef& task) {
+  TaskDef result;
+  switch (task.dataset_case()) {
+    case TaskDef::kDatasetDef:
+      result.set_path(
+          "In-memory dataset graphs are omitted for brevity. To view datasets "
+          "stored on the dispatcher, configure a `work_dir`.");
+      break;
+    case TaskDef::kPath:
+      result.set_path(task.path());
+      break;
+    default:
+      break;
+  }
+  result.set_dataset_id(task.dataset_id());
+  result.set_task_id(task.task_id());
+  result.set_job_id(task.job_id());
+  result.set_num_split_providers(task.num_split_providers());
+  result.set_worker_address(task.worker_address());
+  *result.mutable_processing_mode_def() = task.processing_mode_def();
+  switch (task.optional_num_consumers_case()) {
+    case TaskDef::kNumConsumers:
+      result.set_num_consumers(task.num_consumers());
+      break;
+    default:
+      break;
+  }
+  result.set_num_workers(task.num_workers());
+  result.set_worker_index(task.worker_index());
+  return result;
 }
 }  // namespace
 
@@ -228,7 +261,6 @@ Status DataServiceWorkerImpl::GetElementResult(
       return errors::Unavailable("Task ", request->task_id(), " not found");
     }
     task = it->second.get();
-    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
     task->outstanding_requests++;
   }
   auto cleanup = gtl::MakeCleanup([&] {
@@ -236,6 +268,7 @@ Status DataServiceWorkerImpl::GetElementResult(
     task->outstanding_requests--;
     cv_.notify_all();
   });
+  TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
 
   if (result->end_of_sequence) {
@@ -547,6 +580,19 @@ void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
   VLOG(2) << "Delete local task " << task_info.task_id() << " from worker "
           << worker_address_ << " at the request of the client.";
   StopTask(*task);
+}
+
+WorkerStateExport DataServiceWorkerImpl::ExportState() const {
+  WorkerStateExport worker_state_export;
+  *worker_state_export.mutable_worker_config() = config_;
+  mutex_lock l(mu_);
+  if (!registered_) {
+    return worker_state_export;
+  }
+  for (const auto& task : tasks_) {
+    *worker_state_export.add_tasks() = Export(task.second->task_def);
+  }
+  return worker_state_export;
 }
 
 void LocalWorkers::Add(absl::string_view worker_address,

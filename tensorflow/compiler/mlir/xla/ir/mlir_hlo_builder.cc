@@ -426,9 +426,10 @@ StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
   llvm::SmallVector<mlir::Type> flattened_ret_types;
   HloFunctionImporter::FlattenTupleType(ty, flattened_ret_types);
 
+  auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
+      builder_.getContext(), *mlir::mhlo::symbolizeRngAlgorithm(algorithm));
   auto op = builder_.create<mlir::mhlo::RngBitGeneratorOp>(
-      loc_, flattened_ret_types, builder_.getI32IntegerAttr(algorithm),
-      GetValue(initial_state));
+      loc_, flattened_ret_types, algorithm_attr, GetValue(initial_state));
 
   if (ty.isa<mlir::TupleType>()) {
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
@@ -681,7 +682,7 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   mlir::OperationState state(loc_, op_name, operand_values, {ty}, attributes);
-  mlir::Operation* op = builder_.createOperation(state);
+  mlir::Operation* op = builder_.create(state);
   return MakeXlaOp(op->getResult(0));
 }
 

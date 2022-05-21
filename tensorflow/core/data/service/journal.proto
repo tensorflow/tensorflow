@@ -42,7 +42,7 @@ message RegisterWorkerUpdate {
   int64 worker_uid = 4;
 }
 
-// Next tag: 11
+// Next tag: 12
 message CreateJobUpdate {
   reserved 3, 5, 6;
   int64 job_id = 1;
@@ -57,6 +57,8 @@ message CreateJobUpdate {
   }
   // Specifies which workers the client of this job reads from.
   TargetWorkers target_workers = 10;
+  // True if cross-trainer cache is enabled.
+  bool use_cross_trainer_cache = 11;
 }
 
 // Next tag: 5

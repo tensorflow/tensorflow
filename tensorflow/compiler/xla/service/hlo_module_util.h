@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_UTIL_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -39,6 +41,14 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     absl::optional<int> num_threads = absl::nullopt,
     const AotCompilationOptions* aot_options = nullptr);
 
+typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
+// Update entry computation's computation layout by translating each shape
+// with shape_representation_fn(shape). It can be used for example to add
+// tiling info for each shape.
+void UpdateEntryComputationLayout(
+    HloModule* module, DeviceShapeRepresentationFn shape_representation_fn,
+    bool empty_tiles_only = true);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_UTIL_H_

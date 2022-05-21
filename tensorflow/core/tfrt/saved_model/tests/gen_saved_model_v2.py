@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Lint as: python3
 """Generates a toy v2 saved model for testing."""
 
 from absl import app

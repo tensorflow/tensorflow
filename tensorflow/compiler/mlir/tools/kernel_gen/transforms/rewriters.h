@@ -22,6 +22,7 @@ namespace mlir {
 namespace bufferization {
 class BufferizeTypeConverter;
 }
+class ConversionTarget;
 class LLVMTypeConverter;
 class MLIRContext;
 class RewritePatternSet;
@@ -45,13 +46,10 @@ namespace transforms {
 
 /// Collects a set of patterns that bufferize operations from the standard and
 /// other dialects.
+void populateExtraBufferizeDialects(DialectRegistry &registry);
 void populateExtraBufferizePatterns(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
-
-/// Populate pattern to bufferize `linalg.tiled_loop`.
-void populateTiledLoopBufferizePattern(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    ConversionTarget &target, MLIRContext *context,
+    bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
 /// Populate patterns to rewrite TF operations to TF framework JIT invocations.

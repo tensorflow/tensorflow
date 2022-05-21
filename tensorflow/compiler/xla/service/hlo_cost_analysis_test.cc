@@ -320,6 +320,49 @@ TEST_F(HloCostAnalysisTest, Convolution) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 8 * 18);
 }
 
+TEST_F(HloCostAnalysisTest, ConvolutionSame) {
+  XlaBuilder builder("convolution_same");
+  const int iw = 3;
+  const int ih = 3;
+  const int kw = 3;
+  const int kh = 3;
+  const int ow = iw;
+  const int oh = ih;
+  const int sx = 1;
+  const int sy = 1;
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/ih,
+                                 /*x_dim=*/iw}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kh,
+                                 /*x_dim=*/kw}),
+      "kernel");
+  Conv(input, kernel, {sx, sy}, Padding::kSame);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Output shape is [1x1x3x3] and each output element requires (3x3)
+  // FMAs and one FMA is 2 flops.
+  // NOTE: This formula only works for the hard-coded dimensions for now.
+  EXPECT_EQ(analysis.flop_count(), 2 * (4 + 6 + 4 + 6 + 9 + 6 + 4 + 6 + 4));
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (iw * ih + kw * kh + ow * oh));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * iw * ih);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * kw * kh);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * ow * oh);
+}
+
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
   XlaBuilder builder("convolution");
   constexpr int64_t kLarge = 512 * 1024;

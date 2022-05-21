@@ -15,29 +15,49 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
+#include <algorithm>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
 namespace TF {
 
+using ::tensorflow::kValidDeviceTypes;
+
+// TODO(b/229028654) Use definitions from tf2xla_defs.h directly. We currently
+// don't do this to avoid explicit casts (implicit conversion from
+// `absl::string_view` to `llvm::StringRef` is not supported until C++17).
+const llvm::StringRef kCompileDeviceTypeAttr = "_xla_compile_device_type";
+const llvm::StringRef kReplicationInfoAttr = "_replication_info";
+const llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
+const llvm::StringRef kTpuDevice = "TPU";
+
 LogicalResult HasValidCompilationAndReplicationAttributes(Operation& op) {
   auto replicate_attr = op.getAttrOfType<StringAttr>(kReplicationInfoAttr);
   auto compile_attr = op.getAttrOfType<StringAttr>(kCompileDeviceTypeAttr);
-  // TODO(jiancai): we need to generalize the checks here once we allow more
-  // general cases, e.g. only compilation but not replication marker.
-  if (!replicate_attr && !compile_attr) return success();
-  if (!replicate_attr || !compile_attr)
-    return op.emitOpError() << "is expected to have either both or none of '"
-                            << kReplicationInfoAttr << " and "
-                            << kCompileDeviceTypeAttr << " attributes.";
-  if (replicate_attr.getValue().empty())
+  if (replicate_attr && !compile_attr) {
     return op.emitOpError()
-           << "has an empty " << kReplicationInfoAttr << " attribute.";
-  if (compile_attr.getValue().empty())
+           << "has '" << kReplicationInfoAttr << "' attribute but not '"
+           << kCompileDeviceTypeAttr << "' attribute which is unsupported";
+  }
+  if (replicate_attr && replicate_attr.getValue().empty()) {
     return op.emitOpError()
-           << "has an empty " << kCompileDeviceTypeAttr << " attribute.";
+           << "has an empty '" << kReplicationInfoAttr << "' attribute";
+  }
+  if (compile_attr) {
+    auto value = compile_attr.getValue();
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    absl::string_view device_type(value.data(), value.size());
+    auto it = std::find(kValidDeviceTypes.begin(), kValidDeviceTypes.end(),
+                        device_type);
+    if (it == kValidDeviceTypes.end()) {
+      return op.emitOpError() << "has invalid '" << kCompileDeviceTypeAttr
+                              << "' value '" << compile_attr.getValue() << "'";
+    }
+  }
   return success();
 }
 

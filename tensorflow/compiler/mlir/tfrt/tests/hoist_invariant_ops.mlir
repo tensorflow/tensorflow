@@ -10,7 +10,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: "tf._TfrtSetResource"([[x]]) {device = "/CPU:0", index = 0 : i64} : (tensor<i32>) -> ()
 
 // CHECK-LABEL: func @test_hoist_varhandleop
-func @hoist_varhandleop(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+func.func @hoist_varhandleop(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_varhandleop"]} {
   // CHECK-NOT: tf.VarHandleOp
   // CHECK-NOT: tf.ReadVariableOp
@@ -39,7 +39,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: "tf._TfrtSetResource"([[x]]) {device = "/job:localhost/replica:0/task:0/device:CPU:0", index = [[size_idx:.*]] : i64} : (tensor<i64>) -> ()
 
 // CHECK: func @test_hoist_hash_table
-func @hoist_hash_table(%arg: tensor<?x!tf_type.string> {tf_saved_model.index_path = ["input"]}, %default: tensor<i64> {tf_saved_model.index_path = ["default"]}) -> (tensor<i64> {tf_saved_model.index_path = ["r"]}, tensor<*xi64> {tf_saved_model.index_path = ["r1"]})
+func.func @hoist_hash_table(%arg: tensor<?x!tf_type.string> {tf_saved_model.index_path = ["input"]}, %default: tensor<i64> {tf_saved_model.index_path = ["default"]}) -> (tensor<i64> {tf_saved_model.index_path = ["r"]}, tensor<*xi64> {tf_saved_model.index_path = ["r1"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_hash_table"]} {
   // CHECK-NOT: tf.HashTableV2
   // CHECK-NOT: tf.LookupTableSizeV2
@@ -68,7 +68,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: "tf._TfrtSetResource"([[const_1]]) {device = "/CPU:0", index = 1 : i64} : (tensor<i32>) -> ()
 
 // CHECK-LABEL: func @test_hoist_const
-func @hoist_const(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+func.func @hoist_const(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_const"]} {
   // CHECK-NOT: tf.Const
   // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {container = [""], device = "/CPU:0", indices = [0], shared_name = [""]} : () -> tensor<i32>
@@ -81,7 +81,7 @@ func @hoist_const(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> 
 }
 
 // CHECK-LABEL: func @test_hoist_const_return
-func @hoist_const_return(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+func.func @hoist_const_return(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_const_return"]} {
   // CHECK-NOT: tf.Const
   // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {container = [""], device = "/CPU:0", indices = [1], shared_name = [""]} : () -> tensor<i32>
@@ -105,7 +105,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: "tf._TfrtSetResource"([[handle]]) {device = "/job:localhost/replica:0/task:0/device:CPU:0", index = [[handle_idx:.*]] : i64} : (tensor<!tf_type.resource<tensor<i32>>>) -> ()
 
 // CHECK: func @test_hoist_var_read_write
-func @hoist_var_read_write() -> (tensor<i32> {tf_saved_model.index_path = ["x"]}, tensor<i32> {tf_saved_model.index_path = ["r"]})
+func.func @hoist_var_read_write() -> (tensor<i32> {tf_saved_model.index_path = ["x"]}, tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_var_read_write"]} {
   // CHECK-NOT: tf.Const
   // CHECK-NOT: tf.VarHandleOp
@@ -130,14 +130,14 @@ module attributes {tf_saved_model.semantics} {
 
 // Test not hoisting varhandle op that used by control flow ops.
 
-func private @some_func(
+func.func private @some_func(
     %arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
   %0 = "tf.ReadVariableOp"(%arg) {device = "cpu"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @test_not_hoist_stateful_call
-func @not_hoist_stateful_call(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+func.func @not_hoist_stateful_call(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_not_hoist_stateful_call"]} {
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   // CHECK: tf.StatefulPartitionedCall
@@ -147,7 +147,7 @@ func @not_hoist_stateful_call(%arg: tensor<i32> {tf_saved_model.index_path = ["i
 }
 
 // CHECK-LABEL: func @test_not_hoist_if
-func @not_hoist_if(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+func.func @not_hoist_if(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_not_hoist_if"]} {
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   %cond = "tf.Const"() {device = "/CPU:0", value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -167,13 +167,13 @@ module attributes {tf_saved_model.semantics} {
 
 "tf_saved_model.session_initializer"() {initializers = [@init]} : () -> ()
 
-func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_init"]} {
+func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_init"]} {
   %var0 = "tf.VarHandleOp"() {container = "", shared_name = "var0"} : () -> tensor<!tf_type.resource<tensor<i1>>>
   %cond = "tf.ReadVariableOp"(%var0) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i1>>>) -> tensor<i1>
   %x = "tf.StatefulPartitionedCall"(%cond) {device = "/CPU:0", config = "", config_proto = "", executor_type = "", f = @some_func} : (tensor<i1>) -> (tensor<i32>)
   %var1 = "tf.VarHandleOp"() {container = "", shared_name = "var1"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   "tf.AssignVariable"(%var1, %x) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 
@@ -181,7 +181,7 @@ func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_sess
 // CHECK-NEXT: return
 
 // CHECK-LABEL: func private @some_func
-func private @some_func(%arg: tensor<i1>) -> tensor<i32> {
+func.func private @some_func(%arg: tensor<i1>) -> tensor<i32> {
   // CHECK-NOT: tf._TfrtGetResource
   %const = "tf.Const"() {device = "/CPU:0", value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>

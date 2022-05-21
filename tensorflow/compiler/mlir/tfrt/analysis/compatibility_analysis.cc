@@ -53,7 +53,8 @@ class CompatibilityAnalysis {
 
 void CompatibilityAnalysis::AnalyzeOperation(mlir::Operation* op) {
   // Skip the standard ops that are allowed in tf dialect.
-  if (llvm::isa<mlir::func::ReturnOp, mlir::FuncOp, mlir::ModuleOp>(op)) return;
+  if (llvm::isa<mlir::func::ReturnOp, mlir::func::FuncOp, mlir::ModuleOp>(op))
+    return;
 
   auto op_name = op->getName();
 

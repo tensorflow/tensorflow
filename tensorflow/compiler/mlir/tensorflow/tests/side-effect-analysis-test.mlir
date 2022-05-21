@@ -106,7 +106,7 @@ func.func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
     // expected-remark@above {{ID: 11}}
     // expected-remark@above {{Predecessors: {10}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 13}}
   // expected-remark@above {{Sinks: {12}}}
 }
@@ -163,7 +163,7 @@ func.func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
     // expected-remark@above {{ID: 11}}
     // expected-remark@above {{Predecessors: {10}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 13}}
   // expected-remark@above {{Sinks: {12}}}
 }
@@ -207,7 +207,7 @@ func.func @read_only_unknown_resource(%arg0: tensor<32xf32>) -> () {
     // expected-remark@above {{ID: 7}}
     // expected-remark@above {{Predecessors: {6}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 9}}
   // expected-remark@above {{Sinks: {8}}}
 }
@@ -262,7 +262,7 @@ func.func @with_replicate(
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Predecessors: {8}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Sinks: {10}}}
 }
@@ -303,7 +303,7 @@ func.func @stateless_if_op(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -419,7 +419,7 @@ func.func @stateless_ifregion_op(
     // expected-remark@above {{ID: 15}}
     // expected-remark@above {{Predecessors: {14}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 17}}
   // expected-remark@above {{Sinks: {16}}}
 }
@@ -460,7 +460,7 @@ func.func @stateless_if_op(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -575,7 +575,7 @@ func.func @stateless_whileregion_op(
     // expected-remark@above {{ID: 15}}
     // expected-remark@above {{Predecessors: {14}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 17}}
   // expected-remark@above {{Sinks: {16}}}
 }
@@ -655,7 +655,7 @@ func.func @output_of_if_op(
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Predecessors: {8}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Sinks: {10}}}
 }
@@ -866,7 +866,7 @@ func.func @output_of_ifregion_op(
     // expected-remark@above {{ID: 23}}
     // expected-remark@above {{Predecessors: {22}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 25}}
   // expected-remark@above {{Sinks: {24}}}
 }
@@ -946,7 +946,7 @@ func.func @output_of_while_op(
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Predecessors: {8}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Sinks: {10}}}
 }
@@ -1147,7 +1147,7 @@ func.func @output_of_whileregion_op(
     // expected-remark@above {{ID: 23}}
     // expected-remark@above {{Predecessors: {22}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 25}}
   // expected-remark@above {{Sinks: {24}}}
 }
@@ -1186,7 +1186,7 @@ func.func @tf_registry_ops(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1232,7 +1232,7 @@ func.func @arguments_with_unique_ids(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1268,7 +1268,7 @@ func.func @value_based_side_effect_non_resource_to_unknown(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1303,7 +1303,7 @@ func.func @value_based_side_effect_non_resource_to_known(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1341,7 +1341,7 @@ func.func @dataset_op_sequence(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1376,7 +1376,7 @@ func.func @generator_dataset_with_unknown_side_effect_ops(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1415,7 +1415,7 @@ func.func @resources_allocated_with_same_nonempty_shared_name(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1449,7 +1449,7 @@ func.func @side_effecting_ops_with_different_resources(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1487,7 +1487,7 @@ func.func @side_effecting_ops_with_different_resources_and_allocations(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1519,7 +1519,7 @@ func.func @embedding_effect_same_device(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1550,7 +1550,7 @@ func.func @embedding_effect_different_devices(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1586,7 +1586,7 @@ func.func @mixed_embedding_and_unknown_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1622,7 +1622,7 @@ func.func @mixed_embedding_and_unknown_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1654,7 +1654,7 @@ func.func @same_op_based_write_effect(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1687,7 +1687,7 @@ func.func @different_op_based_side_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1696,7 +1696,7 @@ func.func @different_op_based_side_effects(
 
 // Tests that we don't create dependencies between ops with different op-based
 // and value-based side effects.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @mixed_op_based_value_based_side_effects(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1725,7 +1725,7 @@ func.func @mixed_op_based_value_based_side_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1734,7 +1734,7 @@ func.func @mixed_op_based_value_based_side_effects(
 
 // Tests that we create dependencies between `_XlaRecvAtHostV2` ops with equal
 // keys.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @recv_equal_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1752,16 +1752,14 @@ func.func @recv_equal_keys(
         %1 = "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_0_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Predecessors: {0}}}
-        // expected-remark@above {{Successors: {3}}}
         tf_executor.yield
         // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Predecessors: {2}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1770,7 +1768,7 @@ func.func @recv_equal_keys(
 
 // Tests that we create dependencies between `_XlaSendFromHostV2` ops with equal
 // keys.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @send_equal_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1788,16 +1786,15 @@ func.func @send_equal_keys(
         "tf._XlaSendFromHostV2"(%const, %arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_0_retvals"} : (tensor<f32>, tensor<!tf_type.string>, tensor<i64>) -> ()
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Predecessors: {1}}}
-        // expected-remark@above {{Successors: {3}}}
         tf_executor.yield
         // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Predecessors: {2}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
+
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1806,7 +1803,7 @@ func.func @send_equal_keys(
 
 // Tests that we don't create dependencies between `_XlaRecvAtHostV2` ops with
 // different keys (corresponding to different resources).
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @recv_different_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1818,21 +1815,18 @@ func.func @recv_different_keys(
         // expected-remark@above {{Successors: {5}}}
         %0 = "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_0_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
         // expected-remark@above {{ID: 0}}
-        // expected-remark@above {{Successors: {3}}}
         %const = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
         // expected-remark@above {{ID: 1}}
         %1 = "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
         // expected-remark@above {{ID: 2}}
-        // expected-remark@above {{Successors: {3}}}
         tf_executor.yield
         // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Predecessors: {0,2}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1840,7 +1834,7 @@ func.func @recv_different_keys(
 
 // Tests that we don't create dependencies between `_XlaSendFromHostV2` ops with
 // different keys (corresponding to different resources).
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 func.func @send_different_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
@@ -1854,19 +1848,16 @@ func.func @send_different_keys(
         // expected-remark@above {{ID: 0}}
         "tf._XlaSendFromHostV2"(%const, %arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_0_retvals"} : (tensor<f32>, tensor<!tf_type.string>, tensor<i64>) -> ()
         // expected-remark@above {{ID: 1}}
-        // expected-remark@above {{Successors: {3}}}
         "tf._XlaSendFromHostV2"(%const, %arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_retvals"} : (tensor<f32>, tensor<!tf_type.string>, tensor<i64>) -> ()
         // expected-remark@above {{ID: 2}}
-        // expected-remark@above {{Successors: {3}}}
         tf_executor.yield
         // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Predecessors: {1,2}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1898,7 +1889,7 @@ func.func @tpu_execute_effect(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1926,7 +1917,7 @@ func.func @tpu_compile_ops(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1955,7 +1946,7 @@ func.func @device_ordinal_placeholder_side_effect_free(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1986,7 +1977,70 @@ func.func @must_execute_ops(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between ops with resources that only
+// have self-dependency (like `_XlaRecvAtHostV2`) to or from ops with unknown
+// resources.
+func.func @no_unknown_side_effect_dependencies(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<i64>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Sinks: {6}}}
+}
+
+// -----
+
+// Tests that we create dependencies from ops with resources that only
+// have self-dependency (the island containing `_XlaRecvAtHostV2`) to `Fetch`.
+func.func @fetch_dependencies(
+  // expected-remark@above {{ID: 6}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<i64>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 4}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 3}}
+    // expected-remark@above {{Predecessors: {2}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 5}}
+  // expected-remark@above {{Sinks: {4}}}
 }

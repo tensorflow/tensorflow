@@ -2654,6 +2654,21 @@ class PartitionedCallTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 4)
 
+  def test_nested_calls_loop_fn_autograph(self):
+    #TODO (@bhack) Do we need to extend the coverage?
+
+    def loop_fn(x):
+      for y in range(array_ops.constant(3)):
+        pass
+      return math_ops.square(x)
+
+    @def_function.function
+    def loop_fn_caller():
+      self._test_loop_fn(loop_fn, 4)
+
+    loop_fn_caller()
+
+
   def test_nested_definition(self):
 
     @def_function.function

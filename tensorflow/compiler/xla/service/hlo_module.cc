@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <iterator>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -32,12 +36,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -267,9 +274,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
-      continue;
-    }
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
@@ -293,8 +297,12 @@ HloModuleProto HloModule::ToProto() const {
   HloModuleProto proto;
   proto.set_id(unique_id_);
   proto.set_name(name_);
-  proto.set_entry_computation_name(entry_computation_->name());
-  proto.set_entry_computation_id(entry_computation_->unique_id());
+  if (entry_computation_) {
+    proto.set_entry_computation_name(entry_computation_->name());
+    proto.set_entry_computation_id(entry_computation_->unique_id());
+    *proto.mutable_host_program_shape() =
+        entry_computation_layout().ComputeProgramShape().ToProto();
+  }
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     HloComputationProto computation_proto = computation->ToProto();
     proto.add_computations()->Swap(&computation_proto);
@@ -302,8 +310,6 @@ HloModuleProto HloModule::ToProto() const {
   if (has_schedule()) {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
-  *proto.mutable_host_program_shape() =
-      entry_computation_layout().ComputeProgramShape().ToProto();
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
@@ -511,6 +517,16 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());
@@ -548,8 +564,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
-  TF_RET_CHECK(module.has_host_program_shape())
-      << "No program shape found in the proto";
+  if (!module.has_host_program_shape()) {
+    return tensorflow::errors::FailedPrecondition(
+        "No program shape found in the proto");
+  }
   ProgramShape program_shape(module.host_program_shape());
   return CreateModuleConfigFromShape(program_shape, debug_options,
                                      execution_options);
@@ -735,38 +753,35 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
 }
 
 namespace {
-bool CompareComputationsByContent(const HloComputation* a,
-                                  const HloComputation* b) {
-  if (a->instruction_count() != b->instruction_count()) {
-    return a->instruction_count() < b->instruction_count();
-  }
-  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
-         b->ToString(HloPrintOptions::ModuleFingerprint());
-}
 
-uint64_t GetFingerprint(
-    absl::flat_hash_map<const HloComputation*, uint64_t>& fingerprint_map,
-    const HloComputation* computation) {
-  auto it = fingerprint_map.find(computation);
-  if (it != fingerprint_map.end()) {
-    return it->second;
-  } else {
-    const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::ModuleFingerprint()));
-    fingerprint_map[computation] = fingerprint;
-    return fingerprint;
+class FingerprintMap {
+ public:
+  void Reserve(int capacity) { fingerprint_map_.reserve(capacity); }
+
+  uint64_t GetFingerprint(const HloComputation* computation) {
+    auto result = fingerprint_map_.try_emplace(computation, 0);
+    if (result.second) {
+      result.first->second =
+          tensorflow::Fingerprint64(computation->ToString(print_options_));
+    }
+    return result.first->second;
   }
-}
+
+ private:
+  HloPrintOptions print_options_ = HloPrintOptions::ModuleFingerprint();
+  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map_;
+};
 
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map;
+  FingerprintMap fingerprint_map;
+  fingerprint_map.Reserve(computations->size());
   auto cmp = [&fingerprint_map](const HloComputation* a,
                                 const HloComputation* b) {
     if (a->instruction_count() != b->instruction_count()) {
       return a->instruction_count() < b->instruction_count();
     }
-    return GetFingerprint(fingerprint_map, a) <
-           GetFingerprint(fingerprint_map, b);
+    return fingerprint_map.GetFingerprint(a) <
+           fingerprint_map.GetFingerprint(b);
   };
   absl::c_sort(*computations, cmp);
 }
@@ -839,6 +854,22 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     const auto& indices = parameter_indices.second;
     module->AddCrossProgramPrefetch(parameter, indices);
   }
+
+  // To make clone behavior match uncloned behavior, we reorder
+  // module->computations_ to match the order in computations_.
+  using ComputationSorter = MappedPtrContainerSorter<HloComputation>;
+  ComputationSorter::MapPtrFn computation_map_fn =
+      [&context](const HloComputation* c) {
+        return context.FindComputation(c);
+      };
+  auto status = ComputationSorter::Sort(
+      computation_map_fn, ComputationSorter::IndexAfterMappedElementsFn(),
+      computations_, module->computations_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort module computations for " << name() << "; "
+               << status;
+  }
+
   return module;
 }
 

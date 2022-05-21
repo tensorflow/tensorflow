@@ -3,7 +3,7 @@
 //=================> User models, from GraphDef <====================
 
 // CHECK-LABEL: my_identity
-func @my_identity(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+func.func @my_identity(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %0 = "tf.MyIdentity"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   func.return %0 : tensor<2x3xf32>
 
@@ -11,7 +11,7 @@ func @my_identity(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }
 
 // CHECK-LABEL: my_rsqrt
-func @my_rsqrt(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
+func.func @my_rsqrt(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
   %0 = "tf.MyRsqrt"(%arg0) : (tensor<2x3xf32>) -> tensor<3x2x3xf32>
   func.return %0 : tensor<3x2x3xf32>
 
@@ -22,7 +22,7 @@ func @my_rsqrt(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 }
 
 // CHECK-LABEL: my_leaky_relu
-func @my_leaky_relu(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
+func.func @my_leaky_relu(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
   %0 = "tf.MyLeakyRelu"(%arg0) {alpha=3.0 : f32} : (tensor<2x3xf32>) -> tensor<3x2x3xf32>
   func.return %0 : tensor<3x2x3xf32>
 
@@ -35,7 +35,7 @@ func @my_leaky_relu(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 }
 
 // CHECK-LABEL: my_leaky_relu_with_default
-func @my_leaky_relu_with_default(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
+func.func @my_leaky_relu_with_default(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
   %0 = "tf.MyLeakyRelu"(%arg0) : (tensor<2x3xf32>) -> tensor<3x2x3xf32>
   func.return %0 : tensor<3x2x3xf32>
 
@@ -48,7 +48,7 @@ func @my_leaky_relu_with_default(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 }
 
 // CHECK-LABEL: my_cast
-func @my_cast(%arg0: tensor<2x3xf32>) -> tensor<2x3xi32> {
+func.func @my_cast(%arg0: tensor<2x3xf32>) -> tensor<2x3xi32> {
   %0 = "tf.MyCast"(%arg0) {Tout=i32} : (tensor<2x3xf32>) -> tensor<2x3xi32>
   func.return %0 : tensor<2x3xi32>
 
@@ -58,7 +58,7 @@ func @my_cast(%arg0: tensor<2x3xf32>) -> tensor<2x3xi32> {
 }
 
 // CHECK-LABEL: my_pack_single_input
-func @my_pack_single_input(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
+func.func @my_pack_single_input(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
   %0 = "tf.MyPack"(%arg0) {N=1:i32, axis=0:i32} : (tensor<2x3xf32>) -> tensor<3x2x3xf32>
   func.return %0 : tensor<3x2x3xf32>
 
@@ -69,7 +69,7 @@ func @my_pack_single_input(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 }
 
 // CHECK-LABEL: my_pack_multiple_inputs
-func @my_pack_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
+func.func @my_pack_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
   %0 = "tf.MyPack"(%arg0, %arg1, %arg2) {N=3:i32, axis=0:i32} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<3x2x3xf32>
   func.return %0 : tensor<3x2x3xf32>
 
@@ -84,7 +84,7 @@ func @my_pack_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %a
 }
 
 // CHECK-LABEL: my_add_n_single_input
-func @my_add_n_single_input(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+func.func @my_add_n_single_input(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %0 = "tf.MyAddN"(%arg0) {N=1:i32} : (tensor<2x3xf32>) -> tensor<2x3xf32>
   func.return %0 : tensor<2x3xf32>
 
@@ -92,7 +92,7 @@ func @my_add_n_single_input(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }
 
 // CHECK-LABEL: my_add_n_multiple_inputs
-func @my_add_n_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xf32>) -> tensor<2x3xf32> {
+func.func @my_add_n_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %0 = "tf.MyAddN"(%arg0, %arg1, %arg2) {N=3:i32} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
   func.return %0 : tensor<2x3xf32>
 
@@ -103,7 +103,7 @@ func @my_add_n_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %
 }
 
 // CHECK-LABEL: my_map_and_batch_dataset
-func @my_map_and_batch_dataset(%input: tensor<*x!tf_type.variant>,
+func.func @my_map_and_batch_dataset(%input: tensor<*x!tf_type.variant>,
                                %other1: tensor<*xf32>,
                                %other2: tensor<*xi32>) -> tensor<*x!tf_type.variant> {
   %0 = "tf.MyMapAndBatchDataset"(%input, %other1, %other2)

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ParallelFilterDataset"
   input_arg {
     name: "input_dataset"
@@ -10,7 +10,7 @@ op {
   }
   input_arg {
     name: "num_parallel_calls"
-    type: DT_INT32
+    type: DT_INT64
   }
   output_arg {
     name: "handle"

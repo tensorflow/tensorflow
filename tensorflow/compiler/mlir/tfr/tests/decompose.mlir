@@ -61,7 +61,7 @@ tfr.func @tf__cast_float(%input_: !tfr.tensor, %out_type: !tfr.attr{tfr.name="ou
 // end op definitions
 
 // CHECK-LABEL: decompose_tf_no_op
-func @decompose_tf_no_op(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
+func.func @decompose_tf_no_op(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
   %0 = "tf.FakeNoOp"(%arg0) : (tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string>
   func.return %0 : tensor<1x2x3x4x!tf_type.string>
 
@@ -69,7 +69,7 @@ func @decompose_tf_no_op(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3
 }
 
 // CHECK-LABEL: decompose_tf_intermediate
-func @decompose_tf_intermediate(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
+func.func @decompose_tf_intermediate(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
   %0 = "tf.Intermediate"(%arg0) : (tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string>
   func.return %0 : tensor<1x2x3x4x!tf_type.string>
 
@@ -80,7 +80,7 @@ func @decompose_tf_intermediate(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tenso
 }
 
 // CHECK-LABEL: decompose_fused_n_default
-func @decompose_fused_n_default(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+func.func @decompose_fused_n_default(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %0:2 = "tf.FusedN"(%arg0, %arg1, %arg2) : (tensor<1x2x3x4x!tf_type.string>, tensor<f32>, tensor<f32>) -> (tensor<1x2x3x4x!tf_type.string>, tensor<f32>)
   func.return %0#1 : tensor<f32>
 
@@ -93,7 +93,7 @@ func @decompose_fused_n_default(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: t
 }
 
 // CHECK-LABEL: decompose_fused_n
-func @decompose_fused_n(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+func.func @decompose_fused_n(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %0:2 = "tf.FusedN"(%arg0, %arg1, %arg2) {A=0:index} : (tensor<1x2x3x4x!tf_type.string>, tensor<f32>, tensor<f32>) -> (tensor<1x2x3x4x!tf_type.string>, tensor<f32>)
   func.return %0#1 : tensor<f32>
 
@@ -106,7 +106,7 @@ func @decompose_fused_n(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f3
 }
 
 // CHECK-LABEL: attribute_propagate_direct
-func @attribute_propagate_direct(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
+func.func @attribute_propagate_direct(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
   %0 = "tf.Intermediate"(%arg0) {_tpu_replicate, device="hello"} : (tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string>
   func.return %0 : tensor<1x2x3x4x!tf_type.string>
 
@@ -117,7 +117,7 @@ func @attribute_propagate_direct(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tens
 }
 
 // CHECK-LABEL: attribute_propagate
-func @attribute_propagate(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+func.func @attribute_propagate(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %0:2 = "tf.FusedN"(%arg0, %arg1, %arg2) {A=0:index, _tpu_replicate, device="hello"} : (tensor<1x2x3x4x!tf_type.string>, tensor<f32>, tensor<f32>) -> (tensor<1x2x3x4x!tf_type.string>, tensor<f32>)
   func.return %0#1 : tensor<f32>
 
@@ -130,7 +130,7 @@ func @attribute_propagate(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<
 }
 
 // CHECK: attribute_cast
-func @attribute_cast(%arg0: tensor<1x4x4x1xf32>) -> tensor<1x2x2x1xf32> {
+func.func @attribute_cast(%arg0: tensor<1x4x4x1xf32>) -> tensor<1x2x2x1xf32> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x4x4x1xf32>) -> !tfr.tensor
   %stride_i32 = arith.constant 2 : i32
   %1 = tfr.call @tf__my_max_pool(%0, %stride_i32, %stride_i32) : (!tfr.tensor, i32, i32) -> !tfr.tensor
@@ -140,7 +140,7 @@ func @attribute_cast(%arg0: tensor<1x4x4x1xf32>) -> tensor<1x2x2x1xf32> {
 }
 
 // CHECK-LABEL: no_tf_canonicalization
-func @no_tf_canonicalization(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
+func.func @no_tf_canonicalization(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
   %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
   func.return %0: tensor<8x3xf32>
 
@@ -148,7 +148,7 @@ func @no_tf_canonicalization(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2:
 }
 
 // CHECK-LABEL: denied_attribute
-func @denied_attribute(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+func.func @denied_attribute(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{Denied unregistered attribute was found: denied_attr}}
   %0:2 = "tf.FusedN"(%arg0, %arg1, %arg2) {A=0:index, denied_attr} : (tensor<1x2x3x4x!tf_type.string>, tensor<f32>, tensor<f32>) -> (tensor<1x2x3x4x!tf_type.string>, tensor<f32>)
   func.return %0#1 : tensor<f32>
@@ -157,7 +157,7 @@ func @denied_attribute(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32
 }
 
 // CHECK-LABEL: quantized_tensor
-func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
+func.func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
   %0 = "tf.Intermediate"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
   func.return %0 : tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
 
@@ -165,7 +165,7 @@ func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615
 // CHECK: "tfr.cast"(%[[result:.*]]) : (!tfr.tensor) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
 }
 // CHECK-LABEL: decompose_quant_act_range
-func @decompose_quant_act_range() -> !tfr.tensor_list {
+func.func @decompose_quant_act_range() -> !tfr.tensor_list {
   %scale = arith.constant 0.1 : f32
   %zp = arith.constant 42 : i64
   %none_attr = tfr.constant "NONE" -> !tfr.attr
@@ -202,7 +202,7 @@ func @decompose_quant_act_range() -> !tfr.tensor_list {
 }
 
 // CHECK-LABEL: decompose_quant_act_range_invalid
-func @decompose_quant_act_range_invalid() -> (!tfr.tensor, !tfr.tensor) {
+func.func @decompose_quant_act_range_invalid() -> (!tfr.tensor, !tfr.tensor) {
   %scale = arith.constant 0.1 : f32
   %zp = arith.constant 42 : i64
   %elu_attr = tfr.constant "ELU" -> !tfr.attr
@@ -214,7 +214,7 @@ func @decompose_quant_act_range_invalid() -> (!tfr.tensor, !tfr.tensor) {
 }
 
 // CHECK-LABEL: decompose_quant_scale_factor
-func @decompose_quant_scale_factor() -> (!tfr.tensor, !tfr.tensor) {
+func.func @decompose_quant_scale_factor() -> (!tfr.tensor, !tfr.tensor) {
   %output_scale = arith.constant 0.1 : f32
   %input_scale = arith.constant 0.25 : f32
   %filter_scale = arith.constant 0.4 : f32
@@ -235,7 +235,7 @@ func @decompose_quant_scale_factor() -> (!tfr.tensor, !tfr.tensor) {
 }
 
 // CHECK-LABEL: decompose_quant_scale_factor_invalid
-func @decompose_quant_scale_factor_invalid() -> !tfr.tensor {
+func.func @decompose_quant_scale_factor_invalid() -> !tfr.tensor {
   %output_scale = arith.constant 0.1 : f32
   %input_scale = arith.constant 0.25 : f32
   %filter_scale = arith.constant 0.4 : f32
@@ -255,7 +255,7 @@ func @decompose_quant_scale_factor_invalid() -> !tfr.tensor {
 }
 
 // CHECK-LABEL: decompose_quant_rescale
-func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
+func.func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
   %zp = arith.constant 67 : i64
   %cst = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   %scale_factor = "tfr.cast"(%cst) : (tensor<f32>) -> !tfr.tensor
@@ -263,14 +263,14 @@ func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
   %rescaled = "tfr.quant_rescale"(%input, %scale_factor, %zp) : (!tfr.tensor, !tfr.tensor, i64) -> !tfr.tensor
   func.return %rescaled : !tfr.tensor
 
+// CHECK-DAG: %[[f32:.*]] = tfr.constant f32 -> !tfr.attr
+// CHECK-DAG: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr
 // CHECK-DAG: %[[scale_cst:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 // CHECK-DAG: %false = arith.constant false
 // CHECK-DAG: %[[zp_cst:.*]] = "tf.Const"() {value = dense<67> : tensor<i64>} : () -> tensor<i64>
 // CHECK: %[[zp:.*]] = "tfr.cast"(%[[zp_cst]]) : (tensor<i64>) -> !tfr.tensor
 // CHECK: %[[scale:.*]] = "tfr.cast"(%[[scale_cst]]) : (tensor<f32>) -> !tfr.tensor
 // CHECK: %[[input:.*]] = "tfr.cast"(%arg0) : (tensor<2xi32>) -> !tfr.tensor
-// CHECK-DAG: %[[f32:.*]] = tfr.constant f32 -> !tfr.attr
-// CHECK-DAG: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr
 // CHECK: %[[cast:.*]] = tfr.call @tf__cast(%[[input]], %[[f32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
 // CHECK: %[[rescaled:.*]] = tfr.call @tf__mul(%[[cast]], %[[scale]]) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor
 // CHECK: %[[rounded:.*]] = tfr.call @tf__round(%[[rescaled]]) : (!tfr.tensor) -> !tfr.tensor
@@ -281,7 +281,7 @@ func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
 }
 
 // CHECK-LABEL: decompose_output_type
-func @decompose_output_type(%arg0: tensor<2xf32>) -> tensor<2xi32> {
+func.func @decompose_output_type(%arg0: tensor<2xf32>) -> tensor<2xi32> {
   %0 = "tf.CastFloat"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
   func.return %0: tensor<2xi32>
 // CHECK: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr

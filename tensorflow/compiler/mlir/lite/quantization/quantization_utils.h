@@ -374,7 +374,7 @@ class QuantizationPattern : public RewritePattern {
       }
       DenseFPElementsAttr attr;
       if (matchPattern(quantize_operand, m_Constant(&attr))) {
-        // Const->Q pattern will be handled seperately.
+        // Const->Q pattern will be handled separately.
         return failure();
       }
       if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
@@ -541,7 +541,7 @@ class QuantizationPattern : public RewritePattern {
       for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
         new_state.addRegion();
       }
-      Operation* quantized_op = rewriter.createOperation(new_state);
+      Operation* quantized_op = rewriter.create(new_state);
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
@@ -771,7 +771,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
     OperationState new_state(def->getLoc(), def->getName().getStringRef(),
                              def->getOperands(), new_output_types,
                              def->getAttrs());
-    Operation* new_op = rewriter.createOperation(new_state);
+    Operation* new_op = rewriter.create(new_state);
 
     rewriter.replaceOp(def, new_op->getResults());
     return success();
@@ -863,14 +863,14 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // Setting `infer_tensor_range` to true, to infer quantization parameters from
 // the activation ops and weight constants. This is only used for post-training
 // quantization.
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale = false);
 
 void ApplyQuantizationParamsPropagation(
-    mlir::FuncOp func, bool is_signed, bool disable_per_channel,
+    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
     OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale = false);
@@ -883,7 +883,7 @@ std::unique_ptr<OpQuantScaleSpec> GetDefaultQuantScaleSpec(Operation* op);
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
 // tries to remove all the redundant stats ops.
-bool RemoveRedundantStatsOps(mlir::FuncOp func,
+bool RemoveRedundantStatsOps(mlir::func::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter,
                              OpQuantScaleSpecGetter op_quant_scale_spec_getter =
                                  GetDefaultQuantScaleSpec);

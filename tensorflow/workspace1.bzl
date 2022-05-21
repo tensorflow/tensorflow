@@ -5,20 +5,22 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 load("@rules_cuda//cuda:dependencies.bzl", "rules_cuda_dependencies")
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def workspace():
     native.register_toolchains("@local_config_python//:py_toolchain")
     rules_cuda_dependencies()
+    rules_pkg_dependencies()
 
     closure_repositories()
 
     http_archive(
         name = "bazel_toolchains",
-        sha256 = "77c2c3c562907a1114afde7b358bf3d5cc23dc61b3f2fd619bf167af0c9582a3",
-        strip_prefix = "bazel-toolchains-dfc67056200b674accd08d8f9a21e328098c07e2",
+        sha256 = "540cc8fec2bf8ab64d16fb9a7018f25738a4a03434057ea01b5d34add446ffb1",
+        strip_prefix = "bazel-toolchains-ea243d43269df23de03a797cff2347e1fc3d02bb",
         urls = [
-            "http://mirror.tensorflow.org/github.com/bazelbuild/bazel-toolchains/archive/dfc67056200b674accd08d8f9a21e328098c07e2.tar.gz",
-            "https://github.com/bazelbuild/bazel-toolchains/archive/dfc67056200b674accd08d8f9a21e328098c07e2.tar.gz",
+            "http://mirror.tensorflow.org/github.com/bazelbuild/bazel-toolchains/archive/ea243d43269df23de03a797cff2347e1fc3d02bb.tar.gz",
+            "https://github.com/bazelbuild/bazel-toolchains/archive/ea243d43269df23de03a797cff2347e1fc3d02bb.tar.gz",
         ],
     )
 

@@ -18,6 +18,7 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
+    "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
@@ -60,9 +61,6 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_shared_library")
 
 package(
     default_visibility = [
@@ -213,26 +211,6 @@ cc_library(
     ],
 )
 
-# Used by //tensorflow/python/platform:platform.
-tf_native_cc_shared_library(
-    name = "_cpu_feature_guard.so",
-    static_deps = [
-        # copybara:comment_begin(oss only)
-        "@bazel_tools//:__subpackages__",
-        "@com_google_absl//:__subpackages__",
-        "@eigen_archive//:__subpackages__",
-        "@hwloc//:__subpackages__",
-        "@local_config_cuda//:__subpackages__",
-        "@nsync//:__subpackages__",
-        "@snappy//:__subpackages__",
-        "//:__subpackages__",
-        # copybara:comment_end
-    ],
-    deps = [
-        "//tensorflow/core/platform:cpu_feature_guard",
-    ],
-)
-
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
@@ -254,7 +232,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = tf_platform_deps("cuda_libdevice_path"),
+    deps = tf_cuda_libdevice_path_deps(),
 )
 
 cc_library(
@@ -731,7 +709,6 @@ cc_library(
         ":stacktrace",
         ":str_util",
         ":strcat",
-        ":stringpiece",
         ":stringprintf",
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -1148,6 +1125,16 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "error_payloads",
+    srcs = ["error_payloads.cc"],
+    hdrs = ["error_payloads.h"],
+    deps = [
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
@@ -1156,6 +1143,12 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
 )
 

@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @device_test
-func @device_test(
+func.func @device_test(
     %arg0: tensor<3x1xf32> {tf_saved_model.index_path = [0]},
     %arg1: tensor<1x3xf32> {tf_saved_model.index_path = [0]})
       -> (tensor<3x3xf32> {tf_saved_model.index_path = []}) {
@@ -12,7 +12,7 @@ func @device_test(
 }
 
 // CHECK-LABEL: func @legacy_device_name
-func @legacy_device_name(
+func.func @legacy_device_name(
     %arg0: tensor<3x1xf32> {tf_saved_model.index_path = [0]},
     %arg1: tensor<1x3xf32> {tf_saved_model.index_path = [0]})
       -> (tensor<3x3xf32> {tf_saved_model.index_path = []}) {

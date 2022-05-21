@@ -300,8 +300,8 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
-  // Skip all TPU graphs.
-  if (IsTPUGraphDef(*optimized_graph)) {
+  // Skip Legacy TPU bridge graphs.
+  if (IsLegacyTPUBridgeGraphDef(*optimized_graph)) {
     return Status::OK();
   }
 

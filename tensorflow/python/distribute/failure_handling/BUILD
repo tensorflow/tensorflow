@@ -15,6 +15,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":gce_util",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -39,6 +41,7 @@ py_library(
 tf_py_test(
     name = "failure_handler_test",
     srcs = ["failure_handler_test.py"],
+    shard_count = 4,
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
@@ -64,6 +67,7 @@ tf_py_test(
 tf_py_test(
     name = "gce_failure_handler_test",
     srcs = ["gce_failure_handler_test.py"],
+    shard_count = 4,
     tags = [
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test

@@ -293,7 +293,7 @@ TEST(QuantizedTransposeConvOpModel, PerChannelQuantizedBiasMultiChannel) {
   model.SetBias({1});
 
   // Expected output from CPU.
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   auto expected_output = model.GetDequantizedOutput();
 
   // Check delegate output.

@@ -22,7 +22,7 @@ def TestGmlStLoopPeeling : Pass<"test-gml-st-loop-peeling", "mlir::func::FuncOp"
     Option<"skip_partial", "skip-partial", "bool", /*default=*/"false",
            "Skip loops inside partial iterations during peeling">,
     ListOption<"dims", "dims", "unsigned", "Dimensions to peel",
-           "llvm::cl::OneOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+           "llvm::cl::OneOrMore">,
   ];
 }
 
@@ -37,10 +37,16 @@ def TestGmlStLoopTiling : Pass<"test-gml-st-loop-tiling", "mlir::func::FuncOp"> 
   ];
   let options = [
     ListOption<"tile_sizes", "tile-sizes", "int64_t", "Tile sizes",
-               "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+               "llvm::cl::ZeroOrMore">,
     ListOption<"distribution_types", "distribution-types", "std::string",
                "Distribution types",
-               "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">
+               "llvm::cl::ZeroOrMore">
 
   ];
+}
+
+def TestGmlStBufferization
+    : Pass<"test-gml-st-bufferization", "mlir::ModuleOp"> {
+  let summary = "Bufferize `gml_st.loop`.";
+  let constructor = "::mlir::gml_st::createTestGmlStBufferizationPass()";
 }

@@ -6,7 +6,7 @@ func.func @empty_launch_no_results() {
   "tf_device.launch"() ({
     tf_device.return
   }) {device = "device"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-NOT: tf_device.launch

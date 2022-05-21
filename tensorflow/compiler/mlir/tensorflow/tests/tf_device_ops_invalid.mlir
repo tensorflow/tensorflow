@@ -5,7 +5,7 @@ func.func @parser_replicate_n(%arg0: tensor<*xf32>) {
   tf_device.replicate([%arg0] as %input0: tensor<*xf32>) {n = 1 : i32} {
 // expected-error@-1 {{'tf_device.replicate' expects 'n' to be at least 2, got 1}}
   }
-  return
+  func.return
 }
 
 // -----
@@ -16,7 +16,7 @@ func.func @parser_replicate_operand_count(%arg0: tensor<*xf32>) {
   tf_device.replicate([%arg0, %arg0, %arg0] as %input0: tensor<*xf32>) {n = 2 : i32} {
 // expected-error@-1 {{'tf_device.replicate' expects number of operands for replicated input 0 to be 'n' (2), got 3}}
   }
-  return
+  func.return
 }
 
 // -----
@@ -28,7 +28,7 @@ func.func @parser_replicate_operand_type(%arg0: tensor<*xi32>) {
   tf_device.replicate([%arg0, %arg0] as %input0: tensor<*xf32>) {n = 2 : i32} {
 // expected-error@-1 {{use of value '%arg0' expects different type than prior uses: 'tensor<*xf32>' vs 'tensor<*xi32>'}}
   }
-  return
+  func.return
 }
 
 // -----
@@ -41,7 +41,7 @@ func.func @parser_replicate_region() {
   ^bb:
     tf_device.return
   }
-  return
+  func.return
 }
 
 // -----
@@ -50,9 +50,9 @@ func.func @parser_replicate_region() {
 func.func @parser_replicate_terminator() {
   tf_device.replicate() {n = 2 : i32} {
 // expected-error@-1 {{custom op 'tf_device.replicate' expects a tf_device.return terminator}}
-    return
+    func.return
   }
-  return
+  func.return
 }
 
 // -----
@@ -62,7 +62,7 @@ func.func @verifier_replicate_no_block() {
   "tf_device.replicate" () ({
 // expected-error@-1 {{'tf_device.replicate' op region #0 ('body') failed to verify constraint: region with 1 blocks}}
   }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -73,7 +73,7 @@ func.func @verifier_replicate_empty_block() {
 // expected-error@-1 {{'tf_device.replicate' op expects a non-empty block}}
   ^entry:
   }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -83,9 +83,9 @@ func.func @verifier_replicate_terminator() {
   "tf_device.replicate" () ({
 // expected-error@+2 {{'func.return' op expects parent op 'func.func'}}
   ^entry:
-    return
+    func.return
   }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -202,7 +202,7 @@ func.func @parallel_execute_single_region() {
 // expected-error@-1 {{'tf_device.parallel_execute' op must have at least two regions.}}
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -215,7 +215,7 @@ func.func @parallel_execute_empty_region() {
   {
   tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -233,7 +233,7 @@ func.func @parallel_execute_invalid_output_type_numbers() {
     %2 = "tf.opC"() : () -> (tensor<*xi1>)
     tf_device.return
   }) {} : () -> (tensor<*xi1>, tensor<*xi32>, tensor<*xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -251,7 +251,7 @@ func.func @parallel_execute_mismatched_output_types() {
     %2 = "tf.opC"() : () -> (tensor<*xi1>)
     tf_device.return
   }) {} : () -> (tensor<*xi1>, tensor<*xi1>)
-  return
+  func.return
 }
 
 // -----
@@ -269,5 +269,5 @@ func.func @parallel_execute_regions_with_invalid_data_results() {
     %2 = "tf.opC"() : () -> (tensor<*xf32>)
     tf_device.return %2 : tensor<*xf32>
   }) {} : () -> (tensor<*xi1>, tensor<*xi32>, tensor<*xi1>)
-  return
+  func.return
 }

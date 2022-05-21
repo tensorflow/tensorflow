@@ -88,7 +88,10 @@ gentbl_cc_library(
             "ir/tfl_ops.cc.inc",
         ),
         (
-            ["-gen-dialect-doc"],
+            [
+                "-gen-dialect-doc",
+                "-dialect=tfl",
+            ],
             "g3doc/tfl_ops.md",
         ),
     ],
@@ -386,6 +389,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor/lib",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
@@ -1232,8 +1236,6 @@ cc_library(
     visibility = [
         "//configs/devtools/hawkeye/tflite:__subpackages__",
         "//learning/brain/models/app_benchmarks:__subpackages__",
-        "//tensorflow/compiler/mlir/lite:friends",
-        "//tensorflow/lite/experimental/mlir:__subpackages__",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",

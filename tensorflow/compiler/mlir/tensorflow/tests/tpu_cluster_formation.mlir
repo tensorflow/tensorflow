@@ -7,7 +7,7 @@
 func.func @cluster_ops_removed_attrs() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK:      "tf.opA"
@@ -23,7 +23,7 @@ func.func @cluster_ops_removed_attrs() {
 func.func @removed_metadata_attrs() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-NOT:  name = "name"
@@ -35,7 +35,7 @@ func.func @removed_metadata_attrs() {
 func.func @metadata_op_removed() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-NOT:  "tf.TPUReplicateMetadata"
@@ -162,7 +162,7 @@ func.func @interleaved_cluster_operands_results() {
   %3 = "tf.opD"(%1) {is_stateless = true} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.opE"(%2) {is_stateless = true} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.opF"(%4) {_xla_compile_device_type = "TPU", _replication_info = "replicate", is_stateless = true} : (tensor<i1>) -> tensor<i1>
-  return
+  func.return
 }
 
 // CHECK:      %[[OP_C:[0-9]*]] = "tf.opC"
@@ -259,7 +259,7 @@ func.func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>
 // replicate operands and results.
 // CHECK-LABEL: func @replication_with_model_parallelism
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_1:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_2:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_3:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>)
-!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
+!rtype = tensor<!tf_type.resource<tensor<10x3xf32>>>
 
 func.func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>, tensor<f32>) {
   %0 = "tf.opA"() {is_stateless = true} : () -> tensor<i32>
@@ -312,7 +312,7 @@ func.func @sort_replicated_input(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: te
   %7 = "tf.TPUReplicatedInput"(%arg7, %arg7) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   "tf.opA"(%0, %1, %2, %3, %4, %5, %6, %7) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", is_stateless = true} : (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK:      tf_device.replicate
@@ -345,7 +345,7 @@ func.func @non_contigous_indices(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: te
   %5 = "tf.TPUReplicatedInput"(%arg5) {index = 4 : i64, is_packed = true} : (tensor<i1>) -> tensor<i1>
   "tf.opC"(%5) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : (tensor<i1>) -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK:      tf_device.replicate
@@ -368,7 +368,7 @@ func.func @mirrored_variables(%arg0: tensor<!tf_type.resource<tensor<32xf32>>>, 
   %2 = "tf.TPUReplicatedInput"(%arg4) {index = 2 : i64, is_mirrored_variable = true, is_packed = true} : (tensor<!tf_type.resource<tensor<32xf32>>>) -> tensor<!tf_type.resource<tensor<32xf32>>>
   "tf.opA"(%0, %1, %2) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", is_stateless = true} : (tensor<!tf_type.resource<tensor<32xf32>>>, tensor<!tf_type.resource<tensor<32xf32>>>, tensor<!tf_type.resource<tensor<32xf32>>>) -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK:      tf_device.replicate
@@ -401,7 +401,7 @@ func.func @resource_after_cluster(%arg0: tensor<*x!tf_type.resource<tensor<f32>>
   "tf.AssignAddVariableOp"(%arg0, %0) : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
 
   "tf.NoOp"() {_xla_compile_device_type = "TPU", _replication_info = "cluster_test_fn"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -423,7 +423,7 @@ func.func @resource_before_cluster() {
   "tf.AssignAddVariableOp"(%1, %0) : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
 
   "tf.NoOp"() {_xla_compile_device_type = "TPU", _replication_info = "cluster_test_fn"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -436,7 +436,7 @@ func.func @cluster_ops_with_regions() {
       %1 = "tf.opB"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "nameB", is_stateless = true} : () -> (tensor<i32>)
     }) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "nameA"} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK:      "tf.opA"() ({
@@ -460,7 +460,7 @@ func.func @cluster_nested_op_using_other_op() {
    }) { _xla_compile_device_type = "TPU", _replication_info = "foo" } : () -> ()
   "tf.opD"(%0) {is_stateless = true} : (tensor<i32>) -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "foo", device = "CPU", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK: [[CLUSTER:%.*]] = "tf_device.cluster"() ({
@@ -471,7 +471,7 @@ func.func @cluster_nested_op_using_other_op() {
 // CHECK:    "tf.opD"([[CLUSTER]])
 
 // Preceding user is using resource updated by a nested op.
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 // CHECK-LABEL: func @cluster_nested_op_updating_resource
 func.func @cluster_nested_op_updating_resource() {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
@@ -484,7 +484,7 @@ func.func @cluster_nested_op_updating_resource() {
   "tf.AssignAddVariableOp"(%1, %0) : (!tf_res, tensor<f32>) -> ()
   "tf.opB"() { _xla_compile_device_type = "TPU", _replication_info = "foo" , is_stateless = true} : () -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "foo", device = "CPU", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK: [[CONST:%.*]] = "tf.Const"
@@ -513,7 +513,7 @@ func.func @cluster_nested_op_using_resource() {
    }) : () -> ()
   "tf.opB"() { _xla_compile_device_type = "TPU", _replication_info = "foo" , is_stateless = true} : () -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "foo", device = "CPU", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK: [[CONST:%.*]] = "tf.Const"
@@ -531,7 +531,7 @@ func.func @cluster_nested_op_using_resource() {
 // -----
 
 
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // Test multiple replicated clusters interleaved and uses resource variables.
 // CHECK-LABEL: func @multiple_replicated_interleaved
@@ -551,7 +551,7 @@ func.func @multiple_replicated_interleaved(%arg0: !tf_res) {
   %9:2 = "tf.TPUReplicatedOutput"(%6) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   %10:2 = "tf.TPUReplicatedOutput"(%7) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   %11:2 = "tf.TPUReplicatedOutput"(%8) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
-  return
+  func.return
 }
 
 // CHECK: tf_device.replicate
@@ -568,7 +568,7 @@ func.func @replicated_non_replicated_output() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : () -> tensor<i1>
   %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK: [[REPLICATE:%.+]]:2 = tf_device.replicate
@@ -582,7 +582,7 @@ func.func @missing_num_replicas() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : () -> tensor<i1>
   // expected-error@+1 {{'tf.TPUReplicateMetadata' op requires attribute 'num_replicas'}}
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -594,13 +594,13 @@ func.func @bad_num_replicas() {
   // expected-error@+1 {{requires 'num_replicas' int attribute to be at least 1}}
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 0, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // -----
 
 // Test cluster with bad `num_cores_per_replica` attribute.
-!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
+!rtype = tensor<!tf_type.resource<tensor<10x3xf32>>>
 func.func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>) {
   %2 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
   %3 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
@@ -622,7 +622,7 @@ func.func @mismatched_replicated_input(%arg0: tensor<i1>) {
   %0 = "tf.TPUReplicatedInput"(%arg0, %arg0, %arg0) : (tensor<i1>, tensor<i1>, tensor<i1>) -> tensor<i1>
   %1 = "tf.opA"(%0) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -636,7 +636,7 @@ func.func @mismatched_replicated_output() {
   // expected-error@+1 {{'tf.TPUReplicatedOutput' op requires 2 results}}
   %1:3 = "tf.TPUReplicatedOutput"(%0) : (tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>)
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -646,7 +646,7 @@ func.func @mismatched_replicated_output() {
 // Test unused TPUReplicatedInput that has more than one operand.
 func.func @leftover_replicated_input(%arg0: tensor<i1>) {
   %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  return
+  func.return
 }
 
 
@@ -656,7 +656,7 @@ func.func @leftover_replicated_input(%arg0: tensor<i1>) {
 // Test unused TPUReplicatedOutput that has more than one result.
 func.func @leftover_replicated_output(%arg0: tensor<i1>) {
   %0:2 = "tf.TPUReplicatedOutput"(%arg0) : (tensor<i1>) -> (tensor<i1>, tensor<i1>)
-  return
+  func.return
 }
 
 
@@ -669,7 +669,7 @@ func.func @bad_negative_index_input(%arg0: tensor<i1>) {
   %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = -2 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   "tf.opA"(%0) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : (tensor<i1>) -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -683,7 +683,7 @@ func.func @input_index_gaps(%arg0: tensor<i1>) {
   %1 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = 1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   "tf.opA"(%0, %1) {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", name = "name", is_stateless = true} : (tensor<i1>, tensor<i1>) -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -692,7 +692,7 @@ func.func @input_index_gaps(%arg0: tensor<i1>) {
 func.func @cluster_ops_keep_replicated_core_attr() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK:      "tf.opA"
@@ -702,27 +702,168 @@ func.func @cluster_ops_keep_replicated_core_attr() {
 
 // -----
 
-func.func @missing_replication_or_compilation_attribute() {
-  // expected-error@+1 {{'tf.opA' op is expected to have either both or none of '_replication_info and _xla_compile_device_type attributes.}}
+func.func @missing_compilation_attribute() {
+  // expected-error@+1 {{'tf.opA' op has '_replication_info' attribute but not '_xla_compile_device_type' attribute which is unsupported}}
   %0 = "tf.opA"() { _replication_info = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // -----
 
 func.func @empty_replication_attribute() {
-  // expected-error@+1 {{'tf.opA' op has an empty _replication_info attribute.}}
+  // expected-error@+1 {{'tf.opA' op has an empty '_replication_info' attribute}}
   %0 = "tf.opA"() { _xla_compile_device_type = "TPU", _replication_info = "", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+  func.return
 }
 
 // -----
 
-func.func @empty_compilation_attribute() {
-  // expected-error@+1 {{'tf.opA' op has an empty _xla_compile_device_type attribute.}}
-  %0 = "tf.opA"() { _xla_compile_device_type = "", _replication_info = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name", is_stateless = true} : () -> tensor<i1>
-  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-  return
+func.func @invalid_device_type() {
+  // expected-error@+1 {{'tf.opA' op has invalid '_xla_compile_device_type' value 'XPU'}}
+  "tf.opA"() { _xla_compile_device_type = "XPU", _replication_info = "replicate", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// Check non-replicated case, including expected attributes at device cluster.
+// CHECK: "tf_device.cluster"()
+// CHECK:    "tf.opA"()
+// CHECK:    "tf.opB"()
+// CHECK:    tf_device.return
+// CHECK:  })  {_replication_info = "__no_replication_cluster", _xla_compile_device_type = "TPU", allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i32, step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false}
+func.func @valid_compilation_cluster_no_replication() {
+  "tf.opA"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-error@+1 {{found different '_xla_compile_device_type' attribute values (GPU,TPU) in same block which is not supported}}
+func.func @invalid_compilation_cluster_mixed_device_types() {
+  "tf.opA"() { _xla_compile_device_type = "GPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-error@+1 {{found different '_xla_compile_device_type' attribute values (CPU,GPU) in same block which is not supported}}
+func.func @invalid_compilation_replication_cluster_mixed_device_types() {
+  "tf.opA"() { _xla_compile_device_type = "CPU", _replication_info = "cluster", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "GPU", _replication_info = "cluster", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-error@+1 {{found mixed replicated and non-replicated compiled ops in same block which is not supported}}
+func.func @mixed_replicated_non_replicated_ops() {
+  "tf.opA"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", _replication_info = "cluster", is_stateless = true} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_control_dependency_no_replication() {
+  "tf.opA"() {_xla_compile_device_type = "CPU"} : () -> ()
+  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  "tf.opB"() : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "CPU"} : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_data_dependency_no_replication() {
+  %0 = "tf.opA"() {_xla_compile_device_type = "GPU", is_stateless = true} : () -> (tensor<i32>)
+  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-error@+1 {{operand #0 does not dominate this use}}
+  %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  // expected-note@+1 {{operand defined here (op in the same block)}}
+  "tf.opC"(%1) {_xla_compile_device_type = "GPU", is_stateless = true} : (tensor<i32>) -> ()
+  func.return
+}
+
+// -----
+
+func.func @cyclic_control_dependency_replication() {
+  "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  "tf.opB"() : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+
+// -----
+
+func.func @cyclic_data_dependency_replication() {
+  %0 = "tf.opA"() {_xla_compile_device_type = "TPU", is_stateless = true} : () -> (tensor<i32>)
+  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-error@+1 {{operand #0 does not dominate this use}}
+  %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  // expected-note@+1 {{operand defined here (op in the same block)}}
+  "tf.opC"(%1) {_xla_compile_device_type = "TPU", is_stateless = true} : (tensor<i32>) -> ()
+  "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  func.return
+}
+
+// -----
+
+// expected-warning@+1 {{TPUReplicateMetadata for associated '_replication_info' attribute 'cluster' is missing}}
+func.func @missing_metadata() {
+  "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @const_with_attrs
+func.func @const_with_attrs(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Reshape"(%arg0
+  // CHECK-NEXT: %{{.*}} = "tf_device.cluster"() ({
+  %minus_one = "tf.Const"() {_replication_info = "cluster",
+                          _xla_compile_device_type = "TPU",
+                          value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster", num_replicas = 1 : i64} : () -> ()
+
+  %1 = "tf.Reshape"(%arg0, %minus_one) : (tensor<*xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %2 = "tf.Identity"(%1) {_replication_info = "cluster", _xla_compile_device_type = "TPU"} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %4 = "tf.Reshape"(%arg1, %minus_one) {_replication_info = "cluster", _xla_compile_device_type = "TPU", device = ""} : (tensor<?xi64>, tensor<1xi32>) -> tensor<?xi64>
+  %5 = "tf.Identity"(%4) {_replication_info = "cluster", _xla_compile_device_type = "TPU"} : (tensor<?xi64>) -> tensor<?xi64>
+
+  func.return %2, %5 : tensor<?xi32>, tensor<?xi64>
+}
+
+// -----
+
+// CHECK-LABEL: func @two_clusters
+func.func @two_clusters(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"(){{.*}}value = dense<1>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Const"(){{.*}}value = dense<2>
+  // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf_device.cluster"
+  %one = "tf.Const"() {_replication_info = "cluster1",
+                       _xla_compile_device_type = "TPU",
+                       value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %two = "tf.Const"() {_replication_info = "cluster2",
+                       _xla_compile_device_type = "TPU",
+                       value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster1", num_replicas = 1 : i64} : () -> ()
+  "tf.TPUReplicateMetadata"() {_replication_info = "cluster2", num_replicas = 1 : i64} : () -> ()
+
+  %1 = "tf.Reshape"(%arg0, %one) {_replication_info = "cluster2", _xla_compile_device_type = "TPU", device = ""} : (tensor<*xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %2 = "tf.Identity"(%1) {_replication_info = "cluster2", _xla_compile_device_type = "TPU"} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %3 = "tf.Reshape"(%arg1, %two) {_replication_info = "cluster1", _xla_compile_device_type = "TPU", device = ""} : (tensor<?xi64>, tensor<1xi32>) -> tensor<?xi64>
+  %4 = "tf.Identity"(%3) {_replication_info = "cluster1", _xla_compile_device_type = "TPU"} : (tensor<?xi64>) -> tensor<?xi64>
+
+  func.return %2, %4 : tensor<?xi32>, tensor<?xi64>
 }

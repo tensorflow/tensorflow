@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -31,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
@@ -1159,6 +1161,14 @@ class RangeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
 
+  def testInputsNearInt64Max(self):
+    int64_t_max = 2**63 - 1
+    x = math_ops.range(0, 201, int64_t_max - 200, dtype=dtypes.int64)
+    self.assertAllEqual((0,), self.evaluate(x))  # just below potential overflow
+    x = math_ops.range(0, 202, int64_t_max - 200, dtype=dtypes.int64)
+    self.assertAllEqual(
+        (0,), self.evaluate(x))  # smallest input with potential overflow
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ErfcinvTest(test_util.TensorFlowTestCase):
@@ -1240,6 +1250,26 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmin(values), 0)
 
+
+class CastTest(test_util.TensorFlowTestCase):
+
+  def testCastWithFullType(self):
+
+    @def_function.function
+    def test_fn():
+      ta = tensor_array_ops.TensorArray(dtypes.int32, size=1)
+      h = math_ops.cast(ta.flow, dtypes.variant)
+
+      t = full_type_pb2.FullTypeDef(
+          type_id=full_type_pb2.TFT_PRODUCT,
+          args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_ARRAY)])
+      h.op.experimental_set_type(t)
+
+      ta = tensor_array_ops.TensorArray(dtypes.int32, flow=h)
+      ta = ta.write(0, constant_op.constant(1))
+      return ta.stack()
+
+    self.assertAllEqual(self.evaluate(test_fn()), [1])
 
 if __name__ == "__main__":
   googletest.main()

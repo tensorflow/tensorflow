@@ -526,7 +526,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
 
 }  // namespace
 
-StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
+StatusOr<mlir::func::FuncOp> EmitConvolutionForwardAsMlir(
     HloInstruction* conv, absl::string_view function_name,
     mlir::MLIRContext* context) {
   OpBuilder builder(context);
@@ -547,7 +547,7 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
       dim_nums.output_feature_dimension(), dim_nums.output_spatial_dimensions(),
       builder);
 
-  auto function = mlir::FuncOp::create(
+  auto function = mlir::func::FuncOp::create(
       mlir::UnknownLoc::get(builder.getContext()),
       llvm_ir::AsStringRef(function_name),
       builder.getFunctionType(

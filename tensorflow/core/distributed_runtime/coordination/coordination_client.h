@@ -36,7 +36,8 @@ class CoordinationClient {
                                  RegisterTaskResponse* response,
                                  StatusCallback done) = 0;
 
-  virtual void HeartbeatAsync(const HeartbeatRequest* request,
+  virtual void HeartbeatAsync(CallOptions* call_opts,
+                              const HeartbeatRequest* request,
                               HeartbeatResponse* response,
                               StatusCallback done) = 0;
 
@@ -44,7 +45,8 @@ class CoordinationClient {
                                     WaitForAllTasksResponse* response,
                                     StatusCallback done) = 0;
 
-  virtual void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+  virtual void ShutdownTaskAsync(CallOptions* call_opts,
+                                 const ShutdownTaskRequest* request,
                                  ShutdownTaskResponse* response,
                                  StatusCallback done) = 0;
 
@@ -52,7 +54,8 @@ class CoordinationClient {
                               ResetTaskResponse* response,
                               StatusCallback done) = 0;
 
-  virtual void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+  virtual void ReportErrorToTaskAsync(CallOptions* call_opts,
+                                      const ReportErrorToTaskRequest* request,
                                       ReportErrorToTaskResponse* response,
                                       StatusCallback done) = 0;
 
@@ -64,9 +67,18 @@ class CoordinationClient {
                                    InsertKeyValueResponse* response,
                                    StatusCallback done) = 0;
 
-  virtual void GetKeyValueAsync(const GetKeyValueRequest* request,
+  virtual void GetKeyValueAsync(CallOptions* call_opts,
+                                const GetKeyValueRequest* request,
                                 GetKeyValueResponse* response,
                                 StatusCallback done) = 0;
+
+  virtual void TryGetKeyValueAsync(const TryGetKeyValueRequest* request,
+                                   TryGetKeyValueResponse* response,
+                                   StatusCallback done) = 0;
+
+  virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                                   GetKeyValueDirResponse* response,
+                                   StatusCallback done) = 0;
 
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,

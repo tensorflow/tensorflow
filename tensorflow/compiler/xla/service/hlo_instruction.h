@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -337,45 +338,6 @@ class HloPrintOptions {
     return *this;
   }
 
-  // Instructions are selected for printing by a predicate function
-  // (`set_print_instructions`). We also print their surrounding instructions
-  // for ease of reading. We print `leading_and_trailing_instructions_number`
-  // instructions before and after the qualified ones inside a computation.
-  HloPrintOptions& set_leading_and_trailing_instructions_number(int value) {
-    leading_and_trailing_instructions_number_ = value;
-    return *this;
-  }
-
-  // A callback which takes an HloInstruction*, its string representation,
-  // the indentation level of the resulting block, and a
-  // bool variable indicating whether the instruction is root or not. The return
-  // value is a string which is used for this instruction during printing.
-  using FormatInstructionFunc = std::function<std::string(
-      const HloInstruction*, const std::string&, int, bool)>;
-
-  HloPrintOptions& set_format_instruction(FormatInstructionFunc callback) {
-    format_instruction_ = callback;
-    return *this;
-  }
-
-  using HloInstructionPredicate = std::function<bool(const HloInstruction*)>;
-
-  // A callback which takes an HloInstruction* and returns whether it should be
-  // printed or not.
-  HloPrintOptions& set_print_instruction(HloInstructionPredicate callback) {
-    print_instruction_ = callback;
-    return *this;
-  }
-
-  using HloComputationPredicate = std::function<bool(const HloComputation*)>;
-
-  // A callback which takes an HloComputation* and returns whether it should be
-  // printed or not.
-  HloPrintOptions& set_print_computation(HloComputationPredicate callback) {
-    print_computation_ = callback;
-    return *this;
-  }
-
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -410,20 +372,6 @@ class HloPrintOptions {
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
-  int leading_and_trailing_instructions_number() const {
-    return leading_and_trailing_instructions_number_;
-  }
-  std::string format_instruction(const HloInstruction* instr,
-                                 const std::string& instr_name, int indent,
-                                 bool is_root) const {
-    return format_instruction_(instr, instr_name, indent, is_root);
-  }
-  bool print_instruction(const HloInstruction* instr) const {
-    return print_instruction_(instr);
-  }
-  bool print_computation(const HloComputation* comp) const {
-    return print_computation_(comp);
-  }
 
  private:
   bool print_large_constants_;
@@ -450,19 +398,6 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
-  int leading_and_trailing_instructions_number_ = 3;
-  FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
-                                                 const std::string& instr_name,
-                                                 int indent, bool is_root) {
-    return absl::StrCat(std::string(2 * indent, ' '), is_root ? "ROOT " : "",
-                        instr_name);
-  };
-  HloInstructionPredicate print_instruction_ = [](const HloInstruction* instr) {
-    return true;
-  };
-  HloComputationPredicate print_computation_ = [](const HloComputation* comp) {
-    return true;
-  };
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -612,10 +547,6 @@ class HloInstruction {
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       HloInstruction* operand, int64_t index);
-
-  // Creates a trace instruction that logs the input operand in the computation.
-  static std::unique_ptr<HloInstruction> CreateTrace(const std::string& tag,
-                                                     HloInstruction* operand);
 
   // Creates a random number generation instruction that fills a shape with
   // random numbers from a given distribution.
@@ -1123,6 +1054,14 @@ class HloInstruction {
       absl::Span<const int64_t> slice_sizes, bool indices_are_sorted);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloInstruction* scatter_indices,
+      absl::Span<HloInstruction* const> updates,
+      HloComputation* update_computation,
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted, bool unique_indices);
+
+  static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
@@ -1332,7 +1271,23 @@ class HloInstruction {
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
                              layout_sensitive,
-                             /*ignore_channel_id_values=*/false);
+                             /*ignore_channel_id_values=*/false,
+                             /*ignore_commutative_operand_order=*/false);
+  }
+
+  // Same as Identical() but ignores the order of commutative operands (e.g.
+  // considers add(a,b) equal to add(b,a)).
+  bool IdenticalIgnoringCommutativeOperandOrder(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands = std::equal_to<const HloInstruction*>(),
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/false,
+                             /*ignore_commutative_operand_order=*/true);
   }
 
   // Same as Identical() but ignores channel ID value mismatches, as long as
@@ -1346,7 +1301,8 @@ class HloInstruction {
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
                              layout_sensitive,
-                             /*ignore_channel_id_values=*/true);
+                             /*ignore_channel_id_values=*/true,
+                             /*ignore_commutative_operand_order=*/true);
   }
 
   // Generates a hash value of an HLO instruction. Hash considers
@@ -1386,6 +1342,13 @@ class HloInstruction {
 
   // Same as ReplaceUseWith(), but new_producer can have a different shape.
   Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
+  // Same as ReplaceUseWith but only replaces the use at the given operand
+  // number.
+  Status ReplaceUseWith(HloInstruction* user, int operand_number,
+                        HloInstruction* new_producer);
+  Status ReplaceUseWithDifferentShape(HloInstruction* user, int operand_number,
                                       HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand. The old and new operands
@@ -1481,7 +1444,7 @@ class HloInstruction {
   //
   // Precondition: The instruction has a valid to_apply_ field.
   HloComputation* to_apply() const;
-  void set_to_apply(HloComputation* to_apply);
+  void set_to_apply(HloComputation* computation);
 
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
@@ -1489,8 +1452,8 @@ class HloInstruction {
   // Precondition: The instruction is a While instruction.
   HloComputation* while_condition() const;
   HloComputation* while_body() const;
-  void set_while_condition(HloComputation* while_condition);
-  void set_while_body(HloComputation* while_body);
+  void set_while_condition(HloComputation* computation);
+  void set_while_body(HloComputation* computation);
 
   HloInstruction* while_init() const;
 
@@ -1554,12 +1517,6 @@ class HloInstruction {
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   virtual std::string ToCategory() const;
-
-  // Returns a logging instruction, if the output of this instruction is logged.
-  //
-  // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
-  HloInstruction* tracing() const;
-  void set_tracing(HloInstruction* trace_instruction);
 
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
@@ -1853,6 +1810,9 @@ class HloInstruction {
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
   }
+  void set_metadata_replaced_op(absl::string_view replaced_op) {
+    metadata_.set_replaced_op(std::string(replaced_op));
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
@@ -1876,6 +1836,13 @@ class HloInstruction {
   }
   void set_outer_dimension_partitions(
       const std::vector<int64_t>& outer_dimension_partitions);
+
+  // A method that sorts users_, control_predecessors_, and control_successors_
+  // according to the orders used in sorted_instruction. The sorting is used
+  // during cloning, to make clone behavior match uncloned behavior.
+  void SortInstructionUsersAndControlLists(
+      const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+      const HloInstruction& sorted_instruction);
 
   // Old methods kept for smooth subclassing transition BEGIN.
   // TODO(b/80131774): Remove this code.
@@ -1943,9 +1910,6 @@ class HloInstruction {
   // Delegate to HloConstantInstruction::RelayoutConstant.
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
-
-  // Delegates to HloTraceInstruction::TracingTag.
-  std::string TracingTag() const;
 
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
@@ -2154,6 +2118,8 @@ class HloInstruction {
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;
+  // Delegates to HloCompareInstruction::order().
+  ComparisonOrder comparison_order() const;
 
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;
@@ -2248,7 +2214,8 @@ class HloInstruction {
           eq_operands,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations,
-      bool layout_sensitive, bool ignore_channel_id_values) const;
+      bool layout_sensitive, bool ignore_channel_id_values,
+      bool ignore_commutative_operand_order) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(

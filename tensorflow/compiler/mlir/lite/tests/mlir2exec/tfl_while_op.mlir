@@ -9,9 +9,9 @@
 
 // Verify tensors in interpreter state:
 // ------------------------------------
-// CHECK: Tensor 0 val kTfLiteFloat32 kTfLiteMmapRo 4 / 0.00 [1] [{{.*}})
+// CHECK: Tensor 0 pconst kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
 // CHECK-NEXT: Tensor 1 N kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
-// CHECK-NEXT: Tensor 2 pconst kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 2 val kTfLiteFloat32 kTfLiteMmapRo 4 / 0.00 [1] [{{.*}})
 // CHECK-NEXT: Tensor 3 tfl.while kTfLiteInt32 kTfLiteArenaRw 4 / 0.00 (null) [{{.*}})
 // CHECK-NEXT: Tensor 4 result kTfLiteFloat32 kTfLiteArenaRw 4 / 0.00 [1] [{{.*}})
 
@@ -19,7 +19,7 @@
 // ------------------------------------
 // CHECK: Operator Builtin Code {{[0-9]*}} WHILE
 
-func @main() -> (tensor<1xf32>, tensor<i32>)
+func.func @main() -> (tensor<1xf32>, tensor<i32>)
     attributes {tf.entry_function = {outputs = "result,pconst"}} {
   %cst = arith.constant dense<1> : tensor<i32> loc("dec")
   %arg0 = arith.constant dense<5> : tensor<i32> loc("N")

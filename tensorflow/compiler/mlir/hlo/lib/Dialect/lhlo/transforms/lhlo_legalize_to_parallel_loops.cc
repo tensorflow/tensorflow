@@ -739,7 +739,8 @@ struct LhloLegalizeToParallelLoopsPass
 };
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeLhloToParallelLoopsPass() {
   return std::make_unique<LhloLegalizeToParallelLoopsPass>();
 }
 

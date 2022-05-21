@@ -152,9 +152,8 @@ class _FrequentTracingDetector(object):
           "a loop, (2) passing tensors with different shapes, (3) passing "
           "Python objects instead of tensors. For (1), please define your "
           "@tf.function outside of the loop. For (2), @tf.function has "
-          "experimental_relax_shapes=True option that relaxes argument "
-          "shapes that can avoid unnecessary retracing. For (3), please "
-          "refer to "
+          "reduce_retracing=True option that can avoid unnecessary "
+          "retracing. For (3), please refer to "
           "https://www.tensorflow.org/guide/function#controlling_retracing"
           " and https://www.tensorflow.org/api_docs/python/tf/function for "
           " more details.".format(
@@ -557,9 +556,9 @@ class Function(core.GenericFunction, trackable.Trackable):
                input_signature=None,
                autograph=True,
                jit_compile=None,
+               reduce_retracing=False,
                experimental_implements=None,
                experimental_autograph_options=None,
-               experimental_relax_shapes=False,
                experimental_follow_type_hints=None):
     """Initializes a `Function`.
 
@@ -569,9 +568,9 @@ class Function(core.GenericFunction, trackable.Trackable):
       input_signature: See the documentation for `tf.function`.
       autograph: See the documentation for `tf.function`.
       jit_compile: See the documentation for `tf.function`.
+      reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
-      experimental_relax_shapes: See the documentation for `tf.function`.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
@@ -593,7 +592,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._shared_rendezvous = None
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    self._experimental_relax_shapes = experimental_relax_shapes
+    self._reduce_retracing = reduce_retracing
     self._jit_compile = jit_compile
     if experimental_follow_type_hints is None:
       experimental_follow_type_hints = False
@@ -729,9 +728,9 @@ class Function(core.GenericFunction, trackable.Trackable):
         attributes=attributes,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
+        reduce_retracing=self._reduce_retracing,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints,
-        experimental_relax_shapes=self._experimental_relax_shapes)
+        experimental_follow_type_hints=self._experimental_follow_type_hints)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -807,9 +806,9 @@ class Function(core.GenericFunction, trackable.Trackable):
         input_signature=self._input_signature,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
+        reduce_retracing=self._reduce_retracing,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_follow_type_hints=self._experimental_follow_type_hints)
 
     if self._shared_rendezvous:
@@ -1287,13 +1286,18 @@ class Function(core.GenericFunction, trackable.Trackable):
 @deprecation.deprecated_args(None,
                              "experimental_compile is deprecated, use "
                              "jit_compile instead", "experimental_compile")
+@deprecation.deprecated_args(None,
+                             "experimental_relax_shapes is deprecated, use "
+                             "reduce_retracing instead",
+                             "experimental_relax_shapes")
 def function(func=None,
              input_signature=None,
              autograph=True,
              jit_compile=None,
+             reduce_retracing=False,
              experimental_implements=None,
              experimental_autograph_options=None,
-             experimental_relax_shapes=False,
+             experimental_relax_shapes=None,
              experimental_compile=None,
              experimental_follow_type_hints=None) -> core.GenericFunction:
   """Compiles a function into a callable TensorFlow graph.
@@ -1516,7 +1520,7 @@ def function(func=None,
   `func` may contain TensorFlow operations mixed with pure Python operations.
   However, when the function is executed, only the TensorFlow operations will
   run. The Python operations run only once, at trace time. If TensorFlow
-  operations depend on results from Pyhton operations, those results will be
+  operations depend on results from Python operations, those results will be
   frozen into the graph.
 
   >>> @tf.function
@@ -1593,6 +1597,10 @@ def function(func=None,
       TPU cores, one TPU core and its host CPU).
       Not all functions are compilable, see a list of
       [sharp corners](https://tensorflow.org/xla/known_issues).
+    reduce_retracing: When True, `tf.function` attempts to reduce the
+      amount of retracing, for example by using more generic shapes. This
+      can be controlled for user objects by customizing their associated
+      `tf.types.experimental.TraceType`.
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
@@ -1615,8 +1623,8 @@ def function(func=None,
       project.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
-    experimental_relax_shapes: When True, `tf.function` may generate fewer,
-      graphs that are less specialized on input shapes.
+    experimental_relax_shapes: Deprecated. Use `reduce_retracing`
+      instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
     experimental_follow_type_hints: When True, the function may use type
       annotations from `func` to optimize the tracing performance. For example,
@@ -1642,6 +1650,10 @@ def function(func=None,
   if jit_compile is None and JIT_COMPILE_FUNCTIONS:
     jit_compile = True
 
+  # TODO(b/224808187): Remove after renaming usages.
+  if experimental_relax_shapes:
+    reduce_retracing = True
+
   def decorated(inner_function):
     try:
       name = inner_function.__name__
@@ -1656,7 +1668,7 @@ def function(func=None,
             input_signature=input_signature,
             autograph=autograph,
             experimental_autograph_options=experimental_autograph_options,
-            experimental_relax_shapes=experimental_relax_shapes,
+            reduce_retracing=reduce_retracing,
 
             # TODO(b/171825496): Update once `experimental_compile` is removed
             # entirely in favor of 'jit_compile'.

@@ -346,5 +346,29 @@ TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
                                   )));
 }
 
+TEST_F(HloConstantFoldingTest, BigReduceWindow) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+
+    add_bf16 {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY accumulated_all_reduce {
+      x = bf16[160,10,10,512]{3,2,1,0} broadcast(bf16[] constant(1.0))
+      init = bf16[] constant(0)
+      ROOT reduce-window = reduce-window(x, init), window={size=1x2x2x1 stride=1x2x2x1}, to_apply=add_bf16
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+}
+
 }  // namespace
 }  // namespace xla

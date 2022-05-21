@@ -29,23 +29,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
 
@@ -394,6 +387,22 @@ T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
+template <typename T>
+struct DivMod {
+  T quotient;
+  T modulo;
+};
+
+// Divide `dividend` by `divisor` such that the quotient is rounded towards
+// negative infinity. The remainder will have the same sign as `divisor`.
+template <typename T>
+DivMod<T> FloorDivMod(T dividend, T divisor) {
+  DivMod<T> div_mod;
+  div_mod.quotient = FloorOfRatio(dividend, divisor);
+  div_mod.modulo = dividend - div_mod.quotient * divisor;
+  return div_mod;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
@@ -519,6 +528,22 @@ template <>
 struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
+
+template <size_t N>
+struct SignedIntegerTypeForSize {
+  using type = std::make_signed_t<typename UnsignedIntegerTypeForSize<N>::type>;
+};
+
+// Returns the signed magnitude of T.
+template <typename T>
+typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
+  auto as_bits =
+      absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
+  auto sign_mask =
+      absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
+          tensorflow::MathUtil::Sign(as_bits));
+  return as_bits ^ (sign_mask >> 1);
+}
 
 template <typename T>
 constexpr int NanPayloadBits() {

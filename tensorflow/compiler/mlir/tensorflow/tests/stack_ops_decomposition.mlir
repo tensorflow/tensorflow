@@ -98,7 +98,7 @@ func.func @main() -> () {
   // CHECK-NOT: tf.Stack
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK: return
-  return
+  func.return
 }
 // CHECK: func @while_body(%[[BARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[BARG1:.*]]: tensor<i32>, %[[BARG2:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
 func.func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>) {
@@ -168,7 +168,7 @@ func.func @main() -> () {
   %pop = "tf.StackPopV2"(%stack) : (tensor<!tf_type.resource>) -> tensor<f32>
   // CHECK-NOT: tf.StackCloseV2
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -220,7 +220,7 @@ func.func @main(%arg0: tensor<i32>) -> () {
   %pop = "tf.StackPopV2"(%stack) : (tensor<!tf_type.resource>) -> tensor<f32>
   // CHECK-NOT: tf.StackCloseV2
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -238,7 +238,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
   // CHECK-NOT: tf.Stack
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK: return
-  return
+  func.return
 }
 // CHECK: func @if_then(%[[TARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[TARG1:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
 func.func @if_then(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
@@ -283,7 +283,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
   // CHECK-NOT: tf.Stack
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK: return
-  return
+  func.return
 }
 
 // CHECK: func @callee(%[[AARG0:.*]]: tensor<!tf_type.resource>, %[[AARG1:.*]]: tensor<i1>) -> tensor<!tf_type.resource>
@@ -323,7 +323,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
   // CHECK-NOT: tf.Stack
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK: return
-  return
+  func.return
 }
 
 // CHECK: func private @callee(%[[ARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
@@ -345,7 +345,7 @@ func.func private @callee(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i1>) -
 // CHECK-LABEL: func @main
 func.func @main() -> () {
   "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> ()
-  return
+  func.return
 }
 // CHECK: func @callee()
 func.func @callee() -> () {
@@ -354,7 +354,7 @@ func.func @callee() -> () {
   %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
   %elem = "tf._SomeOp"() : () -> tensor<f32>
   %push = "tf.StackPushV2"(%stack, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -381,7 +381,7 @@ func.func @main(%arg0: tensor<i32>)  -> () {
   %elem = "tf._SomeOp"() : () -> tensor<*xi32>
   %push = "tf.StackPushV2"(%stack, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<*xi32>) -> tensor<*xi32>
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -398,7 +398,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
   %pop = "tf.StackPopV2"(%if_op) : (tensor<!tf_type.resource>) -> tensor<f32>
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK: return
-  return
+  func.return
 }
 func.func @if_then(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %elem = "tf._SomeOp"() : () -> tensor<f32>
@@ -435,7 +435,7 @@ func.func @main() -> () {
        : (tensor<!tf_type.resource>, tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>)
   %pop = "tf.StackPopV2"(%1#0) : (tensor<!tf_type.resource>) -> tensor<f32>
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -458,5 +458,5 @@ func.func @main(%arg0: tensor<i1>) -> () {
     : (tensor<i1>) -> tensor<!tf_type.resource>
   %pop = "tf.StackPopV2"(%if_op) : (tensor<!tf_type.resource>) -> tensor<f32>
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
-  return
+  func.return
 }

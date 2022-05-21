@@ -29,6 +29,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TPUEmbeddingForServing"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV0"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TableConfig"
     mtype: "<type \'type\'>"
   }

@@ -167,7 +167,15 @@ struct MlirCommonFlags {
 struct JitRtFlags {
   bool always_specialize;
   bool cost_driven_async_parallel_for;
+
+  // Enables tracking of the "live" JitRt queries to, on a crash, identify the
+  // "query of death". See TfJitRtQueryOfDeathLogger.
+  bool log_query_of_death;
+
   bool vectorize;
+
+  // Enables crash reproducer for JitRt MLIR pass manager.
+  bool enable_crash_reproducer;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

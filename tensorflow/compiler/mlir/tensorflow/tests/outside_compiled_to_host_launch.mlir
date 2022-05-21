@@ -50,7 +50,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // Tests the launch wrap of a single outside compiled cluster with data parallelism.
@@ -77,7 +77,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
-    return
+    func.return
   }
 
   // Tests launch wrap of a single outside compiled cluster with input/output.
@@ -147,7 +147,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.PartitionedCall"() {f = @called_outside_compilation_callee} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
   // CHECK-LABEL: func @called_outside_compilation_callee
   func.func @called_outside_compilation_callee() -> () {
@@ -160,7 +160,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     "tf.A"() : () -> ()
     "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
     "tf.C"() : () -> ()
-    return
+    func.return
   }
 
   // Test that the same outside compiled function cannot be called from two
@@ -175,13 +175,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.PartitionedCall"() {f = @called_outside_compilation_bad_callee} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
   // expected-error@+1 {{The same function is reachable from multiple TPU Clusters.}}
   func.func @called_outside_compilation_bad_callee() -> () {
     "tf.A"() : () -> ()
     "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
     "tf.C"() : () -> ()
-    return
+    func.return
   }
 }

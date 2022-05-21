@@ -14,13 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
-
-const char kXlaFrontendAttributesAttrName[] = "_XlaFrontendAttributes";
 
 StatusOr<absl::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {

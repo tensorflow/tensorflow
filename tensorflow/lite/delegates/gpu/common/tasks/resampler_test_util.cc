@@ -53,7 +53,7 @@ absl::Status ResamplerIdentityTest(const BHWC& shape,
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreateResampler(op_def);
+      GPUOperation operation = CreateResampler(env->GetGpuInfo(), op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor, warp_tensor},
           absl::make_unique<GPUOperation>(std::move(operation)),

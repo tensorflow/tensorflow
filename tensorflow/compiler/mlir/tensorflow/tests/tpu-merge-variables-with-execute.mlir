@@ -43,7 +43,7 @@ func.func @merge_same_device_variables(
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_2]], %[[EXE]])
   "tf.AssignVariableOp"(%arg2, %execute#1) : (tensor<*x!tf_type.resource<tensor<16xf32>>>, tensor<16xf32>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // -----
@@ -88,7 +88,7 @@ func.func @merge_replicated_variables(
   // CHECK-NEXT: }
   }
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // -----
@@ -248,7 +248,7 @@ func.func @do_not_merge_multi_read(
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_0]], %[[EXE]])
   "tf.AssignVariableOp"(%arg0, %execute) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // -----
@@ -279,7 +279,7 @@ func.func @do_not_merge_multi_assign(
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_0]], %[[EXE]]#1)
   "tf.AssignVariableOp"(%arg0, %execute#1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // -----
@@ -323,7 +323,7 @@ func.func @parallel_execute(
   // CHECK-NOT: "tf.AssignVariableOp"
   "tf.AssignVariableOp"(%arg0, %pe#0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   "tf.AssignVariableOp"(%arg1, %pe#1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -375,7 +375,7 @@ func.func @replicated_parallel_execute(
     "tf.AssignVariableOp"(%ri0, %pe#0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
     "tf.AssignVariableOp"(%ri1, %pe#1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
   }
-  return
+  func.return
 }
 
 // -----
@@ -393,5 +393,5 @@ func.func @missing_read_write(
     tf_device.return %0#0, %0#1 : tensor<32xf32>, tensor<32xf32>
   }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> (tensor<32xf32>, tensor<32xf32>)
   "tf.AssignVariableOp"(%arg0, %execute#1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
-  return
+  func.return
 }

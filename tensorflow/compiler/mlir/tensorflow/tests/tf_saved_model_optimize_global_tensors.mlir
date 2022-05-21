@@ -36,7 +36,7 @@ module attributes {tf_saved_model.semantics} {
   attributes {tf_saved_model.exported_names = ["f"]} {
     %c0 = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
     "tf.AssignVariableOp"(%arg0, %c0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-    return
+    func.return
   }
 
 }
@@ -89,7 +89,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @h(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @c})
   attributes {tf_saved_model.exported_names = ["h"]} {
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 
 }
@@ -132,7 +132,7 @@ module attributes {tf_saved_model.semantics} {
   // CHECK: func @f()
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @c})
   attributes {tf_saved_model.exported_names = ["f"]} {
-    return
+    func.return
   }
 
 }
@@ -156,7 +156,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     "tf.unhandled_op"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> ()
-    return
+    func.return
   }
 }
 
@@ -177,7 +177,7 @@ module attributes {tf_saved_model.semantics} {
       %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
       "tf.unhandled_terminator"() : () -> ()
     }) : () -> ()
-    return
+    func.return
   }
 }
 
@@ -203,7 +203,7 @@ module attributes {tf_saved_model.semantics} {
       %val = "tf.ReadVariableOp"(%arg1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
       "tf.unhandled_terminator"() : () -> ()
     }) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<!tf_type.resource<tensor<f32>>>)
-    return
+    func.return
   }
 }
 
@@ -225,7 +225,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}, %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @u})
   attributes {tf_saved_model.exported_names = ["f"]} {
     "tf.unhandled"(%arg0, %arg1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>) -> ()
-    return
+    func.return
   }
 }
 
@@ -241,6 +241,6 @@ module attributes {tf_saved_model.semantics}  {
   func.func @legacy_init_op(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @asset}) attributes {tf_saved_model.exported_names = ["f"]} {
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_shared_name", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
     "tf.InitializeTableFromTextFileV2"(%0, %arg0) {delimiter = "\09", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = 205 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
-    return
+    func.return
   }
 }

@@ -751,8 +751,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       CurtHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
                                         output_tensor->flat<Tout>().data() + 1);
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH.
       TensorShape shape({5});
       OP_REQUIRES_OK(context,
@@ -784,8 +785,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
           d, input.data(), input.size(),
           output_tensor->flat<Tout>().data() + 2);
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 4) {  // FULL HEALTH
       TensorShape shape({11});
       OP_REQUIRES_OK(context,
@@ -822,8 +824,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       FullHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
                                         output_tensor->flat<Tout>().data() + 5);
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 5) {  // SHAPE
       TensorShape shape({10});
       OP_REQUIRES_OK(context,
@@ -855,8 +858,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       }
       // Write to device stream
       stream->ThenMemcpy(&output_tensor_ptr, &static_output, sizeof(Tout) * 10);
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
       TensorShape shape({3});
       OP_REQUIRES_OK(context,
@@ -881,8 +885,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
           d, input.data(), input.size(), output_tensor->flat<Tout>().data());
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else {
       // TODO(cais): Implement other tensor debug modes in debug_event.proto.
       context->SetStatus(errors::Unimplemented(

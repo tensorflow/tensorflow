@@ -45,6 +45,10 @@ class Convolution : public NodeShader {
     }
     const auto& attr =
         absl::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
+    if (attr.groups != 1) {
+      return absl::UnimplementedError(
+          "Convolution does not support more than 1 group");
+    }
     auto weights = attr.weights.shape;
     const int offsets_count = weights.h * weights.w;
     const bool offsets_count_too_large = offsets_count > kMaxConstArraySize;

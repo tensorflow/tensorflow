@@ -4,12 +4,12 @@
 
 // CHECK-LABEL: tfg.graph
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
-  // CHECK: placeholder
-  // CHECK: placeholder
-  // CHECK: AddV2
-  %arg0, %ctl = "tfg.placeholder"() : () -> (tensor<*xi32>, !tf_type.control)
-  %add, %ctl3 = "tfg.AddV2"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, !tf_type.control)
-  %arg1, %ctl2 = "tfg.placeholder"()  : () -> (tensor<*xi32>, !tf_type.control)
+  // CHECK-NEXT: %[[PLACEHOLDER0:.*]], %{{.*}} = placeholder name("placeholder0")
+  // CHECK-NEXT: %[[PLACEHOLDER1:.*]], %{{.*}} = placeholder name("placeholder1")
+  // CHECK-NEXT: AddV2(%[[PLACEHOLDER0]], %[[PLACEHOLDER1]]) name("add")
+  %placeholder, %ctl = placeholder name("placeholder0") : () -> (tensor<*xi32>)
+  %AddV2, %ctl_0 = AddV2(%placeholder, %placeholder_1) name("add") : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+  %placeholder_1, %ctl_2 = placeholder name("placeholder1") : () -> (tensor<*xi32>)
 }
 
 // empty graph
@@ -20,37 +20,43 @@ tfg.graph #tf_type.version<producer = 1, min_consumer = 1, bad_consumers = [1, 2
 // This graph has cycles
 // CHECK-LABEL: tfg.graph
 tfg.graph #tf_type.version<producer = 1, min_consumer = 1, bad_consumers = [1, 2, 5, 12]> {
-// CHECK: placeholder
-// CHECK: placeholder
-// CHECK: AddV2
-// CHECK: fakeNextIteration
-  %arg0, %ctl = "tfg.placeholder"() : () -> (tensor<*xi32>, !tf_type.control)
-  %add, %ctl1 = "tfg.AddV2"(%arg0, %add_next) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, !tf_type.control)
-  %add_next, %ctl2 = "tfg.fakeNextIteration"(%add) : (tensor<*xi32>) -> (tensor<*xi32>, !tf_type.control)
-  %arg1, %ctl3 = "tfg.placeholder"()  : () -> (tensor<*xi32>, !tf_type.control)
+  // CHECK-NEXT: %[[MERGE:.*]], %{{.*}} = Merge(%[[NEXT:.*]]) name("merge")
+  // CHECK-NEXT: %[[PLACEHOLDER1:.*]], %{{.*}} = placeholder name("placeholder1")
+  // CHECK-NEXT: %[[PLACEHOLDER0:.*]], %{{.*}} = placeholder name("placeholder0")
+  // CHECK-NEXT: %[[ADD:.*]], %{{.*}} = AddV2(%[[PLACEHOLDER0]], %[[MERGE]]) name("add")
+  // CHECK-NEXT: %[[NEXT]], %{{.*}} = NextIteration(%[[ADD]]) name("next")
+  %AddV2, %ctl_0 = AddV2(%placeholder, %Merge) name("add") : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+  %Merge, %ctl_25 = Merge(%NextIteration) name("merge") : (tensor<*xi32>) -> (tensor<*xi32>)
+  %NextIteration, %ctl_1 = NextIteration(%AddV2) name("next") : (tensor<*xi32>) -> (tensor<*xi32>)
+  %placeholder_2, %ctl_3 = placeholder name("placeholder1") : () -> (tensor<*xi32>)
+  %placeholder, %ctl = placeholder name("placeholder0") : () -> (tensor<*xi32>)
 }
 
 // CHECK-LABEL: tfg.func @foo
+// CHECK-SAME: %[[ARG0:.*]]: tensor
+// CHECK-NEXT: %[[ARG1:.*]]: tensor
 tfg.func @foo(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> (tensor<*xf32>) {
-// CHECK: Op2
-// CHECK: Op1
-// CHECK: return
-  %op1, %ctl1 = "tfg.Op1"(%op2, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, !tf_type.control)
-  %op2, %ctl2 = "tfg.Op2"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, !tf_type.control)
-  return(%op1) : tensor<*xf32>
+  // CHECK:      %[[OP2:.*]], %{{.*}} = Op2(%[[ARG0]], %[[ARG1]]) name("b")
+  // CHECK-NEXT: %[[OP1:.*]], %{{.*}} = Op1(%[[OP2]], %[[ARG1]]) name("a")
+  // CHECK-NEXT: return(%[[OP1]])
+  %Op1, %ctl = Op1(%Op2, %arg1) name("a") : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  %Op2, %ctl_0 = Op2(%arg0, %arg1) name("b") : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  return(%Op1) : tensor<*xf32>
 }
+
 // This graph has cycles
 // CHECK-LABEL: tfg.func @cyclic
 tfg.func @cyclic() -> (tensor<*xi32>) {
-// CHECK: placeholder
-// CHECK: placeholder
-// CHECK: AddV2
-// CHECK: fakeNextIteration
-// CHECK: return
-  %arg0, %ctl = "tfg.placeholder"() : () -> (tensor<*xi32>, !tf_type.control)
-  %add, %ctl1 = "tfg.AddV2"(%arg0, %add_next) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, !tf_type.control)
-  %add_next, %ctl2 = "tfg.fakeNextIteration"(%add) : (tensor<*xi32>) -> (tensor<*xi32>, !tf_type.control)
-  %arg1, %ctl3 = "tfg.placeholder"()  : () -> (tensor<*xi32>, !tf_type.control)
-  return(%arg0) : tensor<*xi32>
+  // CHECK:      %[[MERGE:.*]], %{{.*}} = Merge(%[[NEXT:.*]]) name("merge")
+  // CHECK-NEXT: %[[PLACEHOLDER1:.*]], %{{.*}} = placeholder name("placeholder1")
+  // CHECK-NEXT: %[[PLACEHOLDER0:.*]], %{{.*}} = placeholder name("placeholder0")
+  // CHECK-NEXT: %[[ADD:.*]], %{{.*}} = AddV2(%[[PLACEHOLDER0]], %[[MERGE]]) name("add")
+  // CHECK-NEXT: %[[NEXT]], %{{.*}} = NextIteration(%[[ADD]]) name("next")
+  // CHECK-NEXT: return(%[[PLACEHOLDER0]])
+  %AddV2, %ctl_0 = AddV2(%placeholder, %Merge) name("add") : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+  %Merge, %ctl_25 = Merge(%NextIteration) name("merge") : (tensor<*xi32>) -> (tensor<*xi32>)
+  %NextIteration, %ctl_1 = NextIteration(%AddV2) name("next") : (tensor<*xi32>) -> (tensor<*xi32>)
+  %placeholder_2, %ctl_3 = placeholder name("placeholder1") : () -> (tensor<*xi32>)
+  %placeholder, %ctl = placeholder name("placeholder0") : () -> (tensor<*xi32>)
+  return(%placeholder) : tensor<*xi32>
 }
-

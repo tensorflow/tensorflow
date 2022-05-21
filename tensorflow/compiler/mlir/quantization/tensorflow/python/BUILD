@@ -109,7 +109,6 @@ tf_python_pybind_extension(
     hdrs = [
         "quantize_model_wrapper.h",
     ],
-    module_name = "pywrap_quantize_model",
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -138,7 +137,7 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "//tensorflow/python/training/tracking:trackable_utils",
+        "//tensorflow/python/trackable:trackable_utils",
     ],
 )
 

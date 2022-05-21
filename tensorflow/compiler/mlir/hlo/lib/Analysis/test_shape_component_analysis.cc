@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -63,7 +64,8 @@ struct TestShapeComponentAnalysisPass
 
 }  // end anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createTestShapeComponentAnalysisPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestShapeComponentAnalysisPass() {
   return std::make_unique<TestShapeComponentAnalysisPass>();
 }
 

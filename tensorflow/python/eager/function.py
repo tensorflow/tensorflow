@@ -27,6 +27,7 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -34,7 +35,8 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function_cache
+from tensorflow.python.eager import function_context
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
@@ -2357,6 +2359,45 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     else:
       return self.__repr__()
 
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """Implements `Trackable`."""
+    if save_type == "checkpoint":
+      # Checkpoint dependencies do not include functions at all. Users
+      # expect the checkpointed variables to be saved using the model
+      # architecture, e.g. `model.layers[1].kernel` or `model.variables`.
+      return {}
+
+    captured_trackables = {}
+    for n, (capture, _) in enumerate(self.graph.captures):
+      if (capture.dtype not in (dtypes.variant, dtypes.resource) and
+          not resource_variable_ops.is_resource_variable(capture)):
+        # Variant/resource type tensors are skipped since we have no way of
+        # getting the `Trackable` wrapper for these tensors. The wrappers are
+        # expected to be elsewhere in the saved object graph.
+        # TODO(b/223866972): Directly encode/decode tensor captures.
+
+        # Resource variable captures are also skipped at this time, to maintain
+        # existing behavior.
+        # TODO(b/217979389): Return the non-constant captures as children.
+
+        captured_trackables[f"capture_{n}"] = capture
+
+    return captured_trackables
+
+  def _deserialization_dependencies(self, children):
+    return children
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   **unused_kwargs):
+    if not self.graph.saveable:
+      raise ValueError(
+          (f"Unable to save function {self.name} for the following reason(s):\n"
+           + "\n".join(self.graph.saving_errors)))
+    self.add_to_graph()
+    object_map[self] = function_saved_model_utils.ExportedConcreteFunction(
+        self, tensor_map)
+    return []
+
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
@@ -2386,7 +2427,7 @@ class Function(object):
                attributes=None,
                autograph=True,
                autograph_options=None,
-               experimental_relax_shapes=False,
+               reduce_retracing=False,
                capture_by_value=None,
                jit_compile=None,
                experimental_follow_type_hints=False):
@@ -2406,8 +2447,9 @@ class Function(object):
       autograph_options: Experimental knobs to control behavior
         `when autograph=True`. See https://www.tensorflow.org/guide/autograph
         for more information.
-      experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unnecessary retracing.
+      reduce_retracing: When True, `tf.function` uses
+        `tf.types.experimental.TraceType` to trace supertypes of arguments to
+        reduce the number of traces.
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
@@ -2429,7 +2471,7 @@ class Function(object):
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
-    self._experimental_relax_shapes = experimental_relax_shapes
+    self._reduce_retracing = reduce_retracing
     self._function_cache = function_cache.FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
@@ -2671,10 +2713,10 @@ class Function(object):
       filtered_flat_args = []
 
     if self.input_signature is None:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
+      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
           (args, kwargs))
     else:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
+      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
           self.flat_input_signature)
 
     try:
@@ -2702,11 +2744,7 @@ class Function(object):
         with ag_ctx.ControlStatusCtx(
             status=ag_status, options=self._autograph_options):
 
-          # Build a function with shape relaxation retracing if:
-          # 1. shape relaxation is explicitly enabled
-          # and 2. there's no provided input signature
-          if (self._experimental_relax_shapes and
-              self.input_signature is None):
+          if (self._reduce_retracing and self.input_signature is None):
             cache_key = self._function_cache.generalize(cache_key)
             (args, kwargs) = cache_key._placeholder_value()  # pylint: disable=protected-access
 
@@ -2767,7 +2805,7 @@ def defun(func=None,
           input_signature=None,
           autograph=True,
           experimental_autograph_options=None,
-          experimental_relax_shapes=False):
+          reduce_retracing=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") compiles a Python function
@@ -3084,8 +3122,9 @@ def defun(func=None,
     experimental_autograph_options: Experimental knobs (in the form of a tuple
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
-    experimental_relax_shapes: When true, argument shapes may be relaxed to
-      avoid unnecessary retracing.
+    reduce_retracing: When True, `tf.function` uses
+      `tf.types.experimental.TraceType` to trace supertypes of arguments to
+      reduce the number of traces.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -3102,7 +3141,7 @@ def defun(func=None,
       input_signature=input_signature,
       autograph=autograph,
       experimental_autograph_options=experimental_autograph_options,
-      experimental_relax_shapes=experimental_relax_shapes)
+      reduce_retracing=reduce_retracing)
 
 
 @tf_export("__internal__.function.defun_with_attributes", v1=[])
@@ -3112,7 +3151,7 @@ def defun_with_attributes(func=None,
                           autograph=True,
                           experimental_autograph_options=None,
                           jit_compile=None,
-                          experimental_relax_shapes=False,
+                          reduce_retracing=False,
                           experimental_follow_type_hints=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
@@ -3134,7 +3173,7 @@ def defun_with_attributes(func=None,
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
     jit_compile: same as defun()'s jit_compile.
-    experimental_relax_shapes: same as defun()'s experimental_relax_shapes
+    reduce_retracing: same as defun()'s reduce_retracing
     experimental_follow_type_hints: see `tf.function`.
 
   Returns:
@@ -3163,7 +3202,7 @@ def defun_with_attributes(func=None,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
             jit_compile=jit_compile,
-            experimental_relax_shapes=experimental_relax_shapes,
+            reduce_retracing=reduce_retracing,
             experimental_follow_type_hints=experimental_follow_type_hints))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
@@ -3261,7 +3300,7 @@ def class_method_to_instance_method(original_function, instance):
       name=original_function._name,
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
-      experimental_relax_shapes=original_function._experimental_relax_shapes,
+      reduce_retracing=original_function._reduce_retracing,
       jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 

@@ -27,8 +27,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -42,6 +45,98 @@ using Symbol = ShapeComponentAnalysis::Symbol;
 using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
+
+// Temporary data structure to hold a single dimension of the symbolic result of
+// `shape.broadcast`.
+struct SymbolicBroadcastDimension {
+  size_t operand_index;
+  size_t operand_dim;
+  SymbolicExpr expr;
+};
+
+// Replace shape.broadcast with a shape if it's statically known.
+struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(
+      shape::BroadcastOp op, mlir::PatternRewriter &rewriter) const override {
+    // Require successful shape analysis.
+    ShapeComponentAnalysis shape_analysis;
+    llvm::SmallVector<ArrayRef<SymbolicExpr>> shapes_info;
+    auto shapes = op.getShapes();
+    shapes_info.reserve(shapes.size());
+    for (Value s : shapes) {
+      auto s_info = shape_analysis.GetValueInfo(s);
+      if (!s_info) return failure();
+      shapes_info.push_back(*s_info);
+    }
+
+    // Find the result rank.
+    size_t rank = 0;
+    for (const auto &s_info : shapes_info) rank = std::max(rank, s_info.size());
+
+    // Compute broadcast symbolically.
+    SmallVector<Optional<SymbolicBroadcastDimension>> sym_result(rank,
+                                                                 llvm::None);
+    for (const auto &s_info : llvm::enumerate(shapes_info)) {
+      size_t dim_offset = rank - s_info.value().size();
+      for (const auto &sym_expr : llvm::enumerate(s_info.value())) {
+        // Unit dimensions are neutral to the final result.
+        if (sym_expr.value().isConstant(1)) continue;
+
+        // Use unique expression.
+        size_t i = dim_offset + sym_expr.index();
+        if (!sym_result[i]) {
+          sym_result[i] = {s_info.index(), sym_expr.index(), sym_expr.value()};
+          continue;
+        }
+
+        // Bail if the dimensions are neither equal nor 1.
+        if (sym_result[i]->expr != sym_expr.value()) return failure();
+      }
+    }
+
+    // Materialize broadcast result.
+    auto loc = op.getLoc();
+    DenseMap<int64_t, Value> constants;
+    auto find_or_create_constant = [&](int64_t c) {
+      auto it = constants.find(c);
+      if (it != constants.end()) return it->second;
+      Value newly_created = rewriter.create<arith::ConstantIndexOp>(loc, c);
+      constants[c] = newly_created;
+      return newly_created;
+    };
+    auto elements = llvm::to_vector<8>(
+        llvm::map_range(sym_result, [&](const auto &sym_result_dim) {
+          // If we know the dimension statically, use a constant.
+          if (!sym_result_dim) return find_or_create_constant(1);
+          if (auto cexpr = sym_result_dim->expr.expr
+                               .template dyn_cast<AffineConstantExpr>()) {
+            return find_or_create_constant(cexpr.getValue());
+          }
+
+          // Othwerise, extract the dimension from the unique operand.
+          Value operand = shapes[sym_result_dim->operand_index];
+          Value operand_dim =
+              find_or_create_constant(sym_result_dim->operand_dim);
+          return rewriter.create<tensor::ExtractOp>(loc, operand, operand_dim)
+              .getResult();
+        }));
+    Type index_ty = rewriter.getIndexType();
+    Type concrete_result_ty = RankedTensorType::get(
+        {static_cast<int64_t>(elements.size())}, index_ty);
+    Value result = rewriter.create<tensor::FromElementsOp>(
+        loc, concrete_result_ty, elements);
+
+    // Insert cast, if needed.
+    Type expected_ty = op.getResult().getType();
+    if (result.getType() != expected_ty) {
+      result = rewriter.create<tensor::CastOp>(loc, expected_ty, result);
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
 
 LogicalResult AnalyzeDynamicBroadcastInDimExpandingBehavior(
     ShapeComponentAnalysis &analysis, Value value, Value shape,
@@ -711,7 +806,8 @@ class SymbolicShapeOptimizationPass final
         CstrBroadcastableOpLowering,
         DynamicReshapeToExpandAndCollapseShape,
         RemoveComputeReshapeShape,
-        RemoveRedundantCstrReshapable>(ctx);
+        RemoveRedundantCstrReshapable,
+        SimplifyBroadcasts>(ctx);
     // clang-format on
     shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 
@@ -724,7 +820,8 @@ class SymbolicShapeOptimizationPass final
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createSymbolicShapeOptimizationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass() {
   return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 

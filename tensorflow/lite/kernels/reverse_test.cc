@@ -58,7 +58,7 @@ TEST(ReverseOpTest, FloatOneDimension) {
                               {TensorType_INT32, {1}});
   model.PopulateTensor<float>(model.input(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.axis(), {0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 3, 2, 1}));
@@ -71,7 +71,7 @@ TEST(ReverseOpTest, FloatMultiDimensions) {
                               {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                                13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.PopulateTensor<int32_t>(model.axis(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(
@@ -86,7 +86,7 @@ TEST(ReverseOpTest, Int32OneDimension) {
                                 {TensorType_INT32, {1}});
   model.PopulateTensor<int32_t>(model.input(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.axis(), {0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 3, 2, 1}));
@@ -99,7 +99,7 @@ TEST(ReverseOpTest, Int32MultiDimensions) {
       model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                       13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.PopulateTensor<int32_t>(model.axis(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(
@@ -114,7 +114,7 @@ TEST(ReverseOpTest, Int64OneDimension) {
                                 {TensorType_INT32, {1}});
   model.PopulateTensor<int64_t>(model.input(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.axis(), {0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 3, 2, 1}));
@@ -127,7 +127,7 @@ TEST(ReverseOpTest, Int64MultiDimensions) {
       model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                       13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.PopulateTensor<int32_t>(model.axis(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(
@@ -142,7 +142,7 @@ TEST(ReverseOpTest, Uint8OneDimension) {
                                 {TensorType_INT32, {1}});
   model.PopulateTensor<uint8_t>(model.input(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.axis(), {0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 3, 2, 1}));
@@ -155,7 +155,7 @@ TEST(ReverseOpTest, Uint8MultiDimensions) {
       model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                       13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.PopulateTensor<int32_t>(model.axis(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(
@@ -169,7 +169,7 @@ TEST(ReverseOpTest, Int8OneDimension) {
   ReverseOpModel<int8_t> model({TensorType_INT8, {4}}, {TensorType_INT32, {1}});
   model.PopulateTensor<int8_t>(model.input(), {1, 2, -1, -2});
   model.PopulateTensor<int32_t>(model.axis(), {0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({-2, -1, 2, 1}));
@@ -182,7 +182,7 @@ TEST(ReverseOpTest, Int8MultiDimensions) {
       model.input(), {-1, -2, -3, -4, 5,  6,  7,  8,  9,   10,  11,  12,
                       13, 14, 15, 16, 17, 18, 19, 20, -21, -22, -23, -24});
   model.PopulateTensor<int32_t>(model.axis(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(
@@ -197,7 +197,7 @@ TEST(ReverseOpTest, Int16OneDimension) {
                                 {TensorType_INT32, {1}});
   model.PopulateTensor<int16_t>(model.input(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.axis(), {0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 3, 2, 1}));
@@ -210,7 +210,7 @@ TEST(ReverseOpTest, Int16MultiDimensions) {
       model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                       13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
   model.PopulateTensor<int32_t>(model.axis(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(

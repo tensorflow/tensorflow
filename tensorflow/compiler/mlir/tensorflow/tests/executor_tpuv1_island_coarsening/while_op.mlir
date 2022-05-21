@@ -4,7 +4,7 @@
 // Test that islands with a function call are merged if the call is to a function
 // that contains ops with the same attribute.
 // CHECK-LABEL: func @control_input
-func @control_input(%arg0 : tensor<i1>) -> tensor<i32> {
+func.func @control_input(%arg0 : tensor<i1>) -> tensor<i32> {
   %0:6 = tf_executor.graph {
     %1:2 = tf_executor.island wraps "tf.opA"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i1>) -> tensor<i32>
     %2:2 = tf_executor.island wraps "tf.While"(%1#0) {name = "A", body = @while_body_with_cluster_attr, cond = @while_cond_with_cluster_attr, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
@@ -28,29 +28,29 @@ func @control_input(%arg0 : tensor<i1>) -> tensor<i32> {
   func.return %0#0 : tensor<i32>
 }
 
-func @while_body_with_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @while_body_with_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
-func @while_cond_with_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
+func.func @while_cond_with_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
   %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
 
-func @while_body_with_wrong_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @while_body_with_wrong_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "wrong_cluster"} : (tensor<i32>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
-func @while_cond_with_wrong_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
+func.func @while_cond_with_wrong_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
   %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "wrong_cluster"} : (tensor<i32>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
 
-func @while_body_without_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @while_body_without_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.some_op"(%arg0) : (tensor<i32>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
-func @while_cond_without_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
+func.func @while_cond_without_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
   %0 = "tf.some_op"(%arg0) : (tensor<i32>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }

@@ -53,7 +53,7 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
                           FunctionLibraryDefinition* flib_def);
 
 // Converts an MLIR function and adds it to a FunctionLibraryDefinition.
-Status ConvertMlirFunctionToFunctionLibraryDef(mlir::FuncOp func,
+Status ConvertMlirFunctionToFunctionLibraryDef(mlir::func::FuncOp func,
                                                const GraphExportConfig& configs,
                                                FunctionDef* function_def);
 }  // namespace tensorflow

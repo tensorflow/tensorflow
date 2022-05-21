@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class MultiThreadedTest(test.TestCase):
@@ -40,7 +40,7 @@ class MultiThreadedTest(test.TestCase):
 
   def _convert_with_calibration(self):
 
-    class ModelWithAdd(tracking.AutoTrackable):
+    class ModelWithAdd(autotrackable.AutoTrackable):
       """Basic model with addition."""
 
       @def_function.function(input_signature=[

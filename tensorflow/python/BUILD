@@ -67,6 +67,7 @@ visibility = [
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
+    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
 ]
 
 package(
@@ -157,10 +158,7 @@ py_library(
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
-        # copybara:uncomment_begin(google-only)
-        # # FIXME(b/189332820): Link the target when it is available on OSS.
-        # ":dtensor",
-        # copybara:uncomment_end
+        ":dtensor",
         ":filesystem_ops",
         ":functional_ops",
         ":gradient_checker",
@@ -197,7 +195,6 @@ py_library(
         ":training",
         ":weights_broadcast_ops",
         ":while_v2",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
@@ -267,6 +264,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -335,7 +333,6 @@ tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
     features = ["-layering_check"],
-    module_name = "_pywrap_tfcompile",
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
@@ -363,7 +360,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/training:quantize_training_wrapper.cc",
     ],
     hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
-    module_name = "_pywrap_quantize_training",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -387,7 +383,8 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:headers",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
     ],
-    module_name = "_pywrap_py_exception_registry",
+    # TODO(rostam): Why does enabling cc_shared_library bloat the pip package?
+    # static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -403,7 +400,6 @@ tf_python_pybind_extension(
         "lite/toco_python_api_wrapper.cc",
     ],
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
-    module_name = "_pywrap_toco_api",
     deps = [
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -675,9 +671,11 @@ tf_gen_op_wrapper_private_py(
     name = "io_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/checkpoint:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/io_ops:__pkg__",
+        "//tensorflow/python/trackable:__pkg__",
         "//tensorflow/python/training:__pkg__",
         "//tensorflow/python/training/tracking:__pkg__",
     ],
@@ -2162,24 +2160,6 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "stateful_random_ops_test",
-    size = "medium",
-    srcs = ["ops/stateful_random_ops_test.py"],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        ":client_testlib",
-        ":logging_ops",
-        ":random_ops_gen",
-        ":stateful_random_ops",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/kernel_tests/random:util",
-    ],
-)
-
 py_library(
     name = "stateless_random_ops",
     srcs = ["ops/stateless_random_ops.py"],
@@ -2983,7 +2963,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+    ],
     deps = [
         ":array_ops",
         ":gradients",
@@ -3317,7 +3299,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/core/profiler/backends/cpu:python_tracer",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
@@ -3408,7 +3391,7 @@ filegroup(
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
@@ -3424,6 +3407,7 @@ filegroup(
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
+        "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -3924,7 +3908,6 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_mlir",
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -3951,7 +3934,6 @@ py_library(
 tf_python_pybind_extension(
     name = "flags_pybind",
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
-    module_name = "flags_pybind",
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -3966,7 +3948,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_sanitizers",
     srcs = ["sanitizers_wrapper.cc"],
-    module_name = "_pywrap_sanitizers",
     deps = [
         "@pybind11",
     ],
@@ -4026,7 +4007,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/python/util:util_hdr",
     ],
-    module_name = "_pywrap_tfe",
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or
     # deps, then you can use cc_header_only_library to keep only headers.
@@ -4080,7 +4060,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_parallel_device",
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -4095,6 +4074,31 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_dtensor_device",
+    srcs = ["pywrap_dtensor_device.cc"],
+    features = ["-layering_check"],
+    deps = [
+        ":pywrap_densor_device_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "pywrap_densor_device_headers",
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
     ],
 )
 
@@ -4416,11 +4420,6 @@ alias(
 )
 
 alias(
-    name = "is_tfrt_test_true",
-    actual = "//tensorflow/python/framework:is_tfrt_test_true",
-)
-
-alias(
     name = "tfrt_utils",
     actual = "//tensorflow/python/framework:tfrt_utils",
 )
@@ -4522,6 +4521,21 @@ alias(
 )
 
 alias(
+    name = "checkpoint",
+    actual = "//tensorflow/python/checkpoint:checkpoint",
+)
+
+alias(
+    name = "checkpoint_lib",
+    actual = "//tensorflow/python/checkpoint:checkpoint_lib",
+)
+
+alias(
+    name = "trackable",
+    actual = "//tensorflow/python/trackable:trackable",
+)
+
+alias(
     name = "training",
     actual = "//tensorflow/python/training:training",
 )
@@ -4587,17 +4601,12 @@ alias(
     actual = "//tensorflow/python/layers:layers",
 )
 
-# copybara:uncomment_begin(google-only)
-# # FIXME(b/189332820): Link the target when it is available on OSS.
-# py_library(
-#     name = "dtensor",
-#     deps = [
-#         "//tensorflow/dtensor/python:core",
-#         "//tensorflow/dtensor/python:mesh_util",
-#         "//tensorflow/dtensor/python:tpu_util",
-#     ],
-# )
-# copybara:uncomment_end
+py_library(
+    name = "dtensor",
+    deps = [
+        "//tensorflow/dtensor/python:core",
+    ],
+)
 
 py_library(
     name = "learning_rate_decay",

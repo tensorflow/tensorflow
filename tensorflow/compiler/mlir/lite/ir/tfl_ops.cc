@@ -998,7 +998,7 @@ LogicalResult FullyConnectedOp::verify() {
   // Input's element size must be multiple of parameter's z_in dimension.
   const int z_in = filter_type.getDimSize(1);
   const int num_input_elements = input_type.getNumElements();
-  if (num_input_elements % z_in != 0) {
+  if (z_in != 0 && num_input_elements % z_in != 0) {
     return op.emitOpError(llvm::formatv(
                "expect 'input' num_elements % {0} == 0, got input type ", z_in))
            << input_type;
@@ -1021,7 +1021,7 @@ LogicalResult FullyConnectedOp::verify() {
              << output_type;
     }
 
-    if (num_input_elements / z_in != num_output_elements / z_out) {
+    if (z_in != 0 && num_input_elements / z_in != num_output_elements / z_out) {
       return op.emitOpError(
           "num_input_elements / z_in != num_output_elements / z_out");
     }
@@ -3640,16 +3640,6 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other
   // than constant hoisting initially.
   return false;
-}
-
-LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
-  if (ops.empty()) return success();
-
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

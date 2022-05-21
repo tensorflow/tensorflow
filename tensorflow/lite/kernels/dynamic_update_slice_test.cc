@@ -91,7 +91,7 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF32) {
                      7, 8, 9});
   m.SetUpdate<float>({-1, -2});
   m.SetStartIndices<int32_t>({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({1, 2, 3,   //
                                                4, -1, 6,  //
@@ -107,7 +107,7 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI1) {
                     true, true, true});
   m.SetUpdate<bool>({false, false});
   m.SetStartIndices<int32_t>({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, true, true,   //
                                                      true, false, true,  //
                                                      true, false, true}));
@@ -122,7 +122,7 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI8) {
                       7, 8, 9});
   m.SetUpdate<int8_t>({-1, -2});
   m.SetStartIndices<int32_t>({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({1, 2, 3,   //
                                                        4, -1, 6,  //
                                                        7, -2, 9}));
@@ -137,7 +137,7 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI32) {
                        7, 8, 9});
   m.SetUpdate<int32_t>({-1, -2});
   m.SetStartIndices<int32_t>({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({1, 2, 3,   //
                                                         4, -1, 6,  //
                                                         7, -2, 9}));
@@ -152,7 +152,7 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI64) {
                        7, 8, 9});
   m.SetUpdate<int64_t>({-1, -2});
   m.SetStartIndices<int32_t>({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({1, 2, 3,   //
                                                         4, -1, 6,  //
                                                         7, -2, 9}));
@@ -168,7 +168,7 @@ TEST(DynamicUpdateSliceOpTest, BoundaryTest) {
   m.SetUpdate<float>({-1, -2,  //
                       -3, -4});
   m.SetStartIndices<int32_t>({2, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({1, 2, 3,    //
                                                4, -1, -2,  //

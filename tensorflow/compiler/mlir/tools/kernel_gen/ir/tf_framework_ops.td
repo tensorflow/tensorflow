@@ -39,6 +39,7 @@ def TFFramework_Dialect : Dialect {
     static constexpr size_t kAllocationAlignment = 16;
   }];
 
+  let useDefaultTypePrinterParser = 1;
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 

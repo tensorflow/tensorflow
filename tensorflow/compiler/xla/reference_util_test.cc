@@ -101,6 +101,16 @@ TEST_F(ReferenceUtilTest, MapArray2D) {
                                        ErrorSpec(0.0001));
 }
 
+TEST_F(ReferenceUtilTest, MapArray3D) {
+  auto identity = [](float value) { return std::log(std::exp(value)); };
+  Array3D<float> input(2, 3, 4);
+  input.FillIota(0);
+  auto result = ReferenceUtil::MapArray3D(input, identity);
+  auto actual_literal = LiteralUtil::CreateR3FromArray3D(*result);
+  LiteralTestUtil::ExpectR3NearArray3D(input, actual_literal,
+                                       ErrorSpec(0.0001));
+}
+
 TEST_F(ReferenceUtilTest, MapWithIndexArray2D) {
   auto add_index = [](float value, int64_t row, int64_t col) {
     return value + row + col;

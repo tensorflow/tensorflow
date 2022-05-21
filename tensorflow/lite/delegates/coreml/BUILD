@@ -31,9 +31,7 @@ objc_library(
         "Foundation",
         "CoreML",
     ],
-    deps = [
-        ":mlmodel_proto_cc",
-    ],
+    deps = [":mlmodel_proto_cc"],
 )
 
 cc_library(

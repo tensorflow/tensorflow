@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 
 #include <deque>
-#include <memory>
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -147,6 +146,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           mu_(std::make_shared<mutex>()),
           cond_var_(std::make_shared<condition_variable>()),
           buffer_size_min_(params.dataset->buffer_size_min_),
+          auto_tuner_(params.dataset->buffer_size_, buffer_size_min_),
           legacy_autotune_(params.dataset->legacy_autotune_),
           // If `legacy_autotune_`, initialize the `buffer_size_` value to be 0
           // to avoid the created node to be collected as tunable nodes in the
@@ -164,10 +164,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
-      auto_tuner_ = absl::make_unique<PrefetchAutotuner>(
-          ctx->model(), model_node(), dataset()->buffer_size_,
-          buffer_size_min_);
       interleave_depth_ = ctx->interleave_depth();
+
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = buffer_size_min_;
       }
@@ -190,26 +188,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
-        if (legacy_autotune_) {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 auto_tuner_->buffer_limit() != 0) {
-            auto_tuner_->RecordEmpty();
-            buffer_size_->value = auto_tuner_->buffer_limit();
-            RecordStop(ctx);
-            cond_var_->wait(l);
-            RecordStart(ctx);
+        while (buffer_.empty() && !prefetch_thread_finished_ &&
+               buffer_limit() != 0) {
+          if (legacy_autotune_) {
+            auto_tuner_.RecordEmpty();
+            buffer_size_->value = auto_tuner_.buffer_limit();
           }
-        } else {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 buffer_size_->value != 0) {
-            RecordStop(ctx);
-            cond_var_->wait(l);
-            RecordStart(ctx);
-          }
-        }
-
-        if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          RecordStop(ctx);
+          cond_var_->wait(l);
+          RecordStart(ctx);
         }
 
         if (!buffer_.empty()) {
@@ -375,7 +362,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     int64_t buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (legacy_autotune_) {
-        return auto_tuner_->buffer_limit();
+        return auto_tuner_.buffer_limit();
       }
       return buffer_size_->value;
     }
@@ -437,8 +424,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         RecordBufferDequeue(ctx, buffer_.front().value);
       }
       if (legacy_autotune_) {
-        auto_tuner_->RecordConsumption(buffer_.size());
-        buffer_size_->value = auto_tuner_->buffer_limit();
+        auto_tuner_.RecordConsumption(buffer_.size());
+        buffer_size_->value = auto_tuner_.buffer_limit();
       }
       buffer_.pop_front();
       *end_of_sequence = false;
@@ -586,9 +573,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
     const int64_t buffer_size_min_;
-    std::unique_ptr<PrefetchAutotuner> auto_tuner_ TF_GUARDED_BY(*mu_);
+    PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
-    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
@@ -606,6 +592,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const DatasetBase* const input_;

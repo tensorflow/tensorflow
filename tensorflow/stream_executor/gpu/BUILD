@@ -19,6 +19,7 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/tf2xla:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],

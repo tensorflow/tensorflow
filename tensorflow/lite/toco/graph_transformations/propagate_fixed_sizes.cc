@@ -371,7 +371,9 @@ void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_GE(input_shape.dimensions_count(), 1);
+  if (input_shape.dimensions_count() < 1) {
+    return;
+  }
 
   const auto& weights_array = model->GetArray(op->inputs[1]);
   // Yield until weights dims have been resolved.

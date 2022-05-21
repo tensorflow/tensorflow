@@ -259,7 +259,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 #undef TF_LITE_MUL
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Unsupported combination of input and output types in Mul.");
     return kTfLiteError;
   }
@@ -290,10 +290,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
   } else {
-    context->ReportError(context,
-                         "Mul only supports FLOAT32, INT32 and quantized UINT8,"
-                         " INT8 and INT16 now, got %d.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(context,
+                       "Mul only supports FLOAT32, INT32 and quantized UINT8,"
+                       " INT8 and INT16 now, got %d.",
+                       output->type);
     return kTfLiteError;
   }
 

@@ -95,7 +95,7 @@ class GenericTypeConvert : public ConversionPattern {
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override {
     llvm::SmallVector<Type, 4> newResults;
-    if (isa<FuncOp>(op)) {
+    if (isa<func::FuncOp>(op)) {
       return failure();
     }
 
@@ -110,7 +110,7 @@ class GenericTypeConvert : public ConversionPattern {
           newRegion->getArgumentTypes(), result);
       rewriter.applySignatureConversion(newRegion, result);
     }
-    Operation* newOp = rewriter.createOperation(state);
+    Operation* newOp = rewriter.create(state);
     rewriter.replaceOp(op, newOp->getResults());
     return success();
   }
@@ -131,7 +131,7 @@ void StripQuantTypes::runOnOperation() {
   target.addIllegalDialect<quant::QuantizationDialect>();
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
-    if (auto funcOp = dyn_cast<FuncOp>(op)) {
+    if (auto funcOp = dyn_cast<func::FuncOp>(op)) {
       for (Type type : funcOp.getFunctionType().getInputs()) {
         if (isIllegalType(type)) return false;
       }
@@ -153,7 +153,8 @@ void StripQuantTypes::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   patterns.add<GenericTypeConvert>(ctx, converter);
-  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
 
   if (failed(applyFullConversion(func, target, std::move(patterns)))) {
     signalPassFailure();
@@ -162,7 +163,7 @@ void StripQuantTypes::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createStripQuantTypesPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass() {
   return std::make_unique<StripQuantTypes>();
 }
 }  // namespace tosa

@@ -2,7 +2,7 @@
 
 module attributes {tf_saved_model.semantics}  {
   // CHECK-LABEL: func @main
-  func @main_func() -> (tensor<*xf32> {tf_saved_model.index_path = ["a"]}) attributes {tf_saved_model.exported_names = ["main_func"]} {
+  func.func @main_func() -> (tensor<*xf32> {tf_saved_model.index_path = ["a"]}) attributes {tf_saved_model.exported_names = ["main_func"]} {
     %0 = tf_executor.graph {
       %outputs_0, %control_0 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = ""} : () -> tensor<!tf_type.resource<tensor<501000x128xf32>>>
       %outputs_1, %control_1 = tf_executor.island wraps "tf.Cast"(%outputs_0) {Truncate = false} : (tensor<!tf_type.resource<tensor<501000x128xf32>>>) -> tensor<*x!tf_type.resource>
@@ -16,7 +16,7 @@ module attributes {tf_saved_model.semantics}  {
     }
     func.return %0 : tensor<*xf32>
   }
-  func private @batched_func(%arg0: tensor<*x!tf_type.resource>) -> tensor<?xf32> {
+  func.func private @batched_func(%arg0: tensor<*x!tf_type.resource>) -> tensor<?xf32> {
     %0 = tf_executor.graph {
       %outputs_0, %control_0 = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource>) -> tensor<?xf32>
       tf_executor.fetch %outputs_0 : tensor<?xf32>

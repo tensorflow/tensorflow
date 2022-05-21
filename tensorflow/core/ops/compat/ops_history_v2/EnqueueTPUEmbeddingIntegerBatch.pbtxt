@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "EnqueueTPUEmbeddingIntegerBatch"
   input_arg {
     name: "batch"

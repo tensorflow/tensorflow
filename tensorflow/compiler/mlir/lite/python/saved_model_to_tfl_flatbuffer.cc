@@ -52,8 +52,8 @@ namespace tensorflow {
 Status HandleInputOutputArraysWithModule(
     const toco::ModelFlags& model_flags,
     mlir::OwningOpRef<mlir::ModuleOp>* module) {
-  mlir::FuncOp entry_function = nullptr;
-  for (auto func : module->get().getOps<mlir::FuncOp>()) {
+  mlir::func::FuncOp entry_function = nullptr;
+  for (auto func : module->get().getOps<mlir::func::FuncOp>()) {
     if (auto tf_attrs =
             func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
       // TODO(b/184697652): There could be multiple entry functions. Let's

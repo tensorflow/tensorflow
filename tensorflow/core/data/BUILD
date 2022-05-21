@@ -26,6 +26,8 @@ exports_files([
     "dataset_utils.h",
     "finalization_utils.cc",
     "finalization_utils.h",
+    "metric_utils.cc",
+    "metric_utils.h",
     "name_utils.cc",
     "name_utils.h",
     "rewrite_utils.cc",
@@ -201,6 +203,35 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "metric_utils",
+    srcs = ["metric_utils.cc"],
+    hdrs = ["metric_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data:utils",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:thread_annotations",
+    ],
+)
+
+tf_cc_test(
+    name = "metric_utils_test",
+    size = "small",
+    srcs = ["metric_utils_test.cc"],
+    deps = [
+        ":metric_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/lib/monitoring:test_utils",
+        "//tensorflow/core/platform:env",
     ],
 )
 

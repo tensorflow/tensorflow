@@ -523,6 +523,9 @@ Status RewriteWhileNode(Node* n, Graph* g,
   if (parallel_iterations_attr == nullptr) {
     return errors::InvalidArgument("parallel_iterations attr missing");
   }
+  if (parallel_iterations_attr->i() < 1) {
+    return errors::InvalidArgument("parallel_iterations must be > 0");
+  }
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
       n, cond_attr->func(), body_attr->func(), parallel_iterations_attr->i(), g,

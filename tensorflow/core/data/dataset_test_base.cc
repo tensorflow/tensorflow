@@ -303,9 +303,19 @@ Status DatasetOpsTestBase::CreateOpKernel(
   std::shared_ptr<const NodeProperties> props;
   TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
       node_def, flr_->GetFunctionLibraryDefinition(), &props));
+  // Apply attribute defaults.
+  auto props_with_defaults = std::make_shared<NodeProperties>(*props);
+  for (const auto& attr : props->op_def->attr()) {
+    if (attr.has_default_value() &&
+        !props->node_def.attr().contains(attr.name())) {
+      (*props_with_defaults->node_def.mutable_attr())[attr.name()] =
+          attr.default_value();
+    }
+  }
   TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
       device_type_, device_.get(), allocator_, flr_,
-      device_->resource_manager(), props, TF_GRAPH_DEF_VERSION, &kernel));
+      device_->resource_manager(), props_with_defaults, TF_GRAPH_DEF_VERSION,
+      &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }
@@ -1023,6 +1033,7 @@ Status RangeDatasetParams::GetInputNames(
 Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{"output_types", output_dtypes_},
                   {"output_shapes", output_shapes_},
+                  {"replicate_on_split", false},
                   {"metadata", ""}};
   return Status::OK();
 }
@@ -1106,6 +1117,7 @@ Status TensorSliceDatasetParams::GetAttributes(
   *attr_vector = {{"Toutput_types", output_dtypes_},
                   {"output_shapes", output_shapes_},
                   {"is_files", is_files_},
+                  {"replicate_on_split", false},
                   {"metadata", ""}};
   return Status::OK();
 }

@@ -113,17 +113,18 @@ def reduce_non_distributed_value(reduce_op,
 
 def _make_tensor_into_per_replica(input_tensor):
   """Converts a single tensor into a PerReplica object."""
-  if isinstance(input_tensor, (tuple, list)):
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object, "
-                     "got %r but expected a object that is not a tuple or list."
-                     % (input_tensor,))
-  if isinstance(input_tensor, value_lib.PerReplica):
+  if isinstance(input_tensor, value_lib.DistributedValues):
     return input_tensor
-  elif hasattr(input_tensor, "device"):
+
+  # If input is not a Tensor, convert it to a Tensor first.
+  if not tensor_util.is_tensor(input_tensor):
+    input_tensor = ops.convert_to_tensor(input_tensor)
+
+  if hasattr(input_tensor, "device"):
     return value_lib.PerReplica((input_tensor,))
-  else:
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
-                     "because it doesn't have device set.")
+
+  raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
+                   "because it doesn't have device set.")
 
 
 def _normalize_value_destination_pairs(value_destination_pairs):
@@ -298,8 +299,8 @@ class CrossDeviceOps(object):
     """
     if options is None:
       options = collective_util.Options()
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -347,8 +348,7 @@ class CrossDeviceOps(object):
     if options is None:
       options = collective_util.Options()
 
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -936,10 +936,11 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
 
   def _gather_implementation(self, per_replica_value, destinations, axis,
                              options):
-    logging.warning("gather/all_gather with NCCL or HierarchicalCopy is not "
-                    "supported. Falling back to gather on one device and "
-                    "then broadcast. We're working on a more efficient "
-                    "implementation.")
+    logging.log_first_n(
+        logging.WARN,
+        "gather/all_gather with NCCL or HierarchicalCopy is not supported. "
+        "Falling back to gather on one device and then broadcast. We're working"
+        " on a more efficient implementation.", 3)
     return ReductionToOneDevice()._gather(per_replica_value, destinations, axis,  # pylint: disable=protected-access
                                           options)
 

@@ -69,8 +69,8 @@ class MemoryUsageMonitorTest : public ::testing::Test {
                 new FakeMemoryUsageSampler(&num_sleeps_))));
   }
 
-  std::unique_ptr<MemoryUsageMonitor> monitor_ = nullptr;
   int64_t num_sleeps_ = 0;
+  std::unique_ptr<MemoryUsageMonitor> monitor_ = nullptr;
 };
 
 TEST_F(MemoryUsageMonitorTest, StartAndStop) {

@@ -85,7 +85,14 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime:worker_env",
     ] + tf_grpc_cc_dependencies(),
 )
 

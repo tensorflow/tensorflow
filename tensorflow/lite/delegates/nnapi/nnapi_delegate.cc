@@ -576,11 +576,11 @@ TfLiteStatus GetDeviceHandle(const NnApi* nnapi, TfLiteContext* context,
     }
   }
 
-  context->ReportError(context,
-                       "Could not find the specified NNAPI accelerator: %s. "
-                       "Must be one of: {%s}.",
-                       device_name_ptr,
-                       nnapi::GetStringDeviceNamesList(nnapi).c_str());
+  TF_LITE_KERNEL_LOG(context,
+                     "Could not find the specified NNAPI accelerator: %s. "
+                     "Must be one of: {%s}.",
+                     device_name_ptr,
+                     nnapi::GetStringDeviceNamesList(nnapi).c_str());
   return kTfLiteError;
 }
 
@@ -1617,10 +1617,10 @@ class NNAPIOpBuilder {
         *type = kTfLiteFloat32;
         return kTfLiteOk;
       default:
-        context->ReportError(context,
-                             "NN API Delegate: Can't get an equivalent TF Lite "
-                             "type for provided NN API type: %d.\n",
-                             nn_type);
+        TF_LITE_KERNEL_LOG(context,
+                           "NN API Delegate: Can't get an equivalent TF Lite "
+                           "type for provided NN API type: %d.\n",
+                           nn_type);
         return kTfLiteError;
     }
   }
@@ -3644,13 +3644,17 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       const int input_id = mapping_args.node->inputs->data[/*kInputTensor*/ 0];
       const int filter_id =
           mapping_args.node->inputs->data[/*kWeightsTensor*/ 1];
-      const int input_channels = context->tensors[input_id].dims->data[3];
-      const int filter_input_channels =
-          context->tensors[filter_id].dims->data[3];
-      bool is_grouped_conv = input_channels != filter_input_channels;
+      const auto& input_tensor = context->tensors[input_id];
+      const auto& filter_tensor = context->tensors[filter_id];
+      auto is_grouped_conv = false;
+      // Only check grouped convolution if input and filter shape is propagated.
+      if (input_tensor.dims->size != 0 && filter_tensor.dims->size != 0) {
+        is_grouped_conv =
+            input_tensor.dims->data[3] != filter_tensor.dims->data[3];
+      }
       if (is_grouped_conv) {
-        mapping_args.builder->AddScalarInt32Operand(input_channels /
-                                                    filter_input_channels);
+        mapping_args.builder->AddScalarInt32Operand(
+            input_tensor.dims->data[3] / filter_tensor.dims->data[3]);
       }
       mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // NNAPI supports dilated Conv2D since NNAPI 1.2.
@@ -4474,7 +4478,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                            nnapi_errno, &nnapi_devices_));
 
     if (nnapi_devices_.empty()) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "NNAPI delegate requested but no accelerators available.");
       return kTfLiteError;
     }
@@ -5806,8 +5810,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
             }
             break;
           default:
-            context->ReportError(context,
-                                 "Unsupported type of pad value for pad_v2\n");
+            TF_LITE_KERNEL_LOG(context,
+                               "Unsupported type of pad value for pad_v2\n");
             return kTfLiteError;
         }
         continue;

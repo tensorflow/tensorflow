@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Library imports for CoordinatedCheckpointManager."""
+"""Library imports for WorkerPreemptionHandler."""
 
-from tensorflow.python.distribute.failure_handling.failure_handling import CoordinatedCheckpointManager
+from tensorflow.python.distribute.failure_handling.failure_handling import WorkerPreemptionHandler

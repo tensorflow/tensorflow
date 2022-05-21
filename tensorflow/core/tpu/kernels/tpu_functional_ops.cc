@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 #define EIGEN_USE_THREADS
 
@@ -591,6 +593,20 @@ string GetProducerName(const string& function_name) {
       absl::StrContains(function_name, "_optim"))
     return "TPU_INFERENCE_CONVERTER";
   return "UNKNOWN";
+}
+
+// Gets the proper tensor dimension from XLA OpSharding.
+// "replicate_on_last_tile_dim" and "last_tile_dims" should be deducted from the
+// real Tensor dimensions when tiled.
+// For example:
+// f32[8,512](sharding={devices=[1,1,2]0,1 last_tile_dims={REPLICATED})
+// also means a replicated tensor over all devices.
+//
+// See xla_data.proto for detailed explanations on the fields.
+int GetDimsFromXLAShardingTiled(const xla::OpSharding xla_sharding) {
+  return xla_sharding.tile_assignment_dimensions_size() -
+         (xla_sharding.replicate_on_last_tile_dim() ? 1 : 0) -
+         xla_sharding.last_tile_dims_size();
 }
 
 }  // end namespace
@@ -1762,7 +1778,9 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   if (sharding.has_value() &&
       sharding.value().type() == xla::OpSharding::OTHER) {
     xla_sharding = sharding.value();
-    is_var_sharded = true;
+    for (int dim = 0; dim < GetDimsFromXLAShardingTiled(xla_sharding); dim++) {
+      is_var_sharded |= xla_sharding.tile_assignment_dimensions(dim) > 1;
+    }
   } else {
     xla_sharding.set_type(xla::OpSharding::REPLICATED);
     is_var_sharded = false;
@@ -1775,9 +1793,9 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
 
   int split_dim = -1;
   int split_size = 0;
+
   if (is_var_sharded) {
-    for (int dim = 0; dim < xla_sharding.tile_assignment_dimensions_size();
-         dim++) {
+    for (int dim = 0; dim < GetDimsFromXLAShardingTiled(xla_sharding); dim++) {
       if (xla_sharding.tile_assignment_dimensions(dim) > 1) {
         if (split_dim != -1) {
           return errors::InvalidArgument(
@@ -2264,6 +2282,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
         int num_cores = topology.device_coordinates_size() / 4;
 
         if (device_assignment.empty()) {
+          VLOG(1) << "Auto assigning device assignment";
           // Number of devices match the cores per replica, so we can just use
           // the device assignment from the existing topology instead of
           // generating our own.
@@ -2273,26 +2292,52 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
           // check that the device coordinates for a donut is always in
           // natural order.
           std::vector<int> natural_order;
+          // Be smart about mesh choice considering TPU platform, given V4
+          // has potentially different mesh shapes.
+          tpu::TpuPlatformInterface* tpu_platform =
+              tpu::TpuPlatformInterface::GetRegisteredPlatform();
+          tpu::TpuTopologyExternal tpu_topology = tpu_platform->topology();
+          bool single_logic_device_per_chip =
+              tpu_topology.LogicalDevicesPerChip(
+                  TpuCoreTypeEnum::kTensorCore) == 1;
           switch (num_cores) {
             case 2:
-              TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                  /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
-                  /*num_cores_per_chip=*/2, &natural_order));
+              if (single_logic_device_per_chip) {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/1, &natural_order));
+              } else {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/2, &natural_order));
+              }
               break;
-            case 4:  // we assume this is a device with one core per chip.
-              TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                  /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                  /*num_cores_per_chip=*/1, &natural_order));
+            case 4:
+              if (single_logic_device_per_chip) {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/1, &natural_order));
+              } else {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/2, &natural_order));
+              }
               break;
             case 8:
-              TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                  /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                  /*num_cores_per_chip=*/2, &natural_order));
-              break;
+              if (!single_logic_device_per_chip) {
+                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
+                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
+                    /*num_cores_per_chip=*/2, &natural_order));
+                break;
+              }
+              // Intentionally fall through since with v4 shape and 8 cores per
+              // replica, we're crossing host bounds -- so we ask for a explicit
+              // device assignment.
+              ABSL_FALLTHROUGH_INTENDED;
             default:
               return errors::Unimplemented(
-                  "You must specify a device assignment for all TPU "
-                  "configurations.");
+                  "Unable to auto assign device assignment. For topology cross "
+                  "host bounds, you must explicit specify an assignment.");
           }
           if (*num_core_per_replica != num_cores &&
               !std::equal(natural_order.begin(), natural_order.end(),

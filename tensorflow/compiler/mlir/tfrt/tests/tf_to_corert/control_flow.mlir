@@ -1,21 +1,21 @@
 // RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @cond_false(%arg0: !tfrt.chain, %arg1: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-func @cond_false(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @cond_false(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<-1> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
 // CHECK-LABEL: func @cond_true(%arg0: !tfrt.chain, %arg1: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-func @cond_true(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @cond_true(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
 // CHECK-LABEL: func @cond(%arg0: !tfrt.chain, %arg1: !corert.tensorhandle, %arg2: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-func @cond(%arg0: tensor<i1>, %arg1: tensor<i32>) -> tensor<i32> {
+func.func @cond(%arg0: tensor<i1>, %arg1: tensor<i32>) -> tensor<i32> {
   // CHECK: [[cond:%.*]] = tfrt_fallback_async.predicate
   // CHECK: [[cond_res:%.*]]:2 = tfrt.cond [[cond]]
   // CHECK-SAME: @cond_true @cond_false(%arg0, %arg2) : (!tfrt.chain, !corert.tensorhandle)
@@ -26,7 +26,7 @@ func @cond(%arg0: tensor<i1>, %arg1: tensor<i32>) -> tensor<i32> {
 }
 
 // CHECK-LABEL: func @cond_stateful(%arg0: !tfrt.chain, %arg1: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Less"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK: [[cond_res:%.*]]:2 = tfrt.cond
@@ -39,7 +39,7 @@ func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @while_cond_lt9
 // CHECK-SAME: ({{%.+}}: !tfrt.chain, {{%.+}}: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
+func.func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Less"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   func.return %1 : tensor<i1>
@@ -47,7 +47,7 @@ func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
 
 // CHECK-LABEL: func @while_body_add2
 // CHECK-SAME: ({{%.+}}: !tfrt.chain, {{%.+}}: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
@@ -55,7 +55,7 @@ func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @while_test
 // CHECK-SAME: ([[ARG0:%.+]]: !tfrt.chain) -> (!tfrt.chain, !corert.tensorhandle)
-func @while_test() -> (tensor<i32>) {
+func.func @while_test() -> (tensor<i32>) {
   // CHECK: [[CONST:%.+]] = corert.const_dense_tensor dense<0> : tensor<i32>
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[ARG0]], [[CONST]]) : (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, i1)
@@ -79,7 +79,7 @@ func @while_test() -> (tensor<i32>) {
 // CHECK: tfrt.return [[cond_res]]#0, [[bool_cond]] : !tfrt.chain, i1
 
 // CHECK-LABEL: func @multi_while_test
-func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
+func.func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_0:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"
@@ -91,13 +91,13 @@ func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   func.return %2, %3 : tensor<i32>, tensor<i32>
 }
 
-func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
+func.func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
   func.return %arg0: tensor<i32>
 }
 
 // CHECK-LABEL: func @call_test
 // CHECK-SAME: ([[chain:%.*]]: !tfrt.chain,
-func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+func.func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   %0 = "tf.Add"(%arg0, %arg0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[results_0:%.*]]:2 = tfrt.call @callee([[chain]]
   // CHECK-SAME: (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
@@ -109,22 +109,27 @@ func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   func.return %1, %2 : tensor<i32>, tensor<i32>
 }
 
-func @branch0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @branch0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Add" (%arg0, %arg1) {device = "/device:CPU:0"}  : (tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
-func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Add" (%arg0, %arg1) {device = "/device:CPU:0"}  : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %1 = "tf.Add" (%arg0, %0) {device = "/device:CPU:0"}  : (tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %1 : tensor<f32>
 }
 
-// CHECK-LABEL: func @case_test
-// CHECK-SAME: ([[chain:%.*]]: !tfrt.chain, [[idx:%.*]]: !corert.tensorhandle, [[arg:%.*]]: !corert.tensorhandle
-func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[res_idx:%.*]] = corert.tensorhandle_to_int32 [[idx:%.*]]
-  // CHECK-NEXT: [[out_chain:%.*]], [[out:%.*]] = tfrt.case [[res_idx:%.*]] [@branch0, @branch1]([[arg:%.*]]
+// CHECK-LABEL: func @case_test(
+// CHECK-SAME:                    arg0: !tfrt.chain,
+// CHECK-SAME:                    arg1: !corert.tensorhandle,
+// CHECK-SAME:                    arg2: !corert.tensorhandle,
+// CHECK-SAME:                    arg3: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle) {
+func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>) -> tensor<f32> {
+  // CHECK:           %[[res_idx:[^ ]+]] = corert.tensorhandle_to_int32 %arg1
+  // CHECK:           %[[case_out:[^ ]+]]:2 = tfrt.case %[[res_idx]] [@branch0, @branch1](%arg0, %arg2, %arg3) : (!tfrt.chain, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
+  // CHECK:           %[[out_chain:[^ ]+]] = tfrt.merge.chains %[[case_out]]#0, %arg0 : !tfrt.chain, !tfrt.chain
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK:           tfrt.return %[[out_chain]], %[[case_out]]#1 : !tfrt.chain, !corert.tensorhandle
   func.return %0 : tensor<f32>
 }

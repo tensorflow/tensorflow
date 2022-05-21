@@ -85,7 +85,7 @@ TEST(LSHProjectionOpTest2, Dense1DInputs) {
   m.SetHash({0.123, 0.456, -0.321, 1.234, 5.678, -4.321});
   m.SetWeight({1.0, 1.0, 1.0, 1.0, 1.0});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -102,7 +102,7 @@ TEST(LSHProjectionOpTest2, Sparse1DInputs) {
   m.SetInput({12345, 54321, 67890, 9876, -12345678});
   m.SetHash({0.123, 0.456, -0.321, 1.234, 5.678, -4.321});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -121,7 +121,7 @@ TEST(LSHProjectionOpTest2, Sparse3DInputs) {
   m.SetHash({0.123, 0.456, -0.321, 1.234, 5.678, -4.321});
   m.SetWeight({0.12, 0.34, 0.56, 0.67, 0.78});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__

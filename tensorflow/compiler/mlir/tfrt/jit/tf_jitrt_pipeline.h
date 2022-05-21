@@ -24,6 +24,9 @@ namespace tensorflow {
 
 struct TfJitRtPipelineOptions
     : public mlir::PassPipelineOptions<TfJitRtPipelineOptions> {
+  Option<bool> one_shot_bufferize{
+      *this, "one-shot-bufferize",
+      llvm::cl::desc("Enable one-shot bufferization."), llvm::cl::init(false)};
   Option<bool> vectorize{*this, "vectorize",
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
@@ -46,8 +49,7 @@ struct TfJitRtPipelineOptions
 
   ListOption<int64_t> reduction_2d_tile_sizes{
       *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore,
-      llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore};
 
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",

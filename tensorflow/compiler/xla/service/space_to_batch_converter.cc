@@ -111,7 +111,7 @@ class ConvolutionVisitor {
   // Returns false if the opcode should definitely not be propagated upon.
   bool IsOpcodeNonPropagatable(HloInstruction* consumer);
 
-  // This function checks if the HLO instrution supports propagation.
+  // This function checks if the HLO instruction supports propagation.
   bool SupportedOpForPropagation(HloInstruction* consumer,
                                  HloInstruction* producer);
 
@@ -1653,7 +1653,7 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
               << window.dimensions().size();
       return false;
     }
-    // Disallow windowing on on the batch dim
+    // Disallow windowing on the batch dim
     auto result = instr_to_dim_map_[first_operand];
     const int64_t old_batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
     const int64_t old_space_dim =

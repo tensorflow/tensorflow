@@ -233,6 +233,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
                        (self, other))
     return result
 
+  # TODO(b/226395276): Delete after removing usages.
   def _with_tensor_ranks_only(self) -> "TypeSpec":
     """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
 
@@ -472,10 +473,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
   # argument not a TensorSpec argument as it should be.
   def __tf_tracing_type__(self,
                           context: trace.TracingContext) -> trace.TraceType:
-    if context.include_tensor_ranks_only:
-      return self._with_tensor_ranks_only()
-    else:
-      return self
+    return self
 
   def __check_tensor_list(self, tensor_list):
     """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""
@@ -740,6 +738,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
     """
     raise NotImplementedError(f"{type(self).__name__}._unbatch")
 
+# LINT.IfChange
   @property
   def _flat_tensor_specs(self) -> List[TypeSpec]:
     """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
@@ -747,6 +746,9 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
         functools.partial(get_batchable_flat_tensor_specs, context_spec=self),
         self._component_specs)
     return nest.flatten(component_flat_tensor_specs)
+# LINT.ThenChange(//tensorflow/python/framework/type_utils.py:_specs_for_flat_tensors)
+# Note that _specs_for_flat_tensors in type_utils.py must correspond
+# _flat_tensor_specs in this class and any derived classes.
 
   def _to_tensor_list(
       self,

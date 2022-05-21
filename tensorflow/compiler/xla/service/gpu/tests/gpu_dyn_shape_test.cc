@@ -37,7 +37,7 @@ TEST_F(GpuDynamicShapeTest, DynamicShapeR2) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: is_thred_0-true
+; CHECK-LABEL: is_thread_0-true
 ; CHECK_LABEL: custom-call.in_dyn_bounds-true
 ; CHECK_LABEL: custom-call.in_bounds-true
 ; CHECK: %[[dyn_dim_size:.*]] = load i32, i32*

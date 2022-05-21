@@ -24,7 +24,7 @@ func.func @different_predicate_no_merge() {
      }) {is_stateless = true} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that IfRegions with same predicates but different block are not merged.
@@ -60,7 +60,7 @@ func.func @different_block_no_merge() {
     }) {is_stateless = false} : (tensor<i32>, tensor<?xf32>) -> (tensor<i32>, tensor<?xf32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that IfRegions with same predicates and no returns are merged.
@@ -89,7 +89,7 @@ func.func @same_predicate_no_returns_merged() {
      }) {is_stateless = true, _else_func_name = "elseFunc2", _then_func_name = "thenFunc2"} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that IfRegions with same predicate intermediate data dependency are not merged.
@@ -118,7 +118,7 @@ func.func @same_predicate_intermediate_dependency_no_merge() {
      }) {is_stateless = true} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that IfRegions with same predicate intermediate side effect dependency are not merged.
@@ -146,7 +146,7 @@ func.func @same_predicate_side_effect_dependency_no_merge() {
      }) {is_stateless = false} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that merged IfRegions correctly set is_stateless attribute.
@@ -174,7 +174,7 @@ func.func @same_predicate_stateless_merge() {
      }) {is_stateless = false} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that IfRegions with same predicates and returns are merged.
@@ -211,7 +211,7 @@ func.func @same_predicate_returns_merged() {
     "tf.E"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 // Check that IfRegions with same predicates and unused returns.
 
@@ -247,7 +247,7 @@ func.func @same_predicate_returns_unused() {
     "tf.E"(%2) : (tensor<i32>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @same_predicate_dependency
@@ -282,7 +282,7 @@ func.func @same_predicate_dependency() {
     "tf.E"(%2) : (tensor<i32>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Checks that results from first IfRegion are moved after merged IfRegion op as needed.
@@ -324,7 +324,7 @@ func.func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f
     "tf.F"(%1, %6) : (tensor<f32>, tensor<f32>) -> ()
     tf_device.return %1 : tensor<f32>
   }) {cluster_attr = "cluster_attr"} : () -> (tensor<f32>)
-  return
+  func.return
 }
 
 // Checks that side effect successor of op in first IfRegion are moved after merged IfRegion op as needed.
@@ -364,7 +364,7 @@ func.func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tens
     "tf.F"(%1, %6) : (tensor<f32>, tensor<f32>) -> ()
     tf_device.return %8 : tensor<f32>
   }) {cluster_attr = "cluster_attr"} : () -> (tensor<f32>)
-  return
+  func.return
 }
 
 // Check that 3 IfRegions with same predicates and no intermediate dependencies are merged.
@@ -396,7 +396,7 @@ func.func @same_predicate_3_ifregions() {
     }) { is_stateless = true } : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that 3 IfRegions with same predicates where 2nd and 3rd IfRegions
@@ -437,7 +437,7 @@ func.func @same_predicate_3_ifregions_only_merge2() {
     }) { is_stateless = true } : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -479,7 +479,7 @@ func.func @same_predicate_3_ifregions_reorder() {
     }) { is_stateless = true } : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that 3 IfRegions where 1st and 3rd IfRegions
@@ -513,7 +513,7 @@ func.func @same_predicate_3_ifregions_intermediate_dep() {
     }) { is_stateless = true } : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that 3 IfRegions where 1st and 3rd IfRegions
@@ -547,7 +547,7 @@ func.func @same_predicate_3_ifregions_intermediate_side_effect() {
     }) { is_stateless = false} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check case for 4 IfRegions where 1st and 3rd IfRegions
@@ -588,7 +588,7 @@ func.func @side_effect_analysis_updated() {
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that 2 IfRegions can be merged when the first IfRegion contains multiple side effecting ops.
@@ -616,7 +616,7 @@ func.func @same_predicate_2_ifregions_multiple_side_effect_ops() {
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that the algorithm that moves ops to after the merged IfRegion is
@@ -678,7 +678,7 @@ func.func @moved_ops_with_many_dependencies() {
      }) {is_stateless = true} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 
@@ -744,7 +744,7 @@ func.func @three_if_regions_with_same_predicate_merged() {
      }) {is_stateless = false} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that IfRegion groups with nested IfRegion with the same predicate are
@@ -797,7 +797,7 @@ func.func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
       }) {is_stateless = false} : (tensor<i1>) -> (tensor<i1>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that when two different IfRegion groups are overlapped and there is no
@@ -868,7 +868,7 @@ func.func @two_overlapped_if_groups_with_no_dependency_merged() {
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that when two different IfRegion groups are overlapped and there is a
@@ -945,7 +945,7 @@ func.func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_regi
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that when two different IfRegion groups are overlapped and there is no
@@ -1021,7 +1021,7 @@ func.func @two_overlapped_if_groups_with_dependency_merged_v1() {
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that when two different IfRegion groups are overlapped and there is no
@@ -1097,7 +1097,7 @@ func.func @two_overlapped_if_groups_with_dependency_merged_v2() {
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that two IfRegion groups where each of them contains three IfRegions with
@@ -1146,7 +1146,7 @@ func.func @three_if_regions_with_same_predicate_and_correct_return_indices_merge
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that merged IfRegion will not contain unused return variables
@@ -1196,7 +1196,7 @@ func.func @three_if_regions_with_same_predicate_and_correct_return_indices_merge
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // Check that merged IfRegion will not contain unused return variables
@@ -1243,6 +1243,6 @@ func.func @one_use_between_two_IfRegions_groups() {
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 

@@ -427,6 +427,17 @@ class TPUStrategyV2(distribute_lib.Strategy):
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
 
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    `tf.distribute.TPUStrategy` provides the associated
+    `tf.distribute.cluster_resolver.ClusterResolver`. If the user provides one
+    in `__init__`, that instance is returned; if the user does not, a default
+    `tf.distribute.cluster_resolver.TPUClusterResolver` is provided.
+    """
+    return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
+
   def experimental_assign_to_logical_device(self, tensor, logical_device_id):
     """Adds annotation that `tensor` will be assigned to a logical device.
 
@@ -1331,7 +1342,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            f"`reduce_op`={reduce_op} is not supported. Currently we only "
             "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
@@ -1379,11 +1390,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       else:
         return (fn(var, *args, **kwargs),)
 
+    # Inside `tf.function`, we don't expand PackedVariable in python as it will
+    # be expanded later during function instantiation in the runtime.
+    packed_var = var._packed_variable  # pylint: disable=protected-access
+    if packed_var is not None and not context.executing_eagerly():
+      if group:
+        return fn(packed_var, *args, **kwargs)
+      else:
+        return (fn(packed_var, *args, **kwargs),)
+
     # Otherwise, we revert to MirroredStrategy behavior and update the variable
     # on each replica directly.
     updates = []
     values_and_devices = []
-    packed_var = var._packed_variable  # pylint: disable=protected-access
     if packed_var is not None:
       for device in packed_var.devices:
         values_and_devices.append((packed_var, device))

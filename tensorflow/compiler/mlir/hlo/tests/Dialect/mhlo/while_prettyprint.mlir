@@ -44,5 +44,5 @@ func.func @while_no_arg() {
   } do {
    "mhlo.return"() : () -> ()
   }
-  return
+  func.return
 }

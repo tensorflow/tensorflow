@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -132,143 +131,202 @@ class RemoveUnusedQdqPattern : public OpRewritePattern<QuantizeCastOp> {
   }
 };
 
-QuantizedType GetQuantizedTypeFromTensorType(Type type) {
-  auto tensor_type = type.dyn_cast<TensorType>();
-  if (!tensor_type) return {};
-  return tensor_type.getElementType().dyn_cast<QuantizedType>();
-}
-
-class QuantizeSameScaleOpsPattern : public RewritePattern {
+class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
  public:
   explicit QuantizeSameScaleOpsPattern(
       MLIRContext* context, OpQuantScaleSpecGetter op_quant_scale_spec_getter)
       // Set the score to a large number so it is always preferred, after
       // quantization patterns.
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/200, context),
+      : OpRewritePattern<DequantizeCastOp>(context, /*benefit=*/200),
         op_quant_scale_spec_getter_(op_quant_scale_spec_getter) {}
 
-  LogicalResult match(Operation* op) const override {
-    if (!op_quant_scale_spec_getter_(op)->has_same_scale_requirement) {
-      return failure();
-    }
+  LogicalResult matchAndRewrite(DequantizeCastOp op,
+                                PatternRewriter& rewriter) const override {
+    llvm::SmallVector<Operation*, 4> quantizing_ops;
+    auto users = op.getResult().getUsers();
+    quantizing_ops.append(users.begin(), users.end());
 
-    bool should_match = false;
-    for (const auto& operand : op->getOperands()) {
-      Type operand_type = operand.getType();
-      if (operand_type.isa<NoneType>()) {
+    bool changed = false;
+    // Rewrite the floating-point ops to the quantized version, by fusing
+    // preceding dequantize ops and succeding quantize ops.
+    for (Operation* quantizing_op : quantizing_ops) {
+      // If it is requantize op, we shouldn't rewrite this op.
+      if (llvm::isa<QuantizeCastOp, DequantizeCastOp>(quantizing_op)) {
+        return failure();
+      }
+
+      // If the op is terminator, not quantizable or any ops from the mlir quant
+      // ops dialect, we shouldn't rewrite.
+      if (quantizing_op->hasTrait<OpTrait::IsTerminator>()) {
+        return failure();
+      }
+
+      if (!op_quant_scale_spec_getter_(quantizing_op)
+               ->has_same_scale_requirement) {
         continue;
       }
 
-      Type elem_type = operand_type.cast<TensorType>().getElementType();
-      // If the operand is a non-float tensor, then it doesn't require the DQ op
-      // in the pattern.
-      if (isa_and_nonnull<DequantizeCastOp>(operand.getDefiningOp())) {
-        should_match = true;
-      } else if (elem_type.isa<FloatType>()) {
-        // If the operand is a float tensor, it must be from a DQ op.
-        return failure();
-      }
-    }
+      // Collect all the quantized inputs and "clone" the matched op by these
+      // inputs.
+      SmallVector<Value, 4> inputs;
+      inputs.reserve(quantizing_op->getNumOperands());
+      for (const auto& operand : quantizing_op->getOperands()) {
+        Type operand_type = operand.getType();
+        if (operand_type.isa<NoneType>()) {
+          inputs.push_back(operand);
+          continue;
+        }
 
-    for (const Value& result : op->getResults()) {
-      Type result_type = result.getType();
-      if (result_type.isa<NoneType>()) {
-        continue;
+        Type elem_type = operand_type.cast<TensorType>().getElementType();
+        if (auto dq_op =
+                dyn_cast_or_null<DequantizeCastOp>(operand.getDefiningOp())) {
+          auto dq_arg_type = dq_op.arg().getType().cast<TensorType>();
+          auto qtype = dq_arg_type.getElementType().cast<QuantizedType>();
+          auto scast_op = rewriter.create<StorageCastOp>(
+              dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
+              dq_op.arg());
+          inputs.push_back(scast_op.getResult());
+        } else if (!elem_type.isF32()) {
+          // If the operand is an integer tensor, then it doesn't require the
+          // DQ op in the pattern.
+          inputs.push_back(operand);
+        } else {
+          return failure();
+        }
       }
 
-      auto result_tensor_type = result_type.cast<TensorType>();
-      // If the user is the Quantize op, it must be the only user.
-      if (result.hasOneUse() &&
-          llvm::isa<QuantizeCastOp>(*result.user_begin())) {
-        should_match = true;
-      } else if (result_tensor_type.getElementType().isa<FloatType>()) {
-        // If the result is a float tensor, it must only be consumed by a single
-        // Q op.
-        return failure();
+      // Collect all the quantized outputs and replace them by the results of
+      // the new quantized op.
+      llvm::SmallDenseMap<Value, int> outputs_replaced;
+      SmallVector<Type, 4> output_types;
+      output_types.reserve(quantizing_op->getNumResults());
+      for (const auto& enumerated_result :
+           llvm::enumerate(quantizing_op->getResults())) {
+        Value result = enumerated_result.value();
+        Type result_type = result.getType();
+        if (result_type.isa<NoneType>()) {
+          outputs_replaced.insert({result, enumerated_result.index()});
+          output_types.push_back(result_type);
+          continue;
+        }
+        auto result_tensor_type = result_type.cast<TensorType>();
+        // If the user is the Quantize op, it must be the only user.
+        if (result.hasOneUse() &&
+            llvm::isa<QuantizeCastOp>(*result.user_begin())) {
+          auto user = llvm::cast<QuantizeCastOp>(*result.user_begin());
+          outputs_replaced.insert(
+              {user.getResult(), enumerated_result.index()});
+          auto qtype = user.getType()
+                           .cast<TensorType>()
+                           .getElementType()
+                           .cast<QuantizedType>();
+          output_types.push_back(
+              result_tensor_type.clone(qtype.getStorageType()));
+        } else if (!result_tensor_type.getElementType().isF32()) {
+          // If the result is an integer tensor, then it doesn't require the
+          // D op in the pattern.
+          outputs_replaced.insert({result, enumerated_result.index()});
+          output_types.push_back(result.getType());
+        } else {
+          // TODO(b/224691264): separate matching and rewriting clearly.
+          return failure();
+        }
       }
-    }
-    return success(should_match);
-  }
 
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
-    // Collect all the quantized inputs and "clone" the matched op by these
-    // inputs.
-    SmallVector<Value, 4> inputs;
-    inputs.reserve(op->getNumOperands());
-    for (const auto& operand : op->getOperands()) {
-      Value new_operand = operand;
-      // When the operand is a float tensor from a DQ op, replace DQ with scast
-      // op that converts quantized type to raw integer type.
-      if (auto dq_op =
-              dyn_cast_or_null<DequantizeCastOp>(operand.getDefiningOp())) {
-        auto dq_arg_type = dq_op.arg().getType().cast<TensorType>();
-        auto qtype = GetQuantizedTypeFromTensorType(dq_arg_type);
-        new_operand = rewriter.create<StorageCastOp>(
-            dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
-            dq_op.arg());
+      rewriter.setInsertionPointAfter(quantizing_op);
+      OperationState new_state(quantizing_op->getLoc(),
+                               quantizing_op->getName().getStringRef(), inputs,
+                               output_types, quantizing_op->getAttrs());
+      for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
+        new_state.addRegion();
       }
-      inputs.push_back(new_operand);
-    }
-
-    // Collect all the quantized outputs and replace them by the results of
-    // the new quantized op.
-    llvm::SmallDenseMap<Value, int> outputs_replaced;
-    SmallVector<Type, 4> output_types;
-    output_types.reserve(op->getNumResults());
-    for (const auto& enumerated_result : llvm::enumerate(op->getResults())) {
-      Value new_result = enumerated_result.value();
-      Type new_result_type = new_result.getType();
-      auto result_tensor_type = new_result_type.dyn_cast<TensorType>();
-
-      // If the result is a float tensor that is consumed by a Q op, replace Q
-      // op with scast that cnoverts raw integer value to a quantized type.
-      if (result_tensor_type && new_result.hasOneUse() &&
-          llvm::isa<QuantizeCastOp>(*new_result.user_begin())) {
-        auto user = llvm::cast<QuantizeCastOp>(*new_result.user_begin());
-        QuantizedType qtype = GetQuantizedTypeFromTensorType(user.getType());
-        new_result = user.getResult();
-        new_result_type = result_tensor_type.clone(qtype.getStorageType());
+      Operation* quantized_op = rewriter.create(new_state);
+      if (quantizing_op->getNumRegions() != 0) {
+        for (const auto& indexed_regions :
+             llvm::enumerate(quantizing_op->getRegions())) {
+          BlockAndValueMapping mapping;
+          indexed_regions.value().cloneInto(
+              &quantized_op->getRegion(indexed_regions.index()), mapping);
+        }
       }
-      outputs_replaced.insert({new_result, enumerated_result.index()});
-      output_types.push_back(new_result_type);
-    }
-
-    rewriter.setInsertionPointAfter(op);
-    OperationState new_state(op->getLoc(), op->getName().getStringRef(), inputs,
-                             output_types, op->getAttrs());
-    for (int i = 0; i < op->getNumRegions(); ++i) {
-      new_state.addRegion();
-    }
-    Operation* quantized_op = rewriter.createOperation(new_state);
-    if (op->getNumRegions() != 0) {
-      for (const auto& indexed_regions : llvm::enumerate(op->getRegions())) {
-        BlockAndValueMapping mapping;
-        indexed_regions.value().cloneInto(
-            &quantized_op->getRegion(indexed_regions.index()), mapping);
-      }
-    }
-    for (auto output_index_pair : outputs_replaced) {
-      Value output = output_index_pair.getFirst();
-      int output_index = output_index_pair.getSecond();
-      Value new_output = quantized_op->getResult(output_index);
-      if (GetQuantizedTypeFromTensorType(output.getType())) {
-        new_output = rewriter.create<StorageCastOp>(
+      for (const auto& output_index_pair : outputs_replaced) {
+        Value output = output_index_pair.getFirst();
+        int output_index = output_index_pair.getSecond();
+        auto scast_op = rewriter.create<StorageCastOp>(
             output.getLoc(), output.getType(),
             quantized_op->getResult(output_index));
+        output.replaceAllUsesWith(scast_op);
       }
-      output.replaceAllUsesWith(new_output);
+      changed = true;
     }
-    op->dropAllUses();
-    rewriter.eraseOp(op);
+    return success(changed);
   }
 
  private:
   OpQuantScaleSpecGetter op_quant_scale_spec_getter_;
 };
 
+// The AvgPool op is a same-scale op but it doesn't have int8 kernel, so
+// we cast its input to float and its output to int8 as a workaround.
+// TODO(b/229183248): Remove this workaround after int8 kernels have been
+// added to TF and XLA.
+struct QuantizeAvgPoolOpPattern : public OpRewritePattern<QuantizeCastOp> {
+  explicit QuantizeAvgPoolOpPattern(MLIRContext* context)
+      : OpRewritePattern<QuantizeCastOp>(context, /*benefit=*/300) {}
+
+  LogicalResult matchAndRewrite(QuantizeCastOp q_op,
+                                PatternRewriter& rewriter) const override {
+    auto avg_pool_op = q_op.arg().getDefiningOp<TF::AvgPoolOp>();
+    if (!avg_pool_op) return failure();
+    auto dq_op =
+        dyn_cast_or_null<DequantizeCastOp>(avg_pool_op.value().getDefiningOp());
+    if (!dq_op) return failure();
+
+    // Check if the same-scale requirement is met.
+    auto dq_arg_type = dq_op.arg().getType().cast<TensorType>();
+    auto qtype = dq_arg_type.getElementType().cast<QuantizedType>();
+    auto q_result_type = q_op.getType().cast<TensorType>();
+    auto out_qtype = q_result_type.getElementType().cast<QuantizedType>();
+    if (qtype != out_qtype) {
+      avg_pool_op.emitError(
+          "The preceding DequantizeCastOp and the following "
+          "QuantizeCastOp must have the same quantized type");
+      return failure();
+    }
+
+    // Cast to float type before the AvgPool op.
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointAfter(dq_op);
+    auto scast_op = rewriter.create<StorageCastOp>(
+        dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
+        dq_op.arg());
+    auto fcast_op = rewriter.create<TF::CastOp>(
+        dq_op->getLoc(), dq_arg_type.clone(rewriter.getF32Type()),
+        scast_op.getResult());
+    dq_op.getResult().replaceUsesWithIf(fcast_op.y(), [&](OpOperand& operand) {
+      return operand.getOwner() == avg_pool_op;
+    });
+
+    // Cast back to the storage type after AvgPool op.
+    rewriter.setInsertionPointAfter(avg_pool_op);
+    auto round_op =
+        rewriter.create<TF::RoundOp>(q_op.getLoc(), avg_pool_op.output());
+    auto icast_op = rewriter.create<TF::CastOp>(
+        q_op.getLoc(), q_result_type.clone(qtype.getStorageType()),
+        round_op.y());
+    auto iscast_op = rewriter.create<StorageCastOp>(
+        q_op.getLoc(), q_op.getType(), icast_op.y());
+    q_op.getResult().replaceAllUsesWith(iscast_op.getResult());
+    return success();
+  }
+};
+
 // Applies quantization on the model in TF dialect.
-struct QuantizePass : public PassWrapper<QuantizePass, OperationPass<FuncOp>> {
+struct QuantizePass
+    : public PassWrapper<QuantizePass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
+
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() { quant_specs.inference_type = tensorflow::DT_QINT8; }
 
@@ -305,6 +363,7 @@ void QuantizePass::runOnOperation() {
   patterns.add<TFFullQuantization, TFFullQuantizationReverse>(ctx,
                                                               quant_params);
   patterns.add<QuantizeSameScaleOpsPattern>(ctx, GetTfQuantScaleSpec);
+  patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   RewritePatternSet patterns_2(&getContext());
@@ -314,7 +373,7 @@ void QuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect Quantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass() {
   QuantizationSpecs quant_specs;
   return std::make_unique<QuantizePass>(quant_specs);
 }

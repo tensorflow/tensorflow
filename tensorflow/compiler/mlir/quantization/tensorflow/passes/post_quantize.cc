@@ -37,8 +37,10 @@ namespace {
 
 // Applies all the clean up steps after quantization.
 class PostQuantizePass
-    : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
+    : public PassWrapper<PostQuantizePass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
+
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit PostQuantizePass() {}
 
@@ -112,7 +114,7 @@ void PostQuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect PostQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass() {
   return std::make_unique<PostQuantizePass>();
 }
 

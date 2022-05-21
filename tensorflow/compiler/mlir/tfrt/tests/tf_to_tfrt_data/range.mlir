@@ -3,7 +3,7 @@
 module {
 
 // CHECK-LABEL: func @main() -> !tfrt_data.dataset
-  func @main() -> tensor<*x!tf_type.variant> {
+  func.func @main() -> tensor<*x!tf_type.variant> {
     // CHECK-NEXT: %[[START:.*]] = tfrt.constant.i64 0
     // CHECK-NEXT: %[[STEP:.*]] = tfrt.constant.i64 1
     // CHECK-NEXT: %[[STOP:.*]] = tfrt.constant.i64 1000

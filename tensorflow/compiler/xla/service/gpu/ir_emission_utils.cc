@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -244,8 +245,8 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
     return false;
   }
 
-  mlir::Value first_input = reduce.inputs()[0];
-  Shape operand_shape = GetShape(first_input);
+  mlir::Value first_operand = reduce.operands()[0];
+  Shape operand_shape = GetShape(first_operand);
 
   llvm::SmallVector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d : reduce.dimensions()) {
@@ -549,7 +550,7 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
 static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
                                   std::string* constant_name) {
   auto func_op =
-      mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
+      mlir::cast<mlir::func::FuncOp>(func_arg.getParentRegion()->getParentOp());
   if (constant_name) {
     if (auto constant_name_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
             func_arg.getArgNumber(), "lmhlo.constant_name")) {

@@ -45,6 +45,11 @@ class ReshapeOp : public OpKernel {
          TensorShapeUtils::IsScalar(sizes.shape())),
         errors::InvalidArgument("sizes input must be 1-D, not ",
                                 sizes.shape().DebugString()));
+    OP_REQUIRES(
+        context, sizes.NumElements() < TensorShape::MaxDimensions(),
+        errors::InvalidArgument("too many dimensions: must be < ",
+                                TensorShape::MaxDimensions(), ", but received ",
+                                sizes.NumElements()));
 
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one.

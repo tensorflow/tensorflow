@@ -59,19 +59,15 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 
-using tensorflow::FunctionDefLibrary;
-using tensorflow::Graph;
 using tensorflow::GraphDef;
-using tensorflow::ImportGraphDefOptions;
-using tensorflow::OpRegistry;
 
 namespace tensorflow {
 namespace quantization {
 namespace internal {
 
-absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags) {
+absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
+                                          absl::string_view exported_names_str,
+                                          absl::string_view tags) {
   const std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
   std::vector<std::string> exported_names_vec =
@@ -112,19 +108,24 @@ absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
   // Freezes constants so that FakeQuant ops can reference quantization ranges.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateFusedKernelMatcherPass());
+
+  // TODO(b/229995333): Add PrepareLiftingPass for QAT. In QAT, AffineOps are
+  // connected to FakeQuantOp instead of the ConstOp so need to add separate
+  // pattern for FakeQuantOp.
+  // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass());
+  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
+      mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
 
@@ -147,7 +148,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
   return *graph.ConsumeValueOrDie();
 }
 
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
+absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags) {
   const std::unordered_set<std::string> tag_set =
@@ -184,13 +185,15 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateFusedKernelMatcherPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
+  // TODO(b/230426953): Add TFShapeInferencePass to infer shapes for unranked
+  // types. pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
 
@@ -213,7 +216,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
   return *graph.ConsumeValueOrDie();
 }
 
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
+absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags) {
   const std::unordered_set<std::string> tag_set =
@@ -250,13 +253,14 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
   mlir::PassManager pm(&context);
 
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass());
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass());
+  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
+      mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
 

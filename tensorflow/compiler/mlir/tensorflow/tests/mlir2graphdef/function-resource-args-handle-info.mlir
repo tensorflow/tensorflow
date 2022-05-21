@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main(%arg0: tensor<*x!tf_type.resource<tensor<8x1xf32>>>) -> tensor<8x1xf32> {
+func.func @main(%arg0: tensor<*x!tf_type.resource<tensor<8x1xf32>>>) -> tensor<8x1xf32> {
   %0 = tf_executor.graph {
      %outputs, %control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<8x1xf32>>>) -> tensor<8x1xf32>
      tf_executor.fetch %outputs : tensor<8x1xf32>

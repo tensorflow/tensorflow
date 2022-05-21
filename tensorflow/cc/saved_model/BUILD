@@ -320,11 +320,7 @@ cc_library(
 cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
-    visibility = [
-        "//tensorflow/cc/saved_model:__subpackages__",
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/saved_model:__subpackages__",
-    ],
+    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
     deps = if_static([
         ":metrics_impl",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),

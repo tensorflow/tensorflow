@@ -3,9 +3,9 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.StaticHashTable\'>"
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.InitializableLookupTableBase\'>"
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.LookupInterface\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.resource.TrackableResource\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.resource.CapturableResource\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.resource.TrackableResource\'>"
+  is_instance: "<class \'tensorflow.python.trackable.resource.CapturableResource\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "default_value"

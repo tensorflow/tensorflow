@@ -4,7 +4,7 @@
 // RUN: tf-opt %s -tfl-optimize | FileCheck %s
 
 // CHECK-LABEL: fuseScalarAddIntoConv2dHalf
-func @fuseScalarAddIntoConv2dHalf(%arg0: tensor<256x32x32x3xf16>, %arg1: tensor<16x3x3x3xf16>) -> tensor<256x8x7x16xf16> {
+func.func @fuseScalarAddIntoConv2dHalf(%arg0: tensor<256x32x32x3xf16>, %arg1: tensor<16x3x3x3xf16>) -> tensor<256x8x7x16xf16> {
   %cst = arith.constant dense<1.5> : tensor<f16>
   %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf16>
   %0 = "tfl.conv_2d"(%arg0, %arg1, %cst_0) {dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<256x32x32x3xf16>, tensor<16x3x3x3xf16>, tensor<16xf16>) -> tensor<256x8x7x16xf16>
@@ -16,7 +16,7 @@ func @fuseScalarAddIntoConv2dHalf(%arg0: tensor<256x32x32x3xf16>, %arg1: tensor<
 }
 
 // CHECK-LABEL: @fuseBroadcastMulIntoFullyConnected
-func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> tensor<32x1x256xbf16> {
+func.func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> tensor<32x1x256xbf16> {
   %cst_0 = arith.constant dense<2.0> : tensor<256x10368xbf16>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   %cst_2 = arith.constant dense<3.0> : tensor<32x1x256xbf16>
@@ -32,7 +32,7 @@ func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> tensor<
 }
 
 // CHECK-LABEL: Relu_bf16
-func @Relu_bf16(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
+func.func @Relu_bf16(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
   %cst = arith.constant dense<0.0> : tensor<2x3xbf16>
   %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xbf16>, tensor<2x3xbf16>) -> tensor<2x3xbf16>
   func.return %0 : tensor<2x3xbf16>
@@ -42,7 +42,7 @@ func @Relu_bf16(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
 }
 
 // CHECK-LABEL: fuseScalarAddIntoConv2dBf16
-func @fuseScalarAddIntoConv2dBf16(%arg0: tensor<256x32x32x3xbf16>, %arg1: tensor<16x3x3x3xbf16>) -> tensor<256x8x7x16xbf16> {
+func.func @fuseScalarAddIntoConv2dBf16(%arg0: tensor<256x32x32x3xbf16>, %arg1: tensor<16x3x3x3xbf16>) -> tensor<256x8x7x16xbf16> {
   %cst = arith.constant dense<1.5> : tensor<bf16>
   %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xbf16>
   %0 = "tfl.conv_2d"(%arg0, %arg1, %cst_0) {dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<256x32x32x3xbf16>, tensor<16x3x3x3xbf16>, tensor<16xbf16>) -> tensor<256x8x7x16xbf16>
@@ -54,7 +54,7 @@ func @fuseScalarAddIntoConv2dBf16(%arg0: tensor<256x32x32x3xbf16>, %arg1: tensor
 }
 
 // CHECK-LABEL: RemoveReshapeAfterFullyConnected
-func @RemoveReshapeAfterFullyConnected(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
+func.func @RemoveReshapeAfterFullyConnected(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
   %cst_0 = arith.constant dense<1.0> : tensor<4096x1024xbf16>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   %cst_2 = arith.constant dense<[4, 1024, 4096]> : tensor<3xi32>
@@ -66,7 +66,7 @@ func @RemoveReshapeAfterFullyConnected(%arg0: tensor<4x1024x1024xbf16>) -> tenso
 }
 
 // CHECK-LABEL: RemoveReshapeAfterFullyConnectedAdd
-func @RemoveReshapeAfterFullyConnectedAdd(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
+func.func @RemoveReshapeAfterFullyConnectedAdd(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
   %cst_0 = arith.constant dense<1.0> : tensor<4096x1024xbf16>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   %cst_2 = arith.constant dense<[4, 1024, 4096]> : tensor<3xi32>

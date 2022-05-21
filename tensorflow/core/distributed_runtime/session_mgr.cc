@@ -407,10 +407,11 @@ void SessionMgr::ClearLogs() {
   }
 }
 
-void SessionMgr::TeardownCoordinationServiceAndAgent() {
-  // Agent needs to be torn down before service, since it needs to disconnect
-  // itself from the service.
-  coordination_service_agent_ = nullptr;
+void SessionMgr::TeardownCoordinationService() {
   coordination_service_ = nullptr;
+}
+
+void SessionMgr::TeardownCoordinationServiceAgent() {
+  coordination_service_agent_ = nullptr;
 }
 }  // namespace tensorflow

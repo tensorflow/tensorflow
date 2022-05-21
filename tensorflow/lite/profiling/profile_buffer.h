@@ -41,8 +41,8 @@ struct ProfileEvent {
   std::string tag;
   // Timestamp in microseconds when the event began.
   uint64_t begin_timestamp_us;
-  // Timestamp in microseconds when the event ended.
-  uint64_t end_timestamp_us;
+  // Event processing time in microseconds.
+  uint64_t elapsed_time;
 
   // The memory usage when the event begins.
   memory::MemoryUsage begin_mem_usage;
@@ -92,7 +92,7 @@ class ProfileBuffer {
     event_buffer_[index].event_metadata = event_metadata1;
     event_buffer_[index].extra_event_metadata = event_metadata2;
     event_buffer_[index].begin_timestamp_us = timestamp;
-    event_buffer_[index].end_timestamp_us = 0;
+    event_buffer_[index].elapsed_time = 0;
     if (event_type != Profiler::EventType::OPERATOR_INVOKE_EVENT) {
       event_buffer_[index].begin_mem_usage = memory::GetMemoryUsage();
     }
@@ -120,7 +120,8 @@ class ProfileBuffer {
     }
 
     int event_index = event_handle % max_size;
-    event_buffer_[event_index].end_timestamp_us = time::NowMicros();
+    event_buffer_[event_index].elapsed_time =
+        time::NowMicros() - event_buffer_[event_index].begin_timestamp_us;
     if (event_buffer_[event_index].event_type !=
         Profiler::EventType::OPERATOR_INVOKE_EVENT) {
       event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
@@ -134,7 +135,7 @@ class ProfileBuffer {
   }
 
   void AddEvent(const char* tag, ProfileEvent::EventType event_type,
-                uint64_t start, uint64_t end, int64_t event_metadata1,
+                uint64_t elapsed_time, int64_t event_metadata1,
                 int64_t event_metadata2) {
     if (!enabled_) {
       return;
@@ -148,8 +149,8 @@ class ProfileBuffer {
     event_buffer_[index].event_type = event_type;
     event_buffer_[index].event_metadata = event_metadata1;
     event_buffer_[index].extra_event_metadata = event_metadata2;
-    event_buffer_[index].begin_timestamp_us = start;
-    event_buffer_[index].end_timestamp_us = end;
+    event_buffer_[index].begin_timestamp_us = 0;
+    event_buffer_[index].elapsed_time = elapsed_time;
     current_index_++;
   }
 

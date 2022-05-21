@@ -25,9 +25,11 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"

@@ -1,6 +1,6 @@
 // RUN: tf-tfrt-opt -pass-pipeline='func.func(tf-tensor-device-copy),tf-to-tfrt' %s | FileCheck %s --dump-input=fail
 
-func private @batched_function(%arg0: tensor<1x3xf32> {tf._user_specified_name = "0"}, %arg1: tensor<*x!tf_type.resource>) -> tensor<1x3xf32> attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
+func.func private @batched_function(%arg0: tensor<1x3xf32> {tf._user_specified_name = "0"}, %arg1: tensor<*x!tf_type.resource>) -> tensor<1x3xf32> attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:CPU:0"} : (tensor<*x!tf_type.resource>) -> tensor<1x3xf32>
   %1 = "tf.AddV2"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
   %2 = "tf.Identity"(%1) {device = "/device:CPU:0"} : (tensor<1x3xf32>) -> tensor<1x3xf32>
@@ -8,7 +8,7 @@ func private @batched_function(%arg0: tensor<1x3xf32> {tf._user_specified_name =
 }
 
 // CHECK-LABEL: func @main
-func @main(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input:0", outputs = "batch/BatchFunction:0"}} {
+func.func @main(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input:0", outputs = "batch/BatchFunction:0"}} {
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
   // CHECK: [[var:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle
   // CHECK: tfrt_fallback_async.batch_function(%arg0) @batched_function ({{%.*}}, [[var]])

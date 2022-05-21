@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: func @assert(
 // CHECK-SAME: [[CTX:%.*]]: !tf_framework.op_kernel_context
-func @assert(%ctx: !tf_framework.op_kernel_context)
+func.func @assert(%ctx: !tf_framework.op_kernel_context)
        -> (memref<*xf32>, memref<*xi32>) attributes {tf_entry} {
   %true = arith.constant true
   tf_framework.assert %ctx, %true, INVALID_ARGUMENT, "the one and only"
@@ -32,7 +32,7 @@ func @assert(%ctx: !tf_framework.op_kernel_context)
 
 // CHECK-LABEL: func @double_assert(
 // CHECK-SAME: [[CTX:%.*]]: !tf_framework.op_kernel_context
-func @double_assert(%ctx: !tf_framework.op_kernel_context)
+func.func @double_assert(%ctx: !tf_framework.op_kernel_context)
        -> memref<*xf32> attributes {tf_entry} {
   %true = arith.constant true
   %false = arith.constant false

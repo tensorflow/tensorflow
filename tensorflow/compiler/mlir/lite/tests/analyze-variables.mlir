@@ -2,7 +2,7 @@
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = true}
 module {
-  func @f() -> tensor<*xi32> {
+  func.func @f() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
     func.return %2 : tensor<*xi32>
@@ -13,12 +13,12 @@ module {
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = true}
 module {
-  func @main() -> tensor<*xi32> {
+  func.func @main() -> tensor<*xi32> {
     %0 = "tf.PartitionedCall"() {f = @f, config = "", config_proto = "", executor_type = ""}
       : () -> tensor<*xi32>
     func.return %0 : tensor<*xi32>
   }
-  func @f() -> tensor<*xi32> {
+  func.func @f() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %1 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
     func.return %1 : tensor<*xi32>
@@ -30,13 +30,13 @@ module {
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = false}
 module {
-  func @main() -> tensor<*xi32> {
+  func.func @main() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %1 = "tf.PartitionedCall"(%0) {f = @f, config = "", config_proto = "", executor_type = ""}
       : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
     func.return %1 : tensor<*xi32>
   }
-  func @f(%arg0 : tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32> {
+  func.func @f(%arg0 : tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32> {
     %0 = "tf.ReadVariableOp"(%arg0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
     func.return %0 : tensor<*xi32>
   }
@@ -46,7 +46,7 @@ module {
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = false}
 module {
-  func @main() -> tensor<*xi32> {
+  func.func @main() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %cst = arith.constant dense<2> : tensor<4xi32>
     "tf.AssignAddVariableOp"(%0, %cst) {} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<4xi32>) -> ()
@@ -59,7 +59,7 @@ module {
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = true}
 module {
-  func @main() -> tensor<i32> {
+  func.func @main() -> tensor<i32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %cst = arith.constant dense<1> : tensor<i32>
     %1:2 = "tfl.while"(%cst, %0) ({
@@ -81,7 +81,7 @@ module {
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = false}
 module {
-  func @main() -> tensor<i32> {
+  func.func @main() -> tensor<i32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %cst = arith.constant dense<1> : tensor<i32>
     %1:2 = "tfl.while"(%cst, %0) ({
@@ -104,7 +104,7 @@ module {
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = true}
 module {
-  func @main(%arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,
+  func.func @main(%arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,
       %arg1 : tensor<*x!tf_type.variant>) {
     %cst_0 = arith.constant dense<2> : tensor<i64>
     %cst_1 = arith.constant dense<0> : tensor<i32>
@@ -118,10 +118,10 @@ module {
       f = @__reduce_func, f._tf_data_function = true,
       output_shapes = [#tf_type.shape<>],
       output_types = [i32], use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<i32>, tensor<!tf_type.resource<tensor<4096xf32>>>) -> (tensor<*xi32>)
-    return
+    func.return
   }
 
-  func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}) -> (tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}) -> (tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0 = "tf.JustPretend"() : () -> (tensor<i32>)
     func.return %0: tensor<i32>
   }

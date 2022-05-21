@@ -5,21 +5,21 @@
 // the test cases here should cover the control flow ops.
 
 // CHECK-LABEL: func @cond_false(%arg0: !tfrt.chain, %arg1: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @cond_false(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @cond_false(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<-1> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
 // CHECK-LABEL: func @cond_true(%arg0: !tfrt.chain, %arg1: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @cond_true(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @cond_true(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
 // CHECK-LABEL: func @cond(%arg0: !tfrt.chain, %arg1: !tfrt_fallback.tf_tensor, %arg2: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @cond(%arg0: tensor<i1>, %arg1: tensor<i32>) -> tensor<i32> {
+func.func @cond(%arg0: tensor<i1>, %arg1: tensor<i32>) -> tensor<i32> {
   // CHECK: [[cond:%.*]] = tfrt_fallback_async.predicate
   // CHECK: [[cond_res:%.*]]:2 = tfrt.cond [[cond]]
   // CHECK-SAME: @cond_true @cond_false(%arg0, %arg2) : (!tfrt.chain, !tfrt_fallback.tf_tensor)
@@ -30,7 +30,7 @@ func @cond(%arg0: tensor<i1>, %arg1: tensor<i32>) -> tensor<i32> {
 }
 
 // CHECK-LABEL: func @cond_stateful(%arg0: !tfrt.chain, %arg1: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Less"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK: [[cond_res:%.*]]:2 = tfrt.cond
@@ -43,7 +43,7 @@ func @cond_stateful(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @while_cond_lt9
 // CHECK-SAME: ({{%.+}}: !tfrt.chain, {{%.+}}: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
+func.func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Less"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   func.return %1 : tensor<i1>
@@ -51,7 +51,7 @@ func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
 
 // CHECK-LABEL: func @while_body_add2
 // CHECK-SAME: ({{%.+}}: !tfrt.chain, {{%.+}}: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
@@ -59,7 +59,7 @@ func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @while_test
 // CHECK-SAME: ([[ARG0:%.+]]: !tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-func @while_test() -> (tensor<i32>) {
+func.func @while_test() -> (tensor<i32>) {
   // CHECK: [[CONST_TH:%.*]] = corert.const_dense_tensor dense<0> : tensor<i32>
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[CONST:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[CONST_TH]]
@@ -83,7 +83,7 @@ func @while_test() -> (tensor<i32>) {
 // CHECK: tfrt.return [[cond_res]]#0, [[bool_cond]] : !tfrt.chain, i1
 
 // CHECK-LABEL: func @multi_while_test
-func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
+func.func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_0:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"
@@ -97,14 +97,14 @@ func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   func.return %2, %3 : tensor<i32>, tensor<i32>
 }
 
-func @side_effect_while_cond_lt9(%arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i1> {
+func.func @side_effect_while_cond_lt9(%arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i1> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.ReadVariableOp"(%arg) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %2 = "tf.Less"(%1, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   func.return %2 : tensor<i1>
 }
 
-func @side_effect_while_body_add2(%arg: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>) {
+func.func @side_effect_while_body_add2(%arg: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>) {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.ReadVariableOp"(%arg) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %2 = "tf.Add"(%1, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -113,7 +113,7 @@ func @side_effect_while_body_add2(%arg: tensor<!tf_type.resource<tensor<i32>>>) 
 }
 
 // CHECK-LABEL: func @side_effect_while_test
-func @side_effect_while_test() -> (tensor<i32>) {
+func.func @side_effect_while_test() -> (tensor<i32>) {
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   // CHECK: [[while_res:%.]]:2 = tfrt.while {{%.*}} @"side_effect_while_body_add2/tfrt_body_1"
   // CHECK: [[out_ch:%.*]], [[res:%.*]] = tfrt_fallback_async.executeop.seq([[while_res]]#0) {{.*}} "tf.ReadVariableOp"
@@ -122,12 +122,12 @@ func @side_effect_while_test() -> (tensor<i32>) {
   func.return %2 : tensor<i32>
 }
 
-func @tensor_array_while_cond(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf_type.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i1>) {
+func.func @tensor_array_while_cond(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf_type.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i1>) {
   %0 = "tf.Less"(%index, %size) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
 
-func @tensor_array_while_body(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf_type.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) {
+func.func @tensor_array_while_body(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf_type.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) {
   %cst = "tf.Const"() {value = dense<1.1> : tensor<100x512xf32>} : () -> tensor<100x512xf32>
   %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %x = "tf.TensorArrayReadV3"(%handle_0, %index, %flow_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<i32>, tensor<f32>) -> tensor<?x100xf32>
@@ -139,7 +139,7 @@ func @tensor_array_while_body(%index: tensor<i32>, %size: tensor<i32>, %flow_0: 
 
 // CHECK-LABEL: func @tensor_array_while_test
 // CHECK-SAME: ([[in_chain:%.*]]: !tfrt.chain
-func @tensor_array_while_test(%indices: tensor<?xi32>, %input_0: tensor<?x?x?xf32>, %input_1: tensor<?x?x?xf32>) -> (tensor<?x?x512xf32>, tensor<?x?x512xf32>) {
+func.func @tensor_array_while_test(%indices: tensor<?xi32>, %input_0: tensor<?x?x?xf32>, %input_1: tensor<?x?x?xf32>) -> (tensor<?x?x512xf32>, tensor<?x?x512xf32>) {
   %index = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
   %size = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> (tensor<i32>)
   %handle_0, %flow_0 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x100>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/input_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<f32>)
@@ -164,13 +164,13 @@ func @tensor_array_while_test(%indices: tensor<?xi32>, %input_0: tensor<?x?x?xf3
 
 // CHECK: func @"tensor_array_while_body/tfrt_body_10"
 
-func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
+func.func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
   func.return %arg0: tensor<i32>
 }
 
 // CHECK-LABEL: func @call_test
 // CHECK-SAME: ([[chain:%.*]]: !tfrt.chain,
-func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+func.func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   %0 = "tf.Add"(%arg0, %arg0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[results_0:%.*]]:2 = tfrt.call @callee([[chain]]
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
@@ -185,12 +185,12 @@ func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   func.return %1, %2, %3 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
-func @branch0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @branch0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Add" (%arg0, %arg1) {device = "/device:CPU:0"}  : (tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
-func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Add" (%arg0, %arg1) {device = "/device:CPU:0"}  : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %1 = "tf.Add" (%arg0, %0) {device = "/device:CPU:0"}  : (tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %1 : tensor<f32>
@@ -198,10 +198,10 @@ func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // CHECK-LABEL: func @case_test
 // CHECK-SAME: ([[chain:%.*]]: !tfrt.chain, [[tf_idx:%.*]]: !tfrt_fallback.tf_tensor, [[branch_arg0:%.*]]: !tfrt_fallback.tf_tensor, [[branch_arg1:%.*]]: !tfrt_fallback.tf_tensor)
-func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>) -> tensor<f32> {
+func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>) -> tensor<f32> {
   // CHECK: [[th_idx:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[tf_idx]]
   // CHECK-NEXT: [[idx:%.*]] = corert.tensorhandle_to_int32 [[th_idx]]
-  // CHECK-NEXT: [[out_chain:%.*]], [[out:%.*]] = tfrt.case [[idx]] [@branch0, @branch1]([[chain]], [[branch_arg0]], [[branch_arg1]])
+  // CHECK-NEXT: [[out:%.*]] = tfrt.case [[idx]] [@branch0, @branch1]([[chain]], [[branch_arg0]], [[branch_arg1]])
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

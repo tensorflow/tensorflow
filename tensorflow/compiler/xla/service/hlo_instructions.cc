@@ -225,7 +225,7 @@ HloAsyncInstruction::HloAsyncInstruction(
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->SetAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(this);
 }
 
 HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
@@ -236,7 +236,26 @@ HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->SetAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(this);
+}
+
+HloAsyncInstruction::~HloAsyncInstruction() {
+  ClearAsyncComputationInstruction();
+  ClearCalledComputations();
+}
+
+void HloAsyncInstruction::ClearAsyncComputationInstruction() {
+  // Each async instruction calls a single computation, but we use
+  // called_computations() instead of async_wrapped_instruction(), because the
+  // order in which things get destructed can vary; the async computation's
+  // back-pointer may already be null, which violates a check in
+  // async_wrapped_instruction.
+  for (HloComputation* computation : called_computations()) {
+    CHECK(computation != nullptr);
+    if (computation->IsAsyncComputation()) {
+      computation->RemoveAsyncInstruction(this);
+    }
+  }
 }
 
 HloInstruction* HloAsyncInstruction::async_wrapped_instruction() const {
@@ -327,9 +346,9 @@ HloCompareInstruction::HloCompareInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     ComparisonDirection direction, absl::optional<Comparison::Type> type)
     : HloInstruction(HloOpcode::kCompare, shape),
-      compare_(direction, type ? (*type)
-                               : Comparison::DefaultComparisonType(
-                                     lhs->shape().element_type())) {
+      compare_(type.has_value()
+                   ? Comparison(direction, *type)
+                   : Comparison(direction, lhs->shape().element_type())) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }
@@ -1452,33 +1471,6 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     // Do not show large constants or tuples.
     return "{...}";
   }
-}
-
-HloTraceInstruction::HloTraceInstruction(const std::string& tag,
-                                         HloInstruction* operand)
-    : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
-      literal_(LiteralUtil::CreateR1U8(tag)) {
-  AppendOperand(operand);
-  operand->set_tracing(this);
-}
-
-HloInstructionProto HloTraceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_.ToProto();
-  return proto;
-}
-
-bool HloTraceInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  return false;
-}
-
-std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    HloCloneContext* context) const {
-  LOG(FATAL) << "Not yet implemented, clone: " << ToString();
 }
 
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
@@ -2760,12 +2752,14 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   if (custom_call_schedule_ != casted_other.custom_call_schedule()) {
     return false;
   }
-  if (HasLiteral() == casted_other.HasLiteral()) {
-    if (HasLiteral() && literal() == casted_other.literal()) {
-      return false;
-    }
-  } else {
-    return true;
+  if (HasLiteral() != casted_other.HasLiteral()) {
+    return false;
+  }
+  if (HasLiteral() && literal() != casted_other.literal()) {
+    return false;
+  }
+  if (api_version_ != casted_other.api_version_) {
+    return false;
   }
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
@@ -3011,17 +3005,17 @@ std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
 }
 
 HloScatterInstruction::HloScatterInstruction(
-    const Shape& shape, HloInstruction* operand,
-    HloInstruction* scatter_indices, HloInstruction* updates,
+    const Shape& shape, absl::Span<HloInstruction* const> args,
     HloComputation* update_computation,
     const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
     bool unique_indices)
     : HloInstruction(HloOpcode::kScatter, shape),
       indices_are_sorted_(indices_are_sorted),
       unique_indices_(unique_indices) {
-  AppendOperand(operand);
-  AppendOperand(scatter_indices);
-  AppendOperand(updates);
+  mutable_operands().reserve(args.size());
+  for (HloInstruction* arg : args) {
+    AppendOperand(arg);
+  }
   AppendComputation(update_computation);
   scatter_dimension_numbers_ =
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
@@ -3106,10 +3100,9 @@ bool HloScatterInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloScatterInstruction>(
-      shape, new_operands[0], new_operands[1], new_operands[2], to_apply(),
-      scatter_dimension_numbers(), indices_are_sorted(), unique_indices());
+      shape, new_operands, to_apply(), scatter_dimension_numbers(),
+      indices_are_sorted(), unique_indices());
 }
 
 HloIotaInstruction::HloIotaInstruction(const Shape& shape,

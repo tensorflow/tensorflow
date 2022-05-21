@@ -423,7 +423,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun(experimental_relax_shapes=True)
+    @function.defun(reduce_retracing=True)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -442,13 +442,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(func), 2)
 
   def testInputShapeRelaxationOnInstanceMethod(self):
-    # Test that experimental_relax_shapes is passed during
+    # Test that reduce_retracing is passed during
     # instance method bounding.
     unknown_dim = [False]
 
     class Foo(object):
 
-      @def_function.function(experimental_relax_shapes=True)
+      @def_function.function(reduce_retracing=True)
       def func(self, a):
         if a._shape_tuple()[0] is None:
           unknown_dim[0] = True
@@ -467,7 +467,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxationWithRaggedTensors(self):
     traced_type_spec = [None]
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def func(x):
       traced_type_spec[0] = x._type_spec
       return x
@@ -501,7 +501,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxationWithStructuredTensors(self):
     traced_type_spec = [None]
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def func(x):
       traced_type_spec[0] = x._type_spec
       return x
@@ -545,7 +545,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     traced_type_spec = [None]
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def func(x):
       traced_type_spec[0] = x._type_spec
       return x
@@ -605,7 +605,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun(experimental_relax_shapes=True)
+    @function.defun(reduce_retracing=True)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -645,7 +645,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     traced_shape = None
     # The inner function will go through shape relaxation because the shapes it
     # receives will be [1], [2], [3], ...
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def bar(x_shape):
       nonlocal traced_shape
       traced_shape = x_shape._shape_tuple()
@@ -653,7 +653,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # The outer function will not go through shape relaxation because the shapes
     # it receives will be [1], [[1]], [[[1]]], ...
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def foo(ones):
       return bar(array_ops.shape(ones))
 
@@ -2009,7 +2009,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = function.defun(func, experimental_relax_shapes=True)
+      defined = function.defun(func, reduce_retracing=True)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)

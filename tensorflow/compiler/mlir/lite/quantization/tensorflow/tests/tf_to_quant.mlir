@@ -1,7 +1,7 @@
 // RUN: tf-opt -tf-to-quant %s | FileCheck %s
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
-func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf32>) {
+func.func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf32>) {
   %arg1 = arith.constant dense<[0.0, -1.0, 1.0]> : tensor<3xf32>
   %arg2 = arith.constant dense<[255.0, 254.0, 256.0]> : tensor<3xf32>
   %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<8x3xf32>
@@ -14,7 +14,7 @@ func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf3
 }
 
 // CHECK-LABEL: fakeQuantForActivation
-func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
+func.func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
 ^bb0(%arg0: tensor<8xf32>):
   %arg1 = arith.constant dense<0.0> : tensor<f32>
   %arg2 = arith.constant dense<255.0> : tensor<f32>
@@ -28,7 +28,7 @@ func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
 }
 
 // CHECK-LABEL: fakeQuantForActivationNoDuplication
-func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uniform<i8:f32, 1.000000e+00:-128>>) {
+func.func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uniform<i8:f32, 1.000000e+00:-128>>) {
 ^bb0(%arg0: tensor<8xf32>):
   %arg1 = arith.constant dense<0.0> : tensor<f32>
   %arg2 = arith.constant dense<255.0> : tensor<f32>
@@ -42,7 +42,7 @@ func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uni
 }
 
 // CHECK-LABEL: fakeQuantFolded
-func @fakeQuantFolded() -> (tensor<8xf32>) {
+func.func @fakeQuantFolded() -> (tensor<8xf32>) {
   %in = arith.constant dense<0.0> : tensor<8xf32>
   %min = arith.constant dense<0.0> : tensor<f32>
   %max = arith.constant dense<255.0> : tensor<f32>
@@ -58,7 +58,7 @@ func @fakeQuantFolded() -> (tensor<8xf32>) {
 }
 
 // CHECK-LABEL: fakeQuantNotFolded
-func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>) {
+func.func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>) {
 ^bb0(%arg0: tensor<8xf32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
   %1 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg3, %arg4) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
   func.return %1 : tensor<8xf32>
@@ -68,7 +68,7 @@ func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf
 }
 
 // CHECK-LABEL: fakeQuantWithConv2D
-func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
+func.func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
   %in = arith.constant dense<0.0> : tensor<3x3x3x16xf32>
   %min = arith.constant dense<0.0> : tensor<f32>
@@ -87,7 +87,7 @@ func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
 }
 
 // CHECK-LABEL: perChannelFakeQuantWithConv2D
-func @perChannelFakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
+func.func @perChannelFakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
   %in = arith.constant dense<0.0> : tensor<3x3x3x16xf32>
   %min = arith.constant dense<0.0> : tensor<16xf32>
@@ -108,7 +108,7 @@ func @perChannelFakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x8x7x
 }
 
 // CHECK-LABEL: fakeQuantWithDepthwiseConv2D
-func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
+func.func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
   %in = arith.constant dense<0.0> : tensor<3x3x3x16xf32>
   %min = arith.constant dense<0.0> : tensor<f32>
@@ -127,7 +127,7 @@ func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30
 }
 
 // CHECK-LABEL: perChannelFakeQuantWithDepthwiseConv2D
-func @perChannelFakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
+func.func @perChannelFakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
   %in = arith.constant dense<0.0> : tensor<3x3x3x16xf32>
   %min = arith.constant dense<0.0> : tensor<16xf32>

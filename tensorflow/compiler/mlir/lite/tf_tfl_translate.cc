@@ -56,9 +56,9 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+using mlir::func::FuncOp;
 using stream_executor::port::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.

@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
-#include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -92,6 +92,24 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
     return tensorflow::PartialTensorShape(ranked_type.getShape());
+  }
+  return None;
+}
+
+// Extracts a PartialTensorShape from the MLIR attr.
+Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
+  // Function arguments may have shape attr to describe its output shape.
+  if (auto arg = v.dyn_cast<BlockArgument>()) {
+    Operation* parent_op = arg.getOwner()->getParentOp();
+    if (auto func_op = llvm::dyn_cast<FunctionOpInterface>(parent_op)) {
+      int arg_idx = arg.getArgNumber();
+      auto attrs =
+          func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
+      if (!attrs || attrs.empty()) return None;
+      auto shape_attr = attrs[0].cast<tf_type::ShapeAttr>();
+      if (shape_attr.hasRank())
+        return tensorflow::PartialTensorShape(shape_attr.getShape());
+    }
   }
   return None;
 }
@@ -215,8 +233,11 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     if (!status.ok())
       return emitOptionalError(location, status.error_message());
   } else {
+    auto* dialect = cast<TFGraphDialect>(op->getDialect());
     tensorflow::NodeDef node_def;
-    tensorflow::Status status = ConvertOperationToNode(*op, &node_def);
+    tensorflow::Status status = ConvertToNodeDef(
+        op, &node_def, dialect,
+        [&](Value value) { return GetValueName(value, dialect); });
     if (!status.ok())
       return emitOptionalError(location, status.error_message());
     attributes = node_def.attr();
@@ -235,6 +256,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
 
     Type operand_type = operand.getType();
     if (auto shape = GetShapeFromMlirType(operand_type)) {
+      input_shapes[index] = *shape;
+    } else if (auto shape = GetShapeFromMlirAttr(operand)) {
       input_shapes[index] = *shape;
     }
     // Collect the handle shapes and types for a resource/variant.

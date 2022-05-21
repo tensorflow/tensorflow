@@ -157,7 +157,7 @@ func.func @fetching_arg(%arg0: tensor<*xi32>) {
     }
     tf_executor.fetch %island#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @fetching_arg
@@ -217,7 +217,7 @@ func.func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
     }
     tf_executor.fetch %island : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @unknown_side_effecting_op
@@ -248,7 +248,7 @@ func.func @empty_island_no_data_results() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: empty_island_single_data_result
@@ -263,7 +263,7 @@ func.func @empty_island_single_data_result(%arg0: tensor<*xf32>) {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: empty_island_multiple_data_results
@@ -278,7 +278,7 @@ func.func @empty_island_multiple_data_results(%arg0: tensor<*xf32>, %arg1: tenso
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // The following tests check that certain control dependencies between islands
@@ -298,7 +298,7 @@ func.func @next_iteration_sink_control_input() {
     tf_executor.NextIteration.Sink[%source#1] %island#0 : tensor<*xi32>
     tf_executor.fetch %island#0 : tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
@@ -313,7 +313,7 @@ func.func @loop_cond_control_input() {
     %loop_cond:2 = tf_executor.LoopCond %island#0 : tensor<*xi1>
     tf_executor.fetch %loop_cond#0 : tensor<*xi1>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
@@ -328,7 +328,7 @@ func.func @enter_control_input() {
     %enter:2 = tf_executor.Enter %island#0 frame "some/frame" : tensor<*xi32>
     tf_executor.fetch %enter#0 : tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
@@ -343,7 +343,7 @@ func.func @switchn_control_input(%arg1: tensor<i32>) {
     %switchn:4 = tf_executor._SwitchN %island#0, %arg1 of 3: tensor<*xi32>
     tf_executor.fetch %switchn#0 : tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @single_op_island_forward_block_arg
@@ -404,7 +404,7 @@ func.func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf_type.resourc
    }
    tf_executor.fetch %control : !tf_executor.control
  }
- return
+ func.return
 }
 
 // CHECK: func @stateful_composite_op_control
@@ -489,5 +489,5 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }

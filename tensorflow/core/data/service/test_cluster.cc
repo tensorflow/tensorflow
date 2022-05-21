@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -100,6 +101,14 @@ void TestCluster::StopWorkers() {
   for (std::unique_ptr<WorkerGrpcDataServer>& worker : workers_) {
     worker->Stop();
   }
+}
+
+ServerStateExport TestCluster::ExportDispatcherState() const {
+  return dispatcher_->ExportState();
+}
+
+ServerStateExport TestCluster::ExportWorkerState(size_t index) const {
+  return workers_[index]->ExportState();
 }
 
 }  // namespace data

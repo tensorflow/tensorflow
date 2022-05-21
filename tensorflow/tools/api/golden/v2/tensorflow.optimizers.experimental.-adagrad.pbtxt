@@ -4,8 +4,8 @@ tf_class {
   is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
   is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "iterations"
@@ -45,7 +45,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'learning_rate\', \'initial_accumulator_value\', \'epsilon\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.1\', \'1e-07\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'False\', \'Adagrad\'], "
+    argspec: "args=[\'self\', \'learning_rate\', \'initial_accumulator_value\', \'epsilon\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.1\', \'1e-07\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'Adagrad\'], "
   }
   member_method {
     name: "add_variable"
@@ -53,7 +53,7 @@ tf_class {
   }
   member_method {
     name: "add_variable_from_reference"
-    argspec: "args=[\'self\', \'model_variable\', \'variable_name\', \'initial_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'model_variable\', \'variable_name\', \'shape\', \'initial_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "aggregate_gradients"

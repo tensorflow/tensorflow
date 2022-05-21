@@ -171,6 +171,12 @@ class HloAsyncInstruction : public HloInstruction {
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       HloInstruction* operand,
                       HloComputation* async_computation);
+
+  ~HloAsyncInstruction() override;
+  // When an async instruction is being destructed, remove it from the vector of
+  // pointers of its called computation, to avoid referencing freed memory.
+  void ClearAsyncComputationInstruction();
+
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
 
@@ -215,6 +221,7 @@ class HloCompareInstruction : public HloInstruction {
                                  ComparisonDirection direction,
                                  absl::optional<Comparison::Type> type);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
+  ComparisonOrder order() const { return compare_.GetOrder(); }
   Comparison::Type type() const { return compare_.GetType(); }
   HloInstructionProto ToProto() const override;
 
@@ -915,26 +922,6 @@ class HloConstantInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
   absl::optional<Literal> literal_;
-};
-
-class HloTraceInstruction : public HloInstruction {
- public:
-  explicit HloTraceInstruction(const std::string& tag, HloInstruction* operand);
-  // Returns a tag to be used in tracing.
-  std::string TracingTag() const { return literal_.GetR1U8AsString(); }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
-
- private:
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
-  // Implementation for non-common logic of CloneWithNewOperands.
-  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      HloCloneContext* context) const override;
-  Literal literal_;
 };
 
 class HloFusionInstruction : public HloInstruction {
@@ -1801,8 +1788,7 @@ class HloGatherInstruction : public HloInstruction {
 class HloScatterInstruction : public HloInstruction {
  public:
   explicit HloScatterInstruction(
-      const Shape& shape, HloInstruction* operand,
-      HloInstruction* scatter_indices, HloInstruction* updates,
+      const Shape& shape, absl::Span<HloInstruction* const> args,
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
       bool indices_are_sorted, bool unique_indices);
@@ -1817,6 +1803,19 @@ class HloScatterInstruction : public HloInstruction {
   bool unique_indices() const override { return unique_indices_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+  int64_t scatter_operand_count() const { return operand_count() / 2; }
+  absl::Span<HloInstruction* const> scatter_operands() const {
+    return absl::MakeConstSpan(operands()).first(scatter_operand_count());
+  }
+  absl::Span<HloInstruction* const> scatter_updates() const {
+    return absl::MakeConstSpan(operands()).last(scatter_operand_count());
+  }
+  const HloInstruction* scatter_indices() const {
+    return operand(scatter_operand_count());
+  }
+  HloInstruction* scatter_indices() {
+    return mutable_operand(scatter_operand_count());
+  }
 
   // Creates an instance of ScatterDimensionNumbers.
   static ScatterDimensionNumbers MakeScatterDimNumbers(

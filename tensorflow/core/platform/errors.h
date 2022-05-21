@@ -30,8 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace errors {
 
-typedef ::tensorflow::error::Code Code;
-
 namespace internal {
 
 // The DECLARE_ERROR macro below only supports types that can be converted
@@ -157,9 +155,6 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
       const ::tensorflow::StringPiece& message,                           \
       const std::unordered_map<std::string, std::string>& payloads) {     \
     return errors::Create(::tensorflow::error::CONST, message, payloads); \
-  }                                                                       \
-  inline bool Is##FUNC(const ::tensorflow::Status& status) {              \
-    return status.code() == ::tensorflow::error::CONST;                   \
   }
 
 DECLARE_ERROR(Cancelled, CANCELLED)
@@ -178,6 +173,23 @@ DECLARE_ERROR(DataLoss, DATA_LOSS)
 DECLARE_ERROR(Unknown, UNKNOWN)
 DECLARE_ERROR(PermissionDenied, PERMISSION_DENIED)
 DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
+
+bool IsAborted(const Status& status);
+bool IsAlreadyExists(const Status& status);
+bool IsCancelled(const Status& status);
+bool IsDataLoss(const Status& status);
+bool IsDeadlineExceeded(const Status& status);
+bool IsFailedPrecondition(const Status& status);
+bool IsInternal(const Status& status);
+bool IsInvalidArgument(const Status& status);
+bool IsNotFound(const Status& status);
+bool IsOutOfRange(const Status& status);
+bool IsPermissionDenied(const Status& status);
+bool IsResourceExhausted(const Status& status);
+bool IsUnauthenticated(const Status& status);
+bool IsUnavailable(const Status& status);
+bool IsUnimplemented(const Status& status);
+bool IsUnknown(const Status& status);
 
 #undef DECLARE_ERROR
 

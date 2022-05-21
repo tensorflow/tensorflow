@@ -2,7 +2,7 @@
 // RUN: tf-opt %s -tfl-modify-io-nodes -tfl-test-io-types="int8,int8" | FileCheck --check-prefix=INT8 %s
 // RUN: tf-opt %s -tfl-modify-io-nodes -tfl-test-io-types="uint8,uint8" | FileCheck --check-prefix=UINT8 %s
 
-func @modified(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
+func.func @modified(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
   %cst = arith.constant dense<[1, 401408]> : tensor<2xi32>
   %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>
   %1 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216>>
@@ -45,7 +45,7 @@ func @modified(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> attribute
 // UINT8-NEXT: return %[[dq]] : tensor<1x401408x!quant.uniform<u8:f32, 3.906250e-03:128>>
 }
 
-func @not_modified(%arg0: tensor<f32>, %arg1: tensor<1x224x224x3xf32>) -> (tensor<1x401408xf32>, tensor<1x224x224x3xf32>) attributes {tf.entry_function = {control_outputs = "", inputs = "input0,input1", outputs = "output0,output1"}} {
+func.func @not_modified(%arg0: tensor<f32>, %arg1: tensor<1x224x224x3xf32>) -> (tensor<1x401408xf32>, tensor<1x224x224x3xf32>) attributes {tf.entry_function = {control_outputs = "", inputs = "input0,input1", outputs = "output0,output1"}} {
   %cst = arith.constant dense<[1, 401408]> : tensor<2xi32>
   %0 = "tfl.quantize"(%arg1) {qtype = tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>
   %1 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216>>
@@ -89,7 +89,7 @@ func @not_modified(%arg0: tensor<f32>, %arg1: tensor<1x224x224x3xf32>) -> (tenso
 // UINT8-NEXT: return %[[dq]], %arg1 : tensor<1x401408x!quant.uniform<u8:f32, 3.906250e-03:128>>, tensor<1x224x224x3xf32>
 }
 
-func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
+func.func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
   %cst = arith.constant dense<[1, 401408]> : tensor<2xi32>
   %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>
   %1 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216>>
@@ -105,7 +105,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
 // UINT8-LABEL: func @main(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x401408x!quant.uniform<u8:f32, 3.906250e-03:128>>
 }
 
-func @non_entry_funciton(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
+func.func @non_entry_funciton(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
   %cst = arith.constant dense<[1, 401408]> : tensor<2xi32>
   %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>
   %1 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32, 0.021826678373682216>>

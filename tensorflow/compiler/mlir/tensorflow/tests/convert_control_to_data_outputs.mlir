@@ -1,6 +1,6 @@
 // RUN: tf-opt -tf-executor-convert-control-to-data-outputs %s | FileCheck %s
 
-!tf_res = type tensor<!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<!tf_type.resource<tensor<f32>>>
 
 // Tests independent chains of two resources.
 
@@ -58,7 +58,7 @@ func.func @simple_independent_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Tests two resources accessed by one common op (ResourceApplyAdagrad). In such
@@ -120,7 +120,7 @@ func.func @intersecting_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Test presence of multiple callers of a while loop body
@@ -171,7 +171,7 @@ func.func @multiple_callers(%arg0: !tf_res, %arg1: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Test nested while ops.
@@ -247,7 +247,7 @@ func.func @nested_while(%arg0: !tf_res, %arg1: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Do not convert control outputs to chains in the presence of an op with
@@ -302,7 +302,7 @@ func.func @unknown_resource_op(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // No change if the no control output in while loop body.
@@ -350,7 +350,7 @@ func.func @no_control_output(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>)
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Tests loop with resource that is unique per iteration.
@@ -367,7 +367,7 @@ func.func @unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
     %while:3 = tf_executor.island wraps "tf.While"(%arg0, %arg1) {body = @unique_resource_chain_while_body, cond = @unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 // CHECK-LABEL:   func @unique_resource_chain
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -431,7 +431,7 @@ func.func @mixed_unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
     %while:3 = tf_executor.island wraps "tf.While"(%arg0, %arg1) {body = @mixed_unique_resource_chain_while_body, cond = @mixed_unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 // CHECK-LABEL:   func @mixed_unique_resource_chain
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>

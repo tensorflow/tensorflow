@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -305,8 +306,7 @@ DenseMap<BroadcastIntent, Value> RealizeBroadcastIntents(
     OperationState new_producer_op_state(
         producer_op->getLoc(), producer_op->getName().getStringRef(),
         bcasted_operands, it.result_type, producer_op->getAttrs());
-    Operation *new_producer_op =
-        rewriter.createOperation(new_producer_op_state);
+    Operation *new_producer_op = rewriter.create(new_producer_op_state);
     assert(new_producer_op->getNumResults() == 1 &&
            "expect exactly one result");
     realizations[it] = new_producer_op->getResults().front();
@@ -447,7 +447,7 @@ struct BroadcastPropagationPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createBroadcastPropagationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass() {
   return std::make_unique<BroadcastPropagationPass>();
 }
 

@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include <algorithm>
 #include <bitset>
 #include <cmath>
+#include <functional>
 #include <limits>
+#include <random>
 #include <type_traits>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -254,6 +259,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleRound(HloInstruction* round) override {
     return HandleRound<ReturnT>(round);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRoundNearestEven(HloInstruction* round) {
+    // TODO(b/228138251): Add support for rounding to nearest even.
+    return UnsupportedTypeError(round);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRoundNearestEven(HloInstruction* round) {
+    return UnsupportedTypeError(round);
+  }
+
+  Status HandleRoundNearestEven(HloInstruction* round) override {
+    return HandleRoundNearestEven<ReturnT>(round);
   }
 
   template <
@@ -1141,7 +1165,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count,
-                 batch_group_count](const absl::Span<const int64_t> out_index) {
+                 batch_group_count](const absl::Span<const int64_t> out_index,
+                                    int /*thread_id*/) {
       // Dimension number applicable for input (lhs).
       const int64_t input_batch_dim = dnums.input_batch_dimension();
       const int64_t input_z_dim = dnums.input_feature_dimension();
@@ -1344,7 +1369,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->use_fast_path_ &&
         ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
         ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
-      return HandleDot<ReturnT>(dot);
+      return HandleDot<ElementwiseT>(dot);
     }
     return HandleDotSlowPath(dot);
   }
@@ -1380,32 +1405,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << rhs->shape().dimensions(rhs_contracting_dimension);
 
     // The fast path is for a simple rank 2 dot with default layout operands.
-    if (lhs_rank == 2 && rhs_rank == 2 && lhs_contracting_dimension == 1 &&
-        rhs_contracting_dimension == 0 &&
-        LayoutUtil::Equal(lhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(rhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(dot->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2())) {
-      const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-      const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-      const int64_t contracted_dimension_size =
-          lhs->shape().dimensions(lhs_contracting_dimension);
-      Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
-                                 contracted_dimension_size);
-      lhs_array.SetValues(lhs_literal.data<NativeT>());
-      Array2D<NativeT> rhs_array(contracted_dimension_size,
-                                 rhs->shape().dimensions(1));
-      rhs_array.SetValues(rhs_literal.data<NativeT>());
-      std::unique_ptr<Array2D<NativeT>> result_array =
-          HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-      Literal result(dot->shape());
-      result.PopulateR2FromArray2D(*result_array);
-      parent_->evaluated_[dot] = std::move(result);
-      return Status::OK();
+    if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
+        rhs_contracting_dimension != 0 ||
+        !LayoutUtil::Equal(lhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(rhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(dot->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2())) {
+      return HandleDotSlowPath(dot);
     }
-    return HandleDotSlowPath(dot);
+
+    const PrimitiveType native_ty =
+        primitive_util::NativeToPrimitiveType<NativeT>();
+    Literal lhs_literal =
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).ValueOrDie();
+    Literal rhs_literal =
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).ValueOrDie();
+    const int64_t contracted_dimension_size =
+        lhs->shape().dimensions(lhs_contracting_dimension);
+    Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
+                               contracted_dimension_size);
+    lhs_array.SetValues(lhs_literal.data<NativeT>());
+    Array2D<NativeT> rhs_array(contracted_dimension_size,
+                               rhs->shape().dimensions(1));
+    rhs_array.SetValues(rhs_literal.data<NativeT>());
+    std::unique_ptr<Array2D<NativeT>> result_array =
+        HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    result.PopulateR2FromArray2D(*result_array);
+    parent_->evaluated_[dot] =
+        std::move(result).Convert(dot->shape().element_type()).ValueOrDie();
+    return Status::OK();
   }
 
   template <typename NativeT, typename std::enable_if<!std::is_same<
@@ -1428,89 +1459,77 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
-    DimensionVector lhs_index(lhs_rank);
-    DimensionVector rhs_index(rhs_rank);
-
-    // result_index_locations[i] contains one or two pointers to the locations
-    // in lhs_index or rhs_index where the i'th result index should go.
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
-        result_index_locations;
-    result_index_locations.reserve(
-        (lhs_rank - dnums.lhs_contracting_dimensions_size()) +
-        (rhs_rank - dnums.rhs_contracting_dimensions_size()));
-
-    // The first components in the output shape are the LHS and RHS batch
-    // dimensions:
-    for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
-      result_index_locations.push_back(
-          {&lhs_index[dnums.lhs_batch_dimensions(i)],
-           &rhs_index[dnums.rhs_batch_dimensions(i)]});
-    }
-
-    // Then we have the LHS and RHS non-contracting dimensions, if any:
+    DimensionVector lhs_non_contracting_dims;
+    DimensionVector rhs_non_contracting_dims;
     for (int64_t i = 0; i < lhs_rank; i++) {
       if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
-        result_index_locations.push_back({&lhs_index[i], nullptr});
+        lhs_non_contracting_dims.push_back(i);
       }
     }
     for (int64_t i = 0; i < rhs_rank; i++) {
       if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
-        result_index_locations.push_back({&rhs_index[i], nullptr});
+        rhs_non_contracting_dims.push_back(i);
       }
     }
 
-    absl::InlinedVector<int64_t, InlineRank()> accumulate_index_sizes;
-    accumulate_index_sizes.reserve(dnums.lhs_contracting_dimensions_size());
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
-        accumulate_index_locations;
-    accumulate_index_locations.reserve(dnums.lhs_contracting_dimensions_size());
+    absl::InlinedVector<int64_t, InlineRank()> contracting_dim_sizes;
+    contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
+    DimensionVector lhs_contracting_dims;
+    DimensionVector rhs_contracting_dims;
     for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
       const int64_t lhs_dnum = dnums.lhs_contracting_dimensions(i);
       const int64_t rhs_dnum = dnums.rhs_contracting_dimensions(i);
-      accumulate_index_locations.push_back(
-          {&lhs_index[lhs_dnum], &rhs_index[rhs_dnum]});
+      lhs_contracting_dims.push_back(lhs_dnum);
+      rhs_contracting_dims.push_back(rhs_dnum);
       const int64_t dim_size = lhs_literal.shape().dimensions(lhs_dnum);
-      accumulate_index_sizes.push_back(dim_size);
+      contracting_dim_sizes.push_back(dim_size);
     }
-    const int64_t total_contraction_size = Product(accumulate_index_sizes);
+    const int64_t total_contraction_size = Product(contracting_dim_sizes);
     Literal result(dot->shape());
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> result_index) {
-          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+          // Locations in LHS and RHS that we read from.
+          DimensionVector lhs_index(lhs_rank);
+          DimensionVector rhs_index(rhs_rank);
 
-          for (int64_t i = 0; i < result_index.size(); i++) {
-            *result_index_locations[i].first = result_index[i];
-            if (result_index_locations[i].second) {
-              *result_index_locations[i].second = result_index[i];
-            }
+          // First come the batch dimensions.
+          int64_t idx = 0;
+          for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+            lhs_index[dnums.lhs_batch_dimensions(i)] = result_index[idx];
+            rhs_index[dnums.rhs_batch_dimensions(i)] = result_index[idx];
+            idx++;
           }
 
-          // Accumulates resulting product along the contracted dimension.
-          absl::InlinedVector<int64_t, InlineRank()> accumulate_index(
-              accumulate_index_sizes.size(), 0);
-          for (int64_t k = 0; k < total_contraction_size; k++) {
-            for (int64_t i = 0; i < accumulate_index_sizes.size(); ++i) {
-              *(accumulate_index_locations[i].first) = accumulate_index[i];
-              *(accumulate_index_locations[i].second) = accumulate_index[i];
-            }
+          // Next we have non-contracting dimensions, if any.
+          for (int64_t i = 0; i < lhs_non_contracting_dims.size(); i++) {
+            lhs_index[lhs_non_contracting_dims[i]] = result_index[idx++];
+          }
+          for (int64_t i = 0; i < rhs_non_contracting_dims.size(); i++) {
+            rhs_index[rhs_non_contracting_dims[i]] = result_index[idx++];
+          }
 
+          // Accumulate resulting product along the contracting dimensions.
+          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+          for (int64_t k = 0; k < total_contraction_size; k++) {
             ElementwiseT lhs_val(lhs_literal.Get<ReturnT>(lhs_index));
             ElementwiseT rhs_val(rhs_literal.Get<ReturnT>(rhs_index));
             result_val +=
                 ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
 
-            // If there are no contracting dimension accumulate_index_sizes is
-            // empty, do not try to count down from -1 to 0 since it is and
-            // infinite loop.
-            if (!accumulate_index_sizes.empty()) {
-              for (int64_t i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
-                int64_t value = ++accumulate_index[i];
-                if (value != accumulate_index_sizes[i]) {
+            // If there are no contracting dimensions, do not try to count down
+            // from -1 to 0; that's an infinite loop.
+            if (!contracting_dim_sizes.empty()) {
+              for (int64_t i = contracting_dim_sizes.size() - 1; i >= 0; --i) {
+                lhs_index[lhs_contracting_dims[i]]++;
+                rhs_index[rhs_contracting_dims[i]]++;
+                if (lhs_index[lhs_contracting_dims[i]] !=
+                    contracting_dim_sizes[i]) {
                   break;
                 }
-                accumulate_index[i] = 0;
+                lhs_index[lhs_contracting_dims[i]] = 0;
+                rhs_index[rhs_contracting_dims[i]] = 0;
               }
             }
           }
@@ -1762,11 +1781,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           for (auto operand : operands) {
             const Literal& arg_literal =
                 parent_->GetEvaluatedLiteralFor(operand);
-
-            auto curr_val = arg_literal.Get<NativeT>(multi_index);
-            auto curr_val_literal = LiteralUtil::CreateR0<NativeT>(curr_val);
-
-            arg_literals.push_back(std::move(curr_val_literal));
+            arg_literals.push_back(
+                LiteralUtil::GetScalarLiteral(arg_literal, multi_index));
           }
 
           Literal computed_result =
@@ -1911,15 +1927,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       // do this by iterating through the window, and compare each index with
       // the selected index.
       absl::optional<ReturnT> selected_val;
-      absl::optional<std::vector<int64_t>> selected_index;
+      absl::optional<DimensionVector> selected_index;
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,
-          [&](const std::vector<int64_t>& operand_index) {
+          [&](absl::Span<const int64_t> operand_index) {
             auto curr_val = operand_literal.Get<ReturnT>(operand_index);
             if (!selected_val) {
               selected_val = curr_val;
-              selected_index = operand_index;
+              selected_index.emplace(operand_index.begin(),
+                                     operand_index.end());
             }
             curr_val_literal.Set({}, curr_val);
             selected_val_literal.Set({}, *selected_val);
@@ -1931,14 +1948,15 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             bool selected = !computed_result.Get<bool>({});
             if (selected) {
               selected_val = curr_val;
-              selected_index = operand_index;
+              selected_index.emplace(operand_index.begin(),
+                                     operand_index.end());
             }
             embedded_evaluator.ResetVisitStates();
           });
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,
-          [&](const std::vector<int64_t>& operand_index) {
+          [&](absl::Span<const int64_t> operand_index) {
             if (std::equal(operand_index.begin(), operand_index.end(),
                            selected_index->begin())) {
               auto source = source_literal.Get<ReturnT>(source_index);
@@ -2003,11 +2021,26 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Shape window_shape = ShapeUtil::MakeShape(
         input_arrays[0]->shape().element_type(), window_dimension_sizes);
 
-    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
+    const int num_threads = tensorflow::port::MaxParallelism() + 1;
+    std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
+    embedded_evaluators.reserve(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+      embedded_evaluators.push_back(
+          parent_->CreateEmbedded(parent_->max_loop_iterations_));
+    }
+
     // For each resulting dimension, calculate and assign computed value.
-    auto evaluate_impl =
-        [&](absl::Span<const int64_t> output_index) -> std::vector<Literal> {
-      std::vector<Literal> computed_result;
+    auto evaluate_impl = [&init_literal_vec, &window_shape, &window,
+                          &input_literal_vec, &embedded_evaluators, function,
+                          &inferred_return_shape](
+                             absl::Span<const int64_t> output_index,
+                             int thread_id) -> absl::InlinedVector<Literal, 2> {
+      const int embedded_evaluator_index = thread_id + 1;
+      CHECK_GE(embedded_evaluator_index, 0);
+      CHECK_LT(embedded_evaluator_index, embedded_evaluators.size());
+      HloEvaluator& embedded_evaluator =
+          *embedded_evaluators[embedded_evaluator_index];
+      absl::InlinedVector<Literal, 2> computed_result;
       computed_result.reserve(init_literal_vec.size());
       for (const auto* init : init_literal_vec) {
         computed_result.push_back(init->Clone());
@@ -2020,8 +2053,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               VLOG(2) << "Pushing:" << curr_result_val.ToString() << "\n";
               args.push_back(&curr_result_val);
             }
-            absl::InlinedVector<Literal, 2> curr_val_literal_vec(
-                input_literal_vec.size());
+            absl::InlinedVector<Literal, 2> curr_val_literal_vec;
+            curr_val_literal_vec.reserve(input_literal_vec.size());
             for (const auto* input_literal : input_literal_vec) {
               // Evaluate computation with specified literal operands.
               curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
@@ -2040,7 +2073,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             // on the same computation.
             embedded_evaluator.ResetVisitStates();
             if (inferred_return_shape.IsTuple()) {
-              computed_result = computed_result[0].DecomposeTuple();
+              auto decomposed = computed_result[0].DecomposeTuple();
+              computed_result.clear();
+              computed_result.reserve(decomposed.size());
+              for (int i = 0; i < decomposed.size(); ++i) {
+                computed_result.push_back(std::move(decomposed[i]));
+              }
             }
           });
       VLOG(2) << "Final result size:" << computed_result.size() << "\n";
@@ -2055,401 +2093,37 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       for (int64_t i = 0; i < num_args; ++i) {
         results[i] = Literal(inferred_return_shape.tuple_shapes(i));
       }
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      ShapeUtil::ForEachIndexParallel(
           inferred_return_shape.tuple_shapes(0),
-          [&](absl::Span<const int64_t> output_index) -> StatusOr<bool> {
-            std::vector<Literal> computed_result_vec =
-                evaluate_impl(output_index);
+          [&results, &evaluate_impl](absl::Span<const int64_t> output_index,
+                                     int thread_id) -> bool {
+            absl::InlinedVector<Literal, 2> computed_result_vec =
+                evaluate_impl(output_index, thread_id);
             for (int i = 0; i < computed_result_vec.size(); ++i) {
-              TF_RETURN_IF_ERROR(results[i].CopyElementFrom(
-                  computed_result_vec[i], {}, output_index));
+              // We are reading from `computed_result_vec[i]` at the top-level
+              // literal index and writing to `results[i]` at `output_index`.
+              // This is thread-safe because:
+              //  - `results[i]` is not changing size.
+              //  - `computed_result_vec[i]` is thread-local.
+              //  - There is exactly one write to `results[i]` for each
+              //    `output_index`.
+              TF_CHECK_OK(results[i].CopyElementFrom(computed_result_vec[i], {},
+                                                     output_index));
             }
             return true;
-          }));
+          });
       result = Literal::MoveIntoTuple(absl::MakeSpan(results));
       VLOG(2) << "Final result is:" << result.ToString() << "\n";
     } else {
-      TF_RETURN_IF_ERROR(
-          result.Populate<ReturnT>([&](absl::Span<const int64_t> output_index) {
-            return evaluate_impl(output_index)[0].template Get<ReturnT>({});
+      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+          [&evaluate_impl](absl::Span<const int64_t> output_index,
+                           int thread_id) {
+            return evaluate_impl(output_index, thread_id)[0]
+                .template Get<ReturnT>({});
           }));
     }
     VLOG(2) << "Final result is:" << result.ToString() << "\n";
     parent_->evaluated_[reduce_window] = std::move(result);
-    return Status::OK();
-  }
-
-  // Reshapes the scatter indices input to have a trailing degenerate `1`
-  // dimension if necessary.  Hands over the ownership of the newly created
-  // literal (if there is one) to `reshaped_indices`.
-  StatusOr<std::reference_wrapper<const Literal>> ReshapedScatterIndices(
-      int64_t index_vector_dim, const Literal& indices,
-      Literal* reshaped_indices) {
-    if (indices.shape().dimensions_size() != index_vector_dim) {
-      return std::cref(indices);
-    }
-
-    std::vector<int64_t> new_shape(indices.shape().dimensions().begin(),
-                                   indices.shape().dimensions().end());
-    new_shape.push_back(1);
-    TF_ASSIGN_OR_RETURN(*reshaped_indices, indices.Reshape(new_shape));
-    return std::cref(*reshaped_indices);
-  }
-
-  // Returns an ShapeUtil::IndexIterationSpace that iterates over the update
-  // scatter dimensions while keeping the rest of the update dimensions clamped
-  // to 0.
-  ShapeUtil::IndexIterationSpace IterationSpaceForUpdateScatterIndices(
-      const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
-    int64_t updates_rank = updates_shape.dimensions_size();
-    std::vector<int64_t> index_base(updates_rank, 0);
-    std::vector<int64_t> index_count(updates_rank, 1);
-    for (int64_t i = 0; i < updates_rank; i++) {
-      bool is_update_scatter_dim =
-          !absl::c_binary_search(dim_numbers.update_window_dims(), i);
-      if (is_update_scatter_dim) {
-        index_count[i] = updates_shape.dimensions(i);
-      }
-    }
-    return {std::move(index_base), std::move(index_count),
-            std::vector<int64_t>(updates_rank, 1)};
-  }
-
-  // Return an ShapeUtil::IndexIterationSpace that iterates over the update
-  // window dimensions while keeping the rest of the update dimensions clamped
-  // to 0.
-  ShapeUtil::IndexIterationSpace IterationSpaceForUpdateWindowIndices(
-      const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
-    int64_t updates_rank = updates_shape.dimensions_size();
-    std::vector<int64_t> index_base(updates_rank, 0);
-    std::vector<int64_t> index_count(updates_rank, 1);
-    for (int64_t i = 0; i < updates_rank; i++) {
-      bool is_update_window_dim =
-          absl::c_binary_search(dim_numbers.update_window_dims(), i);
-      if (is_update_window_dim) {
-        index_count[i] = updates_shape.dimensions(i);
-      }
-    }
-    return {std::move(index_base), std::move(index_count),
-            std::vector<int64_t>(updates_rank, 1)};
-  }
-
-  // This functor computes the contribution of scatter_indices to an input index
-  // corresponding to an update index.  That is, given an update index I, it
-  // picks out the scatter indices in I and uses them to look up a scatter
-  // index, S, from the scatter indices tensor, and expands S into the input
-  // space according to scatter_dims_to_operand_dims.
-  //
-  // This is similar to the class HloEvaluator::OutputGatherIndexToInputIndex
-  // that does the corresponding function for Gather.
-  class UpdateScatterIndexToInputIndex {
-   public:
-    // The constructor does some setup work that is amortized across all
-    // iterations.
-    explicit UpdateScatterIndexToInputIndex(
-        const ScatterDimensionNumbers* dim_numbers, const Shape& input_shape,
-        const Shape& updates_shape, const Literal* scatter_indices)
-        : dim_numbers_(*dim_numbers), scatter_indices_(*scatter_indices) {
-      for (int64_t i = 0; i < updates_shape.dimensions_size(); i++) {
-        update_dim_is_scatter_dims_.push_back(
-            !absl::c_binary_search(dim_numbers_.update_window_dims(), i));
-      }
-
-      for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
-        int64_t index_of_input_dim_in_index_vector =
-            FindIndex(dim_numbers_.scatter_dims_to_operand_dims(), i);
-        if (index_of_input_dim_in_index_vector ==
-            dim_numbers_.scatter_dims_to_operand_dims_size()) {
-          input_dim_value_to_index_vector_.push_back(-1);
-        } else {
-          input_dim_value_to_index_vector_.push_back(
-              index_of_input_dim_in_index_vector);
-        }
-      }
-
-      index_vector_index_.resize(scatter_indices_.shape().dimensions_size());
-      input_index_.resize(input_shape.dimensions_size());
-      int64_t index_vector_size =
-          scatter_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
-      index_vector_.resize(index_vector_size);
-    }
-
-    // Returns the contribution of scatter_indices to the input index
-    // corresponding to update_index.  See scatter_inner_loop_body.
-    //
-    // This is conceptually  a stateless transformation from update_index to the
-    // scatter input index, but:
-    //
-    //  - Instead of allocating memory to represent the scatter input index on
-    //    every invocation we reuse the same storage for the result
-    //    (input_index_), mutating it in place.
-    //  - Instead of allocating buffers for temporary values like
-    //    index_vector_index_ and index_vector on every invocation, we reuse the
-    //    same storage for all invocations.
-    //
-    // This returns a Span into memory owned by the class.
-    StatusOr<absl::Span<const int64_t>> operator()(
-        absl::Span<const int64_t> update_index) {
-      PropagateUpdateIndexScatterDimsToIndexVectorIndex(update_index);
-      TF_RETURN_IF_ERROR(FetchIndexVector());
-      PropagateIndexVectorToInputIndex();
-      return absl::Span<const int64_t>(input_index_);
-    }
-
-   private:
-    // Propagates the scatter index dimensions from the update index into
-    // index_vector_index_ by mutating index_vector_index_ in place.  Does not
-    // update the dim_numbers.index_vector_dim() dimension -- that's the
-    // dimension we iterate over in FetchIndexVector.
-    void PropagateUpdateIndexScatterDimsToIndexVectorIndex(
-        absl::Span<const int64_t> update_index) {
-      int64_t index_vector_index_i = 0;
-      for (int64_t i = 0, e = update_index.size(); i < e; i++) {
-        if (!update_dim_is_scatter_dims_[i]) {
-          continue;
-        }
-
-        if (index_vector_index_i == dim_numbers_.index_vector_dim()) {
-          index_vector_index_i++;
-        }
-
-        index_vector_index_[index_vector_index_i++] = update_index[i];
-      }
-    }
-
-    // Populates index_vector_ by iterating over scatter_indices_ according to
-    // index_vector_index_.
-    Status FetchIndexVector() {
-      int64_t index_vector_dim = dim_numbers_.index_vector_dim();
-      for (int64_t i = 0, e = index_vector_.size(); i < e; i++) {
-        index_vector_index_[index_vector_dim] = i;
-        index_vector_[i] =
-            *scatter_indices_.GetIntegralAsS64(index_vector_index_);
-      }
-      return Status::OK();
-    }
-
-    // Populates input_index_.
-    void PropagateIndexVectorToInputIndex() {
-      for (int64_t i = 0, e = input_index_.size(); i < e; i++) {
-        if (input_dim_value_to_index_vector_[i] != -1) {
-          input_index_[i] = index_vector_[input_dim_value_to_index_vector_[i]];
-        }
-
-        // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
-        // remains 0, as set by the constructor.
-      }
-    }
-
-    // input_dim_value_to_index_vector_[i] tells us how to compute dimension i
-    // of the input index from the index vector.  See
-    // PropagateIndexVectorToInputIndex.
-    std::vector<int64_t> input_dim_value_to_index_vector_;
-
-    // update_dim_is_scatter_dims_[i] is true iff the update index i is a
-    // scatter dimension.
-    std::vector<bool> update_dim_is_scatter_dims_;
-
-    // The buffer into which we construct an index into scatter_indices_ to
-    // fetch the index vector.
-    std::vector<int64_t> index_vector_index_;
-
-    // The index vector fetched from scatter_indices_.
-    std::vector<int64_t> index_vector_;
-
-    // The result computed by this functor.  operator() returns a Span
-    // into this vector.
-    std::vector<int64_t> input_index_;
-
-    const ScatterDimensionNumbers& dim_numbers_;
-    const Literal& scatter_indices_;
-  };
-
-  // This functor computes the contribution of the window indices in an update
-  // index to an input index.  That is, given an update index I it picks out the
-  // update window indices in I and expands it into a window index into the
-  // input shape.
-  //
-  // This is similar to the class HloEvaluator::OutputWindowIndexToInputIndex
-  // that does the corresponding function for Gather.
-  class UpdateWindowIndexToInputIndex {
-   public:
-    // The constructor does some setup work that is amortized across all
-    // iterations.
-    explicit UpdateWindowIndexToInputIndex(
-        const ScatterDimensionNumbers& dim_numbers, const Shape& input_shape,
-        const Shape& updates_shape) {
-      std::vector<int64_t> window_index_to_update_index;
-      int64_t update_index_count = 0;
-      for (int64_t i = 0; i < updates_shape.dimensions_size(); i++) {
-        if (absl::c_binary_search(dim_numbers.update_window_dims(), i)) {
-          window_index_to_update_index.push_back(update_index_count++);
-        } else {
-          update_index_count++;
-        }
-      }
-
-      int64_t window_dim_count = 0;
-      for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
-        if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
-          input_dim_value_to_update_index_.push_back(-1);
-        } else {
-          input_dim_value_to_update_index_.push_back(
-              window_index_to_update_index[window_dim_count++]);
-        }
-      }
-
-      input_index_.resize(input_shape.dimensions_size());
-    }
-
-    // Returns the contribution of the window indices to the input index
-    // corresponding to update_index.  See scatter_inner_loop_body.
-    //
-    // This is conceptually a stateless transformation from update_index to the
-    // window input index, but instead of allocating memory to represent the
-    // scatter input index on every invocation we reuse the same storage for the
-    // result (input_index_), mutating it in place.
-    //
-    // This returns a Span into memory owned by the class.
-    StatusOr<absl::Span<const int64_t>> operator()(
-        absl::Span<const int64_t> update_index) {
-      PropagateUpdateIndexWindowDimsToInputIndex(update_index);
-      return absl::Span<const int64_t>(input_index_);
-    }
-
-    // Returns for a given 'input_dim' the corresponding update dimension index,
-    // or -1 if 'input_dim' is an elided window dimension.
-    int64_t input_dim_value_to_update_index(int64_t input_dim) {
-      return input_dim_value_to_update_index_[input_dim];
-    }
-
-   private:
-    // Propagates window dimensions from the update index to input_index_ by
-    // mutating input_index_ in place.
-    void PropagateUpdateIndexWindowDimsToInputIndex(
-        absl::Span<const int64_t> update_index) {
-      for (int64_t i = 0, e = input_index_.size(); i < e; i++) {
-        if (input_dim_value_to_update_index_[i] != -1) {
-          input_index_[i] = update_index[input_dim_value_to_update_index_[i]];
-        }
-
-        // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
-        // remains 0, as set by the constructor.
-      }
-    }
-
-    // input_dim_value_to_index_vector_[i] tells us how to compute dimension i
-    // of the input index from the update index. See
-    // PropagateUpdateIndexWindowDimsToInputIndex.
-    std::vector<int64_t> input_dim_value_to_update_index_;
-
-    // The result computed by this functor.  operator() returns a Span
-    // into this vector.
-    std::vector<int64_t> input_index_;
-  };
-
-  Status HandleScatter(HloInstruction* scatter) override {
-    const ScatterDimensionNumbers& dim_numbers =
-        scatter->scatter_dimension_numbers();
-    const Literal& operand =
-        parent_->GetEvaluatedLiteralFor(scatter->operand(0));
-    Literal reshaped_scatter_indices;
-    TF_ASSIGN_OR_RETURN(const Literal& scatter_indices,
-                        ReshapedScatterIndices(dim_numbers.index_vector_dim(),
-                                               parent_->GetEvaluatedLiteralFor(
-                                                   scatter->operand(1)),
-                                               &reshaped_scatter_indices));
-    const Literal& updates =
-        parent_->GetEvaluatedLiteralFor(scatter->operand(2));
-    const Shape& updates_shape = updates.shape();
-    const Shape& operand_shape = operand.shape();
-
-    ShapeUtil::IndexIterationSpace scatter_indices_iteration_space =
-        IterationSpaceForUpdateScatterIndices(updates_shape, dim_numbers);
-    ShapeUtil::IndexIterationSpace window_indices_iteration_space =
-        IterationSpaceForUpdateWindowIndices(updates_shape, dim_numbers);
-
-    std::vector<int64_t> input_index(operand_shape.dimensions_size());
-    std::vector<int64_t> update_index(updates_shape.dimensions_size());
-
-    UpdateScatterIndexToInputIndex update_scatter_index_to_input_index(
-        &scatter->scatter_dimension_numbers(), /*input_shape=*/operand_shape,
-        updates_shape, &scatter_indices);
-    UpdateWindowIndexToInputIndex update_window_index_to_input_index(
-        scatter->scatter_dimension_numbers(), /*input_shape=*/operand_shape,
-        updates_shape);
-
-    // Initialize the result with the operand. This makes it easier to handle
-    // the updates even when the indices are repeated.
-    Literal result = operand.Clone();
-    HloEvaluator embedded_evaluator;
-    auto scatter_inner_loop_body =
-        [&](absl::Span<const int64_t> update_window_index,
-            absl::Span<const int64_t> input_scatter_index,
-            absl::Span<const int64_t> update_scatter_index) -> StatusOr<bool> {
-      TF_ASSIGN_OR_RETURN(
-          absl::Span<const int64_t> input_window_index,
-          update_window_index_to_input_index(update_window_index));
-      for (int i = 0, e = update_index.size(); i < e; i++) {
-        update_index[i] = update_scatter_index[i] + update_window_index[i];
-        DCHECK_LT(update_index[i], updates_shape.dimensions(i));
-      }
-      for (int i = 0, e = input_scatter_index.size(); i < e; i++) {
-        int64_t update_dim =
-            update_window_index_to_input_index.input_dim_value_to_update_index(
-                i);
-        // If 'update_dim' is -1, it means 'i' is an elided window dim. This
-        // means we set the iteration index to 0, so for the purpose of the
-        // following calculations we can consider the update dimension size to
-        // be 1.
-        int64_t update_dim_size =
-            update_dim == -1 ? 1 : updates_shape.dimensions(update_dim);
-        // If any part of the update region is out-of-bounds, then do not
-        // perform any update on the input.
-        if ((input_scatter_index[i] < 0) ||
-            (input_scatter_index[i] >
-             operand_shape.dimensions(i) - update_dim_size)) {
-          return true;
-        }
-      }
-      for (int i = 0, e = input_index.size(); i < e; i++) {
-        input_index[i] = input_scatter_index[i] + input_window_index[i];
-      }
-
-      auto result_value_literal =
-          LiteralUtil::CreateR0<ReturnT>(result.Get<ReturnT>(input_index));
-      auto update_value_literal =
-          LiteralUtil::CreateR0<ReturnT>(updates.Get<ReturnT>(update_index));
-      Literal updated_result =
-          embedded_evaluator
-              .Evaluate(*scatter->to_apply(),
-                        {&result_value_literal, &update_value_literal})
-              .ConsumeValueOrDie();
-      // Clear visit states so that the we can use the evaluate again on the
-      // same computation.
-      embedded_evaluator.ResetVisitStates();
-      result.Set<ReturnT>(input_index, updated_result.Get<ReturnT>({}));
-      return true;
-    };
-
-    auto scatter_outer_loop_body =
-        [&](absl::Span<const int64_t> update_scatter_index) -> StatusOr<bool> {
-      TF_ASSIGN_OR_RETURN(
-          absl::Span<const int64_t> input_scatter_index,
-          update_scatter_index_to_input_index(update_scatter_index));
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-          updates_shape, window_indices_iteration_space,
-          [&](absl::Span<const int64_t> update_window_index) {
-            return scatter_inner_loop_body(
-                update_window_index, input_scatter_index, update_scatter_index);
-          }));
-      return true;
-    };
-
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-        updates_shape, scatter_indices_iteration_space,
-        scatter_outer_loop_body));
-    parent_->evaluated_[scatter] = std::move(result);
     return Status::OK();
   }
 
@@ -2862,12 +2536,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   static void IterateThroughWindow(
       const Shape& window_shape, const Window& window, const Shape& base_shape,
       const absl::Span<const int64_t> window_count_index,
-      const std::function<void(const std::vector<int64_t>&)>& f) {
+      const std::function<void(absl::Span<const int64_t>)>& f) {
     const int64_t rank = base_shape.rank();
     DimensionVector window_index(rank);
     std::fill(window_index.begin(), window_index.end(), 0);
     do {
-      std::vector<int64_t> base_index(rank);
+      DimensionVector base_index(rank);
       bool out_of_bound = false;
       for (int64_t i = 0; i < rank; ++i) {
         // Padding is applied to the dilated base. Say that padding is 3 and
@@ -2993,7 +2667,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* instruction,
       const std::function<ElementwiseT(ElementwiseT, ElementwiseT)>&
           binary_op) {
-    const auto shape = instruction->shape();
+    const auto& shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
@@ -3017,7 +2691,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   StatusOr<Literal> ElementwiseTernaryOp(
       HloInstruction* instruction,
       const std::function<ReturnT(LhsType, RhsType, EhsType)>& ternary_op) {
-    const auto shape = instruction->shape();
+    const auto& shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     const auto* ehs = instruction->operand(2);

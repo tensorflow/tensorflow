@@ -26,6 +26,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/kernels/mkl/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::convolution_forward;
 using dnnl::prop_kind;
@@ -92,6 +95,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
   }
   ~MklConvFwdPrimitive() {}
 
+  dnnl::memory::desc GetScratchPadDesc() {
+    return context_.fwd_pd->scratchpad_desc();
+  }
+
   // Convolution forward execute with bias
   //   src_data:    input data buffer of src
   //   filter_data: input data buffer of filter (weights)
@@ -99,16 +106,22 @@ class MklConvFwdPrimitive : public MklPrimitive {
   //   dst_data:    output data buffer of dst
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
-               std::shared_ptr<stream> fwd_stream) {
+               std::shared_ptr<stream> fwd_stream, void* sp_data = nullptr) {
     Execute(src_data, filter_data, bias_data, dst_data, nullptr, nullptr,
-            nullptr, nullptr, fwd_stream);
+            nullptr, nullptr, fwd_stream, sp_data);
   }
 
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
                const Tinput* bn_scale_data, const Tinput* bn_mean_data,
                const Tinput* bn_offset_data, const Tinput* bn_rsqrt_data,
-               std::shared_ptr<stream> fwd_stream) {
+               std::shared_ptr<stream> fwd_stream, void* sp_data) {
+#ifdef DNNL_AARCH64_USE_ACL
+    // When we are using single global cache then in this case we can have
+    // multiple threads running the same primitive that we created so this
+    // should happen under the lock.
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
@@ -153,6 +166,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
 #endif  // !ENABLE_ONEDNN_OPENMP
+    if (sp_data) {
+      context_.sp_mem->set_data_handle(static_cast<void*>(sp_data),
+                                       *fwd_stream);
+    }
 
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -174,6 +191,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
       context_.bn_offset_mem->set_data_handle(DummyData);
     }
     context_.dst_mem->set_data_handle(DummyData);
+    if (sp_data) {
+      context_.sp_mem->set_data_handle(DummyData);
+    }
   }
 
   // Convolution forward execute without bias
@@ -181,9 +201,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
   //   filter_data: input data buffer of filter (weights)
   //   dst_data:    output data buffer of dst
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
-               const Toutput* dst_data, std::shared_ptr<stream> fwd_stream) {
+               const Toutput* dst_data, std::shared_ptr<stream> fwd_stream,
+               void* sp_data) {
     Execute(src_data, filter_data, nullptr, dst_data, nullptr, nullptr, nullptr,
-            nullptr, fwd_stream);
+            nullptr, fwd_stream, sp_data);
   }
 
   std::shared_ptr<ConvFwdPd> GetPrimitiveDesc() const {
@@ -198,6 +219,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::memory> filter_mem;
     std::shared_ptr<dnnl::memory> bias_mem;
     std::shared_ptr<dnnl::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> sp_mem;
 
     // FusedBatchNorm related memory
     std::shared_ptr<dnnl::memory> bn_scale_mem;
@@ -232,6 +254,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           filter_mem(nullptr),
           bias_mem(nullptr),
           dst_mem(nullptr),
+          sp_mem(nullptr),
           bn_scale_mem(nullptr),
           bn_mean_mem(nullptr),
           bn_rsqrt_mem(nullptr),
@@ -305,6 +328,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     auto const& post_op_params = convFwdDims.post_op_params;
     dnnl::primitive_attr post_ops_attr;
     dnnl::post_ops post_ops;
+    post_ops_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
         if (post_op_param.name == "activation") {
@@ -341,11 +365,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
         }
       }
       post_ops_attr.set_post_ops(post_ops);
-      context_.fwd_pd.reset(
-          new ConvFwdPd(*context_.fwd_desc, post_ops_attr, cpu_engine_));
-    } else {
-      context_.fwd_pd.reset(new ConvFwdPd(*context_.fwd_desc, cpu_engine_));
     }
+    context_.fwd_pd.reset(
+        new ConvFwdPd(*context_.fwd_desc, post_ops_attr, cpu_engine_));
 
     // Create memory primitive based on dummy data
     context_.src_mem.reset(
@@ -356,6 +378,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
         new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
 
     context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
+    auto scratchpad_md = context_.fwd_pd->scratchpad_desc();
+    context_.sp_mem.reset(
+        new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
 
     // Create convolution primitive and add it to net
     if (!convFwdDims.bias_dims.empty()) {
@@ -366,6 +391,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           {{DNNL_ARG_SRC, *context_.src_mem},
            {DNNL_ARG_WEIGHTS, *context_.filter_mem},
            {DNNL_ARG_BIAS, *context_.bias_mem},
+           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
            {DNNL_ARG_DST, *context_.dst_mem}});
     } else if (!convFwdDims.fuse_bn_dims.empty()) {
       context_.bn_scale_mem.reset(
@@ -381,6 +407,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           {{DNNL_ARG_SRC, *context_.src_mem},
            {DNNL_ARG_WEIGHTS, *context_.filter_mem},
            {DNNL_ARG_DST, *context_.dst_mem},
+           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
             *context_.bn_mean_mem},
            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
@@ -393,12 +420,18 @@ class MklConvFwdPrimitive : public MklPrimitive {
       context_.fwd_primitives_args.push_back(
           {{DNNL_ARG_SRC, *context_.src_mem},
            {DNNL_ARG_WEIGHTS, *context_.filter_mem},
+           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
            {DNNL_ARG_DST, *context_.dst_mem}});
     }
     context_.fwd_primitives.push_back(*context_.conv_fwd);
   }
 
   struct ConvFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  // Guards Execution()
+  mutex primitive_execution_mu_;
+#endif
 };
 
 // TODO(intel-tf): We should not require passing a type to MklPrimitiveFactory.
@@ -531,9 +564,8 @@ class MklConvOp : public OpKernel {
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
-    string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
-    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str_));
+    OP_REQUIRES(context, FormatFromString(data_format_str_, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, (strides_.size() == 4 || strides_.size() == 5),
                 errors::InvalidArgument("Sliding window strides field must "
@@ -629,7 +661,7 @@ class MklConvOp : public OpKernel {
 
       if (fuse_pad_ || pad_attr_enabled) {
         PadWithConvFusion(context, padding_left, padding_right,
-                          pad_attr_enabled);
+                          pad_attr_enabled, data_format_str_);
       }
 
       // Get shapes of input tensors in MKL-DNN order
@@ -676,14 +708,15 @@ class MklConvOp : public OpKernel {
       }
 
       bool is_conv2d = (strides_.size() == 4);
+      bool is_conv3d = (strides_.size() == 5);
 
-      if (!is_conv2d) {
+      if (!is_conv2d && !is_conv3d) {
         OP_REQUIRES(
             context, !pad_enabled,
-            errors::InvalidArgument("Pad + Conv fusion only works for 2D"));
+            errors::InvalidArgument("Pad + Conv fusion only works for 2D/3D"));
         OP_REQUIRES(
             context, !fuse_pad_,
-            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
+            errors::InvalidArgument("Pad+Conv fusion only works for 2D/3D"));
       }
 
       // TODO(intel-tf) 3-D support for Depthwise is not there
@@ -845,6 +878,9 @@ class MklConvOp : public OpKernel {
             const_cast<Tfilter*>(filter_tensor.flat<Tfilter>().data()));
       }
 
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(conv_fwd, context);
+
       // Execute convolution
       std::shared_ptr<stream> fwd_cpu_stream;
       MklDnnThreadPool eigen_tp(context);
@@ -854,7 +890,7 @@ class MklConvOp : public OpKernel {
         Tbias* bias_data =
             this->GetBiasHandle(context, conv_fwd_pd, bias_tensor);
         conv_fwd->Execute(src_data, filter_data, bias_data, dst_data,
-                          fwd_cpu_stream);
+                          fwd_cpu_stream, scratch_pad.Get());
       } else if (fuse_bn_) {
         const Tensor& bn_scale_tensor =
             MklGetInput(context, kInputIndex_BN_Scale);
@@ -879,9 +915,10 @@ class MklConvOp : public OpKernel {
                              bn_rsqrt_data);
         conv_fwd->Execute(src_data, filter_data, nullptr, dst_data,
                           bn_scale_data, bn_mean_data, bn_offset_data,
-                          bn_rsqrt_data, fwd_cpu_stream);
+                          bn_rsqrt_data, fwd_cpu_stream, scratch_pad.Get());
       } else {
-        conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream);
+        conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream,
+                          scratch_pad.Get());
       }
 
       // Delete primitive since it is not cached.
@@ -898,7 +935,8 @@ class MklConvOp : public OpKernel {
   }
 
   void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
-                         memory::dims& padding_right, bool pad_attr_enabled) {
+                         memory::dims& padding_right, bool pad_attr_enabled,
+                         string data_format_str_) {
     Tpadding* paddings = nullptr;
     if (pad_attr_enabled) {
       paddings = padding_list_.data();
@@ -922,24 +960,45 @@ class MklConvOp : public OpKernel {
     // Similarly, if the data format is NCHW, indices 0, 1, 2 and 3 of
     // paddings(_tf) will be zero.
     // i.e. for the above example, paddings = {0, 0, 0, 0, 1, 2, 3, 4}.
-    int64 pad_top = 0, pad_left = 0;
-    int64 pad_bottom = 0, pad_right = 0;
-    string data_format = ToString(data_format_);
-    if (data_format == "NHWC") {
+    int64 pad_top = 0, pad_left = 0, pad_front = 0;
+    int64 pad_bottom = 0, pad_right = 0, pad_back = 0;
+    if (data_format_str_ == "NHWC") {
       pad_top = paddings[2];
       pad_bottom = paddings[3];
       pad_left = paddings[4];
       pad_right = paddings[5];
-    } else if (data_format == "NCHW") {
+    } else if (data_format_str_ == "NCHW") {
       pad_top = paddings[4];
       pad_bottom = paddings[5];
       pad_left = paddings[6];
       pad_right = paddings[7];
+    } else if (data_format_str_ == "NDHWC") {
+      pad_front = paddings[2];
+      pad_back = paddings[3];
+      pad_top = paddings[4];
+      pad_bottom = paddings[5];
+      pad_left = paddings[6];
+      pad_right = paddings[7];
+    } else if (data_format_str_ == "NCDHW") {
+      pad_front = paddings[4];
+      pad_back = paddings[5];
+      pad_top = paddings[6];
+      pad_bottom = paddings[7];
+      pad_left = paddings[8];
+      pad_right = paddings[9];
     }
     // Create padding arrays for MKL-DNN convolutions.
     // MKL-DNN uses asymmetric padding.
-    padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
-    padding_right = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
+    if (data_format_str_ == "NHWC" || data_format_str_ == "NCHW") {
+      padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
+      padding_right = {static_cast<int>(pad_bottom),
+                       static_cast<int>(pad_right)};
+    } else if (data_format_str_ == "NDHWC" || data_format_str_ == "NCDHW") {
+      padding_left = {static_cast<int>(pad_front), static_cast<int>(pad_top),
+                      static_cast<int>(pad_left)};
+      padding_right = {static_cast<int>(pad_back), static_cast<int>(pad_bottom),
+                       static_cast<int>(pad_right)};
+    }
   }
 
  protected:
@@ -1114,6 +1173,7 @@ class MklConvOp : public OpKernel {
   bool is_filter_const_;
   mutex mu_;
   Padding padding_;
+  string data_format_str_;
   TensorFormat data_format_;
   Tensor cached_filter_data_ TF_GUARDED_BY(mu_);
   Tensor cached_filter_md_ TF_GUARDED_BY(mu_);
@@ -2064,22 +2124,27 @@ class MklFusedConv3DOp
 
     int num_args;
     OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
-    OP_REQUIRES(context, !fused_ops.empty(),
-                errors::InvalidArgument(
-                    "Fused Conv3D must have at least one fused op."));
-    if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
-        fused_ops.end()) {
-      OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
-                      "Fused Conv3D must have one extra argument: bias."));
-    } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
-                   fused_ops.end() &&
-               std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
-                   fused_ops.end()) {
-      OP_REQUIRES(
-          context, num_args == 2,
-          errors::InvalidArgument(
-              "Fused Conv3D must have two extra arguments: bias and add."));
+
+    std::vector<int> padding_list;
+    OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list));
+    if (padding_list.empty()) {
+      OP_REQUIRES(context, !fused_ops.empty(),
+                  errors::InvalidArgument("Fused Conv3D must have at least one "
+                                          "fused op when Pad is not fused."));
+      if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+          fused_ops.end()) {
+        OP_REQUIRES(context, num_args == 1,
+                    errors::InvalidArgument(
+                        "Fused Conv3D must have one extra argument: bias."));
+      } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+                     fused_ops.end() &&
+                 std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
+                     fused_ops.end()) {
+        OP_REQUIRES(
+            context, num_args == 2,
+            errors::InvalidArgument(
+                "Fused Conv3D must have two extra arguments: bias and add."));
+      }
     }
 
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
@@ -2127,9 +2192,11 @@ class MklFusedConv3DOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
     } else {
-      OP_REQUIRES(context, false,
-                  errors::Unimplemented("Fusion is not implemented: [",
-                                        absl::StrJoin(fused_ops, ","), "]"));
+      if (padding_list.empty()) {
+        OP_REQUIRES(context, false,
+                    errors::Unimplemented("Fusion is not implemented: [",
+                                          absl::StrJoin(fused_ops, ","), "]"));
+      }
     }
   }
 
@@ -2278,10 +2345,6 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
 #undef LABEL
 
 // Register NoOp kernel for ops that will be rewritten to the _Mkl* version
-REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<bfloat16>("T"),
-                        NoOp);
 
 #define REGISTER_NO_OP_CPU_2D_DEPTHWISE(T)                    \
   REGISTER_KERNEL_BUILDER(Name("_FusedDepthwiseConv2dNative") \

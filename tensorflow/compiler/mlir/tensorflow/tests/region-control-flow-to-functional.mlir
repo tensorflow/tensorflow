@@ -139,10 +139,10 @@ func.func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func.func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"({{.+}}) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ({
-    %1 = call @testIf1Then(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    %1 = func.call @testIf1Then(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%1) : (tensor<*xf32>) -> ()
   },  {
-    %1 = call @testIf1Else(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    %1 = func.call @testIf1Else(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%1) : (tensor<*xf32>) -> ()
  }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
@@ -158,11 +158,11 @@ func.func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf3
   // CHECK: "tf.If"({{.+}}) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xf32>) -> tensor<*xf32>
-    %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = func.call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   },  {
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xf32>) -> tensor<*xf32>
-    %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = func.call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
@@ -179,12 +179,12 @@ func.func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf3
   %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xf32>) -> tensor<?xf32>
     %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<?xf32>) -> tensor<*xf32>
-    %3 = call @testIf1Then(%2) : (tensor<*xf32>) -> tensor<*xf32>
+    %3 = func.call @testIf1Then(%2) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%3) : (tensor<*xf32>) -> ()
   },  {
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xf32>) -> tensor<?xf32>
     %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<?xf32>) -> tensor<*xf32>
-    %3 = call @testIf1Else(%2) : (tensor<*xf32>) -> tensor<*xf32>
+    %3 = func.call @testIf1Else(%2) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%3) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
@@ -201,10 +201,10 @@ func.func @testIfExternIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1
   // CHECK: "tf.If"(%arg0, %[[CAST]]) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
   %0 = "tf.IfRegion"(%arg0) ({
-    %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = func.call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   },  {
-    %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = func.call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
@@ -224,11 +224,11 @@ func.func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tens
   // CHECK: "tf.If"(%arg0, %arg1) {{.*}} else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then}
   %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
-    %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = func.call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   },  {
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
-    %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = func.call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
@@ -277,7 +277,7 @@ func.func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
     func.call @printer(%2) : (tensor<*xf32>) -> ()
     "tf.Yield"() : () -> ()
     }) { is_stateless = false } :  (tensor<i1>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -551,13 +551,13 @@ func.func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
     {
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-        %cond = call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i1>
+        %cond = func.call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
-        %bdy:2 = call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<*xf32>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
@@ -579,14 +579,14 @@ func.func @testWhileRegionTrivialCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<i32
     {
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
         %cond_cast = "tf.Cast"(%carg0) : (tensor<*xf32>) -> tensor<4xf32>
-        %cond = call @while_cond(%cond_cast, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
+        %cond = func.call @while_cond(%cond_cast, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
         %bdy_cast = "tf.Cast"(%barg0) : (tensor<*xf32>) -> tensor<4xf32>
-        %bdy:2 = call @while_body(%bdy_cast, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%bdy_cast, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<4xf32>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
@@ -609,7 +609,7 @@ func.func @testWhileRegionTrivialMultipleCasts(%arg0 : tensor<*xf32>, %arg1 : te
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
         %cond_cast0 = "tf.Cast"(%carg0) : (tensor<*xf32>) -> tensor<?xf32>
         %cond_cast1 = "tf.Cast"(%cond_cast0) : (tensor<?xf32>) -> tensor<4xf32>
-        %cond = call @while_cond(%cond_cast1, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
+        %cond = func.call @while_cond(%cond_cast1, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
@@ -617,7 +617,7 @@ func.func @testWhileRegionTrivialMultipleCasts(%arg0 : tensor<*xf32>, %arg1 : te
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
         %bdy_cast0 = "tf.Cast"(%barg0) : (tensor<*xf32>) -> tensor<?xf32>
         %bdy_cast1 = "tf.Cast"(%bdy_cast0) : (tensor<?xf32>) -> tensor<4xf32>
-        %bdy:2 = call @while_body(%bdy_cast1, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%bdy_cast1, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<4xf32>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
@@ -641,14 +641,14 @@ func.func @testWhileRegionIncompatibleCast(%arg0 : tensor<*xi64>, %arg1 : tensor
     {
       ^bb0(%carg0: tensor<*xi64>, %carg1: tensor<i32>):
         %cond_cast = "tf.Cast"(%carg0) : (tensor<*xi64>) -> tensor<4xf32>
-        %cond = call @while_cond(%cond_cast, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
+        %cond = func.call @while_cond(%cond_cast, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xi64>, %barg1: tensor<i32>):
         %bdy_cast = "tf.Cast"(%barg0) : (tensor<*xi64>) -> tensor<4xf32>
-        %bdy:2 = call @while_body(%bdy_cast, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xi64>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%bdy_cast, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xi64>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<4xi64>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xi64>, tensor<i32>) -> (tensor<*xi64>, tensor<i32>)
@@ -672,13 +672,13 @@ func.func @testWhileRegionExtern(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> 
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
     {
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-        %cond = call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i1>
+        %cond = func.call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
-        %bdy:2 = call @while_body(%barg0, %barg1, %ext) : (tensor<*xf32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%barg0, %barg1, %ext) : (tensor<*xf32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<*xf32>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
@@ -701,13 +701,13 @@ func.func @testWhileRegionBlockArgMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
     {
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-        %cond = call @while_cond(%carg1, %carg0) : (tensor<i32>, tensor<*xf32>) -> tensor<i1>
+        %cond = func.call @while_cond(%carg1, %carg0) : (tensor<i32>, tensor<*xf32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
-        %bdy:2 = call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<*xf32>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
@@ -728,14 +728,14 @@ func.func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
     {
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-        %cond_i32 = call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i32>
+        %cond_i32 = func.call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i32>
         %cond = "tf.ToBool"(%cond_i32) : (tensor<i32>) -> tensor<i1>
         "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
-        %bdy:2 = call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+        %bdy:2 = func.call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
         "tf.Yield"(%bdy#0, %bdy#1) : (tensor<*xf32>, tensor<i32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
@@ -756,7 +756,7 @@ func.func @testIfRegionDevice(%arg0: tensor<i1>) {
 
   // CHECK: "tf.If"
   // CHECK-SAME: device = "/device:CPU:0"
-  return
+  func.return
 }
 
 // -----
@@ -773,7 +773,7 @@ func.func @testWhileRegionDevice() {
 
   // CHECK: "tf.While"
   // CHECK-SAME: device = "/device:CPU:0"
-  return
+  func.return
 }
 
 // -----
@@ -791,3 +791,42 @@ func.func @testOverrideIfRegionXlaPropageCompileTimeConsts(%arg0: tensor<i1>, %a
     }) {is_stateless = true, _attr0 = false, attr1 = "hello", _then_func_name = "test_then_name", _else_func_name = "test_else_name", _xla_propagate_compile_time_consts = false} :  (tensor<i1>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
+
+// -----
+
+// Trivial WhileRegion_cond
+// CHECK: func private @tf.WhileRegion_body{{.+}}
+// CHECK: "tf.Add"
+// CHECK: constant dense<1>
+// CHECK: "tf.Sub"
+// CHECK:func private @tf.WhileRegion_cond{{.+}}
+// CHECK: "tf.ToBool"
+// CHECK-LABEL: testValidWhileRegion
+func.func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1)
+  // CHECK-SAME: _attr0 = false
+  // CHECK-SAME: _xla_propagate_compile_time_consts = true
+  // CHECK-NOT: attr1
+  // CHECK-SAME: body = @tf.WhileRegion_body
+  // CHECK-SAME: cond = @tf.WhileRegion_cond
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %cond = "tf.ToBool"(%carg1) : (tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%add, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false, _attr0 = false, attr1 = "hello"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return [[Result]]#0
+  func.return %0#0 : tensor<*xf32>
+}
+
+// -----

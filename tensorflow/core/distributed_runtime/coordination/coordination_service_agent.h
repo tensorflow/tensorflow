@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 class CoordinationServiceConfig;
@@ -58,6 +59,9 @@ class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
       std::function<void(const StatusOr<std::string>&)>;
+  // Collection of key-value pairs in the same directory.
+  using StatusOrValueDirCallback =
+      std::function<void(const StatusOr<std::vector<KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
@@ -115,6 +119,9 @@ class CoordinationServiceAgent {
     ERROR,
   };
 
+  // Get task associated with this agent.
+  virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
+
   // Get status of a remote task.
   virtual StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) = 0;
 
@@ -134,7 +141,8 @@ class CoordinationServiceAgent {
   // reported to other agents that did not reach the barrier on time.
   // Possible service errors:
   //   - InvalidArgument: Unexpected task request.
-  //   - FailedPrecondition: task has already disconnected.
+  //   - FailedPrecondition: Task was in error state (note: agent is still
+  //                         shut down forcefully).
   virtual Status Shutdown() = 0;
 
   // Disconnect from the service, and clean up the internal error status.
@@ -145,6 +153,8 @@ class CoordinationServiceAgent {
   virtual Status Reset() = 0;
 
   // Get config key-value from the service.
+  // If the key-value is not inserted yet, this is a blocking call that waits
+  // until the corresponding key is inserted.
   // Agent does not need to be connected to utilize the distributed key-value
   // store.
   //   - errors::DeadlineExceeded: timed out waiting for key.
@@ -153,6 +163,24 @@ class CoordinationServiceAgent {
                                             absl::Duration timeout) = 0;
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
+
+  // Get config key-value from the service.
+  // If the key-value does not exist, this call returns NotFound error.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  //   - errors::NotFound: the requested key does not exist.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
+
+  // Get all values under a directory (key).
+  // A value is considered to be in the directory if its key is prefixed with
+  // the directory.
+  // This is not a blocking call.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  virtual StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
+      const std::string& key) = 0;
+  virtual void GetKeyValueDirAsync(const std::string& key,
+                                   StatusOrValueDirCallback done) = 0;
 
   // Insert config key-value to the service.
   //   - errors::AlreadyExists: key is already set.

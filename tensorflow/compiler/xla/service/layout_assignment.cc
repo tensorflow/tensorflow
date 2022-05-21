@@ -1915,6 +1915,13 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   XLA_VLOG_LINES(2, ToString(constraints));
 
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kBitcast) {
+      // bitcasts are inherently layout sensitive and so a bitcast instruction
+      // present in the IR before layout assignment is a bug.
+      return InternalError(
+          "Unexpected bitcast operation seen during layout assignment: %s.",
+          instruction->ToString());
+    }
     LayoutUtil::ClearLayout(instruction->mutable_shape());
 
     // Set the layouts of the array shapes this instruction defines as indicated
@@ -2444,9 +2451,6 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
                             entry_computation_layout_->LayoutIsSet()
                                 ? LayoutConstraint::kGivenPriority
                                 : LayoutConstraint::kDefaultPriority));
-  for (auto* computation : computations_to_work) {
-    TF_RETURN_IF_ERROR(ClearComputationLayouts(computation));
-  }
   for (int64_t i = 0; i < kNumberOfPropagationRounds; ++i) {
     VLOG(1) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     TF_RETURN_IF_ERROR(ClearPreviousPassSideEffects(module));
@@ -2530,6 +2534,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -2548,7 +2553,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
     case HloOpcode::kSetDimensionSize:
     // AllReduce is variadic so it needs to be careful to assign the same layout
@@ -2598,7 +2602,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kGetDimensionSize:

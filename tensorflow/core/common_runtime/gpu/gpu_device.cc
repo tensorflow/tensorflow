@@ -119,11 +119,15 @@ using se::rocm::ScopedActivateExecutorContext;
 class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
   EigenGpuStreamDevice()
-      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {}
+      : scratch_(nullptr),
+        semaphore_(nullptr),
+        context_(nullptr),
+        device_(this) {}
   ~EigenGpuStreamDevice() override {}
+
   void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
-                    TfDeviceId tf_device_id, ::tensorflow::Allocator* alloc,
-                    char* scratch) {
+                    PlatformDeviceId platform_device_id,
+                    ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
@@ -134,9 +138,6 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
         reinterpret_cast<unsigned int*>(scratch + Eigen::kGpuScratchSize);
     stream_ = gpu_stream;
     allocator_ = alloc;
-    PlatformDeviceId platform_device_id;
-    TF_CHECK_OK(
-        GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
     device_prop_ = &Eigen::GetGpuDeviceProperties(platform_device_id.value());
   }
 
@@ -190,6 +191,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   // each kernel start.
   unsigned int* semaphore() const override { return semaphore_; }
 
+  const Eigen::GpuDevice& device() const { return device_; }
+
  private:
   struct AsyncFreeData {
     AsyncFreeData(::tensorflow::Allocator* a, void* p, const string& o,
@@ -225,6 +228,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   mutable char* scratch_;
   mutable unsigned int* semaphore_;
   OpKernelContext* context_;
+  Eigen::GpuDevice device_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
 };
@@ -401,7 +405,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
-  delete gpu_device_info_;
+  delete accelerator_device_info_;
   if (scratch_) gpu_allocator_->DeallocateRaw(scratch_);
   device_context_->Unref();
 }
@@ -484,15 +488,15 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
-  gpu_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
-  gpu_device_info_->stream = stream_->compute;
-  gpu_device_info_->default_context = device_context_;
-  gpu_device_info_->event_mgr = em_;
+  accelerator_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
+  accelerator_device_info_->stream = stream_->compute;
+  accelerator_device_info_->default_context = device_context_;
+  accelerator_device_info_->event_mgr = em_;
   PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id_, &platform_device_id));
-  gpu_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_accelerator_device_info(gpu_device_info_);
+  accelerator_device_info_->gpu_id = platform_device_id.value();
+  set_tensorflow_accelerator_device_info(accelerator_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we
@@ -892,24 +896,37 @@ void BaseGPUDevice::CopyTensorInSameDevice(const Tensor* input_tensor,
                                   input_tensor, output_tensor, std::move(done));
 }
 
+ConcretePerOpGpuDevice::ConcretePerOpGpuDevice()
+    : stream_device_(std::make_unique<EigenGpuStreamDevice>()) {}
+
+void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
+                                          const void* gpu_stream,
+                                          TfDeviceId tf_device_id,
+                                          Allocator* base_allocator,
+                                          char* scratch) {
+  PlatformDeviceId platform_device_id;
+  TF_CHECK_OK(
+      GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
+  static_cast<EigenGpuStreamDevice*>(stream_device_.get())
+      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+                     platform_device_id, base_allocator, scratch);
+}
+
+void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
+                                          const void* gpu_stream,
+                                          PlatformDeviceId platform_device_id,
+                                          Allocator* base_allocator,
+                                          char* scratch) {
+  static_cast<EigenGpuStreamDevice*>(stream_device_.get())
+      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+                     platform_device_id, base_allocator, scratch);
+}
+
+const Eigen::GpuDevice& ConcretePerOpGpuDevice::device() const {
+  return static_cast<EigenGpuStreamDevice*>(stream_device_.get())->device();
+}
+
 namespace {
-class ConcretePerOpGpuDevice : public PerOpGpuDevice {
- public:
-  ConcretePerOpGpuDevice() : device_(&stream_device_) {}
-
-  void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
-                    TfDeviceId tf_device_id, Allocator* base_allocator,
-                    char* scratch) {
-    stream_device_.Reinitialize(context, gpu_stream, tf_device_id,
-                                base_allocator, scratch);
-  }
-
-  const Eigen::GpuDevice& device() const override { return device_; }
-
- private:
-  EigenGpuStreamDevice stream_device_;
-  Eigen::GpuDevice device_;
-};
 
 Status VerifyVirtualDeviceSettings(
     const size_t num_gpus_to_use, const GPUOptions& gpu_options,
@@ -1756,14 +1773,6 @@ std::vector<se::CudaComputeCapability> GetSupportedCudaComputeCapabilities() {
 }
 #endif  // GOOGLE_CUDA
 
-#if TENSORFLOW_USE_ROCM
-std::vector<int> supported_amdgpu_isa_versions = {803, 900, 906, 908};
-
-std::vector<int> GetSupportedAMDGPUISAVersions() {
-  return supported_amdgpu_isa_versions;
-}
-#endif  // TENSORFLOW_USE_ROCM
-
 }  // namespace
 
 Status BaseGPUDeviceFactory::EnablePeerAccess(
@@ -1835,7 +1844,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
             << strings::HumanReadableNumBytes(description->memory_bandwidth())
             << "/s";
 #elif TENSORFLOW_USE_ROCM
-    std::string gcn_arch_name = description->rocm_amdgpu_gcn_arch_name();
+    std::string gcn_arch_name =
+        description->rocm_compute_capability().gcn_arch_name();
     VLOG(1) << "Found device " << i << " with properties: "
             << "\npciBusID: " << description->pci_bus_id()
             << " name: " << description->name()
@@ -1873,14 +1883,6 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   }
   se::CudaComputeCapability min_supported_capability = *std::min_element(
       cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
-#elif TENSORFLOW_USE_ROCM
-  auto rocm_supported_isas = GetSupportedAMDGPUISAVersions();
-  if (rocm_supported_isas.empty()) {
-    return errors::FailedPrecondition(
-        "No supported rocm capabilities in binary.");
-  }
-  int min_supported_isa =
-      *std::min_element(rocm_supported_isas.begin(), rocm_supported_isas.end());
 #endif
 
   int min_gpu_core_count =
@@ -1915,18 +1917,16 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 #elif TENSORFLOW_USE_ROCM
     int device_isa;
-    if (!desc->rocm_amdgpu_isa_version(&device_isa)) {
-      continue;
-    }
-    // Only GPUs with no less than the minimum supported compute capability is
-    // accepted.
-    if (device_isa < min_supported_isa) {
+    // Only GPUs with supported gfx versions are accepted.
+    auto rocm_compute_capability = desc->rocm_compute_capability();
+    if (!rocm_compute_capability.is_supported_gfx_version()) {
       LOG(INFO) << "Ignoring visible gpu device "
                 << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
-                << "with AMDGPU ISA gfx" << device_isa
-                << ". The minimum required AMDGPU ISA is gfx"
-                << min_supported_isa << ".";
+                << "with AMDGPU version : "
+                << rocm_compute_capability.gfx_version()
+                << ". The supported AMDGPU versions are "
+                << rocm_compute_capability.supported_gfx_versions_str() << ".";
       continue;
     }
 #endif

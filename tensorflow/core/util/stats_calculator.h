@@ -170,8 +170,7 @@ class StatsCalculator {
     std::string name;
     std::string type;
     int64_t run_order;
-    Stat<int64_t> start_us;
-    Stat<int64_t> rel_end_us;
+    Stat<int64_t> elapsed_time;
     Stat<int64_t> mem_used;
     int64_t times_called;
   };
@@ -179,8 +178,7 @@ class StatsCalculator {
   const std::map<std::string, Detail>& GetDetails() const { return details_; }
 
   void AddNodeStats(const std::string& name, const std::string& type,
-                    int64_t run_order, int64_t start_us, int64_t rel_end_us,
-                    int64_t mem_used);
+                    int64_t run_order, int64_t rel_end_us, int64_t mem_used);
 
  private:
   void OrderNodesByMetric(SortingMetric sorting_metric,

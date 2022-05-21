@@ -2,18 +2,18 @@
 
 // Tests that funcs reachable from TPUPartitionedCallOps are not coarsened.
 // CHECK-LABEL: func @skips_tpu_partitioned_call_reachable
-func @skips_tpu_partitioned_call_reachable() {
+func.func @skips_tpu_partitioned_call_reachable() {
   tf_executor.graph {
     %outputs_0, %control_1 = tf_executor.island wraps "tf.TPUOrdinalSelector"() {device = ""} : () -> tensor<?xi32>
     %control_2 = tf_executor.island wraps "tf.TPUPartitionedCall"(%outputs_0) {autotuner_thresh = 0 : i64, device = "", f = @tpu_partitioned_call_reachable} : (tensor<?xi32>) -> ()
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // Ensures that these islands are not coarsened (due to caller above).
 // CHECK-LABEL: func @tpu_partitioned_call_reachable
-func @tpu_partitioned_call_reachable() {
+func.func @tpu_partitioned_call_reachable() {
 // CHECK-COUNT-4: island
 // CHECK-NOT: island
   tf_executor.graph {
@@ -23,12 +23,12 @@ func @tpu_partitioned_call_reachable() {
     %control_3 = tf_executor.island wraps "tf.OpA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", f = @tpu_partitioned_call_indirectly_reachable} : () -> ()
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // Ensures that these islands are not coarsened (due to indirect caller above).
 // CHECK-LABEL: func @tpu_partitioned_call_indirectly_reachable
-func @tpu_partitioned_call_indirectly_reachable() {
+func.func @tpu_partitioned_call_indirectly_reachable() {
 // CHECK-COUNT-3: island
 // CHECK-NOT: island
   tf_executor.graph {
@@ -37,12 +37,12 @@ func @tpu_partitioned_call_indirectly_reachable() {
     %outputs_1, %control_2 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // Test that islands without the attribute are not merged.
 // CHECK-LABEL: func @control_input
-func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
+func.func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       %3 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
@@ -64,7 +64,7 @@ func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
 
 // Check that we fuse entirely when the attribute matches.
 // CHECK-LABEL: func @all_fused
-func @all_fused(%arg0: tensor<*xf32>) {
+func.func @all_fused(%arg0: tensor<*xf32>) {
   tf_executor.graph {
 // CHECK: island
 // CHECK-NEXT: = "tf.Const"
@@ -75,13 +75,13 @@ func @all_fused(%arg0: tensor<*xf32>) {
     %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 
 // Check that we don't fuse an op that does not have the attribute.
 // CHECK-LABEL: func @split_ops
-func @split_ops(%arg0: tensor<*xf32>) {
+func.func @split_ops(%arg0: tensor<*xf32>) {
   tf_executor.graph {
 // CHECK: island
 // CHECK-NEXT: = "tf.Const"
@@ -95,14 +95,14 @@ func @split_ops(%arg0: tensor<*xf32>) {
     %outputs_5, %control_6 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 
 // Check that we correctly merge operations from two clusters in their
 // respective clusters.
 // CHECK-LABEL: func @two_clusters_mixed
-func @two_clusters_mixed(%arg0: tensor<*xf32>) {
+func.func @two_clusters_mixed(%arg0: tensor<*xf32>) {
   tf_executor.graph {
 // CHECK: %[[ISLAND1:.*]], {{.*}} = tf_executor.island
 // CHECK-NEXT: = "tf.Const"{{.*}}"cluster1"
@@ -126,13 +126,13 @@ func @two_clusters_mixed(%arg0: tensor<*xf32>) {
     %outputs_8, %control_8 = tf_executor.island wraps "tf.AddV2"(%outputs_0, %outputs_3) {_xla_compile_device_type = "TPU", _replication_info = "cluster2"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 
 // Check that we bring in TPUReplicatedInputOp operand producers.
 // CHECK-LABEL: func @fuse_in_replicated_input_op
-func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
+func.func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
   tf_executor.graph {
 // CHECK: island
 // CHECK-NEXT: = "tf.Const"
@@ -143,13 +143,13 @@ func @fuse_in_replicated_input_op(%arg0: tensor<i32>) {
     %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 
 // Check that we bring in TPUReplicatedOutputOp users.
 // CHECK-LABEL: func @fuse_in_replicated_output_op
-func @fuse_in_replicated_output_op() {
+func.func @fuse_in_replicated_output_op() {
   tf_executor.graph {
 // CHECK: island
 // CHECK-NEXT: = "tf.Const"
@@ -160,7 +160,7 @@ func @fuse_in_replicated_output_op() {
     %replicated_out, %control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%outputs_3) : (tensor<i32>) -> (tensor<i32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
@@ -169,7 +169,7 @@ func @fuse_in_replicated_output_op() {
 
 // Check that we bring in TPUPartitionedInput operand producers.
 // DISABLED-CHECK-LABEL: func @fuse_in_partitioned_input_op
-func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
+func.func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
 // DISABLED-CHECK: island
@@ -181,14 +181,14 @@ func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32
     %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
 
 // Check that we bring in TPUPartitionedOutput users.
 // DISABLED-CHECK-LABEL: func @fuse_in_partitioned_output_op
-func @fuse_in_partitioned_output_op() {
+func.func @fuse_in_partitioned_output_op() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
 // DISABLED-CHECK: island
@@ -200,14 +200,14 @@ func @fuse_in_partitioned_output_op() {
     %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_3) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
 
 // Check that we bring in special TPU producer ops of first island.
 // CHECK-LABEL: func @fuse_in_special_tpu_operand_producer_of_first_island
-func @fuse_in_special_tpu_operand_producer_of_first_island() {
+func.func @fuse_in_special_tpu_operand_producer_of_first_island() {
   tf_executor.graph {
 // CHECK: island wraps "tf.Const"
 // CHECK-NEXT: island
@@ -218,14 +218,14 @@ func @fuse_in_special_tpu_operand_producer_of_first_island() {
     %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%replicated_out, %replicated_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
 
 // Check that we bring in special TPU consumer ops of first island.
 // DISABLED-CHECK-LABEL: func @fuse_in_special_tpu_consumer_of_first_island
-func @fuse_in_special_tpu_consumer_of_first_island() {
+func.func @fuse_in_special_tpu_consumer_of_first_island() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
 // DISABLED-CHECK: island
@@ -235,14 +235,14 @@ func @fuse_in_special_tpu_consumer_of_first_island() {
     %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_0) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
 
 // Check that we bring in chain of TPUReplicatedInput, TPUPartitionedInput operand producers.
 // DISABLED-CHECK-LABEL: func @fuse_in_chain_special_ops_producers
-func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
+func.func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
 // DISABLED-CHECK: island
@@ -256,14 +256,14 @@ func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<
     %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%replicated_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
 
 // Check that we bring in chain of TPUReplicatedOutput, TPUPartitionedOutput users.
 // DISABLED-CHECK-LABEL: func @fuse_in_chain_special_ops_consumers
-func @fuse_in_chain_special_ops_consumers() {
+func.func @fuse_in_chain_special_ops_consumers() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
 // DISABLED-CHECK: island
@@ -277,14 +277,14 @@ func @fuse_in_chain_special_ops_consumers() {
     %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%replicated_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
 
 // Check that we can bring in special TPU output ops out of order.
 // DISABLED-CHECK-LABEL: func @fuse_in_special_ops_out_of_order
-func @fuse_in_special_ops_out_of_order() {
+func.func @fuse_in_special_ops_out_of_order() {
   // expected-error @+1 {{or has unsupported ops}}
   tf_executor.graph {
 // DISABLED-CHECK: island
@@ -298,5 +298,5 @@ func @fuse_in_special_ops_out_of_order() {
     %replicated_out:2, %ireplicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%some_out#0) : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }

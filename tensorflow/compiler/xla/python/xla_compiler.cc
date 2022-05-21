@@ -457,15 +457,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &HloPrintOptions::set_indent_amount)
       .def_property("is_in_nested_computation",
                     &HloPrintOptions::is_in_nested_computation,
-                    &HloPrintOptions::set_is_in_nested_computation)
-      .def_property(
-          "leading_and_trailing_instructions_number",
-          &HloPrintOptions::leading_and_trailing_instructions_number,
-          &HloPrintOptions::set_leading_and_trailing_instructions_number);
+                    &HloPrintOptions::set_is_in_nested_computation);
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
-  hlo_module_class
+  hlo_module_class.def_property_readonly("name", &HloModule::name)
       .def(
           "to_string",
           static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
@@ -621,6 +617,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             options.executable_build_options.set_num_partitions(num_partitions);
           })
       .def_property(
+          "profile_version",
+          [](const CompileOptions& options) { return options.profile_version; },
+          [](CompileOptions& options, int64_t profile_version) {
+            options.profile_version = profile_version;
+          })
+      .def_property(
           "device_assignment",
           [](const CompileOptions& options)
               -> absl::optional<DeviceAssignment> {
@@ -714,6 +716,14 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("use_auto_spmd_partitioning",
                     &ExecutableBuildOptions::use_auto_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
+      .def_property(
+          "auto_spmd_partitioning_mesh_shape",
+          &ExecutableBuildOptions::auto_spmd_partitioning_mesh_shape,
+          &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape)
+      .def_property(
+          "auto_spmd_partitioning_mesh_ids",
+          &ExecutableBuildOptions::auto_spmd_partitioning_mesh_ids,
+          &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
