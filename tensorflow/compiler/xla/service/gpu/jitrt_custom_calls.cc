@@ -15,6 +15,7 @@
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 
 #include <cstdint>
+#include <iterator>
 #include <utility>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
@@ -92,7 +93,8 @@ se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
   return emplaced.first->second.get();
 }
 
-static se::DeviceMemoryBase GetDeviceAddress(jitrt::MemrefView& memref) {
+template <typename MemrefArg>
+static se::DeviceMemoryBase GetDeviceAddress(MemrefArg& memref) {
   uint64_t size = tfrt::GetHostSize(memref.dtype);
   for (auto dim : memref.sizes) size *= dim;
   return se::DeviceMemoryBase(memref.data, size);
@@ -167,14 +169,28 @@ static PrimitiveType ToPrimitiveType(tfrt::DType dtype) {
   }
 }
 
-static Shape ToShape(const jitrt::MemrefView& memref) {
+static Shape ToShape(const jitrt::StridedMemrefView& memref) {
   PrimitiveType type = ToPrimitiveType(memref.dtype);
-  return ShapeUtil::MakeShape(type, memref.sizes);
+
+  // Recover `minor_to_major` dimensions permutation from strides.
+  auto indexed_strides_range =
+      llvm::map_range(llvm::enumerate(memref.strides), [](auto pair) {
+        return std::pair<int64_t, size_t>{pair.value(), pair.index()};
+      });
+
+  auto indexed_strides = llvm::to_vector(indexed_strides_range);
+  llvm::stable_sort(indexed_strides);
+
+  llvm::SmallVector<int64_t> minor_to_major;
+  minor_to_major.reserve(indexed_strides.size());
+  for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
+
+  return ShapeUtil::MakeShapeWithLayout(type, memref.sizes, minor_to_major);
 }
 
 static StatusOr<GemmConfig> GetGemmConfig(
-    const DebugOptions* debug_options, const jitrt::MemrefView& lhs,
-    const jitrt::MemrefView& rhs, const jitrt::MemrefView& out,
+    const DebugOptions* debug_options, const jitrt::StridedMemrefView& lhs,
+    const jitrt::StridedMemrefView& rhs, const jitrt::StridedMemrefView& out,
     int64_t algorithm, double alpha_real, double alpha_imag,
     ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
     ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
@@ -269,15 +285,14 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           JitRtGemmConfigCache* configs, jitrt::MemrefView lhs,
-                           jitrt::MemrefView rhs, jitrt::MemrefView out,
-                           int64_t algorithm, double alpha_real,
-                           double alpha_imag, ArrayRef<int64_t> lhs_batch,
-                           ArrayRef<int64_t> lhs_contract,
-                           ArrayRef<int64_t> rhs_batch,
-                           ArrayRef<int64_t> rhs_contract, int64_t uid) const;
+  LogicalResult operator()(
+      const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
+      jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
+      jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
+      double alpha_imag, ArrayRef<int64_t> lhs_batch,
+      ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
+      ArrayRef<int64_t> rhs_contract, int64_t uid) const;
 
   static Gemm Handler() { return Gemm(); }
 };
@@ -286,11 +301,11 @@ struct Gemm {
 LogicalResult Gemm::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::MemrefView lhs, jitrt::MemrefView rhs, jitrt::MemrefView out,
-    int64_t algorithm, double alpha_real, double alpha_imag,
-    ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-    int64_t uid) const {
+    jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
+    jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
+    double alpha_imag, ArrayRef<int64_t> lhs_batch,
+    ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
+    ArrayRef<int64_t> rhs_contract, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -324,9 +339,9 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
           .UserData<const ServiceExecutableRunOptions*>()
           .UserData<const DebugOptions*>()
           .UserData<JitRtGemmConfigCache*>()
-          .Arg<jitrt::MemrefView>()  // lhs
-          .Arg<jitrt::MemrefView>()  // rhs
-          .Arg<jitrt::MemrefView>()  // out
+          .Arg<jitrt::StridedMemrefView>()  // lhs
+          .Arg<jitrt::StridedMemrefView>()  // rhs
+          .Arg<jitrt::StridedMemrefView>()  // out
           .Attr<int64_t>("algorithm")
           .Attr<double>("alpha_real")
           .Attr<double>("alpha_imag")
@@ -346,16 +361,15 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct GemmBias {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           JitRtGemmConfigCache* configs, jitrt::MemrefView lhs,
-                           jitrt::MemrefView rhs, jitrt::MemrefView bias,
-                           jitrt::MemrefView out, int64_t algorithm,
-                           double alpha_real, double alpha_imag, double beta,
-                           ArrayRef<int64_t> lhs_batch,
-                           ArrayRef<int64_t> lhs_contract,
-                           ArrayRef<int64_t> rhs_batch,
-                           ArrayRef<int64_t> rhs_contract, int64_t uid) const;
+  LogicalResult operator()(
+      const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
+      jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
+      jitrt::StridedMemrefView bias, jitrt::StridedMemrefView out,
+      int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+      ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
+      ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
+      int64_t uid) const;
   static GemmBias Handler() { return GemmBias(); }
 };
 }  // namespace
@@ -363,11 +377,12 @@ struct GemmBias {
 LogicalResult GemmBias::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::MemrefView lhs, jitrt::MemrefView rhs, jitrt::MemrefView bias,
-    jitrt::MemrefView out, int64_t algorithm, double alpha_real,
-    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
-    ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
-    ArrayRef<int64_t> rhs_contract, int64_t uid) const {
+    jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
+    jitrt::StridedMemrefView bias, jitrt::StridedMemrefView out,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
+    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
+    int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase bias_data = GetDeviceAddress(bias);
@@ -406,10 +421,10 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
           .UserData<const ServiceExecutableRunOptions*>()
           .UserData<const DebugOptions*>()
           .UserData<JitRtGemmConfigCache*>()
-          .Arg<jitrt::MemrefView>()  // lhs
-          .Arg<jitrt::MemrefView>()  // rhs
-          .Arg<jitrt::MemrefView>()  // bias
-          .Arg<jitrt::MemrefView>()  // out
+          .Arg<jitrt::StridedMemrefView>()  // lhs
+          .Arg<jitrt::StridedMemrefView>()  // rhs
+          .Arg<jitrt::StridedMemrefView>()  // bias
+          .Arg<jitrt::StridedMemrefView>()  // out
           .Attr<int64_t>("algorithm")
           .Attr<double>("alpha_real")
           .Attr<double>("alpha_imag")
