@@ -1291,12 +1291,12 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     auto filter_ty =
         op.filter().getType().template dyn_cast<RankedTensorType>();
-    auto result_ty = op.getType().template dyn_cast<RankedTensorType>();
 
-    // Input, filter and the result needs to have static shape for calculation
-    // of HLO paddings and feature group count attributes.
-    for (RankedTensorType ty : {input_ty, filter_ty, result_ty})
-      if (!ty || !ty.hasStaticShape()) return failure();
+    // With the exception of input's batch dimension, input and filter need to
+    // have static shape for calculation of HLO paddings and feature group count
+    // attributes. Filter is validated here, input is mostly validated at use.
+    if (!input_ty || !filter_ty || !filter_ty.hasStaticShape())
+      return failure();
 
     ArrayRef<Attribute> dilations = op.dilations().getValue();
     ArrayRef<Attribute> strides = op.strides().getValue();
@@ -1336,9 +1336,11 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t output_size;
         int64_t pad_low_int64;
         int64_t pad_high_int64;
+        int64_t input_size = input_ty.getDimSize(dim);
+        if (input_size == ShapedType::kDynamicSize) return failure();
         tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
-            input_ty.getDimSize(dim), filter_ty.getDimSize(i), dilation, stride,
-            padding, &output_size, &pad_low_int64, &pad_high_int64);
+            input_size, filter_ty.getDimSize(i), dilation, stride, padding,
+            &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return failure();
         pad_low = pad_low_int64;
         pad_high = pad_high_int64;
@@ -1358,6 +1360,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
 
     const int64_t input_channels =
         GetDimSize(input_ty, GetTensorFeatureDimIndex(num_dims, data_format));
+    if (input_channels == ShapedType::kDynamicSize) return failure();
     // Filters data_format is always HWIO so input channels dimension is after
     // all spatial dimensions.
     const int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);

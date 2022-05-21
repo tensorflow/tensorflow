@@ -4233,7 +4233,7 @@ func.func @conv3d_simple(%arg0: tensor<256x32x32x32x6xf32>, %arg1: tensor<3x3x3x
 // -----
 
 // CHECK-LABEL: depthwiseconv_simple
-func.func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32> {
+func.func @depthwiseconv_simple(%arg0: tensor<?x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<?x3x4x9xf32> {
   // CHECK: %[[RESHAPED_FILTER:.*]] = "mhlo.reshape"(%arg1) : (tensor<2x2x3x3xf32>) -> tensor<2x2x1x9xf32>
   // CHECK: mhlo.convolution(%arg0, %[[RESHAPED_FILTER]])
   // CHECK-SAME: feature_group_count = 3
@@ -4244,8 +4244,8 @@ func.func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x
     explicit_paddings = [],
     padding = "VALID",
     strides = [1, 1, 1, 1]
-  } : (tensor<2x4x5x3xf32>, tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32>
-  func.return %0 : tensor<2x3x4x9xf32>
+  } : (tensor<?x4x5x3xf32>, tensor<2x2x3x3xf32>) -> tensor<?x3x4x9xf32>
+  func.return %0 : tensor<?x3x4x9xf32>
 }
 
 // -----
