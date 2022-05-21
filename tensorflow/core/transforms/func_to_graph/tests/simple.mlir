@@ -16,22 +16,11 @@ tfg.func @_mlir_lifted_graph(%Placeholder1_0: tensor<*xf32> {tfg.lifted_value_at
 }
 
 // -----
-// expected-error@-2 {{Only one lifted graph function is allowed in a module, but see _mlir_lifted_graph1 and _mlir_lifted_graph2}}
 
-tfg.func @_mlir_lifted_graph1(%Placeholder1_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder1", 0 : index], tfg.name = "Placeholder1_0"},
+// expected-error@+1 {{lifted graph func is missing version attribute}}
+tfg.func @_mlir_lifted_graph(%Placeholder1_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder1", 0 : index], tfg.name = "Placeholder1_0"},
                              %Placeholder2_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder2", 0 : index], tfg.name = "Placeholder2_0"})
-     -> (tensor<*xf32> {tfg.name = "SomeAdd3_0"})
- attributes {tfg.lifted_graph_version = #tf_type.version<producer = 34, min_consumer = 5>} {
-  %Placeholder, %ctl = Placeholder name("Placeholder1") {dtype = i32} : () -> (tensor<*xf32>)
-  %Placeholder_0, %ctl_1 = Placeholder name("Placeholder2") {dtype = i32} : () -> (tensor<*xf32>)
-  %Add, %ctl_2 = Add(%Placeholder1_0, %Placeholder2_0) name("SomeAdd1") {T = i32} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
-  return(%Add) [%ctl_2] : tensor<*xf32>
-}
-
-tfg.func @_mlir_lifted_graph2(%Placeholder1_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder1", 0 : index], tfg.name = "Placeholder1_0"},
-                             %Placeholder2_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder2", 0 : index], tfg.name = "Placeholder2_0"})
-     -> (tensor<*xf32> {tfg.name = "SomeAdd3_0"})
- attributes {tfg.lifted_graph_version = #tf_type.version<producer = 34, min_consumer = 5>} {
+     -> (tensor<*xf32> {tfg.name = "SomeAdd3_0"}) {
   %Placeholder, %ctl = Placeholder name("Placeholder1") {dtype = i32} : () -> (tensor<*xf32>)
   %Placeholder_0, %ctl_1 = Placeholder name("Placeholder2") {dtype = i32} : () -> (tensor<*xf32>)
   %Add, %ctl_2 = Add(%Placeholder1_0, %Placeholder2_0) name("SomeAdd1") {T = i32} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
