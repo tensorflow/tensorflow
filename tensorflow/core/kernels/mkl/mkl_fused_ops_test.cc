@@ -1368,10 +1368,12 @@ class BiasCacheTest : public OpsTestBase {
     } else {
       TF_EXPECT_OK(
           NodeDefBuilder("quantized_conv2d_bias_cache", "_QuantizedConv2D")
-              .Attr("input_types",
+              .Attr("Thost_inputs",
                     {dtype, DT_QINT8, DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT,
                      DT_FLOAT, DT_FLOAT, DT_FLOAT})
-              .Attr("out_types", {DT_QUINT8, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_outputs", {DT_QUINT8, DT_FLOAT, DT_FLOAT})
+              .Attr("Tdevice_inputs", std::vector<DataType>())
+              .Attr("Tdevice_outputs", std::vector<DataType>())
               .Attr("Tinput", dtype)
               .Attr("Tfilter", DT_QINT8)
               .Attr("Tbias", DT_FLOAT)
@@ -1383,6 +1385,7 @@ class BiasCacheTest : public OpsTestBase {
               .Attr("is_bias_const", true)
               .Attr("padding", "VALID")
               .Attr("fused_ops", {"BiasAdd", "Relu", "Requantize"})
+              .Input(FakeInput())
               .Input(FakeInput())
               .Finalize(node_def()));
     }

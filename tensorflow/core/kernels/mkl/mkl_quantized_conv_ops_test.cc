@@ -64,9 +64,11 @@ class QuantizedConv2DTest : public OpsTestBase {
     } else {
       TF_EXPECT_OK(
           NodeDefBuilder("quantized_conv_op", "_QuantizedConv2D")
-              .Attr("input_types", {DataTypeToEnum<Tinput>::v(), DT_QINT8,
-                                    DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT})
-              .Attr("out_types", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_inputs", {DataTypeToEnum<Tinput>::v(), DT_QINT8,
+                                     DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Tdevice_inputs", std::vector<DataType>())
+              .Attr("Tdevice_outputs", std::vector<DataType>())
               .Attr("Tinput", DataTypeToEnum<Tinput>::v())
               .Attr("Tfilter", DT_QINT8)
               .Attr("Tsummand", DT_QINT32)
@@ -74,6 +76,7 @@ class QuantizedConv2DTest : public OpsTestBase {
               .Attr("strides", {1, stride, stride, 1})
               .Attr("padding", padding)
               .Attr("explicit_paddings", padding_values)
+              .Input(FakeInput())
               .Input(FakeInput())
               .Finalize(node_def()));
     }
@@ -497,15 +500,18 @@ class QuantizedConv2DTest : public OpsTestBase {
     } else {
       TF_EXPECT_OK(NodeDefBuilder("quantized_depthwise_conv_op",
                                   "_QuantizedDepthwiseConv2D")
-                       .Attr("input_types", {DT_QUINT8, DT_QINT8, DT_FLOAT,
-                                             DT_FLOAT, DT_FLOAT, DT_FLOAT})
-                       .Attr("out_types", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+                       .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT,
+                                              DT_FLOAT, DT_FLOAT, DT_FLOAT})
+                       .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+                       .Attr("Tdevice_inputs", std::vector<DataType>())
+                       .Attr("Tdevice_outputs", std::vector<DataType>())
                        .Attr("Tinput", DT_QUINT8)
                        .Attr("Tfilter", DT_QINT8)
                        .Attr("Tsummand", DT_QINT32)
                        .Attr("out_type", DT_QINT32)
                        .Attr("strides", {1, stride, stride, 1})
                        .Attr("padding", "SAME")
+                       .Input(FakeInput())
                        .Input(FakeInput())
                        .Finalize(node_def()));
     }
@@ -536,9 +542,11 @@ class QuantizedConv2DTest : public OpsTestBase {
       TF_EXPECT_OK(
           NodeDefBuilder("quantized_depthwise_conv_op",
                          "_QuantizedDepthwiseConv2D")
-              .Attr("input_types", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
-                                    DT_FLOAT, DT_FLOAT, DT_FLOAT})
-              .Attr("out_types", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
+                                     DT_FLOAT, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Tdevice_inputs", std::vector<DataType>())
+              .Attr("Tdevice_outputs", std::vector<DataType>())
               .Attr("Tinput", DT_QUINT8)
               .Attr("Tfilter", DT_QINT8)
               .Attr("Tbias", DT_FLOAT)
@@ -547,6 +555,7 @@ class QuantizedConv2DTest : public OpsTestBase {
               .Attr("strides", {1, stride, stride, 1})
               .Attr("padding", "SAME")
               .Attr("fused_ops", {"BiasAdd"})
+              .Input(FakeInput())
               .Input(FakeInput())
               .Finalize(node_def()));
     }
@@ -577,9 +586,11 @@ class QuantizedConv2DTest : public OpsTestBase {
       TF_EXPECT_OK(
           NodeDefBuilder("quantized_depthwise_conv_op",
                          "_QuantizedDepthwiseConv2D")
-              .Attr("input_types", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
-                                    DT_FLOAT, DT_FLOAT, DT_FLOAT})
-              .Attr("out_types", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
+                                     DT_FLOAT, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Tdevice_inputs", std::vector<DataType>())
+              .Attr("Tdevice_outputs", std::vector<DataType>())
               .Attr("Tinput", DT_QUINT8)
               .Attr("Tfilter", DT_QINT8)
               .Attr("Tbias", DT_FLOAT)
@@ -588,6 +599,7 @@ class QuantizedConv2DTest : public OpsTestBase {
               .Attr("strides", {1, stride, stride, 1})
               .Attr("padding", "SAME")
               .Attr("fused_ops", {"BiasAdd", "Relu"})
+              .Input(FakeInput())
               .Input(FakeInput())
               .Finalize(node_def()));
     }
@@ -857,8 +869,10 @@ class QuantizedConvTest : public OpsTestBase {
         NodeDefBuilder("quantized_conv_op", is_depthwise
                                                 ? "_QuantizedDepthwiseConv2D"
                                                 : "_QuantizedConv2D")
-            .Attr("input_types", input_types)
-            .Attr("out_types", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
+            .Attr("Thost_inputs", input_types)
+            .Attr("Thost_outputs", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
+            .Attr("Tdevice_inputs", std::vector<DataType>())
+            .Attr("Tdevice_outputs", std::vector<DataType>())
             .Attr("Tinput", data_types["Tinput"])
             .Attr("Tfilter", data_types["Tfilter"])
             .Attr("Tbias", data_types["Tbias"])
@@ -867,6 +881,7 @@ class QuantizedConvTest : public OpsTestBase {
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding", padding)
             .Attr("fused_ops", fused_ops)
+            .Input(FakeInput())
             .Input(FakeInput())
             .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -947,8 +962,10 @@ class QuantizedConvTest : public OpsTestBase {
     }
     TF_EXPECT_OK(
         NodeDefBuilder("quantized_conv_op", "_QuantizedConv2D")
-            .Attr("input_types", input_types)
-            .Attr("out_types", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
+            .Attr("Thost_inputs", input_types)
+            .Attr("Thost_outputs", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
+            .Attr("Tdevice_inputs", std::vector<DataType>())
+            .Attr("Tdevice_outputs", std::vector<DataType>())
             .Attr("Tinput", data_types["Tinput"])
             .Attr("Tfilter", data_types["Tfilter"])
             .Attr("Tbias", data_types["Tbias"])
@@ -957,6 +974,7 @@ class QuantizedConvTest : public OpsTestBase {
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding", padding)
             .Attr("fused_ops", fused_ops)
+            .Input(FakeInput())
             .Input(FakeInput())
             .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());

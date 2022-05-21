@@ -60,9 +60,11 @@ class QuantizedConv2DPerchannelTest : public OpsTestBase {
     } else {
       TF_ASSERT_OK(
           NodeDefBuilder("quantized_conv_perchannel_op", "_QuantizedConv2D")
-              .Attr("input_types", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
-                                    DT_FLOAT, DT_FLOAT})
-              .Attr("out_types", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
+                                     DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+              .Attr("Tdevice_inputs", std::vector<DataType>())
+              .Attr("Tdevice_outputs", std::vector<DataType>())
               .Attr("Tinput", DT_QUINT8)
               .Attr("Tfilter", DT_QINT8)
               .Attr("Tsummand", DT_QINT32)
@@ -70,6 +72,7 @@ class QuantizedConv2DPerchannelTest : public OpsTestBase {
               .Attr("strides", {1, stride, stride, 1})
               .Attr("is_filter_const", true)
               .Attr("padding", "SAME")
+              .Input(FakeInput())
               .Input(FakeInput())
               .Finalize(node_def()));
     }
