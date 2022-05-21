@@ -1,0 +1,132 @@
+book_path: /lite/_book.yaml
+project_path: /lite/_project.yaml
+title: Models
+landing_page:
+  custom_css_path: /site-assets/css/style.css
+  nav: left
+  meta_tags:
+  - name: description
+    content: >
+        Overview of models for TensorFlow Lite
+  rows:
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+            <p>
+            TensorFlow Lite uses TensorFlow models converted into a smaller, more efficient machine
+            learning (ML) model format. You can use pre-trained models with TensorFlow Lite, modify
+            existing models, or build your own TensorFlow models and then convert them to
+            TensorFlow Lite format. TensorFlow Lite models can perform almost any task a regular
+            TensorFlow model can do: object detection, natural language processing, pattern
+            recognition, and more using a wide range of input data including images, video, audio,
+            and text.
+            </p>
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+          <h2 class="tfo-landing-page-heading no-link">Learning roadmap</h2>
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/convert/index"><h3 class="no-link">Have a TensorFlow model?</h3></a>
+        Skip to the <a href="/lite/convert/index">Convert</a> section for information about
+        getting your model to run with TensorFlow Lite.
+      path: /lite/convert/index
+
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="#get_models"><h3 class="no-link">Need a model for TensorFlow Lite?</h3></a>
+        For guidance on getting models for your use case,
+        <a href="#get_models">keep reading</a>.
+
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+            <br>
+            <h2 class="tfo-landing-page-heading no-link" id="get_models">
+              Get models for TensorFlow Lite</h2>
+            <p>
+            You don't have to build a TensorFlow Lite model to start using machine learning on
+            mobile or edge devices. Many already-built and optimized models are available for you to
+            use right away in your application. You can start with using pre-trained models in
+            TensorFlow Lite and move up to building custom models over time, as follows:
+            </p>
+            <ol>
+            <li>Start developing machine learning features with already
+            <a href="./trained">trained models.</a></li>
+            <li>Modify existing TensorFlow Lite models using tools such as
+            <a href="../guide/model_maker">Model Maker</a>.</li>
+            <li>Build a
+            <a href="https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough">
+            custom model</a> with TensorFlow tools and then
+            <a href="../convert">convert</a> it to TensorFlow Lite.</li>
+            </ol>
+            <br>
+            <h2 class="tfo-landing-page-heading no-link">Using models for quick tasks: ML Kit</h2>
+            <p>
+            If you are trying to quickly implement features or utility tasks with machine
+            learning, you should review the use cases supported by
+            <a href="https://developers.google.com/ml-kit">ML Kit</a> before starting
+            development with TensorFlow Lite. This development tool provides APIs you can call
+            directly from mobile apps to complete common ML tasks such as barcode scanning and
+            on-device translation. Using this method can help you get results fast. However, ML Kit
+            has limited options for extending its capabilities. For more information,
+            see the <a href="https://developers.google.com/ml-kit">ML Kit</a> developer
+            documentation.
+            </p>
+            <br>
+            <h2 class="tfo-landing-page-heading no-link">Building models for your app: Constraints
+            </h2>
+            <p>
+            If building a custom model for your specific use case is your ultimate goal, you should
+            start with developing and training a TensorFlow model or extending an existing one.
+            Before you start your model development process, you should be aware of the constraints
+            for TensorFlow Lite models and build your model with these constraints in mind:
+            <ul>
+            <li><b>Limited compute capabilities</b> - Compared to fully equipped servers with
+            multiple CPUs, high memory capacity, and specialized processors such as GPUs and TPUs,
+            mobile and edge devices are much more limited, and models and data you can effectively
+            process with them are limited.</li>
+            <li><b>Size of models</b> - The overall complexity of a model, including data
+            pre-processing logic and the number of layers in the model, increases the in-memory
+            size of a model. A large model may run unacceptably slow or simply may not fit in the
+            available memory of a mobile or edge device.</li>
+            <li><b>Size of data</b> - The size of input data that can be effectively processed with
+            a machine learning model is limited on a mobile or edge device. Models that use large
+            data libraries such language libraries, image libraries, or video clip libraries may not
+            fit on these devices, and may require off-device storage and access solutions.</li>
+            <li><b>Supported TensorFlow operations</b> - TensorFlow Lite runtime environments
+            support a smaller number of machine learning model operations compared to regular
+            TensorFlow models. As you develop a model for use with TensorFlow Lite, you should track
+            the compatibility of your model against the capabilities of TensorFlow Lite runtime
+            environments.</li>
+            </ul>
+            </p>
+            <p>
+            For more information building effective, compatible, high performance models for
+            TensorFlow Lite, see <a href="../performance/best_practices">
+            Performance best practices</a>.
+            </p>
+
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+          <h2 class="tfo-landing-page-heading no-link">Next steps</h2>
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/models/trained"><h3 class="no-link">Pick trained model</h3></a>
+        Learn how to pick a pre-trained ML model to use with TensorFlow Lite.
+      path: /lite/models/trained
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/guide/model_maker"><h3 class="no-link">Modify models</h3></a>
+        Use TensorFlow Lite Model Maker to modify models using your training data.
+      path: /lite/guide/model_maker
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/convert/index"><h3 class="no-link">Build models</h3></a>
+        Learn how to build custom TensorFlow models to use with TensorFlow Lite.
+      path: /lite/performance/best_practices

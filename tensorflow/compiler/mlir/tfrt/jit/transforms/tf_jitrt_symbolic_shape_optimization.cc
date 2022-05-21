@@ -30,6 +30,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -43,7 +45,6 @@ using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::failure;
-using mlir::FuncOp;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -58,6 +59,7 @@ using mlir::ValueRange;
 using mlir::arith::ConstantIndexOp;
 using mlir::arith::ConstantOp;
 using mlir::arith::IndexCastOp;
+using mlir::func::FuncOp;
 
 namespace linalg = mlir::linalg;
 namespace mhlo = mlir::mhlo;

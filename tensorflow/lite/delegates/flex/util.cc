@@ -30,7 +30,7 @@ static constexpr char kResourceVariablePrefix[] = "tflite_resource_variable";
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
   if (!status.ok()) {
-    context->ReportError(context, "%s", status.error_message().c_str());
+    TF_LITE_KERNEL_LOG(context, "%s", status.error_message().c_str());
     return kTfLiteError;
   }
   return kTfLiteOk;
@@ -41,9 +41,9 @@ TfLiteStatus CopyShapeAndType(TfLiteContext* context,
                               TfLiteTensor* tensor) {
   tensor->type = GetTensorFlowLiteType(static_cast<TF_DataType>(src.dtype()));
   if (tensor->type == kTfLiteNoType) {
-    context->ReportError(context,
-                         "TF Lite does not support TensorFlow data type: %s",
-                         DataTypeString(src.dtype()).c_str());
+    TF_LITE_KERNEL_LOG(context,
+                       "TF Lite does not support TensorFlow data type: %s",
+                       DataTypeString(src.dtype()).c_str());
     return kTfLiteError;
   }
 
@@ -53,9 +53,9 @@ TfLiteStatus CopyShapeAndType(TfLiteContext* context,
     // We need to cast from TensorFlow's int64 to TF Lite's int32. Let's
     // make sure there's no overflow.
     if (src.dim_size(j) >= std::numeric_limits<int>::max()) {
-      context->ReportError(context,
-                           "Dimension value in TensorFlow shape is larger than "
-                           "supported by TF Lite");
+      TF_LITE_KERNEL_LOG(context,
+                         "Dimension value in TensorFlow shape is larger than "
+                         "supported by TF Lite");
       TfLiteIntArrayFree(shape);
       return kTfLiteError;
     }

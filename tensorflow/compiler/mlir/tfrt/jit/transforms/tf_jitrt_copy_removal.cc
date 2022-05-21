@@ -28,7 +28,7 @@ namespace {
 struct LinalgTrivialCopyRemovalPass
     : public LinalgTrivialCopyRemovalBase<LinalgTrivialCopyRemovalPass> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
 
     mlir::SmallVector<mlir::Operation*> to_erase;
     function.walk([&to_erase](mlir::memref::CopyOp copy) {
@@ -60,7 +60,7 @@ struct LinalgTrivialCopyRemovalPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialCopyRemovalPass() {
   return std::make_unique<LinalgTrivialCopyRemovalPass>();
 }

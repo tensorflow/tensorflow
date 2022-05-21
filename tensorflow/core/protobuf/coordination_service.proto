@@ -152,6 +152,23 @@ message GetKeyValueResponse {
   KeyValueEntry kv = 1;
 }
 
+message TryGetKeyValueRequest {
+  string key = 1;
+}
+
+message TryGetKeyValueResponse {
+  KeyValueEntry kv = 1;
+}
+
+message GetKeyValueDirRequest {
+  string directory_key = 1;
+}
+
+message GetKeyValueDirResponse {
+  string directory_key = 1;
+  repeated KeyValueEntry kv = 2;
+}
+
 // Request and response messages for deleting configuration key-value data.
 // When is_directory is true, delete key-values recursively under `key`.
 message DeleteKeyValueRequest {
@@ -237,6 +254,14 @@ service CoordinationService {
   // Get configuration key-value. The request blocks until the key-value data
   // becomes available (i.e., set by a task in the cluster).
   rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse);
+
+  // Get configuration key-value. The request does not block, but returns an
+  // error if the requested key does not exist.
+  rpc TryGetKeyValue(TryGetKeyValueRequest) returns (TryGetKeyValueResponse);
+
+  // Same as GetKeyValue, but returns all values that have keys which are
+  // prefixed with the directory key.
+  rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse);
 
   // Delete configuration key-value. If is_directory is set in request,
   // recursively clean up all key-values under the path specified by `key`.

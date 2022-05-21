@@ -382,7 +382,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
         mutex_lock l(mu_);
 
         // We initialize late here because restoring from checkpoint comes
-        // after the the Initialize call. We cannot initialize within
+        // after the Initialize call. We cannot initialize within
         // Initialize() because we cannot determine whether we should
         // overwrite an existing metadata file or not before `RestoreInternal`
         // is potentially called.
@@ -2243,7 +2243,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       };
 
       string hash_dir_ TF_GUARDED_BY(mu_);
-      snapshot_util::Mode state_ TF_GUARDED_BY(mu_);
+      snapshot_util::Mode state_ TF_GUARDED_BY(mu_) =
+          snapshot_util::Mode::READER;
       std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
 
       mutex mu_;

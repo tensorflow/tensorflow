@@ -27,6 +27,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::inner_product_forward;
 using dnnl::primitive_attr;
@@ -122,6 +125,9 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tweight* weight_data,
                const Tbias* bias_data, Toutput* dst_data, void* sp_data,
                std::shared_ptr<stream> fwd_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
@@ -339,6 +345,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   }
 
   struct MklDnnMatMulFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  // Guards Execution()
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T, typename Tinput, typename Tweight, typename Tbias,
@@ -615,6 +626,9 @@ class MklMatMulPrimitive : public MklPrimitive {
   void Execute(const std::shared_ptr<stream>& stream, const Tlhs* a_data,
                const Trhs* b_data, const Toutput* c_data, void* sp_data,
                void* mul_data = nullptr, void* add_data = nullptr) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.a_mem->set_data_handle(
         static_cast<void*>(const_cast<Tlhs*>(a_data)), *stream);
@@ -783,6 +797,9 @@ class MklMatMulPrimitive : public MklPrimitive {
   }
 
   struct MklMatMulContext context_;
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T, typename Tlhs, typename Trhs, typename Toutput>

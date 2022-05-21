@@ -126,6 +126,11 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
                             std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr& operator=(StatusOr<U>&& other);
 
+  // Constructs the inner value `T` in-place using the provided args, using the
+  // `T(args...)` constructor.
+  template <typename... Args>
+  explicit StatusOr(absl::in_place_t, Args&&... args);
+
   // Constructs a new StatusOr with the given value. After calling this
   // constructor, calls to ValueOrDie() will succeed, and calls to status() will
   // return OK.
@@ -166,11 +171,22 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
 
   // Returns a reference to our status. If this contains a T, then
   // returns Status::OK().
-  const Status& status() const &;
+  const Status& status() const&;
   Status status() &&;
+
+  // StatusOr<T>::value()
+  //
+  // absl::StatusOr compatible versions of ValueOrDie and ConsumeValueOrDie.
+  const T& value() const&;
+  T& value() &;
+  const T&& value() const&&;
+  T&& value() &&;
 
   // Returns a reference to our current value, or CHECK-fails if !this->ok().
   //
+  // DEPRECATED: Prefer accessing the value using `operator*` or `operator->`
+  // after testing that the StatusOr is OK. If program termination is desired in
+  // the case of an error status, consider `CHECK_OK(status_or);`.
   // Note: for value types that are cheap to copy, prefer simple code:
   //
   //   T value = statusor.ValueOrDie();
@@ -189,9 +205,9 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   // warnings about possible uses of the statusor object after the move.
   // C++ style guide waiver for ref-qualified overloads granted in cl/143176389
   // See go/ref-qualifiers for more details on such overloads.
-  const T& ValueOrDie() const &;
+  const T& ValueOrDie() const&;
   T& ValueOrDie() &;
-  const T&& ValueOrDie() const &&;
+  const T&& ValueOrDie() const&&;
   T&& ValueOrDie() &&;
 
   // Returns a reference to the current value.
@@ -215,6 +231,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   const T* operator->() const;
   T* operator->();
 
+  // DEPRECATED: Prefer value().
   T ConsumeValueOrDie() { return std::move(ValueOrDie()); }
 
   // Ignores any errors. This method does nothing except potentially suppress
@@ -243,6 +260,11 @@ StatusOr<T>& StatusOr<T>::operator=(const Status& status) {
 
 template <typename T>
 StatusOr<T>::StatusOr(T&& value) : Base(std::move(value)) {}
+
+template <typename T>
+template <typename... Args>
+StatusOr<T>::StatusOr(absl::in_place_t, Args&&... args)
+    : Base(absl::in_place, std::forward<Args>(args)...) {}
 
 template <typename T>
 StatusOr<T>::StatusOr(Status&& status) : Base(std::move(status)) {}
@@ -289,7 +311,7 @@ inline StatusOr<T>& StatusOr<T>::operator=(StatusOr<U>&& other) {
 }
 
 template <typename T>
-const Status& StatusOr<T>::status() const & {
+const Status& StatusOr<T>::status() const& {
   return this->status_;
 }
 template <typename T>
@@ -300,7 +322,31 @@ Status StatusOr<T>::status() && {
 }
 
 template <typename T>
-const T& StatusOr<T>::ValueOrDie() const & {
+const T& StatusOr<T>::value() const& {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+T& StatusOr<T>::value() & {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+const T&& StatusOr<T>::value() const&& {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+T&& StatusOr<T>::value() && {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+const T& StatusOr<T>::ValueOrDie() const& {
   this->EnsureOk();
   return this->data_;
 }
@@ -312,7 +358,7 @@ T& StatusOr<T>::ValueOrDie() & {
 }
 
 template <typename T>
-const T&& StatusOr<T>::ValueOrDie() const && {
+const T&& StatusOr<T>::ValueOrDie() const&& {
   this->EnsureOk();
   return std::move(this->data_);
 }

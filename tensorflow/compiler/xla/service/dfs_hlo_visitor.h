@@ -74,7 +74,6 @@ class DfsHloVisitorBase {
 
   virtual Status HandleClamp(HloInstructionPtr hlo) = 0;
   virtual Status HandleSelect(HloInstructionPtr hlo) = 0;
-  virtual Status HandleTupleSelect(HloInstructionPtr hlo) = 0;
   virtual Status HandleMaximum(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -152,6 +151,9 @@ class DfsHloVisitorBase {
     return HandleElementwiseBinary(hlo);
   }
   virtual Status HandleRound(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleRoundNearestEven(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleLogistic(HloInstructionPtr hlo) {

@@ -78,7 +78,8 @@ class GuaranteeAllFuncsOneUse
       SymbolUserMap symbol_users(symbol_table_collection, module);
 
       made_changes = false;
-      for (auto func : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
+      for (auto func :
+           llvm::make_early_inc_range(module.getOps<func::FuncOp>())) {
         ArrayRef<Operation *> users = symbol_users.getUsers(func);
         if (users.size() <= 1) {
           continue;
@@ -93,7 +94,7 @@ class GuaranteeAllFuncsOneUse
                       "repeated diamond-like call structure "
                       "or just very large program)";
           }
-          FuncOp new_func = func.clone();
+          func::FuncOp new_func = func.clone();
           symbol_table.insert(new_func);
           new_func.setPrivate();
           if (failed(SymbolTable::replaceAllSymbolUses(

@@ -222,52 +222,6 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   EXPECT_EQ(group_metadata_map.at(3).name, "1");
 }
 
-TEST(GroupEventsTest, GroupFunctionalOp) {
-  constexpr int64_t kStepNum = 123;
-  constexpr int64_t kStepId = 0;
-  constexpr int64_t kFunctionStepId = 1;
-
-  XSpace space;
-  XPlane* host_plane = GetOrCreateHostXPlane(&space);
-  XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.ReserveLines(2);
-
-  auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 200, {{StatType::kStepNum, kStepNum}});
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 190, {{StatType::kStepId, kStepId}});
-
-  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, kStepId}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kRemoteCallOp, 30, 70,
-               {{StatType::kFunctionStepId, kFunctionStepId}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kExecutorStateProcess, 100, 150,
-               {{StatType::kStepId, kFunctionStepId}});
-
-  GroupTfEvents(&space);
-  XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
-  // Check that RemoteCallOp is grouped correctly so that all events belong
-  // to the same group.
-  host_plane_visitor.ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              EXPECT_TRUE(group_id.has_value());
-              EXPECT_EQ(*group_id, 0);
-            });
-      });
-}
-
 TEST(GroupEventsTest, EagerOpTest) {
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);

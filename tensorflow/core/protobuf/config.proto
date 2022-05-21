@@ -798,6 +798,9 @@ message RunMetadata {
   // level idea of what the built graph looks like (since the various graph
   // optimization passes might change the structure of the graph significantly).
   repeated FunctionGraphs function_graphs = 4;
+
+  // Metadata about the session.
+  SessionMetadata session_metadata = 5;
 }
 
 // Defines a connection between two tensors in a `GraphDef`.

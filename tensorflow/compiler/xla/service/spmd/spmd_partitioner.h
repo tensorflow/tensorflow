@@ -348,6 +348,12 @@ class PartitionedHlo {
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
 
+  // Same as PadWithValue but does not create a new PartitionedHlo.
+  HloInstruction* PadWithValueHlo(
+      HloInstruction* pad_value,
+      absl::Span<const int64_t> left_padded_dims = {},
+      absl::Span<const int64_t> skipped_dims = {}) const;
+
   PartitionedHlo PadWithZero(absl::Span<const int64_t> left_padded_dims = {},
                              absl::Span<const int64_t> skipped_dims = {}) const;
 

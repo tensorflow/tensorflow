@@ -708,14 +708,21 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-  OP_REQUIRES(
-      ctx, align_corners_ == true,
-      errors::Unimplemented("ResizeBilinearGrad with align_corners=False is "
-                            "not yet implemented"));
-  OP_REQUIRES(ctx, half_pixel_centers_ == false,
-              errors::Unimplemented(
-                  "ResizeBilinearGrad with half_pixel_centers=True is "
-                  "not yet implemented"));
+
+  if ((!align_corners_ || half_pixel_centers_)) {
+    if (ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      // Use light outside compilation on GPU only.
+      fallback_tf_kernel_.emplace(ctx);
+      return;
+#endif
+    }
+
+    OP_REQUIRES(ctx, false,
+                errors::Unimplemented(
+                    "ResizeBilinearGrad with align_corners=False or "
+                    "half_pixel_centers=True is not yet implemented"));
+  }
 
   DataType output_dtype;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
@@ -723,8 +730,14 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
 }
 
 void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
-  xla::XlaBuilder* b = ctx->builder();
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  if (fallback_tf_kernel_.has_value()) {
+    fallback_tf_kernel_->Compile(ctx);
+    return;
+  }
+#endif
 
+  xla::XlaBuilder* b = ctx->builder();
   TensorShape input_shape = ctx->InputShape(1);
   OP_REQUIRES(ctx, input_shape.dims() == 4,
               errors::InvalidArgument("input must be 4-dimensional",

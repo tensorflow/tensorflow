@@ -25,7 +25,7 @@ namespace mlir {
 namespace tfjs {
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfjs/transforms/passes.h.inc"

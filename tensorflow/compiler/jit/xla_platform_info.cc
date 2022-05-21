@@ -123,7 +123,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
   } else if (device->device_type() == DEVICE_GPU) {
-    platform_id = device->tensorflow_gpu_device_info()
+    platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();

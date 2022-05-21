@@ -39,6 +39,7 @@ enum class OperationType {
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
+  CAST,
   CONCAT,
   CONSTANT,
   CONVOLUTION_2D,
@@ -613,6 +614,20 @@ struct QuantizeAndDequantizeAttributes {
 };
 
 struct GatherAttributes {
+  Axis axis = Axis::UNKNOWN;
+};
+
+struct OneHotAttributes {
+  float on_value = 1;
+  float off_value = 0;
+};
+
+struct SelectV2Attributes {
+  bool broadcast_true = false;
+  bool broadcast_false = false;
+};
+
+struct CumsumAttributes {
   Axis axis = Axis::UNKNOWN;
 };
 

@@ -17,10 +17,18 @@
 import os
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.test_util import get_cluster_def
+from tensorflow.python.distribute.test_util import TestClusterParams
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,6 +41,8 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
@@ -40,9 +50,15 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
+
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+test_cluster_params = TestClusterParams(None, 2, 3)
 
 
 def _load_and_run(
@@ -412,19 +428,6 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     # Continue using root.train for training
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
 
-  def test_load_raises_error(self):
-    root = tracking.AutoTrackable()
-    v1 = variables_lib.Variable([3.])
-    v2 = variables_lib.Variable([2.])
-    root.v = sharded_variable.ShardedVariable([v1, v2])
-
-    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save.save(root, save_dir)
-
-    with self.assertRaisesRegex(
-        ValueError, 'Loading a saved_model containing ShardedVariable'):
-      load.load(save_dir)
-
   def test_validation_errors(self):
     with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
       sharded_variable.ShardedVariable(None)
@@ -685,6 +688,116 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     for v in sv1.variables:
       self.assertTrue(hasattr(v, '_sharded_container'))
       self.assertIs(v._sharded_container(), sv1)
+
+  def test_numpy(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+    sv1_np = sv1.numpy()
+    self.assertIsInstance(sv1_np, np.ndarray)
+    self.assertAllEqual(sv1_np, np.array([1., 2.]))
+
+
+class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(test_cluster_params, num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+
+  def tearDown(self):
+    super().tearDown()
+    # Reset context to disconnect from the cluster.
+    context._reset_context()
+
+  def _create_strategy(self, num_shards):
+    if num_shards > 1:
+      strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+          self.cluster_resolver,
+          variable_partitioner=sharded_variable.FixedShardsPartitioner(
+              num_shards))
+    else:
+      strategy = ds_context._get_default_strategy()
+    return strategy
+
+  @combinations.generate(
+      combinations.combine(
+          shard_config=[[2, 2], [2, 3], [3, 2], [2, 1], [1, 1]],
+      ))
+  def testSaveAndLoadSingleVariable(self, shard_config):
+    """Test saving and loading ShardedVariable with different numbers of shards.
+
+    Loading tf.Variables into multiple Shards is not yet supported
+
+    Args:
+      shard_config: The number of shards to use before and after loading. For
+        example, [2, 1] means to create and save the variable with 2 shards and
+        load it into 1 shard (i.e., a regular tf.Variable).
+    """
+    strategy = self._create_strategy(shard_config[0])
+
+    with strategy.scope():
+      var = variables_lib.Variable([1., 2., 3., 4., 5., 6.])
+
+    # Save variable
+    model_dir = self.get_temp_dir()
+    save.save(var, model_dir)
+
+    strategy2 = self._create_strategy(shard_config[1])
+    with strategy2.scope():
+      # Load variable
+      loaded = load.load(model_dir)
+
+    # Assert all values loaded, values are same
+    if shard_config[1] > 1:
+      loaded = array_ops.concat(loaded.variables, axis=0)
+    self.assertLen(loaded.numpy(), 6)
+
+    if shard_config[0] > 1:
+      var = array_ops.concat(var.variables, axis=0)
+    self.assertAllClose(var.numpy(), loaded.numpy())
+
+  def testSaveAndLoadModuleUnderStrategy(self):
+
+    class Dense(module.Module):
+
+      def __init__(self):
+        self.kernel = variables_lib.Variable(
+            random_ops.random_uniform((6, 6)), name='kernel')
+        self.bias = variables_lib.Variable(
+            random_ops.random_uniform((6,)), name='bias')
+
+      @def_function.function
+      def __call__(self, x):
+        out = math_ops.matmul(self.kernel, x)
+        out = out + self.bias
+        return out
+
+    x = constant_op.constant(
+        math_ops.range(6, dtype=dtypes.float32), shape=[6, 1])
+
+    strategy = self._create_strategy(2)
+    with strategy.scope():
+      layer = Dense()
+      expect = layer(x)
+
+    model_dir = self.get_temp_dir()
+    save.save(layer, model_dir)
+
+    strategy2 = self._create_strategy(3)
+    with strategy2.scope():
+      loaded_layer = load.load(model_dir)
+      # Should fail with informative error
+      with self.assertRaisesRegex(ValueError, 'run a loaded non-Keras'):
+        got = loaded_layer(x)
+
+    # Loading without a strategy should work, because the tf.function is traced
+    # with a single variable as input
+    loaded_layer = load.load(model_dir)
+    got = loaded_layer(x)
+    self.assertAllClose(got, expect)
 
 
 if __name__ == '__main__':

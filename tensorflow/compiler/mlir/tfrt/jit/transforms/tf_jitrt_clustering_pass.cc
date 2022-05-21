@@ -156,13 +156,14 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfJitRtClusteringPass() {
   return std::make_unique<ClusteringPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTfJitRtClusteringPass(
-    llvm::ArrayRef<std::string> oplist, int min_cluster_size) {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfJitRtClusteringPass(llvm::ArrayRef<std::string> oplist,
+                            int min_cluster_size) {
   return std::make_unique<ClusteringPass>(oplist, min_cluster_size);
 }
 

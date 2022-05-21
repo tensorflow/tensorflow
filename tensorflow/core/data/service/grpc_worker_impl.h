@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_GRPC_WORKER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_GRPC_WORKER_IMPL_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 
 #include "grpcpp/server_builder.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
@@ -48,6 +50,8 @@ class GrpcWorkerImpl : public WorkerService::Service {
       return impl_->GetElementResult(request, result);
     };
   }
+
+  WorkerStateExport ExportState() const;
 
 #define HANDLER(method)                                 \
   ::grpc::Status method(::grpc::ServerContext* context, \

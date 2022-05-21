@@ -24,9 +24,11 @@ limitations under the License.
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_kernels_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -67,6 +69,7 @@ using ::llvm::any_cast;
 #endif
 
 using ::llvm::Expected;
+using ::llvm::MutableArrayRef;
 using ::llvm::None;
 using ::llvm::Optional;
 
@@ -83,6 +86,7 @@ using ::tfrt::DType;
 using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
+using ::tfrt::Index;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
 using ::tfrt::MakeAvailableAsyncValueRef;
@@ -201,8 +205,8 @@ static std::string AsTensorType(const MemrefDesc& desc) {
   llvm::raw_string_ostream os(str);
 
   os << "tensor<";
-  for (ssize_t size : desc.sizes) os << size << "x";
-  os << desc.dtype;
+  for (size_t size : desc.sizes()) os << size << "x";
+  os << desc.dtype();
   os << ">";
 
   return str;
@@ -214,20 +218,21 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
   llvm::raw_string_ostream os(str);
 
   auto print_0d = [&](auto type_tag) {
-    os << desc.dtype << ": " << *static_cast<decltype(type_tag)*>(desc.data);
+    os << desc.dtype() << ": "
+       << *static_cast<decltype(type_tag)*>(desc.data());
   };
 
   auto print_1d = [&](auto type_tag) {
-    os << desc.dtype << ": [";
-    for (size_t i = 0; i < desc.sizes[0]; ++i) {
+    os << desc.dtype() << ": [";
+    for (size_t i = 0; i < desc.size(0); ++i) {
       if (i != 0) os << ",";
-      os << static_cast<decltype(type_tag)*>(desc.data)[i];
+      os << static_cast<decltype(type_tag)*>(desc.data())[i];
     }
     os << "]";
   };
 
   auto type_dispatch = [&](auto functor) {
-    switch (desc.dtype) {
+    switch (desc.dtype()) {
       case DType::I32:
         functor(int32_t{});
         break;
@@ -235,11 +240,11 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
         functor(int64_t{});
         break;
       default:
-        os << "<unsupported dtype " << desc.dtype << ">";
+        os << "<unsupported dtype " << desc.dtype() << ">";
     }
   };
 
-  size_t rank = desc.sizes.size();
+  size_t rank = desc.rank();
 
   switch (rank) {
     case 0:
@@ -249,7 +254,7 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
       type_dispatch(print_1d);
       break;
     default:
-      os << "<unsupported rank " << desc.sizes.size() << ">";
+      os << "<unsupported rank " << desc.rank() << ">";
   }
 
   return str;
@@ -441,6 +446,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
     opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
+      if (GetJitRtFlags().enable_crash_reproducer)
+        SetCrashReproducer(pm, kCrashReproducerStdErr);
+
       TfJitRtPipelineOptions opts;
       if (tf_jitrt_opts) {
         opts.vectorize = tf_jitrt_opts->vectorize;
@@ -457,7 +465,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.create_specialization_pipeline = [=](mlir::PassManager& pm) {
+      if (GetJitRtFlags().enable_crash_reproducer)
+        SetCrashReproducer(pm, kCrashReproducerStdErr);
+      CreateJitRtSpecializationPipeline(pm);
+    };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
@@ -565,36 +577,30 @@ using TensorflowReturnValueConverter =
     StaticReturnValueConverter<TensorflowConversionContext,
                                ReturnTensorflowTensor>;
 
-// Converts Tensor to the Memref Descriptor and verifies that the Tensor
-// value is compatible with the memref type.
-static void ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor,
-                                      MemrefDesc* memref) {
-  memref->dtype = tfd::GetTfrtDtype(tensor.dtype());
-  memref->data = const_cast<void*>(tensor.data());
-  memref->offset = 0;
+static MemrefDesc ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor) {
+  // Fills memref sizes and strides with a tensor shape;
+  auto fill_desc = [&](MutableArrayRef<Index> sizes,
+                       MutableArrayRef<Index> strides) {
+    int64_t multiplier = 1;
+    for (int i = tensor.dims() - 1; i >= 0; --i) {
+      int64_t dim_size = tensor.dim_size(i);
+      sizes[i] = dim_size;
+      strides[i] = multiplier;
+      multiplier *= dim_size;
+    }
+  };
 
-  int rank = tensor.dims();
-  memref->sizes.resize_for_overwrite(rank);
-  memref->strides.resize_for_overwrite(rank);
-
-  // Fill memref sizes and compute strides from the tensor dimensions.
-  int64_t multiplier = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    int64_t dim_size = tensor.dim_size(i);
-    memref->sizes[i] = dim_size;
-    memref->strides[i] = multiplier;
-    multiplier *= dim_size;
-  }
+  return MemrefDesc(tensor.dims(), tfd::GetTfrtDtype(tensor.dtype()),
+                    const_cast<void*>(tensor.data()), 0, fill_desc);
 }
 
-static void ConvertTensorOperandsToMemrefDesc(
-    RepeatedArguments<FallbackTensor> operands,
-    llvm::SmallVectorImpl<MemrefDesc>* memrefs) {
-  assert(memrefs->empty() && "memrefs must be empty");
-  memrefs->resize(operands.size());
-
-  for (unsigned i = 0; i < operands.size(); ++i)
-    ConvertTensorToMemrefDesc(operands[i].tensor(), &(*memrefs)[i]);
+static std::vector<MemrefDesc> ConvertTensorOperandsToMemrefDesc(
+    RepeatedArguments<FallbackTensor> operands) {
+  std::vector<MemrefDesc> memrefs;
+  memrefs.reserve(operands.size());
+  for (FallbackTensor& operand : operands)
+    memrefs.emplace_back(ConvertTensorToMemrefDesc(operand.tensor()));
+  return memrefs;
 }
 
 struct DebugListener : public SpecializationListener {
@@ -632,8 +638,7 @@ static void ReturnErrors(RemainingResults results, Error error,
   ReturnErrors(results, std::move(error));
 }
 
-static void ExecuteImpl(Executable& executable,
-                        const llvm::SmallVectorImpl<MemrefDesc>& memrefs,
+static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
                         RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx) {
@@ -694,8 +699,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx, bool debug) {
   // Convert Tensor operands to memref descriptors.
-  llvm::SmallVector<MemrefDesc> memrefs;
-  ConvertTensorOperandsToMemrefDesc(operands, &memrefs);
+  auto memrefs = ConvertTensorOperandsToMemrefDesc(operands);
 
   // Get an executable that might be specialized to the operands.
   DebugListener debug_listener;
@@ -752,13 +756,30 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   });
 }
 
+static std::string OperandsToString(
+    RepeatedArguments<FallbackTensor> operands) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  int i = 0;
+  os << "{";
+  for (const auto& operand : operands) {
+    os << "[" << i++ << "]: " << operand.tensor().DebugString(/*num_values=*/0);
+    if (i < operands.size()) os << ", ";
+  }
+  os << "}";
+  return out;
+}
+
 // Gets a JitExecutable async value from the cache, and then dispatches it
 // inline or using and-then continuation depending on the async value state.
 static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, const StringAttribute& device,
                         const CompilationUnitAttribute& kernel,
-                        const ExecutionContext& exec_ctx, bool debug = false,
-                        const Optional<TfJitRtPipelineOpts>& opts = None) {
+                        const ExecutionContext& exec_ctx, bool debug,
+                        const Optional<TfJitRtPipelineOpts>& opts) {
+  VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
+          << ", operands: " << OperandsToString(operands);
+
   // Compile kernel module into the JitExecutable.
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
       CompileImpl(kernel, exec_ctx, opts);
@@ -808,6 +829,22 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
   });
 }
 
+static void ExecuteImplAndMaybeLogQueryOfDeath(
+    RepeatedArguments<FallbackTensor> operands, RemainingResults results,
+    const StringAttribute& device, const CompilationUnitAttribute& kernel,
+    const ExecutionContext& exec_ctx, bool debug = false,
+    const Optional<TfJitRtPipelineOpts>& opts = None) {
+  if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
+    return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
+                       opts);
+  }
+  TfJitRtQueryOfDeathLogger qod_logger(/*kernel_name=*/kernel.root_symbol(),
+                                       /*kernel_serialized_operation=*/
+                                       kernel.serialized_operation(),
+                                       /*operands=*/OperandsToString(operands));
+  ExecuteImpl(operands, results, device, kernel, exec_ctx, debug, opts);
+}
+
 // -------------------------------------------------------------------------- //
 // TFRT kernel function definitions for tf_jitrt.fallback.execute operations.
 // -------------------------------------------------------------------------- //
@@ -818,7 +855,8 @@ static void Execute(RepeatedArguments<FallbackTensor> operands,
                     RemainingResults results, StringAttribute device,
                     CompilationUnitAttribute kernel,
                     const ExecutionContext& exec_ctx) {
-  ExecuteImpl(operands, results, device, kernel, exec_ctx);
+  ExecuteImplAndMaybeLogQueryOfDeath(operands, results, device, kernel,
+                                     exec_ctx);
 }
 
 // Compiles kernel into the JitExecutable and executes it with the fallback
@@ -834,8 +872,8 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
   TfJitRtPipelineOpts opts;
   opts.vectorize = *vectorize;
   opts.legalize_i1_tensors = *legalize_i1_tensors;
-  ExecuteImpl(operands, results, device, kernel, exec_ctx,
-              *debug_specializations, opts);
+  ExecuteImplAndMaybeLogQueryOfDeath(operands, results, device, kernel,
+                                     exec_ctx, *debug_specializations, opts);
 }
 
 }  // namespace

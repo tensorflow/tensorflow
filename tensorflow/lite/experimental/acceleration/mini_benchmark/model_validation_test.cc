@@ -28,6 +28,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#ifdef ENABLE_NNAPI_SL_TEST
+#include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
+#endif /* ENABLE_NNAPI_SL_TEST */
 
 extern const unsigned char TENSORFLOW_ACCELERATION_MODEL_DATA_VARIABLE[];
 extern const int TENSORFLOW_ACCELERATION_MODEL_LENGTH_VARIABLE;
@@ -128,12 +131,20 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
                    results.compilation_time_us);
     std::cerr << "Execution time us";
     int test_case = 0;
+    int64_t total_execution_time_us = 0;
     for (int64_t t : results.execution_time_us) {
       std::cerr << " " << t;
       RecordProperty("[" + std::to_string(test_case++) + "] " +
                          accelerator_name + " Execution time us",
                      t);
+      total_execution_time_us += t;
     }
+    std::cerr << "\n";
+    int64_t average_execution_time_us = total_execution_time_us / test_case;
+    std::cerr << "Avg execution time us " << average_execution_time_us
+              << std::endl;
+    RecordProperty(accelerator_name + " Avg execution time us",
+                   average_execution_time_us);
     std::cerr << std::endl;
   }
   flatbuffers::FlatBufferBuilder fbb_;
@@ -156,6 +167,36 @@ TEST_F(LocalizerValidationRegressionTest, Nnapi) {
     CheckValidation("NNAPI");
   }
 }
+
+#ifdef ENABLE_NNAPI_SL_TEST
+TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
+  std::string support_library_file = GetTestTmpDir() + "/libnnapi_sl_driver.so";
+  auto nnapi_sl_handle = nnapi::loadNnApiSupportLibrary(support_library_file);
+  fbb_.Finish(CreateComputeSettings(
+      fbb_, ExecutionPreference_ANY,
+      CreateTFLiteSettings(
+          fbb_, Delegate_NNAPI,
+          CreateNNAPISettings(
+              fbb_, fbb_.CreateString("qti-gpu"),
+              /* cache_directory */ 0,
+              /* model_token */ 0, NNAPIExecutionPreference_UNDEFINED,
+              /* no_of_nnapi_instances_to_cache */ 0,
+              /* fallback_settings */ 0,
+              /* allow_nnapi_cpu_on_android_10_plus */ false,
+              /* execution_priority */
+              NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+              /* allow_dynamic_dimensions */ false,
+              /* allow_fp16_precision_for_fp32 */ false,
+              /* use_burst_computation */ false,
+              reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5())))));
+  AndroidInfo android_info;
+  auto status = RequestAndroidInfo(&android_info);
+  ASSERT_TRUE(status.ok());
+  if (android_info.android_sdk_version >= "30") {
+    CheckValidation("NNAPISL");
+  }
+}
+#endif /* ENABLE_NNAPI_SL_TEST */
 
 TEST_F(LocalizerValidationRegressionTest, Gpu) {
   AndroidInfo android_info;

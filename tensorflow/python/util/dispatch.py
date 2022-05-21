@@ -717,8 +717,11 @@ def _signature_from_annotations(func):
 # `unregister_elementwise_api_handler`.
 _UNARY_ELEMENTWISE_APIS = []
 _BINARY_ELEMENTWISE_APIS = []
+_BINARY_ELEMENTWISE_ASSERT_APIS = []
 _ELEMENTWISE_API_HANDLERS = {}
 _ELEMENTWISE_API_TARGETS = {}
+
+_ASSERT_API_TAG = "ASSERT_API_TAG"
 
 
 @tf_export("experimental.dispatch_for_unary_elementwise_apis")
@@ -846,6 +849,75 @@ def dispatch_for_binary_elementwise_apis(x_type, y_type):
   return decorator
 
 
+@tf_export("experimental.dispatch_for_binary_elementwise_assert_apis")
+def dispatch_for_binary_elementwise_assert_apis(x_type, y_type):
+  """Decorator to override default implementation for binary elementwise assert APIs.
+
+  The decorated function (known as the "elementwise assert handler")
+  overrides the default implementation for any binary elementwise assert API
+  whenever the value for the first two arguments (typically named `x` and `y`)
+  match the specified type annotations.  The handler is called with two
+  arguments:
+
+    `elementwise_assert_handler(assert_func, x, y)`
+
+  Where `x` and `y` are the first two arguments to the binary elementwise assert
+  operation, and `assert_func` is a TensorFlow function that takes two
+  parameters and performs the elementwise assert operation (e.g.,
+  `tf.debugging.assert_equal`).
+
+  The following example shows how this decorator can be used to update all
+  binary elementwise assert operations to handle a `MaskedTensor` type:
+
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
+  ...   values: tf.Tensor
+  ...   mask: tf.Tensor
+  >>> @dispatch_for_binary_elementwise_assert_apis(MaskedTensor, MaskedTensor)
+  ... def binary_elementwise_assert_api_handler(assert_func, x, y):
+  ...   merged_mask = tf.logical_and(x.mask, y.mask)
+  ...   selected_x_values = tf.boolean_mask(x.values, merged_mask)
+  ...   selected_y_values = tf.boolean_mask(y.values, merged_mask)
+  ...   assert_func(selected_x_values, selected_y_values)
+  >>> a = MaskedTensor([1, 1, 0, 1, 1], [False, False, True, True, True])
+  >>> b = MaskedTensor([2, 2, 0, 2, 2], [True, True, True, False, False])
+  >>> tf.debugging.assert_equal(a, b) # assert passed; no exception was thrown
+
+  >>> a = MaskedTensor([1, 1, 1, 1, 1], [True, True, True, True, True])
+  >>> b = MaskedTensor([0, 0, 0, 0, 2], [True, True, True, True, True])
+  >>> tf.debugging.assert_greater(a, b)
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError: Condition x > y did not hold.
+
+  Args:
+    x_type: A type annotation indicating when the api handler should be called.
+    y_type: A type annotation indicating when the api handler should be called.
+
+  Returns:
+    A decorator.
+
+  #### Registered APIs
+
+  The binary elementwise assert APIs are:
+
+  <<API_LIST>>
+  """
+
+  def decorator(handler):
+    api_handler_key = (x_type, y_type, _ASSERT_API_TAG)
+    if api_handler_key in _ELEMENTWISE_API_HANDLERS:
+      raise ValueError("A binary elementwise assert dispatch handler "
+                       f"({_ELEMENTWISE_API_HANDLERS[api_handler_key]}) "
+                       f"has already been registered for ({x_type}, {y_type}).")
+    _ELEMENTWISE_API_HANDLERS[api_handler_key] = handler
+    for api in _BINARY_ELEMENTWISE_ASSERT_APIS:
+      _add_dispatch_for_binary_elementwise_api(api, x_type, y_type, handler)
+
+    return handler
+
+  return decorator
+
+
 def register_unary_elementwise_api(func):
   """Decorator that registers a TensorFlow op as a unary elementwise API."""
   _UNARY_ELEMENTWISE_APIS.append(func)
@@ -860,6 +932,26 @@ def register_binary_elementwise_api(func):
   _BINARY_ELEMENTWISE_APIS.append(func)
   for args, handler in _ELEMENTWISE_API_HANDLERS.items():
     if len(args) == 2:
+      _add_dispatch_for_binary_elementwise_api(func, args[0], args[1], handler)
+  return func
+
+
+def register_binary_elementwise_assert_api(func):
+  """Decorator that registers a TensorFlow op as a binary elementwise assert API.
+
+  Different from `dispatch_for_binary_elementwise_apis`, this decorator is used
+  for assert apis, such as assert_equal, assert_none_equal, etc, which return
+  None in eager mode and an op in graph mode.
+
+  Args:
+    func: The function that implements the binary elementwise assert API.
+
+  Returns:
+    `func`
+  """
+  _BINARY_ELEMENTWISE_ASSERT_APIS.append(func)
+  for args, handler in _ELEMENTWISE_API_HANDLERS.items():
+    if len(args) == 3 and args[2] is _ASSERT_API_TAG:
       _add_dispatch_for_binary_elementwise_api(func, args[0], args[1], handler)
   return func
 
@@ -983,6 +1075,8 @@ def update_docstrings_with_api_lists():
                                   _UNARY_ELEMENTWISE_APIS)
   _update_docstring_with_api_list(dispatch_for_binary_elementwise_apis,
                                   _BINARY_ELEMENTWISE_APIS)
+  _update_docstring_with_api_list(dispatch_for_binary_elementwise_assert_apis,
+                                  _BINARY_ELEMENTWISE_ASSERT_APIS)
   _update_docstring_with_api_list(dispatch_for_api,
                                   _TYPE_BASED_DISPATCH_SIGNATURES)
 

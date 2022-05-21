@@ -19,6 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
 // clang-format on
 
 namespace mlir {
@@ -84,9 +84,9 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
-// Returns the type, but without any sparsity encoding. Used to
-// strip sparsity properties of tensor types before is-same tests.
-Type getTypeWithoutSparseEncoding(Type tp);
+// Returns true if the given types are the same for the purposes of MHLO type
+// inference, accounting for special properties of quantization and sparsity.
+bool isCompatibleForMhloTypeInference(Type tp1, Type tp2);
 
 // Shape derivation function that computes the shape of the result based on an
 // operand. For a 2-dimensional input tensor, this produces IR of the form
@@ -111,5 +111,17 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+
+namespace mlir {
+namespace mhlo {
+
+SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
+                    const llvm::ArrayRef<Value> &operands,
+                    const llvm::ArrayRef<Type> &element_types,
+                    int64_t dimension, bool is_stable,
+                    ComparisonDirection direction);
+
+}  // end namespace mhlo
+}  // end namespace mlir
 
 #endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H

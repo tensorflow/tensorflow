@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResourceScatterNdMax"
   input_arg {
     name: "ref"

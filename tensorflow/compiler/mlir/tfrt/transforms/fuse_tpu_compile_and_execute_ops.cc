@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -30,8 +31,10 @@ namespace {
 // TPUCompileSucceededAssertOp.
 class FuseTpuCompileAndExecutePass
     : public mlir::PassWrapper<FuseTpuCompileAndExecutePass,
-                               mlir::OperationPass<mlir::FuncOp>> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseTpuCompileAndExecutePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-fuse-tpu-compile-and-execute-ops";
   }
@@ -143,7 +146,7 @@ class FuseTpuCompileAndExecutePass
 
 namespace tfrt_compiler {
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseTpuCompileAndExecutePass() {
   return std::make_unique<FuseTpuCompileAndExecutePass>();
 }

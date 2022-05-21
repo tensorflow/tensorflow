@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dump.h"
 
+#include <functional>
 #include <memory>
 #include <queue>
 #include <utility>
@@ -616,8 +617,9 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   outputFile->keep();
 }
 
-void DumpExecutionOptions(const ExecutionOptions& execution_options,
-                          const DebugOptions& debug_options) {
+void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
+                        const DebugOptions& debug_options,
+                        absl::string_view filename) {
   CanonicalDebugOptions opts(debug_options);
   tensorflow::Env* env = tensorflow::Env::Default();
   const std::string& dir = opts.dump_to;
@@ -630,20 +632,28 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
     }
   }
   if (env->IsDirectory(dir).ok()) {
-    std::string filename = tensorflow::io::JoinPath(dir, "execution_options");
+    const std::string path = tensorflow::io::JoinPath(dir, filename);
     Status status;
     if (opts.dump_as_text) {
-      status = tensorflow::WriteTextProto(env, absl::StrCat(filename, ".txt"),
-                                          execution_options);
+      status =
+          tensorflow::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
     } else {
-      status = tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
-                                            execution_options);
+      status =
+          tensorflow::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
     }
     if (!status.ok()) {
       LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
                  << status;
     }
   }
+}
+
+void DumpPerModuleProtobufToFile(const HloModule& module,
+                                 const tensorflow::protobuf::Message& proto,
+                                 const DebugOptions& debug_options,
+                                 absl::string_view name) {
+  const std::string filename = FilenameFor(module, TimestampFor(module), name);
+  DumpProtobufToFile(proto, debug_options, filename);
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {

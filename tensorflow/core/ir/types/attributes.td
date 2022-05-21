@@ -189,6 +189,18 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   //   TFT_LITERAL[TFT_INT32]{1} is the compile-time constant 1.
   I32EnumAttrCase<"TFT_LITERAL", 1003, "literal">,
 
+  // Encoding types describe a value of a certain type, encoded as a different
+  // type.
+  //
+  // Parametrization:
+  //   TFT_ENCODED[<encoded type>, <encoding type>]
+  //   * <encoded type> may be any type
+  //   * <encoding type> may be any type
+  //
+  // Examples:
+  //   TFT_ENCODING[TFT_INT32, TFT_STRING] is an integer encoded as string.
+  I32EnumAttrCase<"TFT_ENCODED", 1004, "encoded">,
+
   // Type attributes. These always appear in the parametrization of a type,
   // never alone. For example, there is no such thing as a "bool" TensorFlow
   // object (for now).
@@ -248,6 +260,15 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   //
   // Parametrization: TFT_RAGGED[<element_type>].
   I32EnumAttrCase<"TFT_RAGGED", 10103, "ragged">,
+
+  // Iterators created by tf.data ops and APIs. Very similar to Datasets, except
+  // they are mutable.
+  //
+  //
+  // Parametrization: TFT_ITERATOR[<element type>].
+  //   * <element type> may be a concrete type or a type symbol. It represents
+  //     the data type of the elements produced by the dataset.
+  I32EnumAttrCase<"TFT_ITERATOR", 10104, "iterator">,
 
   // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
   // Unlike strict execution models, where ownership of a lock is denoted by
@@ -366,8 +387,6 @@ def TFGraph_TypeOrPlaceholder
 
 def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
   let mnemonic = "shape";
-  let returnType = "ShapeAttr";
-  let convertFromStorage = "$_self.cast<ShapeAttr>()";
   let summary = "A shape either unranked or is modelled an array of int64";
   let description = [{
     This attributes matches the `ShapedType` MLIR Type content into an attribute
@@ -417,8 +436,6 @@ def TFGraph_ShapesAttr
 
 def TFType_VersionAttr : TFType_Attr<"Version"> {
   let mnemonic = "version";
-  let returnType = "VersionAttr";
-  let convertFromStorage = "$_self.cast<VersionAttr>()";
   let summary = "An Attribute describing the version for a TensorFlow Graph";
   let parameters = (ins
     "int32_t":$producer,

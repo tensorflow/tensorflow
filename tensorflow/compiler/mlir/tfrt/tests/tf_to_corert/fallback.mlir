@@ -119,3 +119,12 @@ func.func @tensor_array() -> (tensor<1x1x512xf32>) {
   %result = "tf.TensorArrayGatherV3"(%handle, %indices, %flow_1) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf_type.shape<1x512>} : (tensor<2x!tf_type.resource<tensor<1x512xf32>>>, tensor<1xi32>, tensor<f32>) -> tensor<1x1x512xf32>
   func.return %result : tensor<1x1x512xf32>
 }
+
+// CHECK-LABEL: func @gpu_device_cost
+func.func @gpu_device_cost(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<3x3xf32> {
+  // CHECK: tfrt_fallback_async.executeop.seq({{.*}}) key({{.*}}) cost({{1}}) device({{.*}}) "tf.ReadVariableOp"
+  // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{1}}) device({{.*}}) "tf.MatMul"
+  %0 = "tf.ReadVariableOp"(%arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+  %1 = "tf.MatMul"(%arg0, %0) {T = f32, device = "/job:localhost/replica:0/task:0/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
+  func.return %1 : tensor<3x3xf32>
+}

@@ -69,11 +69,14 @@ def HLO_CUSTOM_CALL_API_VERSION_ORIGINAL :
     I32EnumAttrCase<"API_VERSION_ORIGINAL", 1>;
 def HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING :
     I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
+def HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED :
+    I32EnumAttrCase<"API_VERSION_STATUS_RETURNING_UNIFIED", 3>;
 def HLO_CustomCallApiVersionAttr :
     I32EnumAttr<"CustomCallApiVersion", "Custom call API version", [
         HLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED,
         HLO_CUSTOM_CALL_API_VERSION_ORIGINAL,
-        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING
+        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING,
+        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED
     ]> {
   let cppNamespace = "::mlir::mhlo";
 }
@@ -172,5 +175,24 @@ def HLO_FusionKind : I32EnumAttr<"FusionKind", "fusion kind", [
 }
 
 def HLO_FusionKindAttr : EnumAttr<HLO_Dialect, HLO_FusionKind, "fusion_kind">;
+
+def HLO_RNG_ALGORITHM_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
+def HLO_RNG_ALGORITHM_THREE_FRY : I32EnumAttrCase<"THREE_FRY", 1>;
+def HLO_RNG_ALGORITHM_PHILOX : I32EnumAttrCase<"PHILOX", 2>;
+
+def HLO_RNG_ALGORITHM : I32EnumAttr<"RngAlgorithm",
+    "XLA PRNG algorithm to be used.",
+    [
+      HLO_RNG_ALGORITHM_DEFAULT,
+      HLO_RNG_ALGORITHM_THREE_FRY,
+      HLO_RNG_ALGORITHM_PHILOX
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def HLO_RngAlgorithmAttr : EnumAttr<HLO_Dialect, HLO_RNG_ALGORITHM, "rng_algorithm"> {
+  let assemblyFormat = "`<` $value `>`";
+}
 
 #endif // HLO_OPS_BASE_ENUMS

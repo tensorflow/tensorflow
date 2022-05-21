@@ -102,7 +102,6 @@ void PopulateDynamicShapeFusionPatterns(MLIRContext *context,
 
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
-// TODO(laurenzo): Implement un-fusing of batch_norm_training.
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      RewritePatternSet *patterns);
 
@@ -117,6 +116,9 @@ void PopulateTrigonometricToApproximationPatterns(MLIRContext *context,
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns);
 
+// Populate patterns for iterative shape reification.
+void PopulateShapeReificationPatterns(MLIRContext *, RewritePatternSet *);
+
 // Populate patterns to group reduction and parallel dimensions of reduction
 // operations and realize them through equivalent 1D or 2D reductions.
 void populateGroupReductionDimensionsPatterns(MLIRContext *context,
@@ -129,6 +131,10 @@ void PopulateRankSpecializationClusterPatterns(MLIRContext *context,
 void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
                                              RewritePatternSet *patterns,
                                              int64_t max_target_rank);
+
+/// Populate sparse tensor specific rewriting patterns.
+void PopulateSparseRewritingPatterns(RewritePatternSet *patterns,
+                                     MLIRContext *ctx);
 
 }  // namespace mhlo
 

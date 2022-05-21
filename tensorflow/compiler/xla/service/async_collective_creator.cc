@@ -75,14 +75,15 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
       }
       if (HloAllGatherInstruction* ag =
               DynCast<HloAllGatherInstruction>(instruction)) {
-        std::vector<Shape> operand_shapes;
+        std::vector<const Shape*> operand_shapes;
         operand_shapes.reserve(ag->operand_count());
         for (const HloInstruction* op : ag->operands()) {
-          operand_shapes.push_back(op->shape());
+          operand_shapes.push_back(&op->shape());
         }
         Shape shape = ShapeUtil::MakeTupleShape(
-            {ag->operand_count() > 1 ? ShapeUtil::MakeTupleShape(operand_shapes)
-                                     : operand_shapes[0],
+            {ag->operand_count() > 1
+                 ? ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes)
+                 : *operand_shapes[0],
              ag->shape()});
         HloInstruction* start =
             computation->AddInstruction(HloInstruction::CreateAllGatherStart(

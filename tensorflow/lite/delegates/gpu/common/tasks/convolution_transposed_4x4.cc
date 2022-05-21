@@ -214,12 +214,12 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
     c += "  int local_id = LOCAL_ID_1 * 8 + LOCAL_ID_0;\n";
   }
   const std::string prev_x = "X - " + pixel_stride;
-  if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+  if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
     c += "  bool in_x0 = " + prev_x + " >= 0 && " + prev_x +
          " < args.src_tensor.Width();\n";
     c += "  bool in_x1 = X >= 0 && X < args.src_tensor.Width();\n";
   }
-  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
     c += "  bool in_y0 = Y - 1 >= 0 && Y - 1 < args.src_tensor.Height();\n";
     c += "  bool in_y1 = Y >= 0 && Y < args.src_tensor.Height();\n";
   }
@@ -230,7 +230,8 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
                                          "in_y" + std::to_string(y)};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+      if (src_desc.HasAxis(axis) &&
+          !src_desc.SupportsZeroClamp(axis, gpu_info)) {
         if (!check.empty()) {
           check += " && ";
         }
@@ -240,7 +241,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
     return check;
   };
   if (src_desc.IsLinear()) {
-    if (src_desc.ReturnsZeroForNegOneRead()) {
+    if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
       c += "  args.src_tensor.GetAddress(addr_0, " + prev_x + ", Y - 1, 0);\n";
       c += "  args.src_tensor.GetAddress(addr_1, X, Y - 1, 0);\n";
       c += "  args.src_tensor.GetAddress(addr_2, " + prev_x + ", Y, 0);\n";
@@ -274,7 +275,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
     if (src_desc.IsLinear()) {
       const std::string id = std::to_string(y * 2 + x);
       const std::string addr = "addr_" + std::to_string(y * 2 + x);
-      if (src_desc.ReturnsZeroForNegOneRead()) {
+      if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         return "args.src_tensor.Read(" + addr + "); " + addr + " += dz_" + id +
                ";";
       } else {

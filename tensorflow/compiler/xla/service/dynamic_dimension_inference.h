@@ -42,7 +42,7 @@ class DynamicDimensionInference {
     // returns a compile-time error.
     kCompileTime,
     // Insert runtime checks as Hlo ops.
-    kRuntimeTime,
+    kRuntime,
     // Ignore shape check.
     kIgnore,
   };

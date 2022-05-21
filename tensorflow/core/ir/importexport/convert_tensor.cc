@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/mangling.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
@@ -86,17 +87,13 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
                                    input_tensor.TotalBytes());
-  return DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
-  return DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
@@ -279,12 +276,12 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
 }
 
 // Converts the tensor shape proto into an MLIR shape attribute.
-tensorflow::StatusOr<Attribute> ConvertTensorShapeProto(
+tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
   if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
 
-  llvm::SmallVector<int64_t, 4> dims;
-  dims.reserve(shape.dim().size());
+  SmallVector<int64_t, 4> dims;
+  dims.reserve(shape.dim_size());
   for (const auto& dim : shape.dim()) {
     dims.push_back(dim.size());
   }

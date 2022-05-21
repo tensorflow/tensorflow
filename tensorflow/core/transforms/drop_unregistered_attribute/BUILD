@@ -10,9 +10,9 @@ package(
 )
 
 cc_library(
-    name = "OutputShapesPass",
-    srcs = ["output_shapes.cc"],
-    hdrs = ["output_shapes.h"],
+    name = "Pass",
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassDetail",

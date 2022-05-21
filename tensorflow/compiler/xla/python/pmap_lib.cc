@@ -33,6 +33,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -101,7 +102,7 @@ struct ShardArgResult {
 // `arg`: The object to shard across `devices`. If a `ShardedDeviceArray`,
 //   a fast-path will be executed if it's already correctly sharded.
 //
-// Returns a failure Status when an unrecoverable error occured, so we don't
+// Returns a failure Status when an unrecoverable error occurred, so we don't
 // need to fallback to Python.
 //
 // Both `devices` and `sharding_spec` has the same length.
@@ -259,6 +260,20 @@ class PmapFunction {
     std::swap(python_shard_arg_fallback_, python_shard_arg_fallback);
   }
 
+  // Returns, for debugging purposes (e.g. finding why some call misses the
+  // cache and recompiles), the list of the string representations of the keys.
+  //
+  // The format can change at any time.
+  std::string DebugCacheKeys() const {
+    std::vector<std::string> key_strings = {
+        absl::StrCat("The cache contains ", executables_.size(), " elements:")};
+    // We will be able to use auto& [key, _] when TF uses C++ 17.
+    for (auto& pair : executables_) {
+      key_strings.push_back(pair.first.DebugString());
+    }
+    return absl::StrJoin(key_strings, "\n\n");
+  }
+
  private:
   // Mutates `cache_entry` in place.
   void PopulateCacheEntry(PmapCacheEntry& cache_entry,
@@ -295,7 +310,7 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
 
   py::tuple pmap_data = py::cast<py::tuple>(out_and_fastpath_data[1]);
   if (py::cast<int>(pmap_data.attr("version")) != 1) {
-    throw std::runtime_error(absl::StrCat(
+    throw xla::XlaRuntimeError(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (pmap cpp version 1 "
         "expected, but got ",
         py::cast<int>(pmap_data.attr("version")),
@@ -867,12 +882,19 @@ void BuildPmapSubmodule(py::module& m) {
       },
       py::is_method(cfun_type));
 
-  // This is only for testing/debugging purposes
+  // This is only for testing/debugging purposes.
   cfun.attr("_cache_size") =
       property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
         TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
         return py::cast<int>(fun->cache_size());
       });
+
+  cfun.attr("_debug_cache_keys") = py::cpp_function(
+      [](py::handle self) -> xla::StatusOr<std::string> {
+        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+        return fun->DebugCacheKeys();
+      },
+      py::is_method(cfun_type));
 
   pmap_lib.def("pmap",
                [](py::function fun, py::function cache_miss,

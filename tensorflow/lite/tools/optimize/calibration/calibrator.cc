@@ -218,7 +218,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   Calibrator* calibrator = GetCalibratorRegistry()->GetCalibrator(node);
 
   if (!calibrator) {
-    context->ReportError(context, "No calibrator found for context.");
+    TF_LITE_KERNEL_LOG(context, "No calibrator found for context.");
     return kTfLiteError;
   }
 

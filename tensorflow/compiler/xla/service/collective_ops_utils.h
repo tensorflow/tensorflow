@@ -126,6 +126,13 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
                              absl::Span<const ReplicaGroup> second);
 
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op.
+constexpr char kNopCustomCallTarget[] = "AllocateBuffer";
+
+// Returns true if instruction is a collective op or a collective fusion.
+bool IsCollective(const HloInstruction* instruction);
+
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
 // The rules are as follows.

@@ -114,10 +114,13 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), definition_location,
-                                     " located in device ", handle.device(),
-                                     " from device ", dev->attributes().name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), definition_location,
+          " located in device ", handle.device(), " from device ",
+          dev->attributes().name(),
+          "\n Cf. "
+          "https://www.tensorflow.org/xla/"
+          "known_issues#tfvariable_on_a_different_device");
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
@@ -627,7 +630,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   });
   if (device_context == nullptr) {
     using_default_context = true;
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     if (dev_info) device_context = dev_info->default_context;
   }
 

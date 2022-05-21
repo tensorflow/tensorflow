@@ -11,7 +11,6 @@ package(
 tf_python_pybind_extension(
     name = "_pywrap_server_lib",
     srcs = ["server_lib_wrapper.cc"],
-    module_name = "_pywrap_server_lib",
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/data/service:server_lib_headers_lib",
@@ -50,7 +49,6 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "_pywrap_utils",
     srcs = ["utils_wrapper.cc"],
-    module_name = "_pywrap_utils",
     deps = [
         "//tensorflow/core/data/service:py_utils",
         "//tensorflow/python:pybind11_lib",

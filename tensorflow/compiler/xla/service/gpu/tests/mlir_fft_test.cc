@@ -26,7 +26,7 @@ class FftTest : public MlirGpuTestBase {};
 TEST_F(FftTest, SimpleCase1) {
   const char* mlir_text = R"(
       module attributes {hlo.unique_id = 0 : i32} {
-        func @main(%arg0: memref<4xf32> {
+        func.func @main(%arg0: memref<4xf32> {
                        lmhlo.params = 0 : index
                    },
                    %arg1: memref<3xcomplex<f32>> {

@@ -50,7 +50,7 @@ struct OptimizeGlobalTensorsPass
 // This struct tracks which funcs (and which argument to that func) the global
 // tensor is bound to.
 struct GlobalTensorUse {
-  mutable FuncOp func;
+  mutable func::FuncOp func;
   size_t arg_index;
 };
 
@@ -84,7 +84,7 @@ GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
   GlobalTensorUsesMap global_tensor_uses;
 
   SymbolTable symbol_table(module);
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (size_t i = 0, e = func.getNumArguments(); i < e; i++) {
       auto sym =
           func.getArgAttrOfType<SymbolRefAttr>(i, "tf_saved_model.bound_input");
@@ -135,7 +135,7 @@ void EraseUnusedGlobalTensors(ModuleOp module,
 }
 
 void EraseUnusedBoundInputs(ModuleOp module) {
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     llvm::BitVector args_to_erase(func.getNumArguments());
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       if (func.getArgAttr(i, "tf_saved_model.bound_input") &&

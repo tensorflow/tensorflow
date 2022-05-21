@@ -21,7 +21,9 @@ namespace TFL {
 namespace {
 
 struct IdentifyDilatedConvPass
-    : public PassWrapper<IdentifyDilatedConvPass, OperationPass<FuncOp>> {
+    : public PassWrapper<IdentifyDilatedConvPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IdentifyDilatedConvPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

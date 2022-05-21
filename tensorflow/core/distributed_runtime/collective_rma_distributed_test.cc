@@ -343,7 +343,8 @@ class CollRMADistTest
   void MaybeSetGPUDevice(Device* dst_device) {
     if (std::get<TEST_PARAM_DEVICE_TYPE>(GetParam()) ==
         TEST_PARAM_DEVICE_TYPE_GPU) {
-      dst_device->set_tensorflow_accelerator_device_info(&gpu_device_info_);
+      dst_device->set_tensorflow_accelerator_device_info(
+          &accelerator_device_info_);
     }
   }
 
@@ -358,14 +359,14 @@ class CollRMADistTest
   mutex mu_;
   int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
-  Tensor expected_value_;
-  Tensor large_response_;
-  Tensor to_tensor_;
   CallOptions opts_;
   DeviceLocality device_locality_;
   AllocatorAttributes alloc_attr_;
   FakeAllocator fake_allocator_;
-  DeviceBase::AcceleratorDeviceInfo gpu_device_info_;
+  DeviceBase::AcceleratorDeviceInfo accelerator_device_info_;
+  Tensor expected_value_;
+  Tensor large_response_;
+  Tensor to_tensor_;
 };
 
 TEST_P(CollRMADistTest, ProdFirstOK) {

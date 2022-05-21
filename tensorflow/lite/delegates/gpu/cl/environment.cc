@@ -267,6 +267,9 @@ bool CanUseSubBufferForImage2d(const GpuInfo& gpu_info) {
     // driver issue
     return false;
   }
+  if (gpu_info.IsNvidia()) {
+    return false;
+  }
   if (gpu_info.IsMali() &&
       (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
     // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),

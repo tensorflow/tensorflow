@@ -86,7 +86,10 @@ int64_t GetTransferredElementCount(func::CallOp from_graph,
   return total_element_count;
 }
 
-struct GetOpCostPass : mlir::PassWrapper<GetOpCostPass, OperationPass<FuncOp>> {
+struct GetOpCostPass
+    : mlir::PassWrapper<GetOpCostPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetOpCostPass)
+
   llvm::StringRef getArgument() const final { return "tfl-get-op-cost"; }
   llvm::StringRef getDescription() const final {
     return "Get cost for every op";
@@ -99,7 +102,7 @@ void GetOpCostPass::runOnOperation() {
   OpBuilder builder(func);
   func.walk([&](Operation* op) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
-        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
       if (!hardware) return;
       float cost = GetCostForOp(op, hardware.getValue());
@@ -119,7 +122,7 @@ float GetCostForOp(Operation* op, const std::string& hardware) {
   return device_hardware->GetOpCost(op);
 }
 
-float GetCostForFunc(FuncOp* func, const std::string& hardware) {
+float GetCostForFunc(func::FuncOp* func, const std::string& hardware) {
   auto* device_hardware = GetTargetHardware(hardware);
   if (device_hardware == nullptr) {
     return kDefaultFixedValuedCost;
@@ -185,7 +188,7 @@ float GetQuantDequantCost(InferenceType from_inference_type,
   return kDefaultFixedValuedCost;
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateGetOpCostPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetOpCostPass() {
   return std::make_unique<GetOpCostPass>();
 }
 

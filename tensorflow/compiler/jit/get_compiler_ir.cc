@@ -130,9 +130,9 @@ StatusOr<std::string> GetCompilerIr(
   core::ScopedUnref cache_ref(cache);
 
   se::Stream* stream = nullptr;
-  if (const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
-          dev->tensorflow_gpu_device_info()) {
-    stream = gpu_device_info->stream;
+  if (const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+          dev->tensorflow_accelerator_device_info()) {
+    stream = accelerator_device_info->stream;
   }
 
   XlaCompiler::Options options =
@@ -157,6 +157,7 @@ StatusOr<std::string> GetCompilerIr(
 
   switch (stage) {
     case IrExportStage::HLO:
+    case IrExportStage::HLO_NO_METADATA:
     case IrExportStage::HLO_SERIALIZED: {
       TF_ASSIGN_OR_RETURN(xla::ProgramShape program_shape,
                           result.computation->GetProgramShape());
@@ -165,10 +166,15 @@ StatusOr<std::string> GetCompilerIr(
           std::unique_ptr<xla::HloModule> new_module,
           xla::HloModule::CreateFromProto(result.computation->proto(), config));
 
+      xla::HloPrintOptions opts;
+      if (stage == IrExportStage::HLO_NO_METADATA) {
+        opts.set_print_metadata(false);
+      }
+
       if (stage == IrExportStage::HLO_SERIALIZED) {
         return new_module->ToProto().SerializeAsString();
       } else {
-        return new_module->ToString();
+        return new_module->ToString(opts);
       }
     }
     case IrExportStage::OPTIMIZED_HLO:

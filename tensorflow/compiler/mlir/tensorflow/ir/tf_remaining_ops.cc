@@ -98,7 +98,7 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
            << status.error_message();
   }
 
-  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+  func::FuncOp func = module_for_func->lookupSymbol<func::FuncOp>("host_func");
   if (!func)
     return op.emitError()
            << "serialized module in attribute 'host_mlir_module' does not "
@@ -120,13 +120,13 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+func::FuncOp _XlaHostComputeMlirOp::GetHostFunc(
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
-  return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+  return (*mlir_module)->lookupSymbol<func::FuncOp>("host_func");
 }
 
 //===----------------------------------------------------------------------===//
@@ -143,6 +143,36 @@ std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
 
 std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
   return key().str();
+}
+
+namespace {
+std::string GetRendezvousKey(const std::string& send_device,
+                             const uint64_t send_device_incarnation,
+                             const std::string& recv_device,
+                             const std::string& tensor_name) {
+  return absl::StrCat(send_device, ";", send_device_incarnation, ";",
+                      recv_device, ";", tensor_name);
+}
+}  // namespace
+
+std::string _HostRecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _HostSendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _RecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _SendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
 }
 
 }  // namespace TF

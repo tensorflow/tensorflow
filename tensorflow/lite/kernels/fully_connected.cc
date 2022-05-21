@@ -223,7 +223,30 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
-  TF_LITE_ENSURE(context, filter->dims->data[1] != 0);
+
+  // When the second dimension size of the filter tensor is 0, we need to
+  // generate the output shape early to avoid dividing by 0.
+  if (filter->dims->data[1] == 0) {
+    TfLiteIntArray* output_size_array;
+    if (params->keep_num_dims) {
+      output_size_array = TfLiteIntArrayCopy(input->dims);
+      output_size_array->data[output_size_array->size - 1] =
+          filter->dims->data[0];
+    } else {
+      output_size_array = TfLiteIntArrayCreate(2);
+      // If `keep_num_dims` is false, we need to flatten the output tensor to
+      // have rank 2.
+      int batch_size = 1;
+      for (int i = 0; i < input->dims->size - 1; ++i)
+        batch_size *= input->dims->data[i];
+      output_size_array->data[0] = batch_size;
+      output_size_array->data[1] = filter->dims->data[0];
+    }
+    TF_LITE_ENSURE_OK(
+        context, context->ResizeTensor(context, output, output_size_array));
+    return kTfLiteOk;
+  }
+
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
@@ -931,9 +954,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         }
         break;
       default:
-        context->ReportError(context,
-                             "Quantized FullyConnected expects output data "
-                             "type uint8, int8 or int16");
+        TF_LITE_KERNEL_LOG(context,
+                           "Quantized FullyConnected expects output data "
+                           "type uint8, int8 or int16");
         return kTfLiteError;
     }
   }
@@ -952,7 +975,7 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
   // TODO(b/110697972) decide more consistently if / how / where we want
   // to perform this kind of runtime data type checks.
   if (shuffled_input_workspace->type != kTfLiteUInt8) {
-    context->ReportError(context, "Unexpected data type");
+    TF_LITE_KERNEL_LOG(context, "Unexpected data type");
     return kTfLiteError;
   }
 
@@ -1105,6 +1128,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
 
+  if (filter->dims->data[1] == 0) {
+    memset(output->data.data, 0, output->bytes);
+    return kTfLiteOk;
+  }
+
   switch (filter->type) {
     case kTfLiteFloat32:
       return EvalFloat<kernel_type>(context, node, params, data, input, filter,
@@ -1124,8 +1152,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);
       } else {
-        context->ReportError(context,
-                             "Unhandled fully-connected weights format");
+        TF_LITE_KERNEL_LOG(context, "Unhandled fully-connected weights format");
         return kTfLiteError;
       }
     case kTfLiteInt8:
@@ -1133,14 +1160,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);
       } else {
-        context->ReportError(context,
-                             "Unhandled fully-connected weights format");
+        TF_LITE_KERNEL_LOG(context, "Unhandled fully-connected weights format");
         return kTfLiteError;
       }
     default:
-      context->ReportError(context,
-                           "Filter data type %s currently not supported.",
-                           TfLiteTypeGetName(filter->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Filter data type %s currently not supported.",
+                         TfLiteTypeGetName(filter->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

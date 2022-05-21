@@ -21,7 +21,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -62,10 +65,21 @@ GetElementResult GetElementResult::Copy() const {
 }
 
 size_t GetElementResult::EstimatedMemoryUsageBytes() const {
-  size_t size_bytes = components.size() * sizeof(Tensor) + sizeof(int64) +
-                      sizeof(bool) + sizeof(bool);
+  size_t size_bytes = components.size() * sizeof(Tensor) +
+                      sizeof(element_index) + sizeof(end_of_sequence) +
+                      sizeof(skip);
   for (const Tensor& tensor : components) {
-    size_bytes += tensor.AllocatedBytes();
+    size_bytes += tensor.TotalBytes();
+    if (tensor.dtype() != DT_VARIANT) {
+      continue;
+    }
+
+    // Estimates the memory usage of a compressed element.
+    const Variant& variant = tensor.scalar<Variant>()();
+    const CompressedElement* compressed = variant.get<CompressedElement>();
+    if (compressed) {
+      size_bytes += compressed->SpaceUsedLong();
+    }
   }
   return size_bytes;
 }

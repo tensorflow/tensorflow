@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -43,8 +43,13 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/stream_executor/matmul_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -217,7 +222,6 @@ struct SequentialMatMulKernel {
     }
   }
 };
-
 }  // namespace
 
 template <typename Device, typename Scalar>
@@ -278,6 +282,15 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
+// A dummy type to group matmul autotune results together.
+struct BatchMatmulAutoTuneGroup {
+  static string name() { return "MatmulLt"; }
+};
+
+typedef AutotuneSingleton<BatchMatmulAutoTuneGroup, se::BatchMatmulParameters,
+                          se::blas::AlgorithmConfig>
+    AutoTuneBatchMatmul;
+
 template <typename T>
 se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
   se::DeviceMemoryBase wrapped(const_cast<T*>(gpu_memory));
@@ -285,24 +298,40 @@ se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
   return typed;
 }
 
+}  // namespace
+
 class BlasScratchAllocator : public se::ScratchAllocator {
  public:
   using Stream = se::Stream;
   using DeviceMemoryBytes = se::DeviceMemory<uint8>;
 
-  BlasScratchAllocator(OpKernelContext* context) : context_(context) {}
+  BlasScratchAllocator(OpKernelContext* context)
+      : memory_limit_(0), total_byte_size_(0), context_(context) {}
 
-  int64_t GetMemoryLimitInBytes() override { return -1; }
+  BlasScratchAllocator(OpKernelContext* context, int64_t memory_limit)
+      : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
+
+  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
 
+    if (memory_limit_ > 0 && byte_size > memory_limit_) {
+      return se::port::Status{
+          se::port::error::UNAVAILABLE,
+          absl::StrCat("Requested memory size (", byte_size,
+                       ") exceeds the memory limit (", memory_limit_, ").")};
+    }
+    AllocationAttributes allocation_attr;
+    allocation_attr.retry_on_failure = false;
     Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
-      return se::port::StatusOr<DeviceMemoryBytes>(
-          DeviceMemoryBytes::MakeFromByteSize(nullptr, 0));
+      return se::port::Status{
+          se::port::error::UNAVAILABLE,
+          absl::StrCat("Failed to allocate requested memory of (", byte_size,
+                       ").")};
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
@@ -314,16 +343,18 @@ class BlasScratchAllocator : public se::ScratchAllocator {
   }
 
  private:
+  int64_t memory_limit_;
+  int64_t total_byte_size_;
   OpKernelContext* context_;
   std::vector<Tensor> allocated_tensors_;
 };
-}  // namespace
 
 template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                      bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+    static bool use_autotune = MatmulAutotuneEnable();
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -359,115 +390,325 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
-    bool use_strided_batched =
-        (!bcast.IsBroadcastingRequired() || is_full_broadcast) &&
-        batch_size > 1;
-    if (use_strided_batched) {
-      a_stride = bcast.x_batch_size() != 1 ? m * k : 0;
-      b_stride = bcast.y_batch_size() != 1 ? k * n : 0;
-      c_stride = m * n;
-      a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
-      b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
-      c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
-      a_ptrs.push_back(&a_device_memory.back());
-      b_ptrs.push_back(&b_device_memory.back());
-      c_ptrs.push_back(&c_device_memory.back());
-    } else if (!bcast.IsBroadcastingRequired()) {
-      for (int64_t i = 0; i < batch_size; ++i) {
-        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
-        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
-        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+    typedef Scalar Coefficient;
+    // The BlasLtMatmul routines are supported from CUDA 11.0 onward.
+#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+    if (EnableCublasLtGemm()) {
+      static const int64_t max_scratch_size =
+          se::GetWorkspaceLimit(1LL << 32);  // 4GB by default
+
+      bool requires_mixed_broadcasting =
+          bcast.IsBroadcastingRequired() && !is_full_broadcast;
+
+      if (!requires_mixed_broadcasting) {
+        bool broadcast_a = bcast.x_batch_size() == 1;
+        bool broadcast_b = bcast.y_batch_size() == 1;
+        a_stride = broadcast_a ? 0 : m * k;
+        b_stride = broadcast_b ? 0 : k * n;
+        c_stride = m * n;
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
         a_ptrs.push_back(&a_device_memory.back());
         b_ptrs.push_back(&b_device_memory.back());
         c_ptrs.push_back(&c_device_memory.back());
-      }
-    } else {
-      const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
-      const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
-      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
-        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
-      }
-      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
-        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
-      }
-      for (int64_t i = 0; i < batch_size; ++i) {
-        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
-        a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
-        b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
-        c_ptrs.push_back(&c_device_memory.back());
-      }
-    }
 
-    typedef Scalar Coefficient;
+        DataType dtype = DataTypeToEnum<Scalar>::value;
+        int device_id = stream->parent()->device_ordinal();
+        se::BatchMatmulParameters matmul_parameters(
+            trans_x, trans_y, adj_x, adj_y, m, n, k, batch_size, broadcast_a,
+            broadcast_b, dtype, dtype, device_id);
 
-    // Blas does
-    // C = A x B
-    // where A, B and C are assumed to be in column major.
-    // We want the output to be in row-major, so we can compute
-    // C' = B' x A', where ' stands for transpose (not adjoint).
-    // TODO(yangzihao): Choose the best of the three strategies using autotune.
-    if (batch_size == 1) {
-      // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
-      // overhead of the scratch allocator and the batch interface.
-      if (n == 1 &&
-          blas_transpose_b != se::blas::Transpose::kConjugateTranspose &&
-          blas_transpose_a != se::blas::Transpose::kConjugateTranspose) {
-        // This is a matrix*vector multiply so use GEMV to compute A * b.
-        // Here we are multiplying in the natural order, so we have to flip
-        // the transposition flag to compensate for the tensor being stored
-        // row-major. Since GEMV doesn't provide a way to just conjugate an
-        // argument, we have to defer those cases to GEMM below.
-        auto gemv_trans_a = blas_transpose_a == se::blas::Transpose::kTranspose
-                                ? se::blas::Transpose::kNoTranspose
-                                : se::blas::Transpose::kTranspose;
+        static const int64_t max_autotune_algorithm_count =
+            se::MatmulMaxAutotuneAlgorithmCount();
+        int max_algorithm_count =
+            use_autotune ? max_autotune_algorithm_count : 1;
+
+        const se::blas::PlanAndAlgorithms* plan_and_algorithms =
+            se::BatchMatmulPlanMapSingleton::GetInstance()->Find(
+                matmul_parameters);
+
+        if (!plan_and_algorithms) {
+          auto status_or_computation_type = se::GetBlasComputationType(dtype);
+          OP_REQUIRES(
+              context, status_or_computation_type.ok(),
+              errors::Internal("Unsupported dtype for batched matmul."));
+          se::blas::ComputationType computation_type =
+              status_or_computation_type.ConsumeValueOrDie();
+
+          se::blas::BlasLtMatmulPlanParams plan_params;
+          se::blas::DataType blas_dtype = se::blas::ToDataType<Scalar>::value;
+          plan_params.ab_type = blas_dtype;
+          plan_params.c_type = blas_dtype;
+          plan_params.computation_type = computation_type;
+          plan_params.pointer_mode = se::blas::PointerMode::kHost;
+          plan_params.epilogue = se::blas::Epilogue::kDefault;
+          plan_params.transa = blas_transpose_b;
+          plan_params.transb = blas_transpose_a;
+          plan_params.m = n;
+          plan_params.n = m;
+          plan_params.k = k;
+          plan_params.lda = in_y.dim_size(2);
+          plan_params.ldb = in_x.dim_size(2);
+          plan_params.ldc = n;
+          plan_params.batch_count = batch_size;
+          plan_params.stride_a = b_stride;
+          plan_params.stride_b = a_stride;
+          plan_params.stride_c = c_stride;
+
+          VLOG(4) << "plan_params.transa " << (adj_y || trans_y)
+                  << "plan_params.transb " << (adj_x || trans_x)
+                  << "plan_params.m " << plan_params.m << "plan_params.n "
+                  << plan_params.n << "plan_params.k " << plan_params.k
+                  << "plan_params.lda " << plan_params.lda << "plan_params.ldb "
+                  << plan_params.ldb << "plan_params.ldc " << plan_params.ldc
+                  << "plan_params.batch_count " << plan_params.batch_count
+                  << "plan_params.stride_a " << plan_params.stride_a
+                  << "plan_params.stride_b " << plan_params.stride_b
+                  << "plan_params.stride_c " << plan_params.stride_c;
+          auto status_or_plan =
+              stream->parent()->CreateBlasLtMatmulPlan(plan_params);
+          OP_REQUIRES_OK(context, status_or_plan.status());
+          std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
+              status_or_plan.ConsumeValueOrDie();
+
+          auto status_or_algorithms =
+              stream->parent()->GetBlasLtMatmulAlgorithms(
+                  plan.get(), max_scratch_size, max_algorithm_count);
+          OP_REQUIRES_OK(context, status_or_algorithms.status());
+          auto algorithms = status_or_algorithms.ConsumeValueOrDie();
+          plan_and_algorithms =
+              se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
+                  matmul_parameters, {std::move(plan), std::move(algorithms)});
+        }
+        const auto& plan = plan_and_algorithms->plan;
+        const auto& algorithms = plan_and_algorithms->algorithms;
+
+        // The BlasLtMatmul routines (unlike BlasGemm, BlasGemmBatched etc.)
+        // take alpha and beta with the same type as the matrices.
+        Scalar alpha(1.0);
+        Scalar beta(0.0);
+
+        se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
+        if (max_algorithm_count == 1) {
+          algorithm_config.set_algorithm(0);
+        } else if (!AutoTuneBatchMatmul::GetInstance()->Find(
+                       matmul_parameters, &algorithm_config)) {
+          VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
+                  << " algorithms.";
+          se::blas::ProfileResult best_result;
+          se::blas::ProfileResult profile_result;
+
+          for (size_t i = 0; i != algorithms.size(); ++i) {
+            const auto& profile_algorithm = algorithms[i];
+            // Create a new scratch allocator with every autotuning run so that
+            // scratch space is deallocated between runs.
+            BlasScratchAllocator scratch_allocator(context, max_scratch_size);
+            bool cublas_launch_status =
+                stream
+                    ->ThenBlasLtMatmul(
+                        plan.get(), alpha, *b_ptrs[0], *a_ptrs[0], beta,
+                        c_ptrs[0], &scratch_allocator, profile_algorithm.get(),
+                        /*bias = */ {}, &profile_result)
+                    .ok();
+
+            VLOG(4) << "  Autotune algorithm " << i
+                    << " result: " << profile_result.elapsed_time_in_ms()
+                    << " ms, valid=" << profile_result.is_valid()
+                    << ", workspace_size="
+                    << profile_algorithm->workspace_size();
+
+            if (cublas_launch_status && profile_result.is_valid() &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+          }
+
+          if (best_result.is_valid()) {
+            algorithm_config.set_algorithm(best_result.algorithm());
+          }
+          // Each matmul parameter set gets one pass of
+          // autotune. If no algorithms works, kNoAlgorithm is added to the
+          // autotune map.
+          AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
+                                                     algorithm_config);
+        }
+        se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
+        OP_REQUIRES(context,
+                    0 <= algorithm_idx && algorithm_idx < algorithms.size(),
+                    errors::Internal("Missing/invalid BatchMatmul algorithm"));
+        const auto& algorithm = algorithms[algorithm_idx];
+        BlasScratchAllocator scratch_allocator(context, max_scratch_size);
+        VLOG(4) << "Calling BlasLtMatMul: a.shape=(" << bcast.x_batch_size()
+                << ", " << in_x.dim_size(1) << ", " << in_x.dim_size(2)
+                << "), b.shape=(" << bcast.y_batch_size() << ", "
+                << in_y.dim_size(1) << ", " << in_y.dim_size(2) << "), m=" << m
+                << ", n=" << n << ", k=" << k << ", batch_size=" << batch_size
+                << "trans_x = " << trans_x << "trans_y = " << trans_y
+                << "adj_x = " << adj_x << "adj_y = " << adj_y;
+        bool cublas_launch_status =
+            stream
+                ->ThenBlasLtMatmul(plan.get(), alpha, *b_ptrs[0], *a_ptrs[0],
+                                   beta, c_ptrs[0], &scratch_allocator,
+                                   algorithm.get())
+                .ok();
+        if (!cublas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas batched matmul launch failed: a.shape=(",
+              bcast.x_batch_size(), ", ", in_x.dim_size(0), ", ",
+              in_x.dim_size(1), "), b.shape=(", bcast.y_batch_size(), ", ",
+              in_y.dim_size(0), ", ", in_y.dim_size(1), "), m=", m, ", n=", n,
+              ", k=", k, ", batch_size=", batch_size));
+        }
+      } else {  // requires mixed broadcasting
+        const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+        const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
+        for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
+          a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+        }
+        for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
+          b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+        }
+        for (int64_t i = 0; i < batch_size; ++i) {
+          c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+          a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
+          b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+          c_ptrs.push_back(&c_device_memory.back());
+        }
+
+        BlasScratchAllocator scratch_allocator(context, max_scratch_size);
         bool blas_launch_status =
             stream
-                ->ThenBlasGemv(gemv_trans_a, adj_x || trans_x ? m : k,
-                               adj_x || trans_x ? k : m,
-                               static_cast<Coefficient>(1.0), *(a_ptrs[0]),
-                               adj_x || trans_x ? m : k, *(b_ptrs[0]), 1,
-                               static_cast<Coefficient>(0.0), c_ptrs[0], 1)
+                ->ThenBlasGemmBatchedWithScratch(
+                    blas_transpose_b, blas_transpose_a, n, m, k,
+                    static_cast<Coefficient>(1.0), b_ptrs,
+                    adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
+                    static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
+                    &scratch_allocator)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
-              "Blas xGEMV launch failed : a.shape=", in_x.shape().DebugString(),
+              "Blas xGEMMBatched launch failed: a.shape=",
+              in_x.shape().DebugString(),
               ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-              ", k=", k));
+              ", k=", k, ", batch_size=", batch_size));
+        }
+      }
+    } else {
+#endif
+      bool use_strided_batched =
+          (!bcast.IsBroadcastingRequired() || is_full_broadcast) &&
+          batch_size > 1;
+      if (use_strided_batched) {
+        a_stride = bcast.x_batch_size() != 1 ? m * k : 0;
+        b_stride = bcast.y_batch_size() != 1 ? k * n : 0;
+        c_stride = m * n;
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
+        a_ptrs.push_back(&a_device_memory.back());
+        b_ptrs.push_back(&b_device_memory.back());
+        c_ptrs.push_back(&c_device_memory.back());
+      } else if (!bcast.IsBroadcastingRequired()) {
+        for (int64_t i = 0; i < batch_size; ++i) {
+          a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+          b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+          c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+          a_ptrs.push_back(&a_device_memory.back());
+          b_ptrs.push_back(&b_device_memory.back());
+          c_ptrs.push_back(&c_device_memory.back());
         }
       } else {
-        OP_REQUIRES_OK(context,
-                       stream->ThenBlasGemm(
+        const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+        const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
+        for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
+          a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+        }
+        for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
+          b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+        }
+        for (int64_t i = 0; i < batch_size; ++i) {
+          c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+          a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
+          b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+          c_ptrs.push_back(&c_device_memory.back());
+        }
+      }
+
+      // Blas does
+      // C = A x B
+      // where A, B and C are assumed to be in column major.
+      // We want the output to be in row-major, so we can compute
+      // C' = B' x A', where ' stands for transpose (not adjoint).
+      // TODO(yangzihao): Choose the best of the three strategies using
+      // autotune.
+      if (batch_size == 1) {
+        // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
+        // overhead of the scratch allocator and the batch interface.
+        if (n == 1 &&
+            blas_transpose_b != se::blas::Transpose::kConjugateTranspose &&
+            blas_transpose_a != se::blas::Transpose::kConjugateTranspose) {
+          // This is a matrix*vector multiply so use GEMV to compute A * b.
+          // Here we are multiplying in the natural order, so we have to flip
+          // the transposition flag to compensate for the tensor being stored
+          // row-major. Since GEMV doesn't provide a way to just conjugate an
+          // argument, we have to defer those cases to GEMM below.
+          auto gemv_trans_a =
+              blas_transpose_a == se::blas::Transpose::kTranspose
+                  ? se::blas::Transpose::kNoTranspose
+                  : se::blas::Transpose::kTranspose;
+          bool blas_launch_status =
+              stream
+                  ->ThenBlasGemv(gemv_trans_a, adj_x || trans_x ? m : k,
+                                 adj_x || trans_x ? k : m,
+                                 static_cast<Coefficient>(1.0), *(a_ptrs[0]),
+                                 adj_x || trans_x ? m : k, *(b_ptrs[0]), 1,
+                                 static_cast<Coefficient>(0.0), c_ptrs[0], 1)
+                  .ok();
+          if (!blas_launch_status) {
+            context->SetStatus(errors::Internal(
+                "Blas xGEMV launch failed : a.shape=",
+                in_x.shape().DebugString(), ", b.shape=",
+                in_y.shape().DebugString(), ", m=", m, ", n=", n, ", k=", k));
+          }
+        } else {
+          OP_REQUIRES_OK(
+              context, stream->ThenBlasGemm(
                            blas_transpose_b, blas_transpose_a, n, m, k,
                            *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
                            adj_x || trans_x ? m : k, c_ptrs[0], n));
+        }
+      } else if (use_strided_batched) {
+        OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
+                                    blas_transpose_b, blas_transpose_a, n, m, k,
+                                    static_cast<Coefficient>(1.0), *b_ptrs[0],
+                                    adj_y || trans_y ? k : n, b_stride,
+                                    *a_ptrs[0], adj_x || trans_x ? m : k,
+                                    a_stride, static_cast<Coefficient>(0.0),
+                                    c_ptrs[0], n, c_stride, batch_size));
+      } else {
+        BlasScratchAllocator scratch_allocator(context);
+        bool blas_launch_status =
+            stream
+                ->ThenBlasGemmBatchedWithScratch(
+                    blas_transpose_b, blas_transpose_a, n, m, k,
+                    static_cast<Coefficient>(1.0), b_ptrs,
+                    adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
+                    static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
+                    &scratch_allocator)
+                .ok();
+        if (!blas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas xGEMMBatched launch failed : a.shape=",
+              in_x.shape().DebugString(),
+              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+              ", k=", k, ", batch_size=", batch_size));
+        }
       }
-    } else if (use_strided_batched) {
-      OP_REQUIRES_OK(context, stream->ThenBlasGemmStridedBatched(
-                                  blas_transpose_b, blas_transpose_a, n, m, k,
-                                  static_cast<Coefficient>(1.0), *b_ptrs[0],
-                                  adj_y || trans_y ? k : n, b_stride,
-                                  *a_ptrs[0], adj_x || trans_x ? m : k,
-                                  a_stride, static_cast<Coefficient>(0.0),
-                                  c_ptrs[0], n, c_stride, batch_size));
-    } else {
-      BlasScratchAllocator scratch_allocator(context);
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemmBatchedWithScratch(
-                  blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), b_ptrs,
-                  adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
-                  static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                  &scratch_allocator)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMMBatched launch failed : a.shape=",
-            in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k, ", batch_size=", batch_size));
-      }
+#if GOOGLE_CUDA && CUDA_VERSION >= 11000
     }
+#endif  //  GOOGLE_CUDA && CUDA_VERSION >= 11000
   }
 };
 
@@ -476,6 +717,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                      bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+    static const bool use_autotune = MatmulAutotuneEnable();
     typedef Eigen::half Scalar;
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
@@ -513,99 +755,309 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
 
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
-    bool use_strided_batched =
-        (!bcast.IsBroadcastingRequired() || is_full_broadcast) &&
-        batch_size > 1;
-    if (use_strided_batched) {
-      a_stride = bcast.x_batch_size() != 1 ? m * k : 0;
-      b_stride = bcast.y_batch_size() != 1 ? k * n : 0;
-      c_stride = m * n;
-      a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
-      b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
-      c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
-      a_ptrs.push_back(&a_device_memory.back());
-      b_ptrs.push_back(&b_device_memory.back());
-      c_ptrs.push_back(&c_device_memory.back());
-    } else if (!bcast.IsBroadcastingRequired()) {
-      for (int64_t i = 0; i < batch_size; ++i) {
-        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
-        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
-        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+    typedef float Coefficient;
+
+    // The BlasLtMatmul routines are supported from CUDA 11.0 onward.
+#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+    if (EnableCublasLtGemm()) {
+      static const int64_t max_scratch_size =
+          se::GetWorkspaceLimit(1LL << 32);  // 4GB by default
+
+      bool requires_mixed_broadcasting =
+          bcast.IsBroadcastingRequired() && !is_full_broadcast;
+
+      if (!requires_mixed_broadcasting) {
+        bool broadcast_a = bcast.x_batch_size() == 1;
+        bool broadcast_b = bcast.y_batch_size() == 1;
+        a_stride = broadcast_a ? 0 : m * k;
+        b_stride = broadcast_b ? 0 : k * n;
+        c_stride = m * n;
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
         a_ptrs.push_back(&a_device_memory.back());
         b_ptrs.push_back(&b_device_memory.back());
         c_ptrs.push_back(&c_device_memory.back());
+
+        DataType dtype = DataTypeToEnum<Scalar>::value;
+        int device_id = stream->parent()->device_ordinal();
+        se::BatchMatmulParameters matmul_parameters(
+            trans_x, trans_y, adj_x, adj_y, m, n, k, batch_size, broadcast_a,
+            broadcast_b, dtype, dtype, device_id);
+
+        static const int64_t max_autotune_algorithm_count =
+            se::MatmulMaxAutotuneAlgorithmCount();
+        int max_algorithm_count =
+            use_autotune ? max_autotune_algorithm_count : 1;
+
+        const se::blas::PlanAndAlgorithms* plan_and_algorithms =
+            se::BatchMatmulPlanMapSingleton::GetInstance()->Find(
+                matmul_parameters);
+
+        if (!plan_and_algorithms) {
+          auto status_or_computation_type = se::GetBlasComputationType(dtype);
+          OP_REQUIRES(
+              context, status_or_computation_type.ok(),
+              errors::Internal("Unsupported dtype for batched matmul."));
+          se::blas::ComputationType computation_type =
+              status_or_computation_type.ConsumeValueOrDie();
+
+          se::blas::BlasLtMatmulPlanParams plan_params;
+          se::blas::DataType blas_dtype = se::blas::ToDataType<Scalar>::value;
+          plan_params.ab_type = blas_dtype;
+          plan_params.c_type = blas_dtype;
+          plan_params.computation_type = computation_type;
+          plan_params.pointer_mode = se::blas::PointerMode::kHost;
+          plan_params.epilogue = se::blas::Epilogue::kDefault;
+          plan_params.transa = blas_transpose_b;
+          plan_params.transb = blas_transpose_a;
+          plan_params.m = n;
+          plan_params.n = m;
+          plan_params.k = k;
+          plan_params.lda = in_y.dim_size(2);
+          plan_params.ldb = in_x.dim_size(2);
+          plan_params.ldc = n;
+          plan_params.batch_count = batch_size;
+          plan_params.stride_a = b_stride;
+          plan_params.stride_b = a_stride;
+          plan_params.stride_c = c_stride;
+
+          VLOG(4) << "plan_params.transa " << (adj_y || trans_y)
+                  << "plan_params.transb " << (adj_x || trans_x)
+                  << "plan_params.m " << plan_params.m << "plan_params.n "
+                  << plan_params.n << "plan_params.k " << plan_params.k
+                  << "plan_params.lda " << plan_params.lda << "plan_params.ldb "
+                  << plan_params.ldb << "plan_params.ldc " << plan_params.ldc
+                  << "plan_params.batch_count " << plan_params.batch_count
+                  << "plan_params.stride_a " << plan_params.stride_a
+                  << "plan_params.stride_b " << plan_params.stride_b
+                  << "plan_params.stride_c " << plan_params.stride_c;
+          auto status_or_plan =
+              stream->parent()->CreateBlasLtMatmulPlan(plan_params);
+          OP_REQUIRES_OK(context, status_or_plan.status());
+          std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
+              status_or_plan.ConsumeValueOrDie();
+
+          auto status_or_algorithms =
+              stream->parent()->GetBlasLtMatmulAlgorithms(
+                  plan.get(), max_scratch_size, max_algorithm_count);
+          OP_REQUIRES_OK(context, status_or_algorithms.status());
+          auto algorithms = status_or_algorithms.ConsumeValueOrDie();
+          plan_and_algorithms =
+              se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
+                  matmul_parameters, {std::move(plan), std::move(algorithms)});
+        }
+        const auto& plan = plan_and_algorithms->plan;
+        const auto& algorithms = plan_and_algorithms->algorithms;
+
+        // The BlasLtMatmul routines (unlike BlasGemm, BlasGemmBatched etc.)
+        // take alpha and beta with the same type as the matrices.
+        Scalar alpha(1.0);
+        Scalar beta(0.0);
+
+        se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
+        if (max_algorithm_count == 1) {
+          algorithm_config.set_algorithm(0);
+        } else if (!AutoTuneBatchMatmul::GetInstance()->Find(
+                       matmul_parameters, &algorithm_config)) {
+          VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
+                  << " algorithms.";
+          se::blas::ProfileResult best_result;
+          se::blas::ProfileResult profile_result;
+
+          for (size_t i = 0; i != algorithms.size(); ++i) {
+            const auto& profile_algorithm = algorithms[i];
+            // Create a new scratch allocator with every autotuning run so that
+            // scratch space is deallocated between runs.
+            BlasScratchAllocator scratch_allocator(context, max_scratch_size);
+            bool cublas_launch_status =
+                stream
+                    ->ThenBlasLtMatmul(
+                        plan.get(), alpha, *b_ptrs[0], *a_ptrs[0], beta,
+                        c_ptrs[0], &scratch_allocator, profile_algorithm.get(),
+                        /*bias = */ {}, &profile_result)
+                    .ok();
+
+            VLOG(4) << "  Autotune algorithm " << i
+                    << " result: " << profile_result.elapsed_time_in_ms()
+                    << " ms, valid=" << profile_result.is_valid()
+                    << ", workspace_size="
+                    << profile_algorithm->workspace_size();
+
+            if (cublas_launch_status && profile_result.is_valid() &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+          }
+
+          if (best_result.is_valid()) {
+            algorithm_config.set_algorithm(best_result.algorithm());
+          }
+          // Each matmul parameter set gets one pass of
+          // autotune. If no algorithms works, kNoAlgorithm is added to the
+          // autotune map.
+          AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
+                                                     algorithm_config);
+        }
+        se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
+        OP_REQUIRES(context,
+                    0 <= algorithm_idx && algorithm_idx < algorithms.size(),
+                    errors::Internal("Missing/invalid BatchMatmul algorithm"));
+        const auto& algorithm = algorithms[algorithm_idx];
+        BlasScratchAllocator scratch_allocator(context, max_scratch_size);
+        VLOG(4) << "Calling BlasLtMatMul: a.shape=(" << bcast.x_batch_size()
+                << ", " << in_x.dim_size(1) << ", " << in_x.dim_size(2)
+                << "), b.shape=(" << bcast.y_batch_size() << ", "
+                << in_y.dim_size(1) << ", " << in_y.dim_size(2) << "), m=" << m
+                << ", n=" << n << ", k=" << k << ", batch_size=" << batch_size
+                << "trans_x = " << trans_x << "trans_y = " << trans_y
+                << "adj_x = " << adj_x << "adj_y = " << adj_y;
+        bool cublas_launch_status =
+            stream
+                ->ThenBlasLtMatmul(plan.get(), alpha, *b_ptrs[0], *a_ptrs[0],
+                                   beta, c_ptrs[0], &scratch_allocator,
+                                   algorithm.get())
+                .ok();
+        if (!cublas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas batched matmul launch failed: a.shape=(",
+              bcast.x_batch_size(), ", ", in_x.dim_size(0), ", ",
+              in_x.dim_size(1), "), b.shape=(", bcast.y_batch_size(), ", ",
+              in_y.dim_size(0), ", ", in_y.dim_size(1), "), m=", m, ", n=", n,
+              ", k=", k, ", batch_size=", batch_size));
+        }
+      } else {  // requires mixed broadcasting
+        const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+        const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
+        for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
+          a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+        }
+        for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
+          b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+        }
+        for (int64_t i = 0; i < batch_size; ++i) {
+          c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+          a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
+          b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+          c_ptrs.push_back(&c_device_memory.back());
+        }
+
+        BlasScratchAllocator scratch_allocator(context, max_scratch_size);
+        bool blas_launch_status =
+            stream
+                ->ThenBlasGemmBatchedWithScratch(
+                    blas_transpose_b, blas_transpose_a, n, m, k,
+                    static_cast<Coefficient>(1.0), b_ptrs,
+                    adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
+                    static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
+                    &scratch_allocator)
+                .ok();
+        if (!blas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas xGEMMBatched launch failed: a.shape=",
+              in_x.shape().DebugString(),
+              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+              ", k=", k, ", batch_size=", batch_size));
+        }
       }
     } else {
-      const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
-      const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
-      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
-        a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
-      }
-      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
-        b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
-      }
-      for (int64_t i = 0; i < batch_size; ++i) {
-        c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
-        a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
-        b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+#endif
+      bool use_strided_batched =
+          (!bcast.IsBroadcastingRequired() || is_full_broadcast) &&
+          batch_size > 1;
+      if (use_strided_batched) {
+        a_stride = bcast.x_batch_size() != 1 ? m * k : 0;
+        b_stride = bcast.y_batch_size() != 1 ? k * n : 0;
+        c_stride = m * n;
+        a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
+        b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
+        c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
+        a_ptrs.push_back(&a_device_memory.back());
+        b_ptrs.push_back(&b_device_memory.back());
         c_ptrs.push_back(&c_device_memory.back());
+      } else if (!bcast.IsBroadcastingRequired()) {
+        for (int64_t i = 0; i < batch_size; ++i) {
+          a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+          b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+          c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+          a_ptrs.push_back(&a_device_memory.back());
+          b_ptrs.push_back(&b_device_memory.back());
+          c_ptrs.push_back(&c_device_memory.back());
+        }
+      } else {
+        const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
+        const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
+        for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
+          a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
+        }
+        for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
+          b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
+        }
+        for (int64_t i = 0; i < batch_size; ++i) {
+          c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
+          a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
+          b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
+          c_ptrs.push_back(&c_device_memory.back());
+        }
       }
-    }
 
-    typedef float Coefficient;
-
-    // Blas does
-    // C = A x B
-    // where A, B and C are assumed to be in column major.
-    // We want the output to be in row-major, so we can compute
-    // C' = B' x A', where ' stands for transpose (not adjoint).
-    // TODO(yangzihao): Choose the best of the three strategies using autotune.
-    if (batch_size == 1) {
-      // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
-      // overhead of the scratch allocator and the batch interface.
-      // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
-      OP_REQUIRES_OK(context,
-                     stream->ThenBlasGemm(
-                         blas_transpose_b, blas_transpose_a, n, m, k,
-                         *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                         adj_x || trans_x ? m : k, c_ptrs[0], n));
-    } else if (use_strided_batched) {
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemmStridedBatched(
-                  blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), *b_ptrs[0],
-                  adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
-                  adj_x || trans_x ? m : k, a_stride,
-                  static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                  batch_size)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMMStridedBatched launch failed : a.shape=",
-            in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k, ", batch_size=", batch_size));
+      // Blas does
+      // C = A x B
+      // where A, B and C are assumed to be in column major.
+      // We want the output to be in row-major, so we can compute
+      // C' = B' x A', where ' stands for transpose (not adjoint).
+      // TODO(yangzihao): Choose the best of the three strategies using
+      // autotune.
+      if (batch_size == 1) {
+        // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
+        // overhead of the scratch allocator and the batch interface.
+        // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
+        OP_REQUIRES_OK(context,
+                       stream->ThenBlasGemm(
+                           blas_transpose_b, blas_transpose_a, n, m, k,
+                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                           adj_x || trans_x ? m : k, c_ptrs[0], n));
+      } else if (use_strided_batched) {
+        bool blas_launch_status =
+            stream
+                ->ThenBlasGemmStridedBatched(
+                    blas_transpose_b, blas_transpose_a, n, m, k,
+                    static_cast<Coefficient>(1.0), *b_ptrs[0],
+                    adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
+                    adj_x || trans_x ? m : k, a_stride,
+                    static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
+                    batch_size)
+                .ok();
+        if (!blas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas xGEMMStridedBatched launch failed: a.shape=",
+              in_x.shape().DebugString(),
+              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+              ", k=", k, ", batch_size=", batch_size));
+        }
+      } else {
+        BlasScratchAllocator scratch_allocator(context);
+        bool blas_launch_status =
+            stream
+                ->ThenBlasGemmBatchedWithScratch(
+                    blas_transpose_b, blas_transpose_a, n, m, k,
+                    static_cast<Coefficient>(1.0), b_ptrs,
+                    adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
+                    static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
+                    &scratch_allocator)
+                .ok();
+        if (!blas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas xGEMMBatched launch failed: a.shape=",
+              in_x.shape().DebugString(),
+              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+              ", k=", k, ", batch_size=", batch_size));
+        }
       }
-    } else {
-      BlasScratchAllocator scratch_allocator(context);
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemmBatchedWithScratch(
-                  blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), b_ptrs,
-                  adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
-                  static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                  &scratch_allocator)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMMBatched launch failed : a.shape=",
-            in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k, ", batch_size=", batch_size));
-      }
+#if GOOGLE_CUDA && CUDA_VERSION >= 11000
     }
+#endif  //  GOOGLE_CUDA && CUDA_VERSION >= 11000
   }
 };
 

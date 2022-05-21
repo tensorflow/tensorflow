@@ -95,7 +95,7 @@ class ClusterConstantSinkingPass
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterConstantSinkingPass(
     llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter) {
   return std::make_unique<ClusterConstantSinkingPass>(filter);
 }

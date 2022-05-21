@@ -55,7 +55,8 @@ class HloModuleImporter {
   // Map for tracking which MLIR function map to which HLO Computation. This
   // tracks functions as they are imported and provides a quick lookup for
   // functions invoked by control flow related operations (e.g. while, call).
-  std::unordered_map<const xla::HloComputation*, mlir::FuncOp> function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>
+      function_map_;
 };
 
 }  // namespace xla

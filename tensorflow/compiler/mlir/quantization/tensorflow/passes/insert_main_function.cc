@@ -41,6 +41,8 @@ constexpr char kIndexPathAttr[] = "tf_saved_model.index_path";
 class InsertMainFunctionPass
     : public PassWrapper<InsertMainFunctionPass, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertMainFunctionPass)
+
   explicit InsertMainFunctionPass() {}
 
   StringRef getArgument() const override { return "quant-add-main-function"; }
@@ -55,23 +57,25 @@ class InsertMainFunctionPass
 // Checks if the module has a main function.
 bool HasMainFunction(ModuleOp& module) {
   StringAttr main_func_id = StringAttr::get(module.getContext(), "main");
-  for (auto function : module.getOps<FuncOp>()) {
+  for (auto function : module.getOps<func::FuncOp>()) {
     if (function.getName() == main_func_id) return true;
   }
   return false;
 }
 
 // Checks if a FuncOp is exported.
-bool IsExported(FuncOp& op) {
+bool IsExported(func::FuncOp& op) {
   auto exported_names = op->getAttrOfType<ArrayAttr>(kExportedNameAttr);
   return exported_names && !exported_names.empty();
 }
 
 // Check if a function is an entry function.
-bool IsEntryFunction(FuncOp& op) { return op->hasAttr(kEntryFunctionAttr); }
+bool IsEntryFunction(func::FuncOp& op) {
+  return op->hasAttr(kEntryFunctionAttr);
+}
 
 // Sets a function to be private so it can be referred internally.
-void SetFunctionPrivate(FuncOp& func) {
+void SetFunctionPrivate(func::FuncOp& func) {
   func.setVisibility(SymbolTable::Visibility::Private);
 
   // The `tf_saved_model` attributes can only be appied to public functions.
@@ -109,7 +113,7 @@ bool CreateMainFunction(ModuleOp& module) {
   llvm::SmallVector<Location> arg_locs;
   llvm::SmallVector<Type> arg_types, result_types;
   std::vector<std::string> input_names, output_names;
-  for (auto function : module.getOps<FuncOp>()) {
+  for (auto function : module.getOps<func::FuncOp>()) {
     if (function.isPrivate() || !IsExported(function)) continue;
     arg_types.append(function.getArgumentTypes().begin(),
                      function.getArgumentTypes().end());
@@ -146,7 +150,8 @@ bool CreateMainFunction(ModuleOp& module) {
 
   // Creates a new main function.
   auto func_type = FunctionType::get(context, arg_types, result_types);
-  auto main_func = builder.create<FuncOp>(module.getLoc(), "main", func_type);
+  auto main_func =
+      builder.create<func::FuncOp>(module.getLoc(), "main", func_type);
   builder.createBlock(&main_func.getBody(), main_func.begin(), arg_types,
                       arg_locs);
   SmallVector<NamedAttribute> func_attrs;
@@ -188,7 +193,7 @@ bool CreateMainFunction(ModuleOp& module) {
   int arg_idx = 0;
   int result_idx = 0;
   llvm::SmallVector<Value> returning_values;
-  for (auto function : module.getOps<FuncOp>()) {
+  for (auto function : module.getOps<func::FuncOp>()) {
     if (function.isPrivate() || !IsExported(function) ||
         !IsEntryFunction(function)) {
       continue;

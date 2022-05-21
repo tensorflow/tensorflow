@@ -21,7 +21,7 @@ Sentencepiece tokenizations outside the TFLite model.
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Bert Models created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -117,13 +117,13 @@ std::vector<core::Category> categories = classifier->Classify(kInput);
 ```
 
 See the
-[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/nlclassifier/bert_nl_classifier.h)
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_nl_classifier.h)
 for more details.
 
 ## Example results
 
 Here is an example of the classification results of movie reviews using the
-[MobileBert](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification)
+[MobileBert](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
 model from Model Maker.
 
 Input: "it's a charming and often affecting journey"

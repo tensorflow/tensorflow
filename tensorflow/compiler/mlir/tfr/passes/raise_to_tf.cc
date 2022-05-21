@@ -465,8 +465,10 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 
 // Raise TFR call ops to the TF ops.
 class RaiseToTFOpsPass
-    : public PassWrapper<RaiseToTFOpsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<RaiseToTFOpsPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseToTFOpsPass)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
                     arith::ArithmeticDialect, func::FuncDialect>();
@@ -491,7 +493,7 @@ class RaiseToTFOpsPass
 };
 
 void RaiseToTFOpsPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   MLIRContext* ctx = &getContext();
   SymbolTable table(external_tfr_module_.hasValue()
                         ? *external_tfr_module_
@@ -507,7 +509,7 @@ void RaiseToTFOpsPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the pass to raise TFR call ops to the TF ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseToTFOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseToTFOpsPass(
     llvm::Optional<ModuleOp> tfr_module, bool materialize_derived_attrs) {
   return std::make_unique<RaiseToTFOpsPass>(tfr_module,
                                             materialize_derived_attrs);

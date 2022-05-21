@@ -249,6 +249,13 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
   return MergeIfCompatible(a, b_parsed_name);
 }
 
+bool isExperimentalFeatureActivated(string feature_name) {
+  string envvar_str;
+  TF_CHECK_OK(
+      ReadStringFromEnvVar("TF_TRT_EXPERIMENTAL_FEATURES", "", &envvar_str));
+  return envvar_str.find(feature_name) != string::npos;
+}
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

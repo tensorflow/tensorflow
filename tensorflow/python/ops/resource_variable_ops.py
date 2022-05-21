@@ -62,7 +62,6 @@ acd.register_read_only_resource_op("ResourceGather")
 acd.register_read_only_resource_op("ResourceGatherNd")
 acd.register_read_only_resource_op("_ReadVariablesOp")
 
-
 # TODO(allenl): Remove this alias and migrate callers.
 get_resource_handle_data = handle_data_util.get_resource_handle_data
 
@@ -90,8 +89,8 @@ def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
     return
 
   # Not an EagerTensor, so a graph tensor.
-  shapes, types = zip(*[(pair.shape, pair.dtype)
-                        for pair in handle_data.shape_and_type])
+  shapes, types = zip(
+      *[(pair.shape, pair.dtype) for pair in handle_data.shape_and_type])
   ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
   shapes = [
       [d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
@@ -674,10 +673,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     resource_map = {self.handle: new_variable.handle}
     return obj_map, resource_map
 
-  def _read_variable_op(self):
+  def _read_variable_op(self, no_copy=False):
+    """Reads the value of the variable.
+
+    If the variable is in copy-on-read mode and `no_copy` is True, the variable
+    is converted to copy-on-write mode before it is read.
+
+    Args:
+      no_copy: Whether to prevent a copy of the variable.
+
+    Returns:
+      The value of the variable.
+    """
     variable_accessed(self)
 
-    def read_and_set_handle():
+    def read_and_set_handle(no_copy):
+      if no_copy and forward_compat.forward_compatible(2022, 5, 3):
+        gen_resource_variable_ops.disable_copy_on_read(self.handle)
       result = gen_resource_variable_ops.read_variable_op(
           self.handle, self._dtype)
       _maybe_set_handle_data(self._dtype, self.handle, result)
@@ -686,9 +698,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     if getattr(self, "_caching_device", None) is not None:
       with ops.colocate_with(None, ignore_existing=True):
         with ops.device(self._caching_device):
-          result = read_and_set_handle()
+          result = read_and_set_handle(no_copy)
     else:
-      result = read_and_set_handle()
+      result = read_and_set_handle(no_copy)
 
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
@@ -706,10 +718,26 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     read the value only after some condition is true.
 
     Returns:
-     the read operation.
+      The value of the variable.
     """
     with ops.name_scope("Read"):
       value = self._read_variable_op()
+    # Return an identity so it can get placed on whatever device the context
+    # specifies instead of the device where the variable is.
+    return array_ops.identity(value)
+
+  def read_value_no_copy(self):
+    """Constructs an op which reads the value of this variable without copy.
+
+    The variable is read without making a copy even when it has been sparsely
+    accessed. Variables in copy-on-read mode will be converted to copy-on-write
+    mode.
+
+    Returns:
+      The value of the variable.
+    """
+    with ops.name_scope("Read"):
+      value = self._read_variable_op(no_copy=True)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
@@ -1731,7 +1759,7 @@ class ResourceVariable(BaseResourceVariable):
         initial_value, "graph") and initial_value.graph.building_function:
       raise ValueError(f"Argument `initial_value` ({initial_value}) could not "
                        "be lifted out of a `tf.function`. "
-                       "(Tried to create variable with name='{name}'). "
+                       f"(Tried to create variable with name='{name}'). "
                        "To avoid this error, when constructing `tf.Variable`s "
                        "inside of `tf.function` you can create the "
                        "`initial_value` tensor in a "
@@ -1785,9 +1813,8 @@ class ResourceVariable(BaseResourceVariable):
               self._maybe_initialize_trackable()
               self._update_uid = initial_value.checkpoint_position.restore_uid
               initial_value = initial_value.wrapped_value
-            initial_value = ops.convert_to_tensor(initial_value,
-                                                  name="initial_value",
-                                                  dtype=dtype)
+            initial_value = ops.convert_to_tensor(
+                initial_value, name="initial_value", dtype=dtype)
           if shape is not None:
             if not initial_value.shape.is_compatible_with(shape):
               raise ValueError(
@@ -2089,8 +2116,7 @@ class _UnreadVariable(BaseResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op,
-               unique_id):
+  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op, unique_id):
     if isinstance(handle, ops.EagerTensor):
       handle_name = ""
     else:
@@ -2393,13 +2419,16 @@ class VariableSpec(tensor_spec.DenseSpec):
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 
 
-def write_object_proto_for_resource_variable(resource_variable, proto, options):
+def write_object_proto_for_resource_variable(resource_variable,
+                                             proto,
+                                             options,
+                                             enforce_naming=True):
   """Writes additional information of the variable into the SavedObject proto.
 
   This allows users to define a `hook` to provide extra information of the
   variable to the SavedObject.
 
-  For example, DistritubtedVariable class would fill in components in the
+  For example, DistributedVariable class would fill in components in the
   distributed context.
 
   Args:
@@ -2407,12 +2436,14 @@ def write_object_proto_for_resource_variable(resource_variable, proto, options):
       information to be saved into the proto.
     proto: `SavedObject` proto to update.
     options: A `SaveOption` instance that configures save behavior.
+    enforce_naming: A bool determining whether to check that names end in the
+      expected string ':0'
   """
   proto.variable.SetInParent()
-  if not resource_variable.name.endswith(":0"):
+  if enforce_naming and not resource_variable.name.endswith(":0"):
     raise ValueError(f"Cowardly refusing to save variable "
                      f"{resource_variable.name} because of "
-                     f"unexpected suffix in the name (':0') "
+                     f"unexpected suffix in the name (expected ':0')"
                      f"which won't be restored.")
   proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
   proto.variable.trainable = resource_variable.trainable

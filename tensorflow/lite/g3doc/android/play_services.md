@@ -225,9 +225,10 @@ your app project code:
     implementation.
 3.  If you have migrated all of your code to use the Play services API for
     TensorFlow Lite, you should remove the existing TensorFlow Lite *runtime
-    library* dependencies (entries with `org.tensorflow:**tensorflow-lite**:\*`)
-    from your build.gradle file so that you can reduce your app size.
-4.  Identify all occurences of `new Interpreter` object creation in your code,
+    library* dependencies (entries with
+    <code>org.tensorflow:**tensorflow-lite**:*</code>) from your build.gradle
+    file so that you can reduce your app size.
+4.  Identify all occurrences of `new Interpreter` object creation in your code,
     and modify it so that it uses the InterpreterApi.create() call. This new API
     is asynchronous, which means in most cases it's not a drop-in replacement,
     and you must register a listener for when the call completes. Refer to the
@@ -276,17 +277,17 @@ com.google.android.gms.dynamite.DynamiteModule$LoadingException:
   Local version is 0 and remote version is 0.
 ```
 
-This means that the TensorFlow Lite in Google Play services API is not yet
-available on your test device. You can resolve this exception by requesting
-access to the access group for the beta API. Fill out the
-[form to request access](https://services.google.com/fb/forms/tflite-play-manual-access/),
-and *be sure to provide the user account that you are using to test your
-device*. Once you have been added to the beta access group, this exception
-should be resolved.
+This error means that the TensorFlow Lite in Google Play services API is not yet
+available on your test device. You can resolve this exception by joining this
+Google group
+[tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access/about)
+with *the user account you are using to test on your device.* Once you have been
+added to the beta access group, this exception should be resolved.
 
-Allow at least one business day for the request to be received and access
-granted. If you continue to experience this error, report it using the channels
-outlined in the [Support and feedback](#support) section below.
+Allow at least one business day after you join this group for access to be
+granted and the error to clear. If you continue to experience this error, report
+it using the channels outlined in the [Support and feedback](#support) section
+below.
 
 Note: This error only occurs when testing this API in a development environment.
 Apps that use this API and are installed or updated on a device through the
@@ -298,7 +299,7 @@ Google Play Store automatically receive the required libraries.
 TensorFlow Lite in Google Play services is currently at public beta and has the
 following limitations:
 
-*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/performance/nnapi)
+*   Only the [NNAPI Delegate](https://www.tensorflow.org/lite/android/delegates/nnapi)
     is currently supported by Google Play services. Other TensorFlow Lite
     [Delegates](https://www.tensorflow.org/lite/performance/delegates),
     including GPU, XNNPack, and Flex are not currently supported.
@@ -367,5 +368,5 @@ For more information about implementing machine learning in your mobile
 application with TensorFlow Lite, see the
 [TensorFlow Lite Developer Guide](https://www.tensorflow.org/lite/guide). You
 can find additional TensorFlow Lite models for image classification, object
-detection, and other applications on the TensorFlow Lite
-[Model library](https://www.tensorflow.org/lite/guide/hosted_models) page.
+detection, and other applications on the
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite).

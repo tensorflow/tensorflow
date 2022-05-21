@@ -42,6 +42,12 @@ def make_gather_nd_tests(options):
           "indices_dtype": [tf.int32, tf.int64],
           "indices_shape": [[3, 1], [2, 2], [2, 3], [2, 1, 3]],
       },
+      {
+          "params_dtype": [tf.float32, tf.string],
+          "params_shape": [[1, 0]],
+          "indices_dtype": [tf.int64],
+          "indices_shape": [[0, 2]],
+      },
   ]
 
   def build_graph(parameters):

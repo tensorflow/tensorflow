@@ -69,6 +69,24 @@ enum CustomCallApiVersion {
   //                       XlaCustomCallStatus* status);
   //
   API_VERSION_STATUS_RETURNING = 2;
+
+  // Fixes the API signatures on the CPU side of the version STATUS_RETURNING by
+  // adding the opaque string so that the custom call API is consistent across
+  // CPUs and GPUs. For GPUs, the behaviors invoked by
+  // API_VERSION_STATUS_RETURNING and API_VERSION_STATUS_RETURNING_UNIFIED are
+  // the same.
+  //
+  // CPU:
+  //   void do_custom_call(void* out, const void** in,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  // GPU:
+  //   void do_custom_call(CUstream stream, void** buffers,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  API_VERSION_STATUS_RETURNING_UNIFIED = 3;
 }
 
 // Serialization of HloInstruction.

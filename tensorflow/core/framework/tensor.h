@@ -633,7 +633,7 @@ class Tensor {
   void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
-  /// buffer's datatype. If Status::OK() is returned, the two tensors now share
+  /// buffer's datatype. If an ok Status is returned, the two tensors now share
   /// the same underlying storage.
   ///
   /// This call requires that the `other` tensor and the given type and shape

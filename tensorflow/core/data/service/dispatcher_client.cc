@@ -134,8 +134,8 @@ Status DataServiceDispatcherClient::RegisterDataset(
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
     const absl::optional<JobKeyDef>& job_key,
-    absl::optional<int64_t> num_consumers, TargetWorkers target_workers,
-    int64_t& job_client_id) {
+    absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
+    TargetWorkers target_workers, int64_t& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -147,6 +147,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
     req.set_num_consumers(num_consumers.value());
   }
   req.set_target_workers(target_workers);
+  req.set_use_cross_trainer_cache(use_cross_trainer_cache);
   GetOrCreateJobResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrCreateJob(&client_ctx, req, &resp);

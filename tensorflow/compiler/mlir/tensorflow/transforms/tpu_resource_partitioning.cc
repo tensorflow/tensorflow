@@ -151,7 +151,7 @@ void TPUResourceReadsWritesPartitioningPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUResourceReadsWritesPartitioningPass() {
   return std::make_unique<TPUResourceReadsWritesPartitioningPass>();
 }

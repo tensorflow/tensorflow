@@ -557,6 +557,14 @@ bool OpenGlInfo::SupportsExplicitFp16() const {
   return supports_f16_alu && supports_f16_storage;
 }
 
+bool OpenGlInfo::IsApiOpenGl31OrAbove() const {
+  return (major_version == 3 && minor_version >= 1) || major_version > 3;
+}
+
+bool OpenGlInfo::IsApiOpenGl32OrAbove() const {
+  return (major_version == 3 && minor_version >= 2) || major_version > 3;
+}
+
 bool VulkanInfo::SupportsExplicitFp16() const {
   bool supports_f16_alu = false;
   bool supports_f16_storage = false;
@@ -569,6 +577,21 @@ bool VulkanInfo::SupportsExplicitFp16() const {
     }
   }
   return supports_f16_alu && supports_f16_storage;
+}
+
+bool OpenClInfo::SupportedImage2dTypes::SupportsImage2D(DataType data_type,
+                                                        int channels) const {
+  if (channels == 1) {
+    return r_layout.find(data_type) != r_layout.end();
+  } else if (channels == 2) {
+    return rg_layout.find(data_type) != rg_layout.end();
+  } else if (channels == 3) {
+    return rgb_layout.find(data_type) != rgb_layout.end();
+  } else if (channels == 4) {
+    return rgba_layout.find(data_type) != rgba_layout.end();
+  } else {
+    return false;
+  }
 }
 
 bool OpenClInfo::IsImage2dFromBufferSupported() const {
@@ -676,6 +699,28 @@ bool GpuInfo::SupportsPointersInKernels() const {
   return IsApiOpenCl() || IsApiMetal();
 }
 
+bool GpuInfo::SupportsZeroClampForImageBuffer() const {
+  if (IsApiMetal() || IsApiOpenCl()) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool GpuInfo::SupportsZeroClampForImages() const {
+  if (IsApiMetal()) {
+    return true;
+  } else if (IsApiOpenCl()) {
+    return true;
+  } else if (IsApiVulkan()) {
+    return true;
+  } else if (IsApiOpenGl()) {
+    return opengl_info.IsApiOpenGl32OrAbove();
+  } else {
+    return false;
+  }
+}
+
 bool GpuInfo::IsWaveSizeEqualTo32() const {
   return supported_subgroup_sizes.size() == 1 &&
          supported_subgroup_sizes[0] == 32;
@@ -712,23 +757,7 @@ bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {
 
 bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
   if (IsApiOpenCl()) {
-    if (channels == 1) {
-      return data_type == DataType::FLOAT32 ? opencl_info.supports_r_f32_tex2d
-                                            : opencl_info.supports_r_f16_tex2d;
-    } else if (channels == 2) {
-      return data_type == DataType::FLOAT32 ? opencl_info.supports_rg_f32_tex2d
-                                            : opencl_info.supports_rg_f16_tex2d;
-    } else if (channels == 3) {
-      return data_type == DataType::FLOAT32
-                 ? opencl_info.supports_rgb_f32_tex2d
-                 : opencl_info.supports_rgb_f16_tex2d;
-    } else if (channels == 4) {
-      return data_type == DataType::FLOAT32
-                 ? opencl_info.supports_rgba_f32_tex2d
-                 : opencl_info.supports_rgba_f16_tex2d;
-    } else {
-      return false;
-    }
+    return opencl_info.supported_images_2d.SupportsImage2D(data_type, channels);
   }
   return false;
 }
@@ -950,8 +979,7 @@ bool GpuInfo::IsApiOpenGl31OrAbove() const {
   if (!IsApiOpenGl()) {
     return false;
   }
-  return (opengl_info.major_version == 3 && opengl_info.minor_version >= 1) ||
-         opengl_info.major_version > 3;
+  return opengl_info.IsApiOpenGl31OrAbove();
 }
 
 bool GpuInfo::IsApiVulkan() const { return gpu_api == GpuApi::kVulkan; }

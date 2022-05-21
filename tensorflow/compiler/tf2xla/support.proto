@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package tensorflow.tf2xla;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "Tf2XlaProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.tf2xla";
+
+message OpSupport {
+  // Name of the op (in the OpDef).
+  string graph_op_name = 1;
+
+  // Is this TF op supported by the old bridge?
+  bool supports_old_bridge = 2;
+
+  // Is this TF op supported by the new bridge?
+  bool supports_new_bridge = 3;
+
+  // Does this TF op support bounded, dynamic, ranked shapes?
+  // Note: Unavailable in MLIR
+  bool supports_bounded_dynamic_ranked = 4;
+
+  // Does this TF op support unbounded, dynamic, ranked shapes?
+  // i.e. tensor<?x3xf32>
+  bool supports_dynamic_ranked = 5;
+
+  // Does this TF op support unbounded, dynamic, unranked shapes?
+  // i.e. tensor<*xf32>
+  bool supports_dynamic_unranked = 6;
+}
+
+message OpSupports {
+  repeated OpSupport support = 1;
+}

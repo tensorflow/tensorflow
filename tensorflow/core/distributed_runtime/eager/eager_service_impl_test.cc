@@ -99,7 +99,8 @@ class FakeEagerClient : public EagerClient {
     impl_->RunComponentFunction(call_opts, request, response, std::move(done));
   }
 
-  void StreamingEnqueueAsync(CallOptions* call_opts,
+  void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                             CallOptions* call_opts,
                              const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {

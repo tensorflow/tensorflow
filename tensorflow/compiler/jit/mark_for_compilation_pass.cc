@@ -1925,7 +1925,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
           {"SORT", {"TopKV2"}},  // XLA version much faster then TF version.
           {"MISC",
            // clang-format off
-     {"BroadcastTo", "ExpandDims", "Fill", "NoOp",
+     {"ApproxTopK", "BroadcastTo", "ExpandDims", "Fill", "NoOp",
       "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",
       "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
       "BroadcastArgs", "BroadcastGradientArgs", "OneHot", "Concat", "ConcatV2",
@@ -2130,6 +2130,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "StatelessCase",
       "StatelessIf",
       "StatelessMultinomial",
+      "StatelessParameterizedTruncatedNormal",
       "StatelessRandomGetAlg",
       "StatelessRandomGetKeyCounter",
       "StatelessRandomGetKeyCounterAlg",

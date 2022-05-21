@@ -128,7 +128,8 @@ void TPUColocateCompositeResourceOps::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUColocateCompositeResourceOps() {
   return std::make_unique<TPUColocateCompositeResourceOps>();
 }
 

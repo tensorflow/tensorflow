@@ -8,13 +8,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK-SAME: [[arg1_th:%.*]]: !corert.tensorhandle {tf._user_specified_name = "inputs"},
 // CHECK-SAME: [[arg2_th:%.*]]: !corert.tensorhandle, [[arg3_th:%.*]]: !corert.tensorhandle, [[arg4_th:%.*]]: !corert.tensorhandle, [[arg5_th:%.*]]: !corert.tensorhandle)
 // CHECK-SAME: -> (!tfrt.chain
+// CHECK: [[o1:%.*]] = tfrt_fallback_async.const_dense_tensor
 // CHECK-NEXT: [[arg1:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg1_th]] {device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT: [[arg4:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg4_th]] {device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT: [[arg5:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg5_th]] {device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT: [[arg2:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg2_th]] {device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT: [[arg3:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[arg3_th]] {device = "/job:localhost/replica:0/task:0/device:CPU:0"
-// CHECK-NEXT: [[o1:%.*]] = tfrt_fallback_async.const_dense_tensor
-// CHECK-NEXT: [[o2_chain:%.*]], [[o2:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) key(0) cost({{.*}}) device("/job:localhost/replica:0/task:0/device:CPU:0") "tf.ReadVariableOp"([[arg3]])
+// CHECK: [[o2_chain:%.*]], [[o2:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) key(0) cost({{.*}}) device("/job:localhost/replica:0/task:0/device:CPU:0") "tf.ReadVariableOp"([[arg3]])
 // CHECK-NEXT: [[o3_chain:%.*]], [[o3:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) key(1) cost({{.*}}) device("/job:localhost/replica:0/task:0/device:CPU:0") "tf.ReadVariableOp"([[arg2]])
 // CHECK-NEXT: [[o4_chain:%.*]], [[o4:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) key(2) cost({{.*}}) device("/job:localhost/replica:0/task:0/device:CPU:0") "tf.ReadVariableOp"([[arg5]])
 // CHECK-NEXT: [[o5_chain:%.*]], [[o5:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) key(3) cost({{.*}}) device("/job:localhost/replica:0/task:0/device:CPU:0") "tf.ReadVariableOp"([[arg4]])
@@ -66,8 +66,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func.func @while_test() -> (tensor<i32>) {
     // The predicate function should be inlined.
     // CHECK: corert.const_dense_tensor dense<0> : tensor<i32>
-    // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<0> : tensor<i32>
-    // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<9> : tensor<i32>
+    // CHECK-DAG: tfrt_fallback_async.const_dense_tensor dense<9> : tensor<i32>
+    // CHECK-DAG: tfrt_fallback_async.const_dense_tensor dense<0> : tensor<i32>
     // CHECK-NEXT: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.Less"
     // CHECK-NEXT: [[pred:%.*]] = tfrt_fallback_async.predicate
     // CHECK-NEXT: tfrt.while [[pred]] @"while_body_add2/tfrt_body_1"

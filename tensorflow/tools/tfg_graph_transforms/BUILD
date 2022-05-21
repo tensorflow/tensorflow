@@ -37,10 +37,14 @@ TFG_GRAPH_TRANSFORM_DEPS = [
     "//tensorflow/compiler/mlir/tensorflow:error_util",
     "//tensorflow/core:lib",
     "//tensorflow/core/ir:Dialect",
-    "//tensorflow/core/ir/importexport:export",
-    "//tensorflow/core/ir/importexport:import",
     "//tensorflow/core/protobuf:for_core_protos_cc",
     "//tensorflow/core/transforms:PassRegistration",
+    "//tensorflow/compiler/tf2xla/ops:xla_ops",
+    "//tensorflow/core:ops",
+    "//tensorflow/core/ir/importexport:graphdef_export",
+    "//tensorflow/core/ir/importexport:graphdef_import",
+    "//tensorflow/core/ir/importexport:savedmodel_export",
+    "//tensorflow/core/ir/importexport:savedmodel_import",
 ]
 
 # Description:

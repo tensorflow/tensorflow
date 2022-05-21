@@ -106,7 +106,7 @@ void PropagateUsage(
     PropagateUsage(read_variable_op, value);
   } else if (auto call = dyn_cast<CallOpInterface>(user_op)) {
     (*arguments_to_erase)[call].push_back(argument_index);
-    if (auto func = dyn_cast<FuncOp>(call.resolveCallable())) {
+    if (auto func = dyn_cast<func::FuncOp>(call.resolveCallable())) {
       (*arguments_to_erase)[func].push_back(argument_index);
       work_list->push_back(std::make_pair(&func.getRegion(), argument_index));
     }
@@ -179,11 +179,11 @@ void ReplaceVarWithConstant(
 // Helper that returns the FuncOp that is the SessionInit function which
 // will be called to initialize all resources.
 // Returns nullptr if no function is found.
-FuncOp GetSessionInitializerFunc(ModuleOp module) {
+func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   SymbolTable symbol_table(module);
   if (session_init_op && !session_init_op.initializers().empty()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
     return init_func_op;
   }
@@ -216,7 +216,7 @@ std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
 // the session init function 'sesion_init_func'
 void RemoveVariablesInitializations(
     const llvm::SmallVector<TF::VarHandleOp, 4>& var_handle_ops,
-    FuncOp sesion_init_func) {
+    func::FuncOp sesion_init_func) {
   // We identify the variables using (device, container, shared_name) of the
   // resource. Capture them here and use them to identify the useless
   // initializations.
@@ -314,12 +314,12 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
     return failure();
   }
 
-  FuncOp session_init_func = GetSessionInitializerFunc(module);
+  func::FuncOp session_init_func = GetSessionInitializerFunc(module);
 
   TF::ResourceAnalyzer analyzer(module, /*skip_session_init=*/true);
   llvm::SmallVector<TF::VarHandleOp, 4> variables;
   // Capture list of all read only variables.
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (func == session_init_func) continue;
     for (auto var_handle_op : func.getOps<TF::VarHandleOp>()) {
       if (!analyzer.IsPotentiallyWritten(var_handle_op.resource())) {
@@ -364,7 +364,7 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
   for (auto& items : arguments_to_erase) {
     auto* user_op = items.first;
     auto& args_to_erase = items.second;
-    if (auto func = dyn_cast<FuncOp>(user_op)) {
+    if (auto func = dyn_cast<func::FuncOp>(user_op)) {
       // To update a function we will need to:
       // 1) Remove the unused arguments from the function itself.
       // 2) Remove any returns that are not needed from the function terminator
