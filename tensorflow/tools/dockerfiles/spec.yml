@@ -470,6 +470,8 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
+              - SUBSCRIPTION_ORG=""
+              - ARG SUBSCRIPTION_KEY=""
 
     devel-onednn-mpi-horovod:
         - add_to_name: "-ubuntu-16.04-devel-mpi-horovod"

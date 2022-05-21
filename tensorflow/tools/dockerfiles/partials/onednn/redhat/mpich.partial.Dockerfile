@@ -1,12 +1,22 @@
+# Accessing Certain repos require RedHat subscription
+ARG SUBSCRIPTION_ORG
+ARG SUBSCRIPTION_KEY
+
+RUN subscription-manager register --org=$SUBSCRIPTION_ORG --activationkey=$SUBSCRIPTION_KEY && \
+    subscription-manager attach && \
+    subscription-manager release --set=$(cat /etc/*release | grep VERSION_ID | cut -f2 -d'"')
+
 # install mpich, openssh for MPI to communicate between containers
-RUN yum update -y && yum install -y \
+RUN INSTALL_PKGS="\
     mpich \
     mpich-devel \
     openssh \
-    openssh-server \
-    redhat-rpm-config \
-    which && \
-    yum clean all
+    openssh-server" && \
+    yum -y --setopt=tsflags=nodocs install $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum -y clean all --enablerepo='*'
+
+RUN subscription-manager unregister
 
 ENV PATH="/usr/lib64/mpich/bin:${PATH}"
 

@@ -1,6 +1,6 @@
 RUN ${PYTHON} -m pip install --no-cache-dir jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN ${PYTHON} -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
+RUN ${PYTHON} -m pip install --no-cache-dir jupyter_http_over_ws ipykernel nbformat
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/ && chmod -R a+rwx /tf/

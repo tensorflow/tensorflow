@@ -10,7 +10,7 @@ RUN yum update -y && yum install -y \
     gcc-c++ \
     git \
     make \
-    ${PYTHON}-devel && \
+    python${PY_VER}-devel && \
     yum clean all
 
 RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}

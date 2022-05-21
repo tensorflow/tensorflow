@@ -1,10 +1,22 @@
-RUN yum update -y && yum install -y \
+# Accessing Certain repos require RedHat subscription
+ARG SUBSCRIPTION_ORG
+ARG SUBSCRIPTION_KEY
+
+RUN subscription-manager register --org=$SUBSCRIPTION_ORG --activationkey=$SUBSCRIPTION_KEY && \
+    subscription-manager attach && \
+    subscription-manager release --set=$(cat /etc/*release | grep VERSION_ID | cut -f2 -d'"')
+
+# install openmpi, openssh for MPI to communicate between containers
+RUN INSTALL_PKGS="\
     openmpi \
     openmpi-devel \
     openssh \
-    openssh-server \
-    which && \
-    yum clean all
+    openssh-server" && \
+    yum -y --setopt=tsflags=nodocs install $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum -y clean all --enablerepo='*'
+
+RUN subscription-manager unregister
 
 ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
 

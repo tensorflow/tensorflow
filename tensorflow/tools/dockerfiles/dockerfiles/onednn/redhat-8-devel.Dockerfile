@@ -62,15 +62,18 @@ ARG TF_BRANCH=master
 RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git --branch "${TF_BRANCH}" --single-branch /tensorflow_src || true
 
 # See http://bugs.python.org/issue19846
-ENV LANG C.UTF-8
+ARG PYTHON=python3
+ARG PY_VER="38"
+
 ARG PYTHON=python3
 
-RUN yum update -y && yum install -y \
-    ${PYTHON} \
-    ${PYTHON}-pip \
-    which && \
-    yum clean all
-
+RUN INSTALL_PKGS="\
+    python${PY_VER} \
+    python${PY_VER}-pip \
+    which" && \
+    yum -y --setopt=tsflags=nodocs install $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum -y clean all --enablerepo='*'
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
     pip \
