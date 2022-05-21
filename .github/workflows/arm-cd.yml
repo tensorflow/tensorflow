@@ -19,6 +19,8 @@ on:
   push:
     tags:
       - v2.**
+    branches:
+      - r2.9
   schedule:
     - cron: '0 8 * * *'
 
