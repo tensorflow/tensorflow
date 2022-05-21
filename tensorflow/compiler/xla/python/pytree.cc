@@ -490,11 +490,11 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
 }
 
 py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
-                           py::iterable leaves) const {
+                                    py::iterable leaves) const {
   std::vector<py::object> agenda;
   auto it = leaves.begin();
   for (const Node& node : traversal_) {
-    switch (node.kind) {
+      switch (node.kind) {
       case PyTreeKind::kLeaf: {
         if (it == leaves.end()) {
           throw std::invalid_argument("Too few leaves for PyTreeDef");
@@ -521,7 +521,8 @@ py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
           tuple[i] = agenda.back();
           agenda.pop_back();
         }
-        agenda.push_back(f_node(tuple));
+        agenda.push_back(f_node(tuple, node.node_data ? node.node_data 
+                                                      : py::none()));
       }
     }
   }
