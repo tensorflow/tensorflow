@@ -36,22 +36,6 @@ std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
   return tensor_specs;
 }
 
-// Creates vector of OpSignatureTensorSpec with the given TfLiteType vector,
-// each with rank 'rank'
-std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
-    const std::vector<TfLiteType>& types, int rank) {
-  std::vector<OpSignatureTensorSpec> tensor_specs;
-  for (auto type : types) {
-    OpSignatureTensorSpec tensor_spec = {};
-    tensor_spec.type = type;
-    for (int i = 0; i < rank; i++) {
-      tensor_spec.dims.push_back(4);
-    }
-    tensor_specs.push_back(tensor_spec);
-  }
-  return tensor_specs;
-}
-
 // Creates vector of OpSignatureTensorSpec of single tensor spec of TfLiteType.
 std::vector<OpSignatureTensorSpec> CreateOpSignatureTensorSpecs(
     const TfLiteType type) {
@@ -507,29 +491,7 @@ TEST(OpVersionTest, VersioningConcatenationTest) {
 }
 
 TEST(OpVersionTest, VersioningSelectTest) {
-  OpSignature fake_op_sig = {
-      .op = BuiltinOperator_SELECT,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TfLiteType>{kTfLiteUInt8, kTfLiteUInt8, kTfLiteUInt8}, 5),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8),
-  };
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig = {
-      .op = BuiltinOperator_SELECT,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TfLiteType>{kTfLiteInt8, kTfLiteInt8, kTfLiteInt8}, 4),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
-  };
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
-  fake_op_sig = {
-      .op = BuiltinOperator_SELECT,
-      .inputs = CreateOpSignatureTensorSpecs(
-          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32,
-                                  kTfLiteFloat32},
-          4),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
-  };
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  SimpleVersioningTest(BuiltinOperator_SELECT);
 }
 
 TEST(OpVersionTest, VersioningRelu6Test) {
