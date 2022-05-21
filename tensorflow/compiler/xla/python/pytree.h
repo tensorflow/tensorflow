@@ -148,7 +148,8 @@ class PyTreeDef {
   // TODO(phawkins): use flattening everywhere instead and delete this method.
   pybind11::object Walk(const pybind11::function& f_node,
                         pybind11::handle f_leaf,
-                        pybind11::iterable leaves) const;
+                        pybind11::iterable leaves,
+                        bool pass_node_data = false) const;
 
   // Given a tree of iterables with the same node/leaf structure as this PyTree,
   // build the corresponding PyTree.

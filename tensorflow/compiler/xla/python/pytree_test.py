@@ -28,12 +28,41 @@ class SNWrap(types.SimpleNamespace):
     super().__init__(**kwargs)
 
 def tree_flatten(x : SNWrap):
-  return pytree.flatten(x.__dict__, lambda a: a is not x.__dict__) # only flatten one step
+  return pytree.flatten(x.__dict__, lambda a: a is not x.__dict__)
 
 def tree_unflatten(aux, values):
   return SNWrap(**pytree.unflatten(aux, values))
 
 pytree.register_node(SNWrap, tree_flatten, tree_unflatten)
+
+def pytree_print(td, leaves):
+  def node_visit(xs,node_data):
+    if not node_data:
+      labels = range(len(xs))
+    elif isinstance(node_data, list):
+      labels = node_data
+    elif isinstance(node_data, xla_extension.PyTreeDef):
+      out = node_data.walk(lambda x,d: d, 
+                            lambda x:None, 
+                            range(node_data.num_leaves), 
+                            pass_node_data=True)
+      assert len(xs) == len(out) 
+      labels = out
+    else:
+      assert False
+
+    return [*zip(map(str,labels),xs)]
+
+  def print_with_paths(prefix, nodes):
+    for (l,x) in nodes:
+      p = prefix + '/' + l
+      if isinstance(x, list):
+        print_with_paths(p, x)
+      else:
+        print(p + ':', str(x[0]).replace('\n','\\n'))
+
+  out = td.walk(node_visit, lambda x:(x,), leaves, pass_node_data=True)
+  print_with_paths('', out)
 
 class PyTreeTest(absltest.TestCase):
 
@@ -55,15 +84,17 @@ class PyTreeTest(absltest.TestCase):
 
     leaves,td = pytree.flatten(obj)
 
-    out = td.walk(lambda n,_:sum(n), lambda x:1, leaves)
+    out = td.walk(lambda n:sum(n), lambda x:1, leaves)
     self.assertEqual(out, len(leaves))
 
-    out = td.walk(lambda n,_:n, lambda x:3, leaves)
+    out = td.walk(lambda n:n, lambda x:3, leaves)
     expect = (3, 
               ((3, 3, 3), 3, (3, (3, 3))), 
               ((3, ((3, 3),), 3), (3, ((3, 3),))), 
               3)
     self.assertEqual(out, expect)
+
+    pytree_print(td,leaves)
 
 
 if __name__ == "__main__":
