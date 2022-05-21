@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
 namespace tensorflow {
@@ -89,7 +90,7 @@ class DerivedXLineBuilder {
 
  private:
   // If the last event of the given level has the same metadata, expands it to
-  // include the time until the given event's (offset_ps + duration_ps).
+  // include the time until the given event's end time.
   // Otherwise, adds a new event and clears last_event_by_level_ for the levels
   // below the given level and all levels of the dependent lines. Clearing
   // last_event_by_level_ prevents a nested event from growing larger than the
@@ -117,8 +118,8 @@ using SymbolResolver = std::function<Symbol(absl::optional<uint64_t> program_id,
 // Derives TF name scope and op events from the TF op's fully qualified name
 // with the name of the originating low-level event.
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
-                      absl::string_view low_level_event_name, int64_t offset_ps,
-                      int64_t duration_ps, absl::optional<int64_t> group_id,
+                      absl::string_view low_level_event_name, Timespan timespan,
+                      absl::optional<int64_t> group_id,
                       XPlaneBuilder* plane_builder,
                       DerivedXLineBuilder* tf_name_scope_line_builder,
                       DerivedXLineBuilder* tf_op_line_builder);

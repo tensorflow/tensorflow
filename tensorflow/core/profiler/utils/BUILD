@@ -430,6 +430,7 @@ cc_library(
         ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/algorithm:container",
