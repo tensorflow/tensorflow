@@ -70,6 +70,7 @@ tf_py_test(
     srcs = ["cache_test.py"],
     tags = [
         "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
+        "no_oss",
     ],
     deps = [
         ":checkpoint_test_base",
@@ -538,6 +539,7 @@ tf_py_test(
     name = "map_test",
     size = "small",
     srcs = ["map_test.py"],
+    tags = ["no_oss"],
     shard_count = 19,
     deps = [
         ":checkpoint_test_base",
@@ -991,6 +993,7 @@ tf_py_test(
     name = "tf_record_dataset_test",
     size = "small",
     srcs = ["tf_record_dataset_test.py"],
+    tags = ["no_oss"],
     shard_count = 8,
     deps = [
         ":checkpoint_test_base",
