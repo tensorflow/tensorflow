@@ -68,6 +68,7 @@ tf_py_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.py"],
+    tags = ["no_oss"],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -535,7 +536,7 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 19,
-    tags = ["notsan"],  # TODO(b/183962015)
+    tags = ["no_oss"],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -820,6 +821,7 @@ tf_py_test(
     name = "shuffle_test",
     size = "small",
     srcs = ["shuffle_test.py"],
+    tags = ["no_oss"],
     shard_count = 4,
     deps = [
         ":checkpoint_test_base",
