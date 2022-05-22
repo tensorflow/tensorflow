@@ -70,6 +70,7 @@ tf_py_test(
     srcs = ["cache_test.py"],
     tags = [
         "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
+        "no_oss",
     ],
     deps = [
         ":checkpoint_test_base",
@@ -258,6 +259,7 @@ tf_py_test(
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
+    tags = ["no_oss"],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
