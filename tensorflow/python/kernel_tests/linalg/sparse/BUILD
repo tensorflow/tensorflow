@@ -45,6 +45,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "notsan",  # b/149115441
+        "no_oss",
     ],
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
