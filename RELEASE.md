@@ -126,7 +126,7 @@ This release contains contributions from many people at Google, as well as:
     *   Added APIs for switching between interactive logging and absl logging. By default, Keras always writes the logs to stdout. However, this is not optimal in a non-interactive environment, where you don't have access to stdout, but can only view the logs. You can use `tf.keras.utils.disable_interactive_logging()` to write the logs to ABSL logging. You can also use `tf.keras.utils.enable_interactive_logging()` to change it back to stdout, or `tf.keras.utils.is_interactive_logging_enabled()` to check if interactive logging is enabled.
     *   Changed default value for the `verbose` argument of `Model.evaluate()` and `Model.predict()` to `"auto"`, which defaults to `verbose=1` for most cases and defaults to `verbose=2` when used with `ParameterServerStrategy` or with interactive logging disabled.
     *   Argument `jit_compile` in `Model.compile()` now applies to `Model.evaluate()` and `Model.predict()`. Setting `jit_compile=True` in `compile()` compiles the model's training, evaluation, and inference steps to [XLA](https://www.tensorflow.org/xla). Note that `jit_compile=True` may not necessarily work for all models.
-    *   Added DTensor-related Keras APIs under `tf.keras.dtensor` namespace. The APIs are still classified as experimental. You are welcome to try it out. Please check the tutoral and guide on https://www.tensorflow.org/ for more details about DTensor.
+    *   Added DTensor-related Keras APIs under `tf.keras.dtensor` namespace. The APIs are still classified as experimental. You are welcome to try it out. Please check the tutorial and guide on https://www.tensorflow.org/ for more details about DTensor.
 
 *   `tf.lite`:
     *   Added TFLite builtin op support for the following TF ops:
@@ -142,7 +142,7 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.function`:
     *    Custom classes used as arguments for `tf.function` can now specify rules regarding when retracing needs to occur by implementing the Tracing Protocol available through `tf.types.experimental.SupportsTracingProtocol`.
-    *    `TypeSpec` classes (as associated with `ExtensionTypes`) also implement the Tracing Protocol which can be overriden if necessary.
+    *    `TypeSpec` classes (as associated with `ExtensionTypes`) also implement the Tracing Protocol which can be overridden if necessary.
     *    The newly introduced `reduce_retracing` option also uses the Tracing Protocol to proactively generate generalized traces similar to `experimental_relax_shapes` (which has now been deprecated).
 
 *   Unified eager and `tf.function` execution:
@@ -405,7 +405,7 @@ This releases introduces several vulnerability fixes:
         `tf.sparse.cross`/`tf.ragged.cross` directly.
     *   Added additional `standardize` and `split` modes to `TextVectorization`:
         *   `standardize="lower"` will lowercase inputs.
-        *   `standardize="string_punctuation"` will remove all puncuation.
+        *   `standardize="string_punctuation"` will remove all punctuation.
         *   `split="character"` will split on every unicode character.
     *   Added an `output_mode` argument to the `Discretization` and `Hashing`
         layers with the same semantics as other preprocessing layers. All
@@ -421,7 +421,7 @@ This releases introduces several vulnerability fixes:
         for all the RNG in Keras. We plan to switch on the new code path by
         default in tf 2.8, and the behavior change will likely to cause some
         breakage on user side (eg if the test is checking against some golden
-        nubmer). These 3 APIs will allow user to disable and switch back to
+        number). These 3 APIs will allow user to disable and switch back to
         legacy behavior if they prefer. In future (eg TF 2.10), we expect to
         totally remove the legacy code path (stateful random Ops), and these 3
         APIs will be removed as well.
@@ -446,7 +446,7 @@ This releases introduces several vulnerability fixes:
         that nondeterministic out-of-memory events while selecting algorithms
         could still lead to nondeterminism, although this is very unlikely. This
         additional, unlikely source will be eliminated in a later version.
-    *   Add determinsitic GPU implementations of:
+    *   Add deterministic GPU implementations of:
         *   `tf.function(jit_compile=True)`'s that use `Scatter`.
         *   (since v2.7) Stateful ops used in `tf.data.Dataset`
         *   (since v2.7) `tf.convert_to_tensor` when fed with (sparse)
@@ -743,7 +743,7 @@ This releases introduces several vulnerability fixes:
     ([CVE-2022-23572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23572))
 *   Fixes a heap OOB read/write in `SpecializeType`
     ([CVE-2022-23574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23574))
-*   Fixes an unitialized variable access in `AssignOp`
+*   Fixes an uninitialized variable access in `AssignOp`
     ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573))
 *   Fixes an integer overflow in `OpLevelCostEstimator::CalculateTensorSize`
     ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575))
@@ -1052,7 +1052,7 @@ This releases introduces several vulnerability fixes:
     *   RNG behavior change for all `tf.keras.initializers` classes. For any
         class constructed with a fixed seed, it will no longer generate same
         value when invoked multiple times. Instead, it will return different
-        value, but a determinisitic sequence. This change will make the
+        value, but a deterministic sequence. This change will make the
         initialize behavior align between v1 and v2.
 
 *   `tf.lite`:
