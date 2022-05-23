@@ -266,6 +266,12 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
   if (config_.alias_passthrough_params()) {
     result.Append(", alias_passthrough_params=true");
   }
+  if (config_.has_entry_computation_layout()) {
+    LOG(ERROR) << "HAS CONFIG " << this->name();
+    result.Append(", entry_computation_layout={");
+    result.Append(entry_computation_layout().ToString());
+    result.Append("}");
+  }
   if (config_.allow_spmd_sharding_propagation_to_output()) {
     result.Append(", allow_spmd_sharding_propagation_to_output=true");
   }
