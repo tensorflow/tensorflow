@@ -35,7 +35,9 @@ GrpcDispatcherImpl::GrpcDispatcherImpl(
 
 Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
 
-size_t GrpcDispatcherImpl::NumActiveJobs() { return impl_.NumActiveJobs(); }
+size_t GrpcDispatcherImpl::NumActiveIterations() {
+  return impl_.NumActiveIterations();
+}
 
 DispatcherStateExport GrpcDispatcherImpl::ExportState() const {
   return impl_.ExportState();
@@ -53,9 +55,9 @@ HANDLER(GetDatasetDef);
 HANDLER(GetSplit);
 HANDLER(GetVersion);
 HANDLER(GetOrRegisterDataset);
-HANDLER(ReleaseJobClient);
+HANDLER(ReleaseIterationClient);
 HANDLER(MaybeRemoveTask);
-HANDLER(GetOrCreateJob);
+HANDLER(GetOrCreateIteration);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 HANDLER(GetDataServiceMetadata);

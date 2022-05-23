@@ -98,16 +98,17 @@ TEST_F(DispatcherClientTest, EnableMultiTrainerCache) {
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
 
-  int64_t job_client_id = 0;
+  int64_t iteration_client_id = 0;
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  JobKeyDef job_key;
-  job_key.set_name("job");
-  job_key.set_iteration(0);
-  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+  IterationKeyDef iteration_key;
+  iteration_key.set_name("iteration");
+  iteration_key.set_iteration(0);
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateIteration(
+      dataset_id, processing_mode, iteration_key,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO,
+      iteration_client_id));
 
   WorkerHeartbeatRequest worker_heartbeat_request;
   worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
@@ -118,62 +119,65 @@ TEST_F(DispatcherClientTest, EnableMultiTrainerCache) {
   EXPECT_TRUE(worker_heartbeat_response.new_tasks(0).use_cross_trainer_cache());
 }
 
-TEST_F(DispatcherClientTest, CreateNamedJob) {
+TEST_F(DispatcherClientTest, CreateNamedIteration) {
   DataServiceMetadata metadata;
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
 
-  int64_t job_client_id = 0;
+  int64_t iteration_client_id = 0;
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  JobKeyDef job_key;
-  job_key.set_name("job");
-  job_key.set_iteration(0);
-  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+  IterationKeyDef iteration_key;
+  iteration_key.set_name("iteration");
+  iteration_key.set_iteration(0);
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateIteration(
+      dataset_id, processing_mode, iteration_key,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO,
+      iteration_client_id));
 
-  // Creating the same job should succeed.
-  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+  // Creating the same iteration should succeed.
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateIteration(
+      dataset_id, processing_mode, iteration_key,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO,
+      iteration_client_id));
 }
 
-TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
+TEST_F(DispatcherClientTest, NamedIterationsDoNotMatch) {
   DataServiceMetadata metadata;
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
 
-  int64_t job_client_id = 0;
+  int64_t iteration_client_id = 0;
   ProcessingModeDef processing_mode;
   processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-  JobKeyDef job_key;
-  job_key.set_name("job");
-  job_key.set_iteration(0);
-  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
-      dataset_id, processing_mode, job_key,
+  IterationKeyDef iteration_key;
+  iteration_key.set_name("iteration");
+  iteration_key.set_iteration(0);
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateIteration(
+      dataset_id, processing_mode, iteration_key,
       /*num_consumers=*/absl::nullopt,
-      /*use_cross_trainer_cache=*/false, TARGET_WORKERS_AUTO, job_client_id));
+      /*use_cross_trainer_cache=*/false, TARGET_WORKERS_AUTO,
+      iteration_client_id));
 
-  // Creating the same job with a different argument should fail.
+  // Creating the same iteration with a different argument should fail.
   processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
   EXPECT_THAT(
-      dispatcher_client_->GetOrCreateJob(dataset_id, processing_mode, job_key,
-                                         /*num_consumers=*/absl::nullopt,
-                                         /*use_cross_trainer_cache=*/true,
-                                         TARGET_WORKERS_AUTO, job_client_id),
-      StatusIs(
-          error::INVALID_ARGUMENT,
-          AllOf(HasSubstr(
-                    "but found an existing job with different parameters: "),
-                HasSubstr("Existing processing mode: <>"),
-                HasSubstr("Existing cross-trainer cache: <disabled>"))));
+      dispatcher_client_->GetOrCreateIteration(
+          dataset_id, processing_mode, iteration_key,
+          /*num_consumers=*/absl::nullopt,
+          /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO,
+          iteration_client_id),
+      StatusIs(error::INVALID_ARGUMENT,
+               AllOf(HasSubstr("but found an existing job with different "
+                               "parameters: "),
+                     HasSubstr("Existing processing mode: <>"),
+                     HasSubstr("Existing cross-trainer cache: <disabled>"))));
 }
 }  // namespace
 }  // namespace data

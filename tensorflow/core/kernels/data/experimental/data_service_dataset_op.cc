@@ -391,23 +391,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      VLOG(1) << "Destroying data service dataset iterator for job id "
-              << job_client_id_;
+      VLOG(1) << "Destroying data service dataset iterator for iteration id "
+              << iteration_client_id_;
       CancelThreads();
       if (deregister_fn_) deregister_fn_();
       task_thread_manager_.reset();
       if (initialized_) {
-        Status s = dispatcher_->ReleaseJobClient(job_client_id_);
+        Status s = dispatcher_->ReleaseIterationClient(iteration_client_id_);
         if (!s.ok()) {
-          LOG(WARNING) << "Failed to release job client id: " << s;
+          LOG(WARNING) << "Failed to release iteration client id: " << s;
         }
       }
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
       DeleteLocalWorkerTasks();
-      VLOG(1) << "Destroyed data service dataset iterator for job id "
-              << job_client_id_;
+      VLOG(1) << "Destroyed data service dataset iterator for iteration id "
+              << iteration_client_id_;
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -420,7 +420,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64_t deadline_micros = kint64max;
-      absl::optional<JobKeyDef> key;
+      absl::optional<IterationKeyDef> key;
       if (!dataset()->job_name_.empty()) {
         key.emplace();
         key.value().set_name(std::string(dataset()->job_name_));
@@ -428,14 +428,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
-            return dispatcher_->GetOrCreateJob(
+            return dispatcher_->GetOrCreateIteration(
                 dataset()->dataset_id_, dataset()->processing_mode_, key,
                 dataset()->num_consumers_,
                 dataset()->cross_trainer_cache_options_.has_value(),
-                dataset()->target_workers_, job_client_id_);
+                dataset()->target_workers_, iteration_client_id_);
           },
           /*description=*/
-          strings::StrCat("get or create job with dispatcher at ",
+          strings::StrCat("get or create iteration with dispatcher at ",
                           dataset()->address_),
           deadline_micros));
       initialized_ = true;
@@ -630,8 +630,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // Returns whether the iterator has more data.
     bool ShouldWaitForNext() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (should_finish_job_) {
-        return !job_finished_;
+      if (should_finish_iteration_) {
+        return !iteration_finished_;
       }
       return tasks_.empty() || finished_tasks_ < tasks_.size();
     }
@@ -737,11 +737,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       round_robin_round_limit_ = round;
     }
 
-    void UpdateJobFinished(bool job_finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!job_finished) {
+    void UpdateIterationFinished(bool iteration_finished)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!iteration_finished) {
         return;
       }
-      job_finished_ = true;
+      iteration_finished_ = true;
       get_next_cv_.notify_all();
       worker_thread_cv_.notify_all();
     }
@@ -769,7 +770,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       ClientHeartbeatRequest req;
-      req.set_job_client_id(job_client_id_);
+      req.set_iteration_client_id(iteration_client_id_);
       if (StrictRoundRobin()) {
         mutex_lock l(mu_);
         req.set_current_round(current_round_);
@@ -782,8 +783,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!s.ok()) {
         if (IsPreemptedError(s)) {
           LOG(WARNING)
-              << "Failed to heartbeat to dispatcher from job client id "
-              << job_client_id_
+              << "Failed to heartbeat to dispatcher from iteration client id "
+              << iteration_client_id_
               << ". Dispatcher address: " << dataset()->address_
               << ". Error: " << s;
           return;
@@ -793,7 +794,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         get_next_cv_.notify_all();
       }
       mutex_lock l(mu_);
-      UpdateJobFinished(resp.job_finished());
+      UpdateIterationFinished(resp.iteration_finished());
       if (resp.optional_block_round_case() ==
           ClientHeartbeatResponse::kBlockRound) {
         TryBlockRound(resp.block_round());
@@ -811,7 +812,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& task : resp.task_info()) {
         task_id_to_task[task.task_id()] = task;
       }
-      if (job_finished_) {
+      if (iteration_finished_) {
         return;
       }
 
@@ -844,7 +845,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (!ShouldReadFromTask(task)) {
           VLOG(3) << "Skipping untargeted worker task " << task.task_id();
-          should_finish_job_ = false;
+          should_finish_iteration_ = false;
           continue;
         }
         Status s = AddTask(it->second);
@@ -1208,11 +1209,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     std::string DebugString() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       return absl::Substitute(
-          "results_ { size: $0 front.ready: $1 } job_finished_: $2 "
+          "results_ { size: $0 front.ready: $1 } iteration_finished_: $2 "
           "tasks { size: $3 } finished_tasks_: $4 "
           "num_running_worker_threads_: $5",
           results_.size(), !results_.empty() && results_.front().ready,
-          job_finished_, tasks_.size(), finished_tasks_,
+          iteration_finished_, tasks_.size(), finished_tasks_,
           num_running_worker_threads_);
     }
 
@@ -1268,12 +1269,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool initialized_ = false;
     // Set once in Initialize().
-    int64_t job_client_id_;
+    int64_t iteration_client_id_;
     std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
     int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;
 
-    bool job_finished_ = false;
-    bool should_finish_job_ TF_GUARDED_BY(mu_) = true;
+    bool iteration_finished_ = false;
+    bool should_finish_iteration_ TF_GUARDED_BY(mu_) = true;
 
     // The set of worker UIDs that we have already recorded metrics for.
     absl::flat_hash_set<int64_t> worker_uids_ TF_GUARDED_BY(mu_);

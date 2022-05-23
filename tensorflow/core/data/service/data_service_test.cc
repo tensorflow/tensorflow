@@ -222,18 +222,19 @@ TEST(DataServiceTest, GcMissingClientsWithSmallTimeout) {
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK_AND_ASSIGN(int64_t job_client_id,
-                          dataset_client.CreateJob(RangeDataset(10)));
+  TF_ASSERT_OK_AND_ASSIGN(int64_t iteration_client_id,
+                          dataset_client.CreateIteration(RangeDataset(10)));
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
-  // Job should not be garbage collected before the client has started reading.
-  EXPECT_THAT(cluster.NumActiveJobs(), IsOkAndHolds(1));
+  // Iteration should not be garbage collected before the client has started
+  // reading.
+  EXPECT_THAT(cluster.NumActiveIterations(), IsOkAndHolds(1));
 
-  TF_ASSERT_OK(dataset_client.GetTasks(job_client_id).status());
-  // Job should be garbage collected within 10 seconds.
+  TF_ASSERT_OK(dataset_client.GetTasks(iteration_client_id).status());
+  // Iteration should be garbage collected within 10 seconds.
   absl::Time wait_start = absl::Now();
   TF_ASSERT_OK(WaitWhile([&]() -> StatusOr<bool> {
-    TF_ASSIGN_OR_RETURN(size_t num_jobs, cluster.NumActiveJobs());
-    return num_jobs > 0;
+    TF_ASSIGN_OR_RETURN(size_t num_iterations, cluster.NumActiveIterations());
+    return num_iterations > 0;
   }));
   EXPECT_LT(absl::Now(), wait_start + absl::Seconds(10));
 }
@@ -247,10 +248,11 @@ TEST(DataServiceTest, DontGcMissingClientsWithLargeTimeout) {
   TestCluster cluster(config);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
+  TF_ASSERT_OK(dataset_client.CreateIteration(RangeDataset(10)).status());
   Env::Default()->SleepForMicroseconds(1000 * 1000);  // 1 second.
-  // Job should not be garbage collected, since the client hasn't timed out.
-  EXPECT_THAT(cluster.NumActiveJobs(), IsOkAndHolds(1));
+  // Iteration should not be garbage collected, since the client hasn't timed
+  // out.
+  EXPECT_THAT(cluster.NumActiveIterations(), IsOkAndHolds(1));
 }
 
 TEST(DataServiceTest, GetWorkers) {
@@ -266,28 +268,33 @@ TEST(DataServiceTest, DispatcherStateExport) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
+  TF_ASSERT_OK(dataset_client.CreateIteration(RangeDataset(10)).status());
 
   ServerStateExport server_state_export = cluster.ExportDispatcherState();
   EXPECT_THAT(server_state_export.dispatcher_state_export().worker_addresses(),
               ElementsAre(HasSubstr("localhost")));
-  ASSERT_THAT(server_state_export.dispatcher_state_export().jobs(), SizeIs(1));
-  EXPECT_EQ(server_state_export.dispatcher_state_export().jobs(0).dataset_id(),
-            1000);
-  EXPECT_THAT(
-      server_state_export.dispatcher_state_export().jobs(0).job_key().name(),
-      HasSubstr("anonymous_job"));
-  EXPECT_EQ(server_state_export.dispatcher_state_export().jobs(0).num_clients(),
-            1);
+  ASSERT_THAT(server_state_export.dispatcher_state_export().iterations(),
+              SizeIs(1));
+  EXPECT_EQ(
+      server_state_export.dispatcher_state_export().iterations(0).dataset_id(),
+      1000);
+  EXPECT_THAT(server_state_export.dispatcher_state_export()
+                  .iterations(0)
+                  .iteration_key()
+                  .name(),
+              HasSubstr("anonymous_iteration"));
+  EXPECT_EQ(
+      server_state_export.dispatcher_state_export().iterations(0).num_clients(),
+      1);
   EXPECT_FALSE(
-      server_state_export.dispatcher_state_export().jobs(0).finished());
+      server_state_export.dispatcher_state_export().iterations(0).finished());
 }
 
 TEST(DataServiceTest, WorkerStateExport) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
   DatasetClient<tstring> dataset_client(cluster);
-  TF_ASSERT_OK(dataset_client.CreateJob(RangeDataset(10)).status());
+  TF_ASSERT_OK(dataset_client.CreateIteration(RangeDataset(10)).status());
 
   ServerStateExport server_state_export = cluster.ExportWorkerState(0);
   EXPECT_THAT(server_state_export.worker_state_export()

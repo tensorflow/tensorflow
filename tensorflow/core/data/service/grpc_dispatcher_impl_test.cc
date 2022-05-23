@@ -95,15 +95,17 @@ class GrpcDispatcherImplTest : public ::testing::Test {
     return response;
   }
 
-  StatusOr<GetOrCreateJobResponse> CreateJob(const int64_t dataset_id) {
-    GetOrCreateJobRequest request;
-    GetOrCreateJobResponse response;
+  StatusOr<GetOrCreateIterationResponse> CreateIteration(
+      const int64_t dataset_id) {
+    GetOrCreateIterationRequest request;
+    GetOrCreateIterationResponse response;
     request.set_dataset_id(dataset_id);
     request.mutable_processing_mode_def()->set_sharding_policy(
         ProcessingModeDef::OFF);
     ClientContext context;
-    TF_RETURN_IF_ERROR(FromGrpcStatus(
-        dispatcher_client_stub_->GetOrCreateJob(&context, request, &response)));
+    TF_RETURN_IF_ERROR(
+        FromGrpcStatus(dispatcher_client_stub_->GetOrCreateIteration(
+            &context, request, &response)));
     return response;
   }
 
@@ -119,10 +121,10 @@ class GrpcDispatcherImplTest : public ::testing::Test {
   }
 
   StatusOr<ClientHeartbeatResponse> ClientHeartbeat(
-      const int64_t job_client_id) {
+      const int64_t iteration_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
-    request.set_job_client_id(job_client_id);
+    request.set_iteration_client_id(iteration_client_id);
     ClientContext client_ctx;
     TF_RETURN_IF_ERROR(FromGrpcStatus(dispatcher_client_stub_->ClientHeartbeat(
         &client_ctx, request, &response)));
@@ -136,7 +138,7 @@ class GrpcDispatcherImplTest : public ::testing::Test {
 TEST_F(GrpcDispatcherImplTest, WorkerHeartbeat) {
   TF_ASSERT_OK_AND_ASSIGN(GetOrRegisterDatasetResponse dataset_response,
                           RegisterDataset());
-  TF_ASSERT_OK(CreateJob(dataset_response.dataset_id()).status());
+  TF_ASSERT_OK(CreateIteration(dataset_response.dataset_id()).status());
   TF_ASSERT_OK_AND_ASSIGN(WorkerHeartbeatResponse worker_response,
                           WorkerHeartbeat());
   ASSERT_EQ(worker_response.new_tasks().size(), 1);
@@ -147,11 +149,12 @@ TEST_F(GrpcDispatcherImplTest, WorkerHeartbeat) {
 TEST_F(GrpcDispatcherImplTest, ClientHeartbeat) {
   TF_ASSERT_OK_AND_ASSIGN(GetOrRegisterDatasetResponse dataset_response,
                           RegisterDataset());
-  TF_ASSERT_OK_AND_ASSIGN(GetOrCreateJobResponse job_response,
-                          CreateJob(dataset_response.dataset_id()));
+  TF_ASSERT_OK_AND_ASSIGN(GetOrCreateIterationResponse iteration_response,
+                          CreateIteration(dataset_response.dataset_id()));
   TF_ASSERT_OK(WorkerHeartbeat().status());
-  TF_ASSERT_OK_AND_ASSIGN(ClientHeartbeatResponse client_response,
-                          ClientHeartbeat(job_response.job_client_id()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ClientHeartbeatResponse client_response,
+      ClientHeartbeat(iteration_response.iteration_client_id()));
   ASSERT_EQ(client_response.task_info().size(), 1);
   EXPECT_EQ(client_response.task_info(0).worker_address(), kHostAddress);
 }

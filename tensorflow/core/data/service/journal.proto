@@ -13,11 +13,11 @@ message Update {
   oneof update_type {
     RegisterDatasetUpdate register_dataset = 1;
     RegisterWorkerUpdate register_worker = 5;
-    CreateJobUpdate create_job = 2;
+    CreateIterationUpdate create_iteration = 2;
     ProduceSplitUpdate produce_split = 8;
-    AcquireJobClientUpdate acquire_job_client = 6;
-    ReleaseJobClientUpdate release_job_client = 7;
-    GarbageCollectJobUpdate garbage_collect_job = 12;
+    AcquireIterationClientUpdate acquire_iteration_client = 6;
+    ReleaseIterationClientUpdate release_iteration_client = 7;
+    GarbageCollectIterationUpdate garbage_collect_iteration = 12;
     RemoveTaskUpdate remove_task = 11;
     CreatePendingTaskUpdate create_pending_task = 9;
     ClientHeartbeatUpdate client_heartbeat = 10;
@@ -43,19 +43,19 @@ message RegisterWorkerUpdate {
 }
 
 // Next tag: 12
-message CreateJobUpdate {
+message CreateIterationUpdate {
   reserved 3, 5, 6;
-  int64 job_id = 1;
+  int64 iteration_id = 1;
   int64 dataset_id = 2;
   ProcessingModeDef processing_mode_def = 9;
   int64 num_split_providers = 8;
-  JobKeyDef job_key = 4;
-  // Optional number of consumers. If set, the job's tasks will provide their
-  // elements to consumers round-robin.
+  IterationKeyDef iteration_key = 4;
+  // Optional number of consumers. If set, the iteration's tasks will provide
+  // their elements to consumers round-robin.
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
-  // Specifies which workers the client of this job reads from.
+  // Specifies which workers the client of this iteration reads from.
   TargetWorkers target_workers = 10;
   // True if cross-trainer cache is enabled.
   bool use_cross_trainer_cache = 11;
@@ -63,7 +63,7 @@ message CreateJobUpdate {
 
 // Next tag: 5
 message ProduceSplitUpdate {
-  int64 job_id = 1;
+  int64 iteration_id = 1;
   int64 iteration = 2;
   int64 split_provider_index = 4;
   // Whether the split provider reached its end.
@@ -71,22 +71,22 @@ message ProduceSplitUpdate {
 }
 
 // Next tag: 3
-message AcquireJobClientUpdate {
-  int64 job_id = 1;
-  int64 job_client_id = 2;
+message AcquireIterationClientUpdate {
+  int64 iteration_id = 1;
+  int64 iteration_client_id = 2;
 }
 
 // Next tag: 3
-message ReleaseJobClientUpdate {
-  int64 job_client_id = 1;
+message ReleaseIterationClientUpdate {
+  int64 iteration_client_id = 1;
   // The time when the client was released, measured in microseconds since the
   // epoch.
   int64 time_micros = 2;
 }
 
 // Next tag: 2
-message GarbageCollectJobUpdate {
-  int64 job_id = 1;
+message GarbageCollectIterationUpdate {
+  int64 iteration_id = 1;
 }
 
 // Next tag: 2
@@ -104,7 +104,7 @@ message TaskRejected {
 // Updates dispatcher state based on a client heartbeat.
 // Next tag: 4
 message ClientHeartbeatUpdate {
-  int64 job_client_id = 1;
+  int64 iteration_client_id = 1;
   bool task_accepted = 2;
   TaskRejected task_rejected = 3;
 }
@@ -112,7 +112,7 @@ message ClientHeartbeatUpdate {
 // Next tag: 8
 message CreatePendingTaskUpdate {
   int64 task_id = 1;
-  int64 job_id = 2;
+  int64 iteration_id = 2;
   string worker_address = 3;
   string transfer_address = 4;
   repeated string worker_tags = 6;
@@ -124,7 +124,7 @@ message CreatePendingTaskUpdate {
 message CreateTaskUpdate {
   reserved 3, 5;
   int64 task_id = 1;
-  int64 job_id = 2;
+  int64 iteration_id = 2;
   string worker_address = 4;
   string transfer_address = 6;
   repeated string worker_tags = 7;
