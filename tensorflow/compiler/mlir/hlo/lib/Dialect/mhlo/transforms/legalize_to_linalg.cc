@@ -163,6 +163,11 @@ Value fillTensorWithZeros(OpBuilder& builder, Location loc, Value tensor) {
   return builder.create<linalg::FillOp>(loc, zero, tensor).result();
 }
 
+static inline bool hasIntegralShapeType(Operation* op) {
+  auto stp = op->getOperand(0).getType().dyn_cast<ShapedType>();
+  return stp && stp.getElementType().isIntOrIndex();
+}
+
 /// Sparsifies a (block of) operation(s) that cannot be handled directly
 /// by the sparse compiler but has well-known semi-ring semantics.
 ///
@@ -178,9 +183,12 @@ Value fillTensorWithZeros(OpBuilder& builder, Location loc, Value tensor) {
 ///   linalg.yield %result
 Value PreSparsify(Operation* op, llvm::SmallVector<Value, 2>& values,
                   OpBuilder* b) {
-  if (auto signop = dyn_cast<mhlo::SignOp>(op)) {
-    if (!sparse_tensor::getSparseTensorEncoding(signop.result().getType()) &&
-        !sparse_tensor::getSparseTensorEncoding(signop.operand().getType()))
+  // Apply for semi-ring operations that lower to elaborate code
+  // (any sign-op or an integral abs-op).
+  if (isa<mhlo::SignOp>(op) ||
+      (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op))) {
+    if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
+        !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
       return Value();
     Type rtp = values[0].getType();
     Location loc = op->getLoc();
