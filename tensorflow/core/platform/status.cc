@@ -140,20 +140,6 @@ Status::Status(tensorflow::error::Code code, absl::string_view msg) {
           << CurrentStackTrace();
 }
 
-// TODO(b/233388846): Delete this constructor after migrating usages to
-// errors::SetStackTrace.
-Status::Status(tensorflow::error::Code code, absl::string_view msg,
-               std::vector<StackFrame>&& stack_trace)
-    : Status(code, msg) {
-  errors::SetStackTrace(*this, stack_trace);
-}
-
-// TODO(b/233388846): Delete this accessor after migrating usages to
-// errors::GetStackTrace.
-std::vector<StackFrame> Status::stack_trace() const {
-  return errors::GetStackTrace(*this);
-}
-
 void Status::Update(const Status& new_status) {
   if (ok()) {
     *this = new_status;

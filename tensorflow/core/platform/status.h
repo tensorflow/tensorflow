@@ -50,13 +50,6 @@ class Status {
   /// human-readable string containing more detailed information.
   Status(tensorflow::error::Code code, absl::string_view msg);
 
-  /// \brief Create a status with the specified error code, msg, and stack trace
-  /// as a human-readable string containing more detailed information.
-#ifndef SWIG
-  Status(tensorflow::error::Code code, absl::string_view msg,
-         std::vector<StackFrame>&& stack_trace);
-#endif
-
   /// Copy the specified status.
   Status(const Status& s);
   Status& operator=(const Status& s);
@@ -78,8 +71,6 @@ class Status {
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
-
-  std::vector<StackFrame> stack_trace() const;
 
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;
