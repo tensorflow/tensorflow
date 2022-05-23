@@ -31,11 +31,11 @@ struct ExternalLib {
       void (*report_error)(const char*))>::type;
   using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
   struct wchar_codecvt : public std::codecvt<wchar_t, char, std::mbstate_t> {};
-  std::wstring_convert<wchar_codecvt> converter;
 
   // Open a given delegate library and load the create/destroy symbols
   bool load(const std::string library) {
 #if defined(_WIN32)
+    std::wstring_convert<wchar_codecvt> converter;
     void* handle = SharedLibrary::LoadLibrary(
         converter.from_bytes(library.c_str()).c_str());
 #else
