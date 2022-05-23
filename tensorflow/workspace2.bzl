@@ -193,7 +193,7 @@ def _tf_repositories():
         sha256 = "11244b05259fb1c4af7384d0c3391aeaddec8aac144774207582db4842726540",
         strip_prefix = "ComputeLibrary-22.02",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch"],
+        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:activation_func_correct_args.patch"],
         urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.02.tar.gz"),
     )
 
