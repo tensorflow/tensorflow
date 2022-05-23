@@ -439,11 +439,9 @@ TEST(MultiTrainerCacheTest, CacheSizeIsTooSmall) {
 TEST(MultiTrainerCacheTest, TrainerIDMustBeNonEmpty) {
   MultiTrainerCache<Tensor> cache(
       /*max_cache_size_bytes=*/1000, absl::make_unique<TensorDataset>());
-  EXPECT_THAT(
-      cache.Get(""),
-      StatusIs(
-          error::INTERNAL,
-          "tf.data service multi-trainer cache trainer ID must be non-empty."));
+  EXPECT_THAT(cache.Get(""), StatusIs(error::INVALID_ARGUMENT,
+                                      "tf.data service cross-trainer cache "
+                                      "requires a non-empty trainer ID."));
 }
 
 }  // namespace

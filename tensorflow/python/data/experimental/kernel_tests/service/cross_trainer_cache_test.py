@@ -426,6 +426,23 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
           dataset, cluster, job_name="job", cross_trainer_cache=None)
       self.getDatasetOutput(dataset2)
 
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+  def testRequiresNonEmptyTrainerID(self):
+    cluster = self._create_cluster(num_workers=2)
+    dataset = dataset_ops.Dataset.range(10000000).repeat()
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "tf.data service cross-trainer cache requires a non-empty trainer ID."):
+      self.make_distributed_dataset(
+          dataset,
+          cluster,
+          job_name="job",
+          cross_trainer_cache=data_service_ops.CrossTrainerCache(
+              trainer_id=None))
+
   def _create_cluster(self,
                       num_workers,
                       cross_trainer_cache_size_bytes=10 * (2**30)):
