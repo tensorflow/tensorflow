@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/meta/type_traits.h"
@@ -367,6 +368,9 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   XEventMetadata* GetOrCreateEventMetadata(const char* name) {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
+  // Like the functions above but for multiple names.
+  std::vector<XEventMetadata*> GetOrCreateEventsMetadata(
+      const std::vector<absl::string_view>& names);
 
   // Returns event metadata with the given name. Returns nullptr if not found.
   XEventMetadata* GetEventMetadata(absl::string_view name) const;

@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -76,6 +77,16 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
   if (metadata == nullptr) {
     metadata = CreateEventMetadata();
     metadata->set_name(std::move(name));
+  }
+  return metadata;
+}
+
+std::vector<XEventMetadata*> XPlaneBuilder::GetOrCreateEventsMetadata(
+    const std::vector<absl::string_view>& names) {
+  std::vector<XEventMetadata*> metadata;
+  metadata.reserve(names.size());
+  for (absl::string_view name : names) {
+    metadata.push_back(GetOrCreateEventMetadata(name));
   }
   return metadata;
 }
