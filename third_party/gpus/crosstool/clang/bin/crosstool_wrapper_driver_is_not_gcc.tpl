@@ -248,6 +248,8 @@ def InvokeNvcc(argv, log=False):
   nvccopts += std_options
   nvccopts += m_options
   nvccopts += warning_options
+  # Force C++17 dialect (note, everything in just one string!)
+  nvccopts += ' --std c++17 '
   nvccopts += fatbin_options
 
   if depfiles:
@@ -268,6 +270,10 @@ def InvokeNvcc(argv, log=False):
          ' --compiler-bindir=' + GCC_HOST_COMPILER_PATH +
          ' -I .' +
          ' -x cu ' + opt + includes + ' -c ' + srcs + out)
+
+  print(f"echo =====================================")
+  print(f"echo {cmd}")
+  print(f"echo =====================================")
 
   # TODO(zhengxq): for some reason, 'gcc' needs this help to find 'as'.
   # Need to investigate and fix.
