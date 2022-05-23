@@ -20,7 +20,6 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -310,9 +309,6 @@ LogicalResult Gemm::operator()(
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
 
-  se::OwningScratchAllocator<> scratch_allocator(run_options->device_ordinal(),
-                                                 run_options->allocator());
-
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
 
@@ -326,8 +322,16 @@ LogicalResult Gemm::operator()(
     config = configs->Set(uid, std::move(*cfg));
   }
 
-  auto executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream,
-                          &scratch_allocator, nullptr);
+  Status executed;
+  if (config->use_cublaslt && stream->parent()->SupportsBlasPlans()) {
+    se::OwningScratchAllocator<> scratch_allocator(
+        run_options->device_ordinal(), run_options->allocator());
+    executed = RunBlasLtMatmul(*config, lhs_data, rhs_data, output_data, stream,
+                               scratch_allocator);
+  } else {
+    executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream);
+  }
+
   if (!executed.ok()) return failure();
 
   return success();
@@ -388,9 +392,6 @@ LogicalResult GemmBias::operator()(
   se::DeviceMemoryBase bias_data = GetDeviceAddress(bias);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
 
-  se::OwningScratchAllocator<> scratch_allocator(run_options->device_ordinal(),
-                                                 run_options->allocator());
-
   VLOG(3) << "Running GEMM + Bias [beta=" << beta << "]";
   se::Stream* stream = run_options->stream();
 
@@ -408,8 +409,16 @@ LogicalResult GemmBias::operator()(
   if (out.data != bias.data)
     stream->ThenMemcpy(&output_data, bias_data, bias_data.size());
 
-  auto executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream,
-                          &scratch_allocator, nullptr);
+  Status executed;
+  if (config->use_cublaslt && stream->parent()->SupportsBlasPlans()) {
+    se::OwningScratchAllocator<> scratch_allocator(
+        run_options->device_ordinal(), run_options->allocator());
+    executed = RunBlasLtMatmul(*config, lhs_data, rhs_data, output_data, stream,
+                               scratch_allocator);
+  } else {
+    executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream);
+  }
+
   if (!executed.ok()) return failure();
 
   return success();
