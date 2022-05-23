@@ -188,15 +188,21 @@ Status TFGGrapplerOptimizer::Optimize(
   // nodes-to-preserve nodes in GrapplerItem.
   TF_RETURN_IF_ERROR(LiftGraphToFunc(*module.getOps<GraphOp>().begin(), item));
 
-  // TODO(chiahungduan): There was a StatusScopedDiagnosticHandler here to
-  // collect the diagnostics emitted from the pass pipeline. Given that even a
-  // successful pass execution may have error diagnostics emitted in between
-  // execution and those logs are not useful for debugging. Besides, there's an
-  // issue (b/36186527) which relates to the handler. Remove this to temporary
-  // bypass the problem. Find a better way to collect the pipeline failure
-  // message here.
+  StatusScopedDiagnosticHandler error_handler(impl_->GetContext());
   if (failed(impl_->RunPipeline(module))) {
-    return InvalidArgument("MLIR Graph Optimizer failed: ");
+    return error_handler.Combine(
+        InvalidArgument("MLIR Graph Optimizer failed: "));
+  }
+  // While pass execution, it may use emitError to return a failure status, this
+  // will be caught by the error_handler. As a result, even if the pass left
+  // without failure, there may still have some message cached in the handler.
+  Status status = error_handler.ConsumeStatus();
+  if (!status.ok()) {
+    VLOG(4) << "Pass execution leftover diagnostics: " << status.error_message()
+            << "\n These message doesn't imply any failure of the pipeline "
+               "execution. They are cached because certain error diagnostics "
+               "were used to pass the internal execution result. Use warning "
+               "diagnostic when possible if you want to avoid this.";
   }
 
   // Convert the lifted graph function back to the graph.
