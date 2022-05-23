@@ -22,10 +22,6 @@
 #
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
-#     c++17:                  Build with C++17 options (links with libc++)
-#     c++1z:                  Build with C++17 options (links with libc++)
-#     c++17_gcc:              Build with C++17 options (links with stdlibc++)
-#     c++1z_gcc:              Build with C++17 options (links with stdlibc++)
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
 #     native_arch_linux:      Build with instruction sets available to the host machine on linux
@@ -284,13 +280,6 @@ build:stackdriver_support --define=stackdriver_support=true
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
-# Build TF with C++ 17 features.
-build:c++17 --cxxopt=-std=c++1z
-build:c++17 --cxxopt=-stdlib=libc++
-build:c++1z --config=c++17
-build:c++17_gcc --cxxopt=-std=c++1z
-build:c++1z_gcc --config=c++17_gcc
-
 # Don't trigger --config=<host platform> when cross-compiling.
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
@@ -328,17 +317,17 @@ build:macos --define=INCLUDEDIR=$(PREFIX)/include
 build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
-# By default, build TF in C++ 14 mode.
-build:android --cxxopt=-std=c++14
-build:android --host_cxxopt=-std=c++14
-build:ios --cxxopt=-std=c++14
-build:ios --host_cxxopt=-std=c++14
-build:linux --cxxopt=-std=c++14
-build:linux --host_cxxopt=-std=c++14
-build:macos --cxxopt=-std=c++14
-build:macos --host_cxxopt=-std=c++14
-build:windows --cxxopt=/std:c++14
-build:windows --host_cxxopt=/std:c++14
+# By default, build TF in C++ 17 mode.
+build:android --cxxopt=-std=c++17
+build:android --host_cxxopt=-std=c++17
+build:ios --cxxopt=-std=c++17
+build:ios --host_cxxopt=-std=c++17
+build:linux --cxxopt=-std=c++17
+build:linux --host_cxxopt=-std=c++17
+build:macos --cxxopt=-std=c++17
+build:macos --host_cxxopt=-std=c++17
+build:windows --cxxopt=/std:c++17
+build:windows --host_cxxopt=/std:c++17
 
 # On windows, we still link everything into a single DLL.
 build:windows --config=monolithic
