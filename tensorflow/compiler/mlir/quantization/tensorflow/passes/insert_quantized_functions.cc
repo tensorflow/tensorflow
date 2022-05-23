@@ -29,17 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-// NOLINTNEXTLINE
-llvm::cl::opt<mlir::quant::QuantizationMethod> quantization_method_opt(
-    "quant-insert-library-quantization-method",
-    llvm::cl::init(mlir::quant::QuantizationMethod::kPostTrainingQuantization),
-    llvm::cl::desc("Insert library for the quantization method."),
-    llvm::cl::values(
-        clEnumValN(mlir::quant::QuantizationMethod::kPostTrainingQuantization,
-                   "ptq", "Post-training static-range quantization"),
-        clEnumValN(mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
-                   "drq", "Post-training dynamic-range quantizaiton")));
-
 namespace mlir {
 namespace quant {
 namespace {
@@ -49,12 +38,6 @@ class InsertQuantizedFunctionsPass
                                OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
-
-  explicit InsertQuantizedFunctionsPass() {
-    quantization_method_ = quantization_method_opt;
-  }
-  explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method)
-      : quantization_method_(quantization_method) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in the textual format (on
@@ -73,25 +56,14 @@ class InsertQuantizedFunctionsPass
 
  private:
   void runOnOperation() override;
-
-  QuantizationMethod quantization_method_ =
-      QuantizationMethod::kPostTrainingQuantization;
 };
 
 static PassRegistration<InsertQuantizedFunctionsPass> pass;
 
 void InsertQuantizedFunctionsPass::runOnOperation() {
-  std::unique_ptr<llvm::MemoryBuffer> mem_buffer;
-  if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
-    mem_buffer = llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(kQuantizedFunctionLibraryInMLIR_DRQ),
-        /*BufferName=*/"",
-        /*RequiresNullTerminator=*/false);
-  } else {
-    mem_buffer = llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(kQuantizedFunctionLibraryInMLIR), /*BufferName=*/"",
-        /*RequiresNullTerminator=*/false);
-  }
+  auto mem_buffer = llvm::MemoryBuffer::getMemBuffer(
+      llvm::StringRef(kQuantizedFunctionLibraryInMLIR), /*BufferName=*/"",
+      /*RequiresNullTerminator=*/false);
 
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
@@ -131,9 +103,8 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the pass for inserting quantized functions.
-std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method) {
-  return std::make_unique<InsertQuantizedFunctionsPass>(quantization_method);
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass() {
+  return std::make_unique<InsertQuantizedFunctionsPass>();
 }
 
 }  // namespace quant

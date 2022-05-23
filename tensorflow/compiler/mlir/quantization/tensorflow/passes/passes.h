@@ -51,8 +51,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateIssueIDsOfCustomAggregationOpsPass();
 
 // Inserts quantized function library.
-std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method);
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass();
 
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>

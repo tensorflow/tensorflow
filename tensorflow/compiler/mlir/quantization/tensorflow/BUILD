@@ -27,16 +27,11 @@ py_binary(
 
 genrule(
     name = "quantized_function_library",
-    srcs = [
-        "passes/quantized_function_library.mlir",
-        "passes/quantized_function_library_drq.mlir",
-    ],
+    srcs = ["passes/quantized_function_library.mlir"],
     outs = [
         "passes/quantized_function_library.h",
     ],
-    cmd = "$(location gen_quantized_function_library) \
-            --output_file $(RULEDIR)/passes/quantized_function_library.h \
-            --src '$(SRCS)'",
+    cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src $(SRCS)",
     exec_tools = ["gen_quantized_function_library"],
 )
 
