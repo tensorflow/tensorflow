@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <atomic>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <utility>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -709,9 +711,11 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
           Notification n;
+          absl::Time start_time = iterator->metrics_collector().RecordStart();
           MultiDeviceIteratorCallback callback = std::bind(
-              [ctx, iterator, &n](const HostBufferElement& elem) {
-                iterator->metrics_collector().RecordStop(elem.value);
+              [ctx, iterator, start_time, &n](const HostBufferElement& elem) {
+                iterator->metrics_collector().RecordStop(start_time,
+                                                         elem.value);
                 Status s = elem.status;
                 if (!s.ok()) {
                   ctx->SetStatus(s);
@@ -726,7 +730,6 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
               },
               std::placeholders::_1);
 
-          iterator->metrics_collector().RecordStart();
           Status s = iterator->GetNextFromShard(ctx, shard_num, incarnation_id,
                                                 std::move(callback));
           if (!s.ok()) {
