@@ -206,3 +206,78 @@ func.func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
 }
 // CHECK-LABEL: func @tiled_loop_on_buffers
 // CHECK: iterators[
+
+// -----
+
+#cwise_trait = {
+  indexing_maps = [
+    affine_map<(d0) -> (d0)>,
+    affine_map<(d0) -> (d0)>,
+    affine_map<(d0) -> (d0)>
+  ],
+  iterator_types = ["parallel"]
+}
+
+func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
+                         %output: tensor<8xf32>) -> tensor<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %in_space = gml_st.space [8] : !gml_st.tile<8>
+
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4)
+    outs(%out_ = %output: tensor<8xf32>) {
+    %tile = gml_st.tile %in_space [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %lhs_sub = gml_st.materialize %lhs at %tile
+      : tensor<8xf32> at !gml_st.tile<4>
+    %rhs_sub = gml_st.materialize %rhs at %tile
+      : tensor<8xf32> at !gml_st.tile<4>
+    %out_sub = gml_st.materialize %out_ at %tile
+      : tensor<8xf32> at !gml_st.tile<4>
+
+    %result_sub = linalg.generic #cwise_trait
+        ins(%lhs_sub, %rhs_sub : tensor<4xf32>, tensor<4xf32>)
+        outs(%out_sub : tensor<4xf32>) {
+      ^bb(%l: f32, %r: f32, %o: f32) :
+        %s = arith.addf %l, %r : f32
+        linalg.yield %s : f32
+    } -> tensor<4xf32>
+
+    gml_st.subset_yield %result_sub at %tile : tensor<4xf32> at !gml_st.tile<4>
+  }
+  func.return %sum : tensor<8xf32>
+}
+// CHECK-LABEL: func @parallel_loop
+
+func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
+                         %output: tensor<8xf32>) -> tensor<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %in_space = gml_st.space [8] : !gml_st.tile<8>
+
+  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
+    outs(%out_ = %output: tensor<8xf32>) {
+    %tile = gml_st.tile %in_space [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %lhs_sub = gml_st.materialize %lhs at %tile
+      : tensor<8xf32> at !gml_st.tile<4>
+    %rhs_sub = gml_st.materialize %rhs at %tile
+      : tensor<8xf32> at !gml_st.tile<4>
+    %out_sub = gml_st.materialize %out_ at %tile
+      : tensor<8xf32> at !gml_st.tile<4>
+
+    %result_sub = linalg.generic #cwise_trait
+        ins(%lhs_sub, %rhs_sub : tensor<4xf32>, tensor<4xf32>)
+        outs(%out_sub : tensor<4xf32>) {
+      ^bb(%l: f32, %r: f32, %o: f32) :
+        %s = arith.addf %l, %r : f32
+        linalg.yield %s : f32
+    } -> tensor<4xf32>
+
+    gml_st.subset_yield %result_sub at %tile : tensor<4xf32> at !gml_st.tile<4>
+  }
+  func.return %sum : tensor<8xf32>
+}
+// CHECK-LABEL: func @for_loop
