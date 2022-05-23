@@ -3582,14 +3582,27 @@ func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> te
 
 // -----
 
-// CHECK-LABEL: func @pad
-func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
+// CHECK-LABEL: func @static_pad
+func.func @static_pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xf16> {
   %0 = "mhlo.pad"(%arg0, %arg1) {
     edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
     edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
     interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
   } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
   func.return %0 : tensor<2x4x7xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func @dynamic_pad
+func.func @dynamic_pad(%arg0: tensor<?x48x48x32xf32>) -> tensor<?x48x48x48xf32> {
+  %0 = "mhlo.constant"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {
+    edge_padding_high = dense<[0, 0, 0, 16]> : tensor<4xi64>,
+    edge_padding_low = dense<0> : tensor<4xi64>,
+    interior_padding = dense<0> : tensor<4xi64>
+  } : (tensor<?x48x48x32xf32>, tensor<f32>) -> tensor<?x48x48x48xf32>
+  func.return %1 : tensor<?x48x48x48xf32>
 }
 
 // -----

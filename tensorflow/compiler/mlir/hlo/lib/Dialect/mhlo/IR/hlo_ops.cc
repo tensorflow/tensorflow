@@ -5254,6 +5254,11 @@ LogicalResult PadOp::inferReturnTypeComponents(
   auto input_shape = input_type.getShape();
   SmallVector<int64_t> result_shape;
   for (int i = 0, e = input_shape.size(); i < e; i++) {
+    if (isDynamicDimSize(input_shape[i])) {
+      result_shape.push_back(ShapedType::kDynamicSize);
+      continue;
+    }
+
     int64_t padding_low_val = padding_low.getValues<APInt>()[i].getSExtValue();
     int64_t padding_high_val =
         padding_high.getValues<APInt>()[i].getSExtValue();
