@@ -111,11 +111,9 @@ inline ::tensorflow::Status CreateWithUpdatedMessage(
 // to be several layers of additional context.
 template <typename... Args>
 void AppendToMessage(::tensorflow::Status* status, Args... args) {
-  std::vector<StackFrame> stack_trace = status->stack_trace();
   auto new_status = ::tensorflow::Status(
       status->code(),
-      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...),
-      std::move(stack_trace));
+      ::tensorflow::strings::StrCat(status->error_message(), "\n\t", args...));
   CopyPayloads(*status, new_status);
   *status = std::move(new_status);
 }

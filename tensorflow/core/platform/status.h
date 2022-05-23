@@ -39,12 +39,6 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
-namespace errors {
-
-typedef ::tensorflow::error::Code Code;
-
-}
-
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
@@ -54,8 +48,7 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, absl::string_view msg)
-      : Status(code, msg, {}) {}
+  Status(tensorflow::error::Code code, absl::string_view msg);
 
   /// \brief Create a status with the specified error code, msg, and stack trace
   /// as a human-readable string containing more detailed information.
@@ -86,9 +79,7 @@ class Status {
     return ok() ? empty_string() : state_->msg;
   }
 
-  const std::vector<StackFrame>& stack_trace() const {
-    return ok() ? empty_stack_trace() : state_->stack_trace;
-  }
+  std::vector<StackFrame> stack_trace() const;
 
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;
@@ -182,11 +173,9 @@ class Status {
 
  private:
   static const std::string& empty_string();
-  static const std::vector<StackFrame>& empty_stack_trace();
   struct State {
     tensorflow::error::Code code;
     std::string msg;
-    std::vector<StackFrame> stack_trace;
     std::unordered_map<std::string, std::string> payloads;
   };
 
@@ -221,6 +210,17 @@ Status UnauthenticatedError(absl::string_view message);
 Status UnavailableError(absl::string_view message);
 Status UnimplementedError(absl::string_view message);
 Status UnknownError(absl::string_view message);
+
+// TODO(b/197552541) Move this namespace to errors.h.
+namespace errors {
+
+typedef ::tensorflow::error::Code Code;
+
+void SetStackTrace(::tensorflow::Status& status,
+                   std::vector<StackFrame> stack_trace);
+
+std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status);
+}  // namespace errors
 
 // Helper class to manage multiple child status values.
 class StatusGroup {

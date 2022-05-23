@@ -1008,9 +1008,10 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   tensorflow::DCheckPyGilState();
   DCHECK(!status.ok());
 
-  if (status.stack_trace().empty()) return status.error_message();
+  std::vector<tensorflow::StackFrame> stack_trace =
+      tensorflow::errors::GetStackTrace(status);
 
-  const std::vector<tensorflow::StackFrame>& stack_trace = status.stack_trace();
+  if (stack_trace.empty()) return status.error_message();
 
   PyObject* linecache = PyImport_ImportModule("linecache");
   PyObject* getline =

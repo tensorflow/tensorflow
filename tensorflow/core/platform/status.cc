@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <deque>
 #include <functional>
+#include <string>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/escaping.h"
@@ -93,15 +94,64 @@ class StatusLogSink : public TFLogSink {
 
 }  // namespace
 
-Status::Status(tensorflow::error::Code code, absl::string_view msg,
-               std::vector<StackFrame>&& stack_trace) {
+// TODO(b/197552541) Move this namespace to errors.h after absl migration.
+namespace errors {
+static constexpr const char kStackTraceProtoUrl[] =
+    "type.googleapis.com/tensorflow.StackTracePayload";
+
+void SetStackTrace(::tensorflow::Status& status,
+                   std::vector<StackFrame> stack_trace) {
+  StackTracePayload payload;
+  for (const StackFrame& frame : stack_trace) {
+    StackTracePayload::StackFrame frame_proto;
+    frame_proto.set_file_name(frame.file_name);
+    frame_proto.set_line_number(frame.line_number);
+    frame_proto.set_function_name(frame.function_name);
+    *payload.add_stack_frames() = frame_proto;
+  }
+  status.SetPayload(kStackTraceProtoUrl, payload.SerializeAsString());
+}
+
+std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status) {
+  std::vector<StackFrame> stack_trace;
+  absl::optional<absl::string_view> maybe_serialized_payload =
+      status.GetPayload(kStackTraceProtoUrl);
+  if (maybe_serialized_payload.has_value()) {
+    StackTracePayload payload;
+    std::string serialized_payload(maybe_serialized_payload.value());
+    payload.ParseFromString(serialized_payload);
+    for (const auto& frame_proto : payload.stack_frames()) {
+      StackFrame frame({frame_proto.file_name(), frame_proto.line_number(),
+                        frame_proto.function_name()});
+      stack_trace.push_back(frame);
+    }
+  }
+  return stack_trace;
+}
+
+}  // namespace errors
+
+Status::Status(tensorflow::error::Code code, absl::string_view msg) {
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = std::string(msg);
-  state_->stack_trace = std::move(stack_trace);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
+}
+
+// TODO(b/233388846): Delete this constructor after migrating usages to
+// errors::SetStackTrace.
+Status::Status(tensorflow::error::Code code, absl::string_view msg,
+               std::vector<StackFrame>&& stack_trace)
+    : Status(code, msg) {
+  errors::SetStackTrace(*this, stack_trace);
+}
+
+// TODO(b/233388846): Delete this accessor after migrating usages to
+// errors::GetStackTrace.
+std::vector<StackFrame> Status::stack_trace() const {
+  return errors::GetStackTrace(*this);
 }
 
 void Status::Update(const Status& new_status) {
@@ -122,11 +172,6 @@ Status OkStatus() { return Status(); }
 
 const std::string& Status::empty_string() {
   static string* empty = new string;
-  return *empty;
-}
-
-const std::vector<StackFrame>& Status::empty_stack_trace() {
-  static std::vector<StackFrame>* empty = new std::vector<StackFrame>();
   return *empty;
 }
 
