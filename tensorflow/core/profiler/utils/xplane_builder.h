@@ -98,9 +98,9 @@ class XStatsBuilder {
     }
   }
 
-  const XStat* GetStat(int64_t metadata_id) const {
+  const XStat* GetStat(const XStatMetadata& stat_metadata) const {
     for (auto& stat : *stats_owner_->mutable_stats()) {
-      if (stat.metadata_id() == metadata_id) {
+      if (stat.metadata_id() == stat_metadata.id()) {
         return &stat;
       }
     }

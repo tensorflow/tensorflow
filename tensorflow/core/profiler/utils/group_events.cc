@@ -123,7 +123,7 @@ void ProcessRootEvent(int64_t group_id, EventNode* root_event,
                       GroupMetadataMap* group_metadata_map) {
   root_event->PropagateGroupId(group_id, group_metadata_map);
   std::string group_name = root_event->GetGroupName();
-  // TODO(jihochoi): change event name instead.
+  // TODO(b/160255693): Change the event name instead.
   if (!IsImplicitRootEvent(root_event->GetEventVisitor())) {
     // Add the `step_name` stat for the user-defined root events only. When an
     // XEvent is converted to a trace event, the trace event name is set to the

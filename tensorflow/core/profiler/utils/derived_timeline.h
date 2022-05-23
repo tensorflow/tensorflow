@@ -59,6 +59,8 @@ class DerivedXLineBuilder {
                       absl::string_view name, int64_t timestamp_ns,
                       std::vector<DerivedXLineBuilder*> dependent_lines);
 
+  XLineBuilder& Line() { return line_; }
+
   // Either merges event with the last event or creates a new event on this
   // XLine. group_id and low_level_event_name may be passed to separate
   // consecutive invocations of the same event, depending on the XEvent type:
@@ -123,6 +125,11 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
                       XPlaneBuilder* plane_builder,
                       DerivedXLineBuilder* tf_name_scope_line_builder,
                       DerivedXLineBuilder* tf_op_line_builder);
+
+// Adds step names from GroupMetadataMap to "Steps" line in plane.
+// The event name is updated when converted to trace events.
+void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
+                                  XLineBuilder& line);
 
 // Derives "Step Info", "Tensorflow Ops", "XLA Ops" and "XLA Module" lines in
 // an NVIDIA_GPU device trace from data passed as ScopedAnnotations and stored

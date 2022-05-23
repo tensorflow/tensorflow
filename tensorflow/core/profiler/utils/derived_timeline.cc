@@ -160,6 +160,28 @@ void DerivedXLineBuilder::ResetLastEvents(int level) {
   }
 }
 
+void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
+                                  XLineBuilder& line) {
+  if (group_metadata_map.empty()) return;
+  XPlaneBuilder* plane = line.Plane();
+  const XStatMetadata* group_id_stat_metadata =
+      plane->GetStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  if (group_id_stat_metadata == nullptr) return;
+  const XStatMetadata* step_name_stat_metadata =
+      plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
+  line.ForEachEvent([&](XEventBuilder event) {
+    const XStat* group_id_stat = event.GetStat(*group_id_stat_metadata);
+    if (group_id_stat != nullptr) {
+      int64_t group_id = group_id_stat->int64_value();
+      if (const GroupMetadata* group_metadata =
+              gtl::FindOrNull(group_metadata_map, group_id)) {
+        // TODO(b/160255693): Change the event name directly.
+        event.AddStatValue(*step_name_stat_metadata, group_metadata->name);
+      }
+    }
+  });
+}
+
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  const GroupMetadataMap& group_metadata_map,
                                  XPlane* device_trace, bool step_info_only) {
@@ -193,8 +215,6 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
 
   int64_t group_id_stat_metadata_id =
       plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))->id();
-  int64_t step_name_stat_metadata_id =
-      plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName))->id();
 
   // Process events in order by start time.
   for (const XEventVisitor& event : events) {
@@ -204,12 +224,6 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
       XEvent step_event = CreateXEvent(
           *plane.GetOrCreateEventMetadata(absl::StrCat(*stats.group_id)),
           timespan, group_id_stat_metadata_id, stats.group_id);
-      if (auto group_metadata =
-              gtl::FindOrNull(group_metadata_map, *stats.group_id)) {
-        XStat* stat = step_event.add_stats();
-        stat->set_metadata_id(step_name_stat_metadata_id);
-        stat->set_str_value(group_metadata->name);
-      }
       steps.ExpandOrAddEvent(step_event, stats.group_id);
     }
 
@@ -257,6 +271,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                        stats.group_id, &plane, &tf_name_scope, &tf_ops);
     }
   }
+  AddGroupMetadataToStepEvents(group_metadata_map, steps.Line());
   RemoveEmptyLines(device_trace);
 }
 
@@ -324,7 +339,8 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     for (const auto& kv : per_device_launch_info[i]) {
       int64_t group_id = kv.first;
       const GroupLaunchInfo& group_info = kv.second;
-      if (auto group_metadata = gtl::FindOrNull(group_metadata_map, group_id)) {
+      if (const GroupMetadata* group_metadata =
+              gtl::FindOrNull(group_metadata_map, group_id)) {
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
                 absl::StrCat("Launch Stats for ", group_metadata->name)));
