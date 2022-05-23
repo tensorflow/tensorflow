@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -52,7 +53,7 @@ struct MklConvFwdParams {
   bool native_format;
   string dtypes = string("");
 #ifdef DNNL_AARCH64_USE_ACL
-  void* filter_address = nullptr;
+  uint64 filter_hash;
 #endif
   struct PostOpParam {
     string name;
@@ -485,7 +486,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     key_creator.AddAsKey(convFwdDims.src_dims);
     key_creator.AddAsKey(convFwdDims.filter_dims);
 #ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(convFwdDims.filter_address);
+    key_creator.AddAsKey(convFwdDims.filter_hash);
 #endif
     key_creator.AddAsKey(convFwdDims.bias_dims);
     key_creator.AddAsKey(convFwdDims.dst_dims);
@@ -808,9 +809,12 @@ class MklConvOp : public OpKernel {
       // TODO(intel-tf): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
 #ifdef DNNL_AARCH64_USE_ACL
-      // Specifics of ACL: a primitive per constant weights ptr
-      convFwdDims.filter_address = const_cast<void*>(
-          static_cast<const void*>(filter_tensor.flat<Tfilter>().data()));
+      // TODO(milpuz01): Remove once Arm Compute Library provides support for
+      // in-place updates
+      convFwdDims.filter_hash = Hash64(
+          filter_tensor.tensor_data().data(),
+          std::min(kFilterTensorHashLength,
+                   static_cast<int>(filter_tensor.tensor_data().size())));
 #endif
 
       conv_fwd =
@@ -1201,6 +1205,9 @@ class MklConvOp : public OpKernel {
   // Input indices for FusedBatchNorm
   const int kInputIndex_BN_Scale = 2, kInputIndex_BN_Offset = 3;
   const int kInputIndex_BN_Mean = 4, kInputIndex_BN_Variance = 5;
+#ifdef DNNL_AARCH64_USE_ACL
+  const int kFilterTensorHashLength = 1024;
+#endif
 
   MklTensorFormat GetFilterTfDataFormat(const MklDnnShape* filter_mkl_shape,
                                         const ConvFwdPd& conv_prim_desc) const {
