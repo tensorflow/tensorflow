@@ -1217,8 +1217,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
     result_shaped_type = this->typeConverter->convertType(result_shaped_type)
                              .template dyn_cast<ShapedType>();
 
-    auto result_element_type = result_shaped_type.getElementType();
-    if (!result_element_type.isSignlessIntOrFloat()) return failure();
+    Type result_element_type = result_shaped_type.getElementType();
 
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = result_shaped_type.getRank();
@@ -1239,15 +1238,18 @@ class IotaConverter : public OpConversionPattern<OpTy> {
             ValueRange /*args*/) {
           Value index_op = nested_builder.create<linalg::IndexOp>(
               nested_loc, iota_op.iota_dimension());
+          Type unwrapped_result_element_type = result_element_type;
+          if (auto complex_type =
+                  unwrapped_result_element_type.dyn_cast<ComplexType>())
+            unwrapped_result_element_type = complex_type.getElementType();
           Value cast_op = nested_builder.create<arith::IndexCastOp>(
               nested_loc,
               nested_builder.getIntegerType(
-                  result_element_type.getIntOrFloatBitWidth()),
+                  unwrapped_result_element_type.getIntOrFloatBitWidth()),
               index_op);
-          if (result_element_type.template isa<FloatType>()) {
-            cast_op = nested_builder.create<arith::SIToFPOp>(
-                nested_loc, result_element_type, cast_op);
-          }
+          cast_op = mhlo::MhloOpToStdScalarOp::map<mhlo::ConvertOp>(
+              nested_loc, result_element_type, cast_op.getType(), cast_op,
+              &nested_builder);
           nested_builder.create<linalg::YieldOp>(nested_loc, cast_op);
         },
         PruneAttributeList(iota_op));
