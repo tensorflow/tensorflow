@@ -87,10 +87,8 @@ def _get_checkpoint_size(prefix):
   # Gather all files beginning with prefix (.index plus sharded data files).
   files = glob.glob("{}*".format(prefix))
   for file in files:
-    logging.info(file)
     # Use TensorFlow's C++ FileSystem API.
     size += metrics.CalculateFileSize(file)
-    logging.info(size)
   return size
 
 
