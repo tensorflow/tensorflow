@@ -271,10 +271,6 @@ def InvokeNvcc(argv, log=False):
          ' -I .' +
          ' -x cu ' + opt + includes + ' -c ' + srcs + out)
 
-  print(f"echo =====================================")
-  print(f"echo {cmd}")
-  print(f"echo =====================================")
-
   # TODO(zhengxq): for some reason, 'gcc' needs this help to find 'as'.
   # Need to investigate and fix.
   cmd = 'PATH=' + PREFIX_DIR + ':$PATH ' + cmd
