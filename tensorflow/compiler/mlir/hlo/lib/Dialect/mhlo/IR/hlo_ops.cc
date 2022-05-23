@@ -2955,9 +2955,20 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
         for (APInt shape : shapeAttr.getValues<APInt>()) {
           outputShape.push_back(shape.getZExtValue());
         }
-        rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
-            op, RankedTensorType::get(outputShape, type.getElementType()),
+        Value result = rewriter.create<BroadcastInDimOp>(
+            op.getLoc(),
+            RankedTensorType::get(outputShape, type.getElementType()),
             op.operand(), op.broadcast_dimensions());
+        // We are refining the type here. Not all operations can tolerate their
+        // operands changing type. Operations from mhlo dialect can. So insert
+        // a cast otherwise.
+        if (llvm::any_of(op->getUsers(), [&](Operation* user) {
+              return user->getDialect() != op->getDialect();
+            })) {
+          result = rewriter.create<tensor::CastOp>(
+              op.getLoc(), op.getResult().getType(), result);
+        }
+        rewriter.replaceOp(op, result);
         return success();
       }
     }
