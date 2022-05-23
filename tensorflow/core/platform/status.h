@@ -160,12 +160,6 @@ class Status {
   absl::optional<absl::string_view> GetPayload(
       absl::string_view type_url) const;
 
-// OkStatus()
-//
-// Returns an OK status, equivalent to a default constructed instance. Prefer
-// usage of `OkStatus()` when constructing such an OK status.
-Status OkStatus();
-
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
