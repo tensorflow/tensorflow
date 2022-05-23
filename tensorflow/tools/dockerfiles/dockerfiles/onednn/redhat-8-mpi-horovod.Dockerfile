@@ -19,9 +19,37 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG CENTOS_VERSION=8
+ARG REDHAT_VERSION=latest
 
-FROM centos:${CENTOS_VERSION} as base
+FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} as base
+
+### Required OpenShift Labels
+LABEL name="Intel&#174; Optimizations for TensorFlow*" \
+      maintainer="Abolfazl Shahbazi <abolfazl.shahbazi@intel.com>" \
+      vendor="Intel&#174; Corporation" \
+      version="2.7.0" \
+      release="2.7.0" \
+      summary="Intel&#174; Optimizations for TensorFlow* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library primitives." \
+      description="Intel&#174; Optimizations for TensorFlow* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library (Intel&#174; oneDNN) primitives, a popular performance library for deep learning applications. TensorFlow* is a widely-used machine learning framework in the deep learning arena, demanding efficient utilization of computational resources. In order to take full advantage of Intel&#174; architecture and to extract maximum performance, the TensorFlow* framework has been optimized using Intel&#174; oneDNN primitives."
+
+# Licenses, Legal Notice and TPPs for older versions
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/LEGAL-NOTICE ./licenses/
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/LICENSE ./licenses/
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/third_party_programs_license/oneDNN-THIRD-PARTY-PROGRAMS ./licenses/third_party_programs_license/
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/third_party_programs_license/third-party-programs.txt ./licenses/third_party_programs_license/
+
+ENV LANG C.UTF-8
+ARG PYTHON=python3
+
+### Add necessary updates here
+RUN yum -y update-minimal --security --sec-severity=Important --sec-severity=Critical
+
+RUN INSTALL_PKGS="\
+    ${PYTHON}-pip \
+    which" && \
+    yum -y --setopt=tsflags=nodocs install $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum -y clean all --enablerepo='*'
 
 # Intel Optimizations specific Envs
 ENV KMP_AFFINITY='granularity=fine,verbose,compact,1,0' \
@@ -48,9 +76,6 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
-# On CentOS 7, yum needs to run with Python2.7
-RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
-
 # Options:
 #   tensorflow
 #   tensorflow-gpu
@@ -62,25 +87,26 @@ ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
 RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
-# install mpich, openssh for MPI to communicate between containers
 RUN yum update -y && yum install -y \
-    mpich \
-    mpich-devel \
+    openmpi \
+    openmpi-devel \
     openssh \
     openssh-server \
-    redhat-rpm-config \
     which && \
     yum clean all
 
-ENV PATH="/usr/lib64/mpich/bin:${PATH}"
+ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
 
-# Create a wrapper for MPICH to allow running as root by default
+# Create a wrapper for OpenMPI to allow running as root by default
 RUN mv -f $(which mpirun) /usr/bin/mpirun.real && \
     echo '#!/bin/bash' > /usr/bin/mpirun && \
-    echo 'mpirun.real "$@"' >> /usr/bin/mpirun && \
+    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
     chmod a+x /usr/bin/mpirun
 
-# Set up SSH
+# Configure OpenMPI to run good defaults:
+RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi-x86_64/openmpi-mca-params.conf
+
+# Install OpenSSH for MPI to communicate between containers
 RUN mkdir -p /var/run/sshd
 
 # Allow OpenSSH to talk to containers without asking for confirmation
@@ -94,36 +120,16 @@ ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=v0.21.1
 
-ENV LC_ALL=en_US.UTF-8
-ENV LC_CTYPE=en_US.UTF-8
-
-RUN yum update -y && \
-    yum install -y centos-release-scl && \
-    yum install -y \
-        devtoolset-8 \
-        devtoolset-8-make \
-        llvm-toolset-7-cmake \
-        ${PYTHON}-devel \
-        sclo-git25 && \
+RUN yum update -y && yum install -y \
+    cmake \
+    gcc \
+    gcc-c++ \
+    git \
+    make \
+    ${PYTHON}-devel && \
     yum clean all
-
-ENV PATH=/opt/rh/devtoolset-8/root/usr/bin:/opt/rh/sclo-git25/root/usr/bin:/opt/rh/llvm-toolset-7/root/usr/bin:${PATH}
 
 RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
-
-RUN ${PYTHON} -m pip install --no-cache-dir jupyter matplotlib
-# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN ${PYTHON} -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
-RUN jupyter serverextension enable --py jupyter_http_over_ws
-
-RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
-RUN mkdir /.local && chmod a+rwx /.local
-WORKDIR /tf
-EXPOSE 8888
-
-RUN ${PYTHON} -m ipykernel.kernelspec
-
-CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]

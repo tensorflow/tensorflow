@@ -19,45 +19,42 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG CENTOS_VERSION=8
+ARG REDHAT_VERSION=latest
 
-FROM centos:${CENTOS_VERSION} AS base
+FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} as base
 
-# Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
-RUN yum clean all && \
-    yum update -y && \
-    yum install -y epel-release
+### Required OpenShift Labels
+LABEL name="Intel&#174; Optimizations for TensorFlow*" \
+      maintainer="Abolfazl Shahbazi <abolfazl.shahbazi@intel.com>" \
+      vendor="Intel&#174; Corporation" \
+      version="2.7.0" \
+      release="2.7.0" \
+      summary="Intel&#174; Optimizations for TensorFlow* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library primitives." \
+      description="Intel&#174; Optimizations for TensorFlow* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library (Intel&#174; oneDNN) primitives, a popular performance library for deep learning applications. TensorFlow* is a widely-used machine learning framework in the deep learning arena, demanding efficient utilization of computational resources. In order to take full advantage of Intel&#174; architecture and to extract maximum performance, the TensorFlow* framework has been optimized using Intel&#174; oneDNN primitives."
 
-RUN yum update -y && \
-    yum install -y \
-        curl \
-        freetype-devel \
-        gcc \
-        gcc-c++ \
-        git \
-        hdf5-devel \
-        java-1.8.0-openjdk \
-        java-1.8.0-openjdk-devel \
-        java-1.8.0-openjdk-headless \
-        libcurl-devel \
-        make \
-        pkg-config \
-        rsync \
-        sudo \
-        unzip \
-        zeromq-devel \
-        zip \
-        zlib-devel && \
-        yum clean all
+# Licenses, Legal Notice and TPPs for older versions
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/LEGAL-NOTICE ./licenses/
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/LICENSE ./licenses/
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/third_party_programs_license/oneDNN-THIRD-PARTY-PROGRAMS ./licenses/third_party_programs_license/
+ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/third_party_programs_license/third-party-programs.txt ./licenses/third_party_programs_license/
 
-ENV CI_BUILD_PYTHON python
+ENV LANG C.UTF-8
+ARG PYTHON=python3
 
-# CACHE_STOP is used to rerun future commands, otherwise cloning tensorflow will be cached and will not pull the most recent version
-ARG CACHE_STOP=1
-# Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
-ARG CHECKOUT_TF_SRC=0
-ARG TF_BRANCH=master
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git --branch "${TF_BRANCH}" --single-branch /tensorflow_src || true
+### Add necessary updates here
+RUN yum -y update-minimal --security --sec-severity=Important --sec-severity=Critical
+
+RUN INSTALL_PKGS="\
+    ${PYTHON}-pip \
+    which" && \
+    yum -y --setopt=tsflags=nodocs install $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum -y clean all --enablerepo='*'
+
+# Intel Optimizations specific Envs
+ENV KMP_AFFINITY='granularity=fine,verbose,compact,1,0' \
+    KMP_BLOCKTIME=1 \
+    KMP_SETTINGS=1
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
@@ -79,16 +76,16 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
-# On CentOS 7, yum needs to run with Python2.7
-RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
-
-# Install bazel
-ARG BAZEL_VERSION=3.7.2
-RUN mkdir /bazel && \
-    curl -fSsL -o /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
-    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
-    bash /bazel/installer.sh && \
-    rm -f /bazel/installer.sh
+# Options:
+#   tensorflow
+#   tensorflow-gpu
+#   tf-nightly
+#   tf-nightly-gpu
+# Set --build-arg TF_PACKAGE_VERSION=1.11.0rc0 to install a specific version.
+# Installs the latest version by default.
+ARG TF_PACKAGE=tensorflow
+ARG TF_PACKAGE_VERSION=
+RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
 RUN yum update -y && yum install -y \
     openmpi \
@@ -117,10 +114,22 @@ RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_con
     echo "    StrictHostKeyChecking no" >> /etc/ssh/sshd_config.new && \
     mv -f /etc/ssh/sshd_config.new /etc/ssh/sshd_config
 
-# Check out horovod source code if --build-arg CHECKOUT_HOROVOD_SRC=1
-ARG CHECKOUT_HOROVOD_SRC=0
-ARG HOROVOD_BRANCH=master
-RUN test "${CHECKOUT_HOROVOD_SRC}" -eq 1 && git clone --branch "${HOROVOD_BRANCH}" --single-branch --recursive https://github.com/uber/horovod.git /horovod_src || true
+# Install Horovod
+ARG HOROVOD_WITHOUT_PYTORCH=1
+ARG HOROVOD_WITHOUT_MXNET=1
+ARG HOROVOD_WITH_TENSORFLOW=1
+ARG HOROVOD_VERSION=v0.21.1
+
+RUN yum update -y && yum install -y \
+    cmake \
+    gcc \
+    gcc-c++ \
+    git \
+    make \
+    ${PYTHON}-devel && \
+    yum clean all
+
+RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

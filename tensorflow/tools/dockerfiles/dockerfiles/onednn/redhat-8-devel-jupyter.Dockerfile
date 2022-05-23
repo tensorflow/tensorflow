@@ -19,14 +19,16 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG CENTOS_VERSION=8
+ARG REDHAT_VERSION=latest
 
-FROM centos:${CENTOS_VERSION} AS base
+FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} AS base
 
-# Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
-RUN yum clean all && \
-    yum update -y && \
-    yum install -y epel-release
+ARG REDHAT_VERSION=latest
+
+# Enable EPEL otherwise some packages like hdf5-devel fail to install
+RUN dnf install -y 'dnf-command(config-manager)' && \
+    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
+    dnf clean all
 
 RUN yum update -y && \
     yum install -y \
@@ -79,9 +81,6 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
 
-# On CentOS 7, yum needs to run with Python2.7
-RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
-
 # Install bazel
 ARG BAZEL_VERSION=3.7.2
 RUN mkdir /bazel && \
@@ -89,38 +88,6 @@ RUN mkdir /bazel && \
     curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
     bash /bazel/installer.sh && \
     rm -f /bazel/installer.sh
-
-RUN yum update -y && yum install -y \
-    openmpi \
-    openmpi-devel \
-    openssh \
-    openssh-server \
-    which && \
-    yum clean all
-
-ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
-
-# Create a wrapper for OpenMPI to allow running as root by default
-RUN mv -f $(which mpirun) /usr/bin/mpirun.real && \
-    echo '#!/bin/bash' > /usr/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
-    chmod a+x /usr/bin/mpirun
-
-# Configure OpenMPI to run good defaults:
-RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi-x86_64/openmpi-mca-params.conf
-
-# Install OpenSSH for MPI to communicate between containers
-RUN mkdir -p /var/run/sshd
-
-# Allow OpenSSH to talk to containers without asking for confirmation
-RUN cat /etc/ssh/sshd_config | grep -v StrictHostKeyChecking > /etc/ssh/sshd_config.new && \
-    echo "    StrictHostKeyChecking no" >> /etc/ssh/sshd_config.new && \
-    mv -f /etc/ssh/sshd_config.new /etc/ssh/sshd_config
-
-# Check out horovod source code if --build-arg CHECKOUT_HOROVOD_SRC=1
-ARG CHECKOUT_HOROVOD_SRC=0
-ARG HOROVOD_BRANCH=master
-RUN test "${CHECKOUT_HOROVOD_SRC}" -eq 1 && git clone --branch "${HOROVOD_BRANCH}" --single-branch --recursive https://github.com/uber/horovod.git /horovod_src || true
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

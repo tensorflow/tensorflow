@@ -19,14 +19,16 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG CENTOS_VERSION=8
+ARG REDHAT_VERSION=latest
 
-FROM centos:${CENTOS_VERSION} AS base
+FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} AS base
 
-# Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
-RUN yum clean all && \
-    yum update -y && \
-    yum install -y epel-release
+ARG REDHAT_VERSION=latest
+
+# Enable EPEL otherwise some packages like hdf5-devel fail to install
+RUN dnf install -y 'dnf-command(config-manager)' && \
+    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
+    dnf clean all
 
 RUN yum update -y && \
     yum install -y \
@@ -78,9 +80,6 @@ RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
 RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
     ln -sf $(which ${PYTHON}) /usr/bin/python
-
-# On CentOS 7, yum needs to run with Python2.7
-RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
 # Install bazel
 ARG BAZEL_VERSION=3.7.2
