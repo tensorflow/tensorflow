@@ -257,6 +257,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
     SetDurationPs(timespan.duration_ps());
   }
 
+  bool operator<(const XEventBuilder& other) const {
+    return GetTimespan() < other.GetTimespan();
+  }
+
  private:
   const XLine* line_;
   XEvent* event_;

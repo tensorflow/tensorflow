@@ -135,15 +135,17 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
 void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
                                   XLineBuilder& line);
 
-// Derives "Step Info", "Tensorflow Ops", "XLA Ops" and "XLA Module" lines in
-// an NVIDIA_GPU device trace from data passed as ScopedAnnotations and stored
-// as XStats in XEvents corresponding to GPU Kernels. Consecutive annotations
-// with the same value are merged into a single event except for XLA modules.
-// The device_trace is both input and output.
+// Derives "Steps" line from group_id XStat in XEvents.
+void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
+                                XPlane* device_trace);
+
+// Derives "TensorFlow Ops", "TensorFlow Name Scope", "XLA Ops" and "XLA Module"
+// lines in an NVIDIA_GPU device trace from data passed as ScopedAnnotations and
+// stored as XStats in XEvents corresponding to GPU Kernels. Consecutive
+// annotations with the same value are merged into a single event except for XLA
+// modules. The device_trace is both input and output.
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
-                                 const GroupMetadataMap& group_metadata_map,
-                                 XPlane* device_trace,
-                                 bool step_info_only = false);
+                                 XPlane* device_trace);
 
 // Derives "Launch Activities Summary" line from host trace.
 void DeriveEventsFromHostTrace(const XPlane* host_trace,
