@@ -2136,7 +2136,8 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
       DynamicDimensionInference::Run(module, options_.custom_call_handler,
-                                     options_.shape_check_mode));
+                                     options_.shape_check_mode,
+                                     options_.assertion_generator));
 
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder();

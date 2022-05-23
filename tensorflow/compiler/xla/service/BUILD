@@ -3372,6 +3372,7 @@ cc_library(
     deps = [
         ":dynamic_window_utils",
         ":hlo",
+        ":hlo_creation_utils",
         ":tuple_util",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -3509,6 +3510,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",

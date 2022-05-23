@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_DIMENSION_INFERENCE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_DIMENSION_INFERENCE_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -49,10 +50,15 @@ class DynamicDimensionInference {
   using CustomCallInferenceHandler =
       std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
 
+  // Generate an assertion which fails the execution if the instruction value is
+  // false.
+  using AssertionGenerator = std::function<void(HloInstruction*)>;
+
   static StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
       CustomCallInferenceHandler custom_call_handler = nullptr,
-      ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore);
+      ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore,
+      const AssertionGenerator& assertion_generator = nullptr);
 
   std::string ToString() const;
 
@@ -96,7 +102,7 @@ class DynamicDimensionInference {
  private:
   explicit DynamicDimensionInference(
       HloModule* module, CustomCallInferenceHandler custom_call_handler,
-      ShapeCheckMode shape_check_mode);
+      ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -165,6 +171,8 @@ class DynamicDimensionInference {
 
   // Indicates what to do at places where shape check is needed.
   ShapeCheckMode shape_check_mode_;
+
+  AssertionGenerator assertion_generator_;
 };
 
 }  // namespace xla
