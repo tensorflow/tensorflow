@@ -123,6 +123,17 @@ class DynamicDimensionInference {
       return lhs.inst == rhs.inst && lhs.index == rhs.index &&
              lhs.dim == rhs.dim;
     }
+
+    std::tuple<int, int, std::string, int64_t> ToTuple() const {
+      return std::make_tuple(
+          inst && inst->GetModule() ? inst->GetModule()->unique_id() : -1,
+          inst ? inst->unique_id() : -1, index.ToString(), dim);
+    }
+
+    friend bool operator<(const DynamicDimension& lhs,
+                          const DynamicDimension& rhs) {
+      return lhs.ToTuple() < rhs.ToTuple();
+    }
   };
 
   // Copies the internal mapping from instruction `from` to instruction `to`.
@@ -140,14 +151,13 @@ class DynamicDimensionInference {
   // dynamic_mapping_ holds the result of the analysis. It maps a dynamic
   // dimension to a scalar HloInstruction that represents the real dynamic size
   // of the dynamic dimension.
-  using DynamicMapping = absl::flat_hash_map<DynamicDimension, HloInstruction*>;
+  using DynamicMapping = std::map<DynamicDimension, HloInstruction*>;
   DynamicMapping dynamic_mapping_;
 
   // A convenient mapping from an hlo to the set of dynamic dimensions that it
   // holds.
   using PerHloDynamicDimensions =
-      absl::flat_hash_map<HloInstruction*,
-                          absl::flat_hash_set<DynamicDimension>>;
+      ConstHloInstructionMap<std::set<DynamicDimension>>;
   PerHloDynamicDimensions per_hlo_dynamic_dimensions_;
 
   // A handler for custom calls.
