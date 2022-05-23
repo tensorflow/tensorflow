@@ -3698,6 +3698,29 @@ LogicalResult DynamicSliceOp::verify() {
                          << num_slice_sizes << ") and number of start indices ("
                          << num_start_indices << ")";
   }
+  auto operandType = operand().getType().dyn_cast<RankedTensorType>();
+  if (!operandType) return failure();
+
+  if (operandType.getRank() != num_start_indices) {
+    return emitOpError() << "has mismatched number of start indices ("
+                         << num_start_indices << ") and the rank of operand ("
+                         << operandType.getRank() << ")";
+  }
+
+  for (int i = 0; i < num_slice_sizes; ++i) {
+    int64_t slice_size = slice_sizes().getValues<int64_t>()[i];
+    if (slice_size < 0) {
+      return emitOpError() << "has negative size index to dynamic slice: "
+                           << slice_size;
+    } else if (!operandType.isDynamicDim(i)) {
+      int64_t dim_size = operandType.getDimSize(i);
+      if (slice_size > dim_size) {
+        return emitOpError() << "has slice size " << slice_size
+                             << " greater than dimension size " << dim_size
+                             << " in dimension " << i << " of operand";
+      }
+    }
+  }
   return success();
 }
 
