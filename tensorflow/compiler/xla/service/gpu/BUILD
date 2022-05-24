@@ -2765,6 +2765,7 @@ test_suite(
 )
 
 # These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_jitrt_executable
+# See tap/tensorflow.xla_gpu_jitrt.
 test_suite(
     name = "jitrt_executable_tests",
     tests = [
