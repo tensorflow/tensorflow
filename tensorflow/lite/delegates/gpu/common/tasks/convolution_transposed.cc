@@ -412,18 +412,18 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
         if (src_def.IsLinear()) {
           c += "      args.src_tensor.GetAddress(addr" + id + ", " + coords +
                ", 0);\n";
-        }
-        if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
-          c += "      addr" + id + " = select(-1, addr" + id + ", (" + check +
-               "));\n";
-          c += "      int ds" + id +
-               " = select(0, args.src_tensor.SliceStride(), (" + check +
-               "));\n";
+          if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
+            c += "      addr" + id + " = select(-1, addr" + id + ", (" + check +
+                 "));\n";
+            c += "      int ds" + id +
+                 " = select(0, args.src_tensor.SliceStride(), (" + check +
+                 "));\n";
+          }
         }
       }
     }
   }
-  if (src_def.storage_type == TensorStorageType::BUFFER) {
+  if (src_def.IsLinear() && !src_def.ReturnsZeroForNegOneRead(gpu_info)) {
     c += "      int ds = args.src_tensor.SliceStride();\n";
   }
   c += "      int kernel_x = kernel_first_dst_x - src_as_dst_x;\n";
