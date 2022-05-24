@@ -247,9 +247,23 @@ LogicalResult LaunchFunc::operator()(
 
   // Add MemRef arguments as buffer arguments.
   for (unsigned i = 0; i < args.size(); ++i) {
+    // Simple row major memref passed as shapeless buffer.
     auto memref = args.get<jitrt::FlatMemrefView>(i);
-    if (failed(memref)) return failure();
-    buffer_args.emplace_back(GetDeviceAddress(*memref));
+    if (succeeded(memref)) {
+      buffer_args.emplace_back(GetDeviceAddress(*memref));
+      continue;
+    }
+
+    // Memref layout must be encoded in the compiled device kernel, so we don't
+    // have to pass strides or minor to major dimensions order to the kernel.
+    auto strided = args.get<jitrt::StridedMemrefView>(i);
+    if (succeeded(strided)) {
+      buffer_args.emplace_back(GetDeviceAddress(*strided));
+      continue;
+    }
+
+    // Unsupported argument type.
+    return failure();
   }
 
   // Execute device kernel on a main stream.
