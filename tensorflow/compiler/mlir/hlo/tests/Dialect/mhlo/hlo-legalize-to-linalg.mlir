@@ -2571,6 +2571,50 @@ func.func @reduce_multi_dimensions(%arg0: tensor<5x4x3xi32>,
 
 // -----
 
+func.func @reduce_lexicographic_min_complex(%arg0: tensor<?x3x4xcomplex<f64>>,
+                                            %arg1: tensor<complex<f64>>)
+  -> tensor<complex<f64>> {
+  %0 = mhlo.reduce(%arg0 init: %arg1)
+   across dimensions = [0, 1, 2]
+   : (tensor<?x3x4xcomplex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
+   reducer(%arg3: tensor<complex<f64>>, %arg4: tensor<complex<f64>>)  {
+    %1 = mhlo.real(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
+    %2 = mhlo.real(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %3 = "mhlo.compare"(%1, %2)
+      {comparison_direction = #mhlo<"comparison_direction EQ">}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %4 = mhlo.imag(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
+    %5 = mhlo.imag(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %6 = "mhlo.compare"(%4, %5)
+      {comparison_direction = #mhlo<"comparison_direction LT">}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %7 = "mhlo.compare"(%1, %2)
+      {comparison_direction = #mhlo<"comparison_direction LT">}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %8 = "mhlo.select"(%3, %6, %7)
+      : (tensor<i1>, tensor<i1>, tensor<i1>) -> tensor<i1>
+    %9 = "mhlo.select"(%8, %arg3, %arg4)
+      : (tensor<i1>, tensor<complex<f64>>, tensor<complex<f64>>)
+      -> tensor<complex<f64>>
+    "mhlo.return"(%9) : (tensor<complex<f64>>) -> ()
+  }
+  return %0 : tensor<complex<f64>>
+}
+
+// CHECK-LABEL: @reduce_lexicographic_min_complex
+// CHECK: linalg.generic
+// CHECK: complex.re
+// CHECK: complex.re
+// CHECK: arith.cmpf
+// CHECK: complex.im
+// CHECK: complex.im
+// CHECK: arith.cmpf
+// CHECK: arith.cmpf
+// CHECK: arith.select
+// CHECK: arith.select
+
+// -----
+
 func.func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):

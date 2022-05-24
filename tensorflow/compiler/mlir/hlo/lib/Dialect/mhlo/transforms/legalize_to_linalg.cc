@@ -1745,7 +1745,7 @@ struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
     // operands have been converted from `tensor<ui32>` to `i32` so recreate
     // `ui32` from the original operands.
     auto operand_types = llvm::to_vector(llvm::map_range(
-        op.getOperandTypes(), [](Type t) { return getElementTypeOrSelf(t); }));
+        op->getOperandTypes(), [](Type t) { return getElementTypeOrSelf(t); }));
     Value result = mhlo::MhloOpToStdScalarOp::map<OpTy>(
         op, result_type, operand_types, adaptor.getOperands(), &rewriter);
     rewriter.replaceOp(op, result);
@@ -3180,10 +3180,12 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
   patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                 ReduceRegionXLAOpConversion<mhlo::AndOp>,
                 ReduceRegionXLAOpConversion<mhlo::CompareOp>,
+                ReduceRegionXLAOpConversion<mhlo::ImagOp>,
                 ReduceRegionXLAOpConversion<mhlo::MaxOp>,
                 ReduceRegionXLAOpConversion<mhlo::MinOp>,
                 ReduceRegionXLAOpConversion<mhlo::MulOp>,
                 ReduceRegionXLAOpConversion<mhlo::OrOp>,
+                ReduceRegionXLAOpConversion<mhlo::RealOp>,
                 ReduceRegionXLAOpConversion<mhlo::SelectOp>,
                 ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
