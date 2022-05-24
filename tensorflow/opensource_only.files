@@ -237,7 +237,6 @@ third_party/gpus/rocm/rocm_config.h.tpl:
 third_party/gpus/rocm_configure.bzl:
 third_party/grpc/BUILD:
 third_party/icu/udata.patch:
-third_party/jpeg/jversion.patch:
 third_party/libxsmm.BUILD:
 third_party/linenoise.BUILD:
 third_party/llvm_openmp/BUILD:
