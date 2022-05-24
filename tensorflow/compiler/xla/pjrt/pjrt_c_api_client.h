@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/platform/casts.h"
 
 namespace xla {
 
@@ -77,7 +78,7 @@ class PjRtCApiDevice : public PjRtDevice {
   PjRtDevice* wrapped() const { return wrapped_; }
 
   static PjRtDevice* GetWrapped(PjRtDevice* c_api_device) {
-    return down_cast<PjRtCApiDevice*>(c_api_device)->wrapped();
+    return tensorflow::down_cast<PjRtCApiDevice*>(c_api_device)->wrapped();
   }
 
  private:
@@ -336,7 +337,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   PjRtBuffer* wrapped() const { return wrapped_.get(); }
 
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
-    return down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
+    return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
   }
 
   static std::vector<PjRtBuffer*> GetWrappedVector(
@@ -410,7 +411,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
   PjRtExecutable* wrapped() const { return wrapped_.get(); }
 
   static PjRtExecutable* GetWrapped(const PjRtExecutable* c_api_executable) {
-    return down_cast<const PjRtCApiExecutable*>(c_api_executable)->wrapped();
+    return tensorflow::down_cast<const PjRtCApiExecutable*>(c_api_executable)
+        ->wrapped();
   }
 
  private:
