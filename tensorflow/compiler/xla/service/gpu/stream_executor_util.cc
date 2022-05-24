@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"

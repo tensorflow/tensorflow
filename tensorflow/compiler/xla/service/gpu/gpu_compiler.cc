@@ -171,9 +171,7 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
