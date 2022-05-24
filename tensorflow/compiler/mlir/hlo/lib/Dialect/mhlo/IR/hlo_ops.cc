@@ -737,6 +737,28 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   result.addAttribute("value", value);
 }
 
+LogicalResult ConstOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  Type type = attributes.get("value").getType();
+  inferredReturnTypes.push_back(type);
+  return success();
+}
+
+bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+  if (l.size() != r.size() || l.size() != 1) return false;
+  auto lhs_ty = l.front().cast<TensorType>();
+  auto rhs_ty = r.front().cast<TensorType>();
+  // For comparisons of the uniform quantized element based tensor type, use the
+  // storage type since the constant value will be stored through the underlying
+  // storage type.
+  if (auto rhs_elem_ty =
+          rhs_ty.getElementType().dyn_cast<quant::QuantizedType>()) {
+    rhs_ty = getSameShapeTensorType(rhs_ty, rhs_elem_ty.getStorageType());
+  }
+  return lhs_ty == rhs_ty;
+}
+
 //===----------------------------------------------------------------------===//
 // CustomCallOp
 //===----------------------------------------------------------------------===//

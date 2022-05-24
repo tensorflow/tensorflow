@@ -42,7 +42,7 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
 //===----------------------------------------------------------------------===//
 
 def HLO_ConstOp : HLO_Op<"constant",
-    [ConstantLike, NoSideEffect, AllTypesMatch<["value", "output"]>]> {
+    [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant operator";
   let description = [{
     Represents a constant value.
@@ -64,6 +64,10 @@ def HLO_ConstOp : HLO_Op<"constant",
 
   // Constant has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]> {
