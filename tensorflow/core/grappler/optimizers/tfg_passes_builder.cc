@@ -30,11 +30,12 @@ void DefaultGrapplerPipeline(PassManager& manager) {
   // Turn certain shape attrs into types to give better knowledge for shape
   // inference.
   manager.addPass(CreateConsolidateAttributesPass());
+  // Toposort the graph will bring better performance in some optimizations like
+  // shape inference.
+  manager.addPass(CreateTopoSortPass());
   // Infer the shape of operation if possible. The TFG importer doesn't do shape
   // inference for almost all operations.
-  // TODO(chiahungduan): Temporarily disable it because it hangs on certain
-  // operations. We need to set a proper limit of iteration.
-  // manager.addPass(CreateShapeInferencePass());
+  manager.addPass(CreateShapeInferencePass());
   // Contruct the shape attrs back from types.
   // TODO(chiahungduan): This will be the required pass before exporting, remove
   // this instance when the exporter has handled it.
