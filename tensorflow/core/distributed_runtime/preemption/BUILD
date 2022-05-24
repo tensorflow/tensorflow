@@ -60,8 +60,8 @@ tf_cc_test(
 
 tf_cc_test(
     name = "preemption_notifier_test",
+    size = "small",
     srcs = ["preemption_notifier_test.cc"],
-    tags = ["no_oss"],  # TODO(b/233636618): Flaky timeouts
     deps = [
         ":preemption_notifier",
         "//tensorflow/core:test",
