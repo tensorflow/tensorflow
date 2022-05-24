@@ -337,61 +337,6 @@ of [namedtuple](https://docs.python.org/3/library/collections.html#collections.n
 or other types that [tf.nest](https://www.tensorflow.org/api_docs/python/tf/nest/map_structure)
 recognizes.
 
-#### Variables closed over by lambda functions
-
-AutoGraph assumes that variables that local functions close over may be used
-anywhere in the parent function, because in general it is possible to hide a
-function call in almost any Python statement). For this reason, these variables
-are accounted within TensorFlow loops.
-
-For example, the following code correctly captures `a` in the TensorFlow loop
-variables:
-
-```
-a = 0
-def f():
-  tf.print(a)
-for i in tf.range(3):
-  a = i
-f()  # Prints 2
-```
-
-An consequence is that these variables must be defined before the loop (see
-Undefined and None values above). So the following code will raise an error,
-even if the variable is never used after the loop:
-
-```
-def f():
-  tf.print(a)
-for i in tf.range(3):  # Error -- `a` must be defined before the loop.
-  a = i
-```
-
-However, lambda functions are handled differently, for reasons of backward
-compatibility. Lambda functions are assumed to be used in the statement where
-they are used, or at least in the same block.
-
-```
-a = 0
-foo(lambda: a)  # This lambda is not expected to be called anywhere else.
-for i in tf.range(3):  # Okay -- `a` is local to the loop.
-  a = i
-```
-
-Due to that reason, the following code will not work as expected for TensorFlow
-loops.
-
-```
-a = 0
-l = lambda: tf.print(a)
-for i in tf.range(3):
-  a = i  # `a` is considered local to the loop
-l()  # Prints 0!
-```
-
-Note that none of these restrictions only apply to TensorFlow loops; Python
-loops correctly handle closures in all cases.
-
 ### Python collections in TensorFlow control flow
 
 Key Point: Use TensorFlow collection classes instead of Python collections.
