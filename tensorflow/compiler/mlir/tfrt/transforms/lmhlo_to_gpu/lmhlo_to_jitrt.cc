@@ -469,6 +469,11 @@ void ConvertLmhloConstantToArgPass::runOnOperation() {
   target.addIllegalOp<GetGlobalOp>();
   target.addLegalOp<ConstantOp, memref::ViewOp>();
 
+  // TODO(ezhulenev): By adding MHLO and LMHLO to a set of legal dialects, we
+  // suppress any rewrites for these dialects (there are canonicalization
+  // patterns that interact badly with downstream Gpu binary code generation).
+  target.addLegalDialect<mhlo::MhloDialect, lmhlo::LmhloDialect>();
+
   if (failed(applyPartialConversion(module, target, std::move(patterns))))
     signalPassFailure();
 }
