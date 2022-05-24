@@ -1669,6 +1669,9 @@ class DotGeneralBatchMatMulOpConversion
     if (!VerifyHloOpBufferOrTensorSemantics(op)) {
       return failure();
     }
+    if (op.getType().cast<RankedTensorType>().getRank() != 3) {
+      return rewriter.notifyMatchFailure(op, "expected a batch matmul");
+    }
 
     mhlo::DotDimensionNumbersAttr dim_numbers = op.dot_dimension_numbers();
     auto lhs_batching_dims = dim_numbers.getLhsBatchingDimensions();

@@ -2131,6 +2131,25 @@ func.func @einsum_basic(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>) -> t
 
 // -----
 
+func.func @dot_general_batch_matvec(%arg0: tensor<?x?x3xf32>,
+                                    %arg1: tensor<?x3xf32>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    someattr
+  } : (tensor<?x?x3xf32>, tensor<?x3xf32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @dot_general_batch_matvec(
+// CHECK: linalg.generic
+
+// -----
+
 // CHECK: #[[MAP0:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK: func @einsum_pointwisemul
 func.func @einsum_pointwisemul(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x4x5xf32>) -> tensor<3x4x5xf32> {
