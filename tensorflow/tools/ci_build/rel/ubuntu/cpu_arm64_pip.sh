@@ -70,6 +70,7 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/framework:node_file_writer_test \
     -//tensorflow/python/grappler:memory_optimizer_test \
     -//tensorflow/python/keras/engine:training_arrays_test \
+    -//tensorflow/python/keras/layers:convolutional_recurrent_test \
     -//tensorflow/python/kernel_tests/linalg:linear_operator_householder_test \
     -//tensorflow/python/kernel_tests/linalg:linear_operator_inversion_test \
     -//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test \
