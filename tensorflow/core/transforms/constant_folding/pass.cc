@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
+#include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/utils/eval_utils.h"
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
@@ -115,6 +116,7 @@ static FailureOr<TFOp> CreateConstantTensorOp(
   state.addTypes({type, ControlType::get(builder.getContext())});
 
   state.attributes = other_attrs;
+  util::EraseRegularNodeAttributes(state.attributes);
   state.attributes.set(
       "dtype", TypeAttr::get(
                    tensor_value.getType().cast<ShapedType>().getElementType()));
@@ -621,14 +623,13 @@ class MaterializeShapeOp : public FolderPatternBase {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Value input = op->getOperand(0);
-    if (!input.getDefiningOp()) return failure();
+
+    auto input_shape = input.getType().cast<ShapedType>();
+    if (!input_shape.hasStaticShape()) return failure();
 
     // TODO(rmlarsen): Remove this workaround for b/150861569
     // The bug involves an expression of the form Shape(ExpandDims(x)
     // with an incorrectly inferred zero-size first dimension.
-    auto input_shape = input.getType().cast<ShapedType>();
-    if (!input_shape.hasStaticShape()) return failure();
-
     if (!input_shape.getShape().empty() && input_shape.getShape()[0] == 0)
       return failure();
 
@@ -639,8 +640,8 @@ class MaterializeShapeOp : public FolderPatternBase {
     // graph.
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         rewriter, op->getLoc(), op->getName().getStringRef(),
-        const_attr.getType(), TFOp(input.getDefiningOp()).controlRet(),
-        const_attr, op->getAttrs());
+        const_attr.getType(), LookupControlDependency(input), const_attr,
+        op->getAttrs());
     if (failed(const_op)) return failure();
 
     rewriter.replaceOp(op, (*const_op)->getResults());
@@ -726,7 +727,7 @@ class MaterializeTensorArraySizeV3Op : public FolderPatternBase {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     Operation *handle_op = op->getOperand(0).getDefiningOp();
-    if (!handle_op) return failure();
+    if (!handle_op || handle_op->getNumOperands() == 0) return failure();
 
     auto dynamic_size = handle_op->getAttrOfType<BoolAttr>("dynamic_size");
     if (dynamic_size && dynamic_size.getValue()) return failure();
@@ -751,7 +752,7 @@ class MaterializeTensorArraySizeV3Op : public FolderPatternBase {
 
     rewriter.replaceOp(op, (*const_op)->getResults());
 
-    return failure();
+    return success();
   }
 };
 
@@ -779,7 +780,7 @@ class MaterializeShapeNOp : public FolderPatternBase {
           *(op->result_type_begin()), TFOp(op).controlRet(), const_attr);
       if (failed(const_op)) return failure();
 
-      (*const_op).setName(Twine(TFOp(op).name(), "/-matshapes-") +
+      (*const_op).setName(Twine(TFOp(op).name(), "/_matshapes_") +
                           std::to_string(it.index()));
       if (!TFOp(op).device().empty())
         (*const_op).setRequestedDevice(TFOp(op).deviceAttr());
@@ -3115,8 +3116,8 @@ void ConstantFolding::populateConstantFoldingPatterns(
       SimplifyPackOp, SimplifyReductionOp, SimplifyPadOp, SimplifyPadV2Op,
       RemoveSplitOp, RemoveSplitVOp, MaterializeFillNode,
       MaterializeConstantValuedNode, MaterializeShapeOp, MaterializeRankOp,
-      MaterializeSizeOp, MergeConcatOp, SimplifyCaseOp, SimplifySelectOp,
-      SimplifySelectV2Op>(*helper_);
+      MaterializeSizeOp, MaterializeTensorArraySizeV3Op, MergeConcatOp,
+      SimplifyCaseOp, SimplifySelectOp, SimplifySelectV2Op>(*helper_);
 }
 
 void ConstantFolding::runOnOperation() {
