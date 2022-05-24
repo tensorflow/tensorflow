@@ -1,6 +1,7 @@
 // RUN: tf-opt %s --test-tf-lower-tf --xla-legalize-tf | \
 // RUN: mlir-hlo-opt --mhlo-rank-specialization-cluster \
 // RUN: --mhlo-rank-specialization-to-scf --hlo-legalize-to-linalg \
+// RUN: --linalg-init-tensor-to-alloc-tensor \
 // RUN: --computeop-and-func-bufferize --canonicalize | \
 // RUN: kernel-gen-opt -allow-unregistered-dialect \
 // RUN: --shape-to-descriptors \
