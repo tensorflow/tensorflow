@@ -3562,6 +3562,14 @@ func.func @einsum_i8xi8_i16(%arg0: tensor<1x2xi8>, %arg1: tensor<2x1xi8>) -> ten
 
 // -----
 
+// CHECK-LABEL: func @part_id
+func.func @part_id() -> tensor<ui32> {
+  %1 = "mhlo.partition_id"() : () -> tensor<ui32>
+  return %1 : tensor<ui32>
+}
+
+// -----
+
 // CHECK-LABEL: func @conv_i4
 func.func @conv_i4(%arg0: tensor<64x8x8x8xi4>, %arg1: tensor<4x4x8x32xi4>) -> tensor<64x3x3x32xi8> {
   // Note: This has been lowered and adapted from:

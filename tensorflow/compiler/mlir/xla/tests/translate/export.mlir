@@ -1475,6 +1475,15 @@ func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> (tensor<4x4xf
 // -----
 
 // CHECK:  HloModule
+func.func private @main() -> tensor<ui32> {
+  // CHECK: u32[] partition-id()
+  %1 = "mhlo.partition_id"() : () -> tensor<ui32>
+  return %1 : tensor<ui32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)

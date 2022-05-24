@@ -1406,6 +1406,12 @@ add {
   ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
 }
 
+// CHECK-LABEL : func private parition_id
+%partition_id {
+  // CHECK: "mhlo.partition_id"() : () -> tensor<ui32>
+  ROOT %pid = u32[] partition-id()
+}
+
 // CHECK-LABEL: func private @add_dependency
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
 %add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {
