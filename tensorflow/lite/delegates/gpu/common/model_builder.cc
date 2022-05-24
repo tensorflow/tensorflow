@@ -846,26 +846,20 @@ class DequantizeOperationParser : public TFLiteOperationParser {
                      GraphFloat32* graph, ObjectReader* reader) final {
     // 'Dequantize' is rewritten as QuantizeAndDequantize since we are dealing
     // with floating-point versions of the original tensors.
+    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
+    if (runtime_inputs == 0) {
+      // constant input, can be dequantized here
+      ConstTensorAttributes attr;
+      RETURN_IF_ERROR(reader->ReadTensor(0, &attr.tensor));
+      Node* node = graph->NewNode();
+      node->operation.attributes = attr;
+      node->operation.type = ToString(OperationType::CONSTANT);
+      return reader->AddOutputs(node);
+    }
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::QUANTIZE_AND_DEQUANTIZE);
-    const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
-    if (runtime_inputs == 1) {
-      // Non-constant dequantization.
-      RETURN_IF_ERROR(reader->AddInput(node, 0));
-    } else {
-      // TODO(b/181274192): Optimize out this constant dequantization from the
-      // graph later.
-      TensorFloat32 tensor;
-      RETURN_IF_ERROR(reader->ReadTensor(0, &tensor));
-      Value* value;
-      RETURN_IF_ERROR(NewConstNode(std::move(tensor), graph, &value));
-      // Need to retain the quant params from the original constant input.
-      const TfLiteTensor* tflite_input = reader->GetInputTensor(0);
-      value->quant_params.emplace();
-      RETURN_IF_ERROR(
-          PopulateQuantParams(*tflite_input, &value->quant_params.value()));
-      RETURN_IF_ERROR(graph->AddConsumer(node->id, value->id));
-    }
+    // Non-constant dequantization.
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     // Quantization attributes should already be present in the input tensor.
