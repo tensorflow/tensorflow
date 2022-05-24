@@ -334,18 +334,21 @@ void GenerateRandomSparseTensor(int64_t max_nnz, const TensorShape& shape,
 
 TEST(ValidateSparseTensorTest, ValidSparseTensorPasses) {
   constexpr int kNumNonZeros = 1000;
+  constexpr bool kValidateIndices = true;
   const TensorShape kTensorShapes[] = {
       {}, {3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
   for (const TensorShape& tshape : kTensorShapes) {
     Tensor indices, values, shape;
     GenerateRandomSparseTensor(kNumNonZeros, tshape, indices, values, shape);
-    TF_EXPECT_OK((ValidateSparseTensor(indices, values, shape)));
+    TF_EXPECT_OK((ValidateSparseTensor<int64_t>(indices, values, shape,
+                                                kValidateIndices)));
   }
 }
 
 TEST(ValidateSparseTensorTest, InvalidIndicesRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
+  constexpr bool kValidateIndices = false;
   // Indices tensor must be rank 2, so try rank 0, 1, 3.
   const TensorShape kInvalidIndicesShapes[] = {
       {}, {kNumNonZeros}, {kNumNonZeros, kNumDims, 4}};
@@ -353,7 +356,8 @@ TEST(ValidateSparseTensorTest, InvalidIndicesRankFails) {
     const Tensor indices = Tensor(DT_INT64, invalid_shape);
     const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
-    EXPECT_THAT((ValidateSparseTensor(indices, values, shape)),
+    EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
+                                               kValidateIndices)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse indices must be rank 2 .*")));
   }
@@ -362,6 +366,7 @@ TEST(ValidateSparseTensorTest, InvalidIndicesRankFails) {
 TEST(ValidateSparseTensorTest, InvalidValuesRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
+  constexpr bool kValidateIndices = false;
   // Values tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidValuesShapes[] = {{}, {kNumNonZeros, 2}};
   for (const TensorShape& invalid_shape : kInvalidValuesShapes) {
@@ -369,7 +374,8 @@ TEST(ValidateSparseTensorTest, InvalidValuesRankFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims}));
     const Tensor values = Tensor(DT_FLOAT, invalid_shape);
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
-    EXPECT_THAT((ValidateSparseTensor(indices, values, shape)),
+    EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
+                                               kValidateIndices)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse values must be rank 1 .*")));
   }
@@ -378,6 +384,7 @@ TEST(ValidateSparseTensorTest, InvalidValuesRankFails) {
 TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
+  constexpr bool kValidateIndices = false;
   // Shape tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidShapeShapes[] = {{}, {kNumDims, 2}};
   for (const TensorShape& invalid_shape : kInvalidShapeShapes) {
@@ -385,7 +392,8 @@ TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims}));
     const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
     const Tensor shape = Tensor(DT_INT64, invalid_shape);
-    EXPECT_THAT((ValidateSparseTensor(indices, values, shape)),
+    EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
+                                               kValidateIndices)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse shape must be rank 1 .*")));
   }
@@ -394,6 +402,7 @@ TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
 TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
+  constexpr bool kValidateIndices = false;
 
   const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
   const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
@@ -402,7 +411,8 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
   {
     const Tensor indices =
         Tensor(DT_INT64, TensorShape({kNumNonZeros + 1, kNumDims}));
-    EXPECT_THAT((ValidateSparseTensor(indices, values, shape)),
+    EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
+                                               kValidateIndices)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Number of elements in indices .* and "
                                       "values .* do not match")));
@@ -414,9 +424,47 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
     const Tensor indices =
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims + 1}));
     EXPECT_THAT(
-        (ValidateSparseTensor(indices, values, shape)),
+        (ValidateSparseTensor<int64_t>(indices, values, shape,
+                                       kValidateIndices)),
         StatusIs(error::INVALID_ARGUMENT,
                  MatchesRegex("Index rank .* and shape rank .* do not match")));
+  }
+}
+
+TEST(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
+  constexpr int kNumNonZeros = 1000;
+  constexpr int kNumTests = 100;
+  constexpr bool kValidateIndices = true;
+
+  const TensorShape kTensorShapes[] = {{3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
+  for (const TensorShape& tshape : kTensorShapes) {
+    Tensor indices, values, shape;
+    GenerateRandomSparseTensor(kNumNonZeros, tshape, indices, values, shape);
+    // Access tensor values.
+    auto indices_mat = indices.matrix<int64_t>();
+    for (int test = 0; test < kNumTests; ++test) {
+      // Pick a random entry and dimension, and make the index out of bounds.
+      int64_t row = RandomPhilox().Uniform64(indices.dim_size(0));
+      int64_t dim = RandomPhilox().Uniform64(indices.dim_size(1));
+      int64_t old_val = indices_mat(row, dim);
+
+      indices_mat(row, dim) = -1;
+      EXPECT_THAT(
+          (ValidateSparseTensor<int64_t>(indices, values, shape,
+                                         kValidateIndices)),
+          StatusIs(error::INVALID_ARGUMENT,
+                   MatchesRegex("Sparse index tuple .* is out of bounds")));
+
+      indices_mat(row, dim) = tshape.dim_size(dim);
+      EXPECT_THAT(
+          (ValidateSparseTensor<int64_t>(indices, values, shape,
+                                         kValidateIndices)),
+          StatusIs(error::INVALID_ARGUMENT,
+                   MatchesRegex("Sparse index tuple .* is out of bounds")));
+
+      // Restore index for next test.
+      indices_mat(row, dim) = old_val;
+    }
   }
 }
 
