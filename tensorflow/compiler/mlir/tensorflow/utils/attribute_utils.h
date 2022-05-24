@@ -23,15 +23,19 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-// Some convenience aliases to allow mlir::TF namespace use.
-// NOLINTNEXTLINE(misc-unused-using-decls)
-using ::tensorflow::kCompileDeviceTypeAttr;
-// NOLINTNEXTLINE(misc-unused-using-decls)
-using ::tensorflow::kReplicationInfoAttr;
-// NOLINTNEXTLINE(misc-unused-using-decls)
-using ::tensorflow::kTpuReplicateAttr;
-// NOLINTNEXTLINE(misc-unused-using-decls)
-using ::tensorflow::kTpuDevice;
+// TODO(b/229028654) see comment in source file
+
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
+extern const llvm::StringRef kCompileDeviceTypeAttr;
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
+extern const llvm::StringRef kReplicationInfoAttr;
+// Marks a node for XLA-TPU compilation. The attribute value indicates the
+// associated compilation cluster and replication metadata op.
+extern const llvm::StringRef kTpuReplicateAttr;
+// Device types.
+extern const llvm::StringRef kTpuDevice;
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>

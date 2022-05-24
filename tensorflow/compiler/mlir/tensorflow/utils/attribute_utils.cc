@@ -27,6 +27,14 @@ namespace TF {
 
 using ::tensorflow::kValidDeviceTypes;
 
+// TODO(b/229028654) Use definitions from tf2xla_defs.h directly. We currently
+// don't do this to avoid explicit casts (implicit conversion from
+// `absl::string_view` to `llvm::StringRef` is not supported until C++17).
+const llvm::StringRef kCompileDeviceTypeAttr = "_xla_compile_device_type";
+const llvm::StringRef kReplicationInfoAttr = "_replication_info";
+const llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
+const llvm::StringRef kTpuDevice = "TPU";
+
 LogicalResult HasValidCompilationAndReplicationAttributes(Operation& op) {
   auto replicate_attr = op.getAttrOfType<StringAttr>(kReplicationInfoAttr);
   auto compile_attr = op.getAttrOfType<StringAttr>(kCompileDeviceTypeAttr);
@@ -40,12 +48,14 @@ LogicalResult HasValidCompilationAndReplicationAttributes(Operation& op) {
            << "has an empty '" << kReplicationInfoAttr << "' attribute";
   }
   if (compile_attr) {
-    absl::string_view device = compile_attr.getValue();
-    auto it =
-        std::find(kValidDeviceTypes.begin(), kValidDeviceTypes.end(), device);
+    auto value = compile_attr.getValue();
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    absl::string_view device_type(value.data(), value.size());
+    auto it = std::find(kValidDeviceTypes.begin(), kValidDeviceTypes.end(),
+                        device_type);
     if (it == kValidDeviceTypes.end()) {
       return op.emitOpError() << "has invalid '" << kCompileDeviceTypeAttr
-                              << "' value '" << device << "'";
+                              << "' value '" << compile_attr.getValue() << "'";
     }
   }
   return success();
