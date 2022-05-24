@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -1180,6 +1181,14 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
 
   value_map[op] = xla::OutfeedWithToken(operand, token, shape_with_layout,
                                         std::string(op.outfeed_config()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(PartitionIdOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
+  value_map[op] =
+      xla::internal::XlaBuilderFriend::BuildPartitionId(ctx.builder, shape);
   return success();
 }
 

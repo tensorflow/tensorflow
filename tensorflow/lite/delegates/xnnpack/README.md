@@ -426,7 +426,7 @@ inference when the following conditions are met:
 * XNNPACK runs on hardware that natively supports computations in IEEE FP16
 format. Currently, this hardware is limited to ARM64 devices with ARMv8.2 FP16
 arithmetics extension, and includes Android phones starting with Pixel 3,
-Galaxy S9 (Snadrapgon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
+Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
 newer SoCs, and all Apple Silicon Macs.
 
 * IEEE FP16 inference is supported for every floating-point operator in the

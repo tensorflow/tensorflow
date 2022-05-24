@@ -129,6 +129,7 @@ py_library(
         ":sharded_variable",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
+        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
     ],
 )
 

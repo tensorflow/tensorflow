@@ -38,18 +38,20 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   }
   TF_RETURN_IF_ERROR(grpc_util::Retry(
       [this, split, end_of_splits] {
-        return dispatcher_->GetSplit(job_id_, iteration_, split_provider_index_,
-                                     *split, *end_of_splits);
+        return dispatcher_->GetSplit(iteration_id_, iteration_,
+                                     split_provider_index_, *split,
+                                     *end_of_splits);
       },
       "get next split",
       /*deadline_micros=*/Env::Default()->NowMicros() +
           (timeout_ms_ * EnvTime::kMillisToMicros)));
   if (*end_of_splits) {
-    VLOG(1) << "Reached end of splits for job_id=" << job_id_
+    VLOG(1) << "Reached end of splits for iteration_id=" << iteration_id_
             << ", iteration=" << iteration_;
   } else {
     VLOG(1) << "Requested split: " << split->DebugString()
-            << "; with job_id=" << job_id_ << ", iteration=" << iteration_;
+            << "; with iteration_id=" << iteration_id_
+            << ", iteration=" << iteration_;
   }
   return Status::OK();
 }

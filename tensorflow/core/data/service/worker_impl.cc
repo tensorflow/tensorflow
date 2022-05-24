@@ -123,7 +123,7 @@ TaskDef Export(const TaskDef& task) {
   }
   result.set_dataset_id(task.dataset_id());
   result.set_task_id(task.task_id());
-  result.set_job_id(task.job_id());
+  result.set_iteration_id(task.iteration_id());
   result.set_num_split_providers(task.num_split_providers());
   result.set_worker_address(task.worker_address());
   *result.mutable_processing_mode_def() = task.processing_mode_def();
@@ -246,9 +246,9 @@ Status DataServiceWorkerImpl::GetElementResult(
         return errors::FailedPrecondition(
             "Got request for local task ", request->task_id(), " of worker ",
             worker_address_, ", which has been deleted. You may be creating ",
-            "a duplicate job which has already finished. To fix this, make "
-            "sure to create your dataset only once, as opposed to re-creating "
-            "it repeatedly inside a loop.");
+            "a duplicate iteration which has already finished. To fix this, "
+            "make sure to create your dataset only once, as opposed to "
+            "re-creating it repeatedly inside a loop.");
       }
       if (finished_tasks_.contains(request->task_id())) {
         VLOG(3) << "Task is already finished";
@@ -382,8 +382,8 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
     split_providers.reserve(task_def.num_split_providers());
     for (int i = 0; i < task_def.num_split_providers(); ++i) {
       split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
-          config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
-          i, config_.dispatcher_timeout_ms()));
+          config_.dispatcher_address(), config_.protocol(),
+          task_def.iteration_id(), i, config_.dispatcher_timeout_ms()));
     }
     TF_RETURN_IF_ERROR(
         dataset.MakeIterator(std::move(split_providers), &iterator));
@@ -431,7 +431,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
     TaskInfo* task_info = response->add_tasks();
     task_info->set_worker_address(worker_address_);
     task_info->set_task_id(task->task_def.task_id());
-    task_info->set_job_id(task->task_def.job_id());
+    task_info->set_iteration_id(task->task_def.iteration_id());
   }
   return Status::OK();
 }

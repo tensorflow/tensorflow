@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -40,39 +41,40 @@ IteratorMetricsCollector::IteratorMetricsCollector(
     const std::string& device_type, const Env& env)
     : device_type_(device_type), env_(env) {}
 
-void IteratorMetricsCollector::RecordStart() {
+absl::Time IteratorMetricsCollector::RecordStart() {
+  const uint64_t start_time_us = env_.NowMicros();
   if (!ShouldCollectMetrics()) {
-    return;
+    return absl::FromUnixMicros(start_time_us);
   }
 
-  const uint64_t start_time_us = env_.NowMicros();
   mutex_lock l(mu_);
-  start_time_us_ = start_time_us;
   if (end_time_us_ == 0) {
     // We initialize `end_time_us_` to the start time of the first request to
     // make it possible to use the delta between `end_time_us_` and subsequent
     // `GetNext()` end time to incrementally collect the duration of the
     // iterator's lifetime.
-    end_time_us_ = start_time_us_;
+    end_time_us_ = start_time_us;
   }
   uint64_t gap_time_us = 0;
   if (num_active_calls_ == 0) {
-    first_start_time_us_ = start_time_us_;
-    gap_time_us = safe_sub(start_time_us_, end_time_us_);
+    first_start_time_us_ = start_time_us;
+    gap_time_us = safe_sub(start_time_us, end_time_us_);
   }
   metrics::RecordTFDataIteratorGap(gap_time_us);
   num_active_calls_++;
+  return absl::FromUnixMicros(start_time_us);
 }
 
-void IteratorMetricsCollector::RecordStop(const std::vector<Tensor>& output) {
+void IteratorMetricsCollector::RecordStop(absl::Time start_time,
+                                          const std::vector<Tensor>& output) {
   if (!ShouldCollectMetrics()) {
     return;
   }
 
   const uint64_t end_time_us = env_.NowMicros();
+  AddLatencySample(safe_sub(end_time_us, absl::ToUnixMicros(start_time)));
   IncrementThroughput(GetTotalBytes(output));
   mutex_lock l(mu_);
-  AddLatencySample(safe_sub(end_time_us, start_time_us_));
   metrics::RecordTFDataIteratorLifetime(safe_sub(end_time_us, end_time_us_));
   end_time_us_ = std::max(end_time_us_, end_time_us);
   num_active_calls_--;

@@ -217,6 +217,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -232,6 +233,8 @@ tf_cc_test(
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/lib/monitoring:test_utils",
         "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
     ],
 )
 

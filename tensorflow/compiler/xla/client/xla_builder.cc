@@ -134,6 +134,15 @@ XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildPartitionId(XlaBuilder* builder,
+                                         const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kPartitionId);
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildRngGetAndUpdateState(XlaBuilder* builder,
 
                                                   int64_t delta,

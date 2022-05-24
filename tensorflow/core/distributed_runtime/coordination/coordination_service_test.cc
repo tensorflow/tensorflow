@@ -992,14 +992,20 @@ TEST_F(CoordinationBarrierTest, BarrierCancelled) {
   TF_EXPECT_OK(cancelled_status);
 }
 
-TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier) {
-  std::string wrong_barrier_id = "wrong_barrier_id";
+TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier_FutureBarrierFails) {
+  const std::string barrier_id = "cancelled_barrier_id";
+  absl::Duration timeout = absl::Seconds(1);
+  Status barrier_status;
 
-  // Cancel barrier should fail if non-existent id is specified.
-  Status cancelled_status =
-      GetCoordinationService()->CancelBarrier(wrong_barrier_id, GetTask(0));
+  // Cancel barrier should still succeed.
+  TF_ASSERT_OK(GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0)));
+  // Calling a cancelled barrier should fail instantly.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status](Status s) { barrier_status = s; });
 
-  EXPECT_TRUE(errors::IsNotFound(cancelled_status));
+  EXPECT_TRUE(errors::IsCancelled(barrier_status)) << barrier_status;
 }
 
 TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {

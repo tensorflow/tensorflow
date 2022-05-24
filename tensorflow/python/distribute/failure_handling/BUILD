@@ -17,6 +17,7 @@ py_library(
         ":gce_util",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -24,7 +25,7 @@ py_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform",
-        "//tensorflow/python/training:checkpoint_management",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -45,6 +46,7 @@ tf_py_test(
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_lib",
@@ -58,7 +60,6 @@ tf_py_test(
         "//tensorflow/python/module",
         "//tensorflow/python/platform",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training:checkpoint_management",
         "//tensorflow/python/training/tracking:util",
         "@absl_py//absl/testing:parameterized",
     ],

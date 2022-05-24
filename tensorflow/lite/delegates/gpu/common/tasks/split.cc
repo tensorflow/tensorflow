@@ -161,7 +161,7 @@ std::string Split::GetSplitChannelsCode(const std::vector<int>& channels) {
   for (int s = 0; s < src_slices; ++s) {
     c += "  if (" + std::to_string(s) + " < args.src_tensor.Slices()) {\n";
     c += "    args.src_tensor::type src_val = args.src_tensor.Read(" + coords +
-         ", " + std::to_string(s) + ");\n";
+         ", " + std::to_string(s) + batch_coord + ");\n";
     for (int k = 0; k < 4; ++k) {
       c += "    dst_val" + postfix[dst_ch % 4] + " = src_val" + postfix[k] +
            ";\n";
