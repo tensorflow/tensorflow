@@ -1943,32 +1943,50 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
   }
 };
 
-/// Apply padding values stored in `pad` to `input`.
-static Value applyPad(Location loc, Value input, ArrayRef<int64_t> pad,
-                      Attribute padAttr, OpBuilder& rewriter) {
-  auto inputTy = input.getType().cast<ShapedType>();
-  Type inputETy = inputTy.getElementType();
-  ArrayRef<int64_t> inputShape = inputTy.getShape();
+// Apply dilation and padding to the input of a convolution.
+Value applyConvolutionPadding(Location loc, Value input,
+                              DenseIntElementsAttr padding,
+                              DenseIntElementsAttr lhs_dilation,
+                              OpBuilder& rewriter) {
+  if ((!padding || isSplatValue(padding, 0)) &&
+      (!lhs_dilation || isSplatValue(lhs_dilation, 1)))
+    return input;
 
-  assert((inputShape.size() * 2) == pad.size() &&
-         "There should be 2 padding values per dimension, i.e low and high.");
+  auto input_type = input.getType().cast<ShapedType>();
+  auto rank = input_type.getRank();
 
-  SmallVector<int64_t> paddedShape;
-  SmallVector<OpFoldResult> lowIndices;
-  SmallVector<OpFoldResult> highIndices;
-  for (int i : llvm::seq<int>(0, inputShape.size())) {
-    int64_t lowPad = pad[i * 2];
-    int64_t highPad = pad[i * 2 + 1];
-    paddedShape.push_back(inputShape[i] + highPad + lowPad);
-    lowIndices.push_back(rewriter.getIndexAttr(lowPad));
-    highIndices.push_back(rewriter.getIndexAttr(highPad));
+  // Translate window padding into low/high padding.
+  SmallVector<int64_t, 8> pad_low(rank, 0);
+  SmallVector<int64_t, 8> pad_high(rank, 0);
+  if (padding) {
+    // The padding attribute contains two values per dimension, but excludes the
+    // batch and feature dimensions.
+    assert(rank * 2 == padding.size() + 4 &&
+           "There should be 2 padding values per dimension, i.e low and high.");
+    for (auto i : llvm::seq<int64_t>(0, padding.size() / 2)) {
+      pad_low[i + 1] = padding.getValues<int64_t>()[i * 2];
+      pad_high[i + 1] = padding.getValues<int64_t>()[i * 2 + 1];
+    }
   }
 
-  Value padValue = rewriter.create<arith::ConstantOp>(loc, padAttr);
+  // Translate input dilation into interior padding.
+  SmallVector<int64_t, 8> pad_interior(rank, 0);
+  if (lhs_dilation) {
+    assert(rank == lhs_dilation.size() + 2);
+    for (auto i : llvm::seq<int64_t>(0, lhs_dilation.size())) {
+      pad_interior[i + 1] = lhs_dilation.getValues<int64_t>()[i] - 1;
+    }
+  }
 
-  return tensor::createPadScalarOp(RankedTensorType::get(paddedShape, inputETy),
-                                   input, padValue, lowIndices, highIndices,
-                                   /*nofold=*/false, loc, rewriter);
+  auto index_type = rewriter.getIndexType();
+  auto attr_type = RankedTensorType::get({rank}, index_type);
+  Value zero = rewriter.create<arith::ConstantOp>(
+      loc, rewriter.getZeroAttr(
+               RankedTensorType::get({}, input_type.getElementType())));
+  return rewriter.create<mhlo::PadOp>(
+      loc, input, zero, DenseIntElementsAttr::get(attr_type, pad_low),
+      DenseIntElementsAttr::get(attr_type, pad_high),
+      DenseIntElementsAttr::get(attr_type, pad_interior));
 }
 
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
@@ -1986,7 +2004,8 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     Location loc = op.getLoc();
     Value input = adaptor.lhs();
     Value filter = adaptor.rhs();
-    auto result_type = op.getResult().getType().cast<ShapedType>();
+    auto result_type =
+        typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     int64_t rank = result_type.getRank();
 
     // The output shape is N spatial_dims F.
@@ -2009,26 +2028,11 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     Value zero_tensor = fillTensorWithZeros(rewriter, loc, init_tensor);
     linalg::LinalgOp res;
     Attribute strides = op.window_stridesAttr();
-    // TODO(ataei): Only support dilated kernel right now. We need to consider
-    // input dilation for deconvolution cases.
     Attribute dilations = op.rhs_dilationAttr();
 
-    // Check if padding is zero or not. If it is not zero, we should pad the
-    // input.
-    DenseIntElementsAttr padding = op.paddingAttr();
-    if (padding && !isSplatValue(padding, 0)) {
-      // Add the zero padding for the batch dim.
-      SmallVector<int64_t> pad(2, 0);
-      // Add the padding values.
-      pad.append(Extract1DVector(padding));
-      // Add the zero padding for the feature dim.
-      pad.append(2, 0);
-
-      // Pad the given input using `zero_attr` according to the low and high
-      // values in the `pad`.
-      auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
-      input = applyPad(loc, input, pad, zero_attr, rewriter);
-    }
+    // Apply padding and input dilation.
+    input = applyConvolutionPadding(loc, input, op.paddingAttr(),
+                                    op.lhs_dilationAttr(), rewriter);
 
     switch (rank) {
       case 2: {
@@ -2079,11 +2083,6 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     // Fall into the normal convolution cases.
     if (op.feature_group_count() == 1) return failure();
 
-    if ((op.lhs_dilation() && !isSplatValue(*op.lhs_dilation(), 1))) {
-      return rewriter.notifyMatchFailure(
-          op, "non-one lhs- dialation unsupported yet");
-    }
-
     const mhlo::ConvDimensionNumbersAttr& dimension_numbers =
         op.dimension_numbers();
     // Make sure that this is 2-D convolution.
@@ -2123,29 +2122,16 @@ struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     Location loc = op.getLoc();
     Value input = adaptor.lhs();
     Value filter = adaptor.rhs();
-    auto result_type = op.getResult().getType().cast<RankedTensorType>();
+    auto result_type = typeConverter->convertType(op.getResult().getType())
+                           .cast<RankedTensorType>();
     if (!result_type.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op,
                                          "expected output has static shapes");
     }
 
-    auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
-
-    // Check if padding is zero or not. If it is not zero, we should pad the
-    // input.
-    DenseIntElementsAttr padding = op.paddingAttr();
-    if (padding && !isSplatValue(padding, 0)) {
-      // Add the zero padding for the batch dim.
-      SmallVector<int64_t> pad(2, 0);
-      // Add the padding values.
-      pad.append(Extract1DVector(padding));
-      // Add the zero padding for the feature dim.
-      pad.append(2, 0);
-
-      // Pad the given input using `zero_attr` according to the low and high
-      // values in the `pad`.
-      input = applyPad(loc, input, pad, zero_attr, rewriter);
-    }
+    // Apply padding and input dilation.
+    input = applyConvolutionPadding(loc, input, op.paddingAttr(),
+                                    op.lhs_dilationAttr(), rewriter);
 
     auto filter_dims =
         llvm::to_vector<4>(op.rhs().getType().cast<ShapedType>().getShape());
