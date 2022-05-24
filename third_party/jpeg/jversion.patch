@@ -1,0 +1,4 @@
+diff --git a/jversion.h.in b/jversion.h
+similarity index 100%
+rename from jversion.h.in
+rename to jversion.h
