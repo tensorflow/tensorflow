@@ -32,9 +32,6 @@ _DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
 _DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
 _DT_JOB_NAME = "DTENSOR_JOB_NAME"
 _DT_JOBS = "DTENSOR_JOBS"
-_DT_CPU_COUNT = "DTENSOR_CPU_CORE_COUNT"
-_DT_GPU_COUNT = "DTENSOR_GPU_CORE_COUNT"
-_DT_TPU_COUNT = "DTENSOR_TPU_CORE_COUNT"
 _DT_HEARTBEAT_ENABLED = "DTENSOR_ENABLE_HEARTBEAT"
 
 _dtensor_singleton = None
@@ -473,23 +470,7 @@ def num_local_devices(device_type: str) -> int:
 @tf_export("experimental.dtensor.num_global_devices", v1=[])
 def num_global_devices(device_type: str) -> int:
   """Returns the number of devices of device_type in this DTensor cluster."""
-  num_devices = 0
-
-  if device_type.upper() == "CPU":
-    num_devices = int(os.environ.get(_DT_CPU_COUNT, "0"))
-  elif device_type.upper() == "GPU":
-    num_devices = int(os.environ.get(_DT_GPU_COUNT, "0"))
-  elif device_type.upper() == "TPU":
-    num_devices = int(os.environ.get(_DT_TPU_COUNT, "0"))
-  else:
-    raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
-
-  if num_devices > 0:
-    return num_devices
-
-  # If missing, likely in unit tests and local runs, assume there is only one
-  # client and all global devices are local.
-  return num_local_devices(device_type)
+  return num_local_devices(device_type) * num_clients()
 
 
 @tf_export("experimental.dtensor.job_name", v1=[])
