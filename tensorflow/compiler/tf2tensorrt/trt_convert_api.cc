@@ -302,9 +302,9 @@ Status ReadSerializedEngine(
     return errors::Internal("Engine not found for", node.name());
   }
 
-  if (engine->cuda_engine) {
+  if (engine->GetCudaEngine()) {
     // Serialize the engine.
-    engine_data->reset(engine->cuda_engine->serialize());
+    engine_data->reset(engine->GetCudaEngine()->serialize());
   } else {
     LOG(WARNING) << "Engine cache contains nullptr";
   }
@@ -462,7 +462,8 @@ Status FreezeGraph(SavedModelBundle& bundle, MetaGraphDef* frozen_meta_graph) {
 
 // Returns the name of nodes listed in the signature definition.
 std::vector<std::string> GetNodeNames(
-    const google::protobuf::Map<std::string, tensorflow::TensorInfo>& signature) {
+    const google::protobuf::Map<std::string, tensorflow::TensorInfo>&
+        signature) {
   std::vector<std::string> names;
   for (auto const& item : signature) {
     absl::string_view name = item.second.name();
