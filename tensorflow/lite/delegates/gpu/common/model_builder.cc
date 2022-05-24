@@ -581,6 +581,14 @@ class Conv2DOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(reader->ReadTensor(1, &attr->weights));
       attr->groups = src_shape.c / attr->weights.shape.i;
     } else {
+      const TfLiteTensor* weights_tensor = reader->GetInputTensor(1);
+      if (!weights_tensor) {
+        return absl::InternalError("Expected second runtime tensor.");
+      }
+      BHWC weights_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*weights_tensor, &weights_shape));
+      attr->weights.shape = OHWI(weights_shape.b, weights_shape.h,
+                                 weights_shape.w, weights_shape.c);
       attr->groups = 1;
     }
     reader->ReadTensor(2, &attr->bias).IgnoreError();  // bias is optional
@@ -743,6 +751,9 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
     const int runtime_inputs = reader->GetNumberOfRuntimeInputs();
     if (runtime_inputs == 2) {
       RETURN_IF_ERROR(reader->AddInput(node, 1));
+      auto weights_shape = graph->FindInputs(node->id)[1]->tensor.shape;
+      attr.weights.shape = OHWI(weights_shape.b, weights_shape.h,
+                                weights_shape.w, weights_shape.c);
     } else {  // runtime_inputs == 1;
       RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
     }
