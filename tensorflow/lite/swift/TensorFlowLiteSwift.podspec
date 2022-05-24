@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteSwift'
-  s.version          = '2.7.0'
+  s.version          = '2.9.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :tag => "v#{s.version}" }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '8a20d54a3c1bfa38c03ea99a2ad3c1b0a45dfa95' }
   s.summary          = 'TensorFlow Lite for Swift'
   s.description      = <<-DESC
 
@@ -13,13 +13,24 @@ Pod::Spec.new do |s|
   small binary size and fast performance supporting hardware acceleration.
                        DESC
 
-  s.ios.deployment_target = '9.0'
+  s.cocoapods_version = '>= 1.9.0'
+  s.ios.deployment_target = '11.0'
 
   s.module_name = 'TensorFlowLite'
   s.static_framework = true
 
   tfl_dir = 'tensorflow/lite/'
   swift_dir = tfl_dir + 'swift/'
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.pod_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64'
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64'
+  }
 
   s.default_subspec = 'Core'
 
@@ -34,6 +45,7 @@ Pod::Spec.new do |s|
       ts.resources = [
         tfl_dir + 'testdata/add.bin',
         tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_signatures.bin',
       ]
     end
   end
