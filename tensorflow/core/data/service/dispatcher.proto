@@ -51,7 +51,7 @@ message GetDatasetDefResponse {
 
 // Next tag: 4
 message GetSplitRequest {
-  int64 job_id = 1;
+  int64 iteration_id = 1;
   int64 iteration = 2;
   int64 split_provider_index = 3;
 }
@@ -105,31 +105,32 @@ message GetDataServiceConfigResponse {
 }
 
 // Next tag: 11
-message GetOrCreateJobRequest {
+message GetOrCreateIterationRequest {
   reserved 2, 3, 4;
-  // The id of the dataset to create a job for.
+  // The id of the dataset to create a iteration for.
   int64 dataset_id = 1;
-  // A mode controlling how the tf.data service produces data for the job.
+  // A mode controlling how the tf.data service produces data for the iteration.
   ProcessingModeDef processing_mode_def = 8;
-  // Optional job key identifying a shared job. If not set, the RPC will always
-  // create a new job.
-  JobKeyDef job_key = 5;
-  // Optional number of consumers. If set, the job's tasks will provide their
-  // elements to consumers round-robin.
+  // Optional iteration key identifying a shared iteration. If not set, the RPC
+  // will always create a new iteration.
+  IterationKeyDef iteration_key = 5;
+  // Optional number of consumers. If set, the iteration's tasks will provide
+  // their elements to consumers round-robin.
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
   // True if cross-trainer cache is enabled.
   bool use_cross_trainer_cache = 10;
-  // Specifies which workers the client of this job reads from.
+  // Specifies which workers the client of this iteration reads from.
   TargetWorkers target_workers = 9;
 }
 
 // Next tag: 2
-message GetOrCreateJobResponse {
-  // An id for the client that will read from the job. When the client is done
-  // with the job, they should call ReleaseJobClient with this id.
-  int64 job_client_id = 1;
+message GetOrCreateIterationResponse {
+  // An id for the client that will read from the iteration. When the client is
+  // done with the iteration, they should call ReleaseIterationClient with this
+  // id.
+  int64 iteration_client_id = 1;
 }
 
 // Next tag: 4
@@ -145,18 +146,18 @@ message MaybeRemoveTaskResponse {
 }
 
 // Next tag: 2
-message ReleaseJobClientRequest {
-  int64 job_client_id = 1;
+message ReleaseIterationClientRequest {
+  int64 iteration_client_id = 1;
 }
 
 // Next tag: 1
-message ReleaseJobClientResponse {}
+message ReleaseIterationClientResponse {}
 
 // Next tag: 5
 message ClientHeartbeatRequest {
   reserved 3;
-  // The job client id to heartbeat for.
-  int64 job_client_id = 1;
+  // The iteration client id to heartbeat for.
+  int64 iteration_client_id = 1;
   // Reports which round the client is currently reading from when doing
   // round-robin reads.
   oneof optional_current_round {
@@ -178,8 +179,8 @@ message ClientHeartbeatResponse {
   oneof optional_block_round {
     int64 block_round = 3;
   }
-  // Whether the job has finished.
-  bool job_finished = 2;
+  // Whether the iteration has finished.
+  bool iteration_finished = 2;
   // tf.data service deployment mode. Supported values are "REMOTE",
   // "COLOCATED", and "HYBRID". If unspecified, it is assumed to be "REMOTE".
   DeploymentMode deployment_mode = 4;
@@ -210,7 +211,7 @@ service DispatcherService {
   // Gets a dataset definition.
   rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
 
-  // Gets the next split for a given job.
+  // Gets the next split for a given iteration.
   rpc GetSplit(GetSplitRequest) returns (GetSplitResponse);
 
   // Returns the API version of the server.
@@ -224,15 +225,17 @@ service DispatcherService {
   rpc GetOrRegisterDataset(GetOrRegisterDatasetRequest)
       returns (GetOrRegisterDatasetResponse);
 
-  // Gets a job if it already exists, otherwise creates it.
-  rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
+  // Gets a iteration if it already exists, otherwise creates it.
+  rpc GetOrCreateIteration(GetOrCreateIterationRequest)
+      returns (GetOrCreateIterationResponse);
 
-  // Attempts to remove a task from a round-robin read job.
+  // Attempts to remove a task from a round-robin read iteration.
   rpc MaybeRemoveTask(MaybeRemoveTaskRequest) returns (MaybeRemoveTaskResponse);
 
-  // Releases a job client so that a job may eventually be cleaned up.
-  rpc ReleaseJobClient(ReleaseJobClientRequest)
-      returns (ReleaseJobClientResponse);
+  // Releases a iteration client so that an iteration may eventually be cleaned
+  // up.
+  rpc ReleaseIterationClient(ReleaseIterationClientRequest)
+      returns (ReleaseIterationClientResponse);
 
   // Heartbeats from the client. This lets the dispatcher know that the client
   // is still active, and gives the dispatcher a chance to notify the client

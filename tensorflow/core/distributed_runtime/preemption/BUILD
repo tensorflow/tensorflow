@@ -60,6 +60,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "preemption_notifier_test",
+    size = "small",
     srcs = ["preemption_notifier_test.cc"],
     deps = [
         ":preemption_notifier",

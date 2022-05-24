@@ -1384,6 +1384,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kNegate, NegOp);
       NO_ATTRIBUTE_CASE(kNot, NotOp);
       NO_ATTRIBUTE_CASE(kOr, OrOp);
+      NO_ATTRIBUTE_CASE(kPartitionId, PartitionIdOp);
       NO_ATTRIBUTE_CASE(kPopulationCount, PopulationCountOp);
       NO_ATTRIBUTE_CASE(kPower, PowOp);
       NO_ATTRIBUTE_CASE(kReal, RealOp);

@@ -101,6 +101,9 @@ void AddLinalgTransformations(OpPassManager& pm,
 }
 
 void AddBufferizationPasses(OpPassManager& pm, bool one_shot_bufferize) {
+  // Rewrite init_tensor ops to alloc_tensor ops.
+  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  // Run One-Shot Bufferize.
   if (one_shot_bufferize) {
     pm.addPass(mlir::hlo::CreateOneShotBufferizePass());
     return;

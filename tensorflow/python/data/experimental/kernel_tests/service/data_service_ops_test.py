@@ -464,7 +464,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     get_next = self.getNext(dataset)
 
     # The client does not heartbeat in 10 seconds. It will be garbage-collected.
-    with self.assertRaisesRegex(errors.NotFoundError, "Unknown job client id"):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "Unknown iteration client id"):
       self.evaluate(get_next())
       time.sleep(3)
       self.getIteratorOutput(get_next)

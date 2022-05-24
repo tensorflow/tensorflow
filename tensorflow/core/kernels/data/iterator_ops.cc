@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -132,11 +134,11 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
-  metrics_collector_.RecordStart();
+  const absl::Time start_time = metrics_collector_.RecordStart();
   auto iterator_ = captured_state->iterator();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
-  metrics_collector_.RecordStop(*out_tensors);
+  metrics_collector_.RecordStop(start_time, *out_tensors);
   return status;
 }
 

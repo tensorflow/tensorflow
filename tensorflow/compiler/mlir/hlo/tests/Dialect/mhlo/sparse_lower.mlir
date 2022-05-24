@@ -158,6 +158,27 @@ func.func @sparse_sign(%arg0: tensor<100xi32, #SV>) -> tensor<100xi32> {
   func.return %0 : tensor<100xi32>
 }
 
+// CHECK-LABEL: func @sparse_int_abs(
+// CHECK-SAME:    %[[A:.*]]: tensor<100xi64, #{{.*}}>) -> tensor<100xi64> {
+// CHECK:         %[[T:.*]] = linalg.generic {{{.*}}} ins(%[[A]] : tensor<100xi64, #{{.*}}>)
+// CHECK:           %[[U:.*]] = sparse_tensor.unary
+// CHECK:           present = {
+// CHECK:             arith.cmpi sge
+// CHECK:             arith.subi
+// CHECK:             arith.select
+// CHECK:             sparse_tensor.yield
+// CHECK:           }
+// CHECK:           absent = {
+// CHECK:           }
+// CHECK:           linalg.yield %[[U]] : i64
+// CHECK:         } -> tensor<100xi64>
+// CHECK:         return %[[T]] : tensor<100xi64>
+// CHECK:       }
+func.func @sparse_int_abs(%arg0: tensor<100xi64, #SV>) -> tensor<100xi64> {
+  %0 = mhlo.abs(%arg0) : (tensor<100xi64, #SV>) -> tensor<100xi64>
+  func.return %0 : tensor<100xi64>
+}
+
 // CHECK-LABEL: func @sparse_reduce(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10xi64, #{{.*}}>) -> tensor<i64> {
 // CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10xi64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ], {{.*}} }>>)

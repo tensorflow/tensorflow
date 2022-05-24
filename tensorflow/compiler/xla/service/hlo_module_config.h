@@ -108,6 +108,11 @@ class HloModuleConfig {
     return &(*entry_computation_layout_);
   }
 
+  // Clears the entry computation layout.
+  void clear_entry_computation_layout() {
+    entry_computation_layout_ = absl::nullopt;
+  }
+
   // Returns whether to enable HLO-level profiling.
   bool hlo_profiling_enabled() const {
     return debug_options_.xla_hlo_profile();

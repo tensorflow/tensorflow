@@ -134,24 +134,19 @@ TEST(PreemptNotifierTest, DestructorCancelsPendingCalls) {
   auto env = Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
       CreateSigtermNotifier(env);
-  // Setup thread with blocking call.
   StatusOr<absl::Time> result;
-  absl::Notification n_start;
-  absl::Notification n_end;
-  env->SchedClosure(
-      [notifier = preempt_notifier.get(), &result, &n_start, &n_end]() {
-        n_start.Notify();
-        // Start blocking call.
-        result = notifier->WillBePreemptedAt();
-        n_end.Notify();
+  absl::Notification n;
+  preempt_notifier->WillBePreemptedAtAsync(
+      [&result, &n](StatusOr<absl::Time> status_or_time) {
+        result = status_or_time;
+        n.Notify();
       });
-  n_start.WaitForNotification();
 
-  // Invoke dtor after blocking call started.
+  // Invoke dtor.
   preempt_notifier = nullptr;
-  n_end.WaitForNotification();
+  n.WaitForNotification();
 
-  // Verify that blocking call is cancelled.
+  // Verify that pending callbacks are cancelled.
   EXPECT_TRUE(errors::IsCancelled(result.status()));
 }
 }  // namespace

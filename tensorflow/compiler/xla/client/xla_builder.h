@@ -63,6 +63,8 @@ struct XlaBuilderFriend {
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
 
+  static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
+
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);
 

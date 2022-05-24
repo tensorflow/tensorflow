@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -34,10 +35,10 @@ namespace data {
 //
 //   ```
 //   IteratorMetricsCollector metrics_collector(DEVICE_CPU, env);
-//   metrics_collector.RecordStart();
+//   absl::Time start_time = metrics_collector.RecordStart();
 //   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
 //                                    out_tensors, end_of_sequence);
-//   metrics_collector.RecordStop(*out_tensors);
+//   metrics_collector.RecordStop(start_time, *out_tensors);
 //   ```
 class IteratorMetricsCollector {
  public:
@@ -49,13 +50,13 @@ class IteratorMetricsCollector {
   explicit IteratorMetricsCollector(const std::string& device_type,
                                     const Env& env);
 
-  // Starts the timer for the next `GetNext` call.
-  void RecordStart();
+  // Starts the timer for the next `GetNext` call. Returns the start time.
+  absl::Time RecordStart();
 
   // Records metrics for the most recent `GetNext` call, including the latency,
-  // bytes fetched, iterator life time, etc. `output` is the output of the
-  // `GetNext` call.
-  void RecordStop(const std::vector<Tensor>& output);
+  // bytes fetched, iterator life time, etc. `start_time` is the start time
+  // returned by `RecordStart`. `output` is the output of the `GetNext` call.
+  void RecordStop(absl::Time start_time, const std::vector<Tensor>& output);
 
  private:
   // We only collect metrics for CPU devices.
@@ -74,10 +75,6 @@ class IteratorMetricsCollector {
   // Records the start time (in microseconds) of the first `RecordStart()` call
   // that followed the last period of inactivity.
   uint64_t first_start_time_us_ TF_GUARDED_BY(mu_) = 0;
-
-  // Records the start time (in microseconds) of the most recent `RecordStart()`
-  // call.
-  uint64_t start_time_us_ TF_GUARDED_BY(mu_) = 0;
 
   // Records the end time (in microseconds) of the most recent `RecordStop()`
   // call.

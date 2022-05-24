@@ -646,19 +646,16 @@ cc_library(
     tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
+        ":matmul_utils",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service/gpu:gemm_thunk",
-        "//tensorflow/compiler/xla/service/gpu:matmul_utils",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-        "//tensorflow/stream_executor",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//mlir:Support",
         "@tf_runtime//:dtype",
         "@tf_runtime//:support",
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:custom_call",
-        "@tf_runtime//backends/jitrt:types",
     ],
 )
 
@@ -925,26 +922,14 @@ cc_library(
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
     deps = [
-        ":buffer_allocations",
         ":matmul_utils",
         ":thunk",
-        "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:matmul_util",
-        "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_header",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -974,7 +959,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
-    ]),
+    ]) + [":matmul_utils"],
 )
 
 cc_library(
@@ -992,6 +977,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/stream_executor:matmul_util",
+        "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",

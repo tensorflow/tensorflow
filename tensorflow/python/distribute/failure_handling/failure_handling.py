@@ -17,10 +17,9 @@
 This is currently under development and the API is subject to change.
 
 PreemptionCheckpointHandler reduces loss of training progress caused by
-termination
-(preemption or maintenance) of workers in multi-worker synchronous training and
-avoid surfacing an error indistinguishable from application errors to the
-job scheduler or users.
+termination (preemption or maintenance) of workers in multi-worker synchronous
+training and avoid surfacing an error indistinguishable from application errors
+to the job scheduler or users.
 """
 import os
 import signal
@@ -29,6 +28,7 @@ import threading
 import time
 
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute.failure_handling import gce_util
 from tensorflow.python.eager import context
@@ -39,7 +39,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpoint_management
+from tensorflow.python.util.tf_export import tf_export
 
 _INITIAL_RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
 _FINAL_RUN_COUNT_KEY = 'LAST_RUN_TO_CHECKPOINT'
@@ -62,12 +62,14 @@ def _non_chief_checkpoint_dir(checkpoint_dir, task_id):
   return os.path.join(dirpath, base)
 
 
+@tf_export('distribute.experimental.TerminationConfig', v1=[])
 class TerminationConfig(object):
-  """Configurations to customize for a platform other than Google's Borg or GCP.
+  """Customization of platforms, used by `PreemptionCheckpointHandler`.
 
-  A TerminationConfig can be created and passed to the
-  `PreemptionCheckpointHandler` to provide customization based on the platform.
-  It will deliver three pieces of information:
+  A `TerminationConfig` can be created and passed to a
+  `tf.distribute.experimental.PreemptionCheckpointHandler` to provide
+  customization based on the platform. It can deliver three pieces of
+  information:
 
   * How to decide if there is a termination event soon
 
@@ -75,68 +77,79 @@ class TerminationConfig(object):
   platforms. Thus we accept a user-defined function,
   `termination_watcher_fn`, and execute it repeatedly to check for
   termination notification. `termination_watcher_fn` should be a function
-  that returns True if a termination notification has been made available and
-  False otherwise. The function should be lightweight and non-blocking so that
+  that returns `True` if a termination notification is available and
+  `False` otherwise. The function should be lightweight and non-blocking so that
   we can clean up the resources properly if no termination signal is ever raised
   until training finishes.
 
   * How to exit the program
 
-  We are asking for an `exit_fn` to execute after saving the checkpoint to exit
-  the training program gracefully. For MultiWorkerMirroredStrategy, a restart is
-  inevitable to reset the program's state. However, you can configure the
-  `exit_fn` to facilitate the restart and smoothen the training experience. How
-  so? Maybe your platform has an agreement to a RESTART_CODE recognized as a
-  program auto-restart signal, or you may have a coordinating script that starts
-  up the training, in which you can configure the program to auto-restart if it
-  ever exits with this RESTART_CODE. In both cases, you can configure `exit_fn`
-  to be `sys.exit(RESTART_CODE)` and then wouldn’t even notice that the training
-  has been interrupted and restarted.
+  You can configure it through the `exit_fn`, which
+  `tf.distribute.experimental.PreemptionCheckpointHandler` will execute after
+  saving the checkpoint to exit the training program gracefully. For
+  `tf.distribute.MultiWorkerMirroredStrategy`, a restart is necessary to reset
+  the program's state. However, you can configure the `exit_fn` to facilitate
+  the restart and smoothen the training experience. How so? Maybe your platform
+  has an agreement to a `RESTART_CODE` recognized as a program auto-restart
+  signal, or you may have a coordinating script that starts up the training, in
+  which you can configure the program to auto-restart if it ever exits with this
+  `RESTART_CODE`. In both cases, you can configure `exit_fn` to be
+  `sys.exit(RESTART_CODE)` and then won't even notice that the training has been
+  interrupted and restarted.
 
   * How long do we have from receiving a termination event notice till the
   actual termination.
 
-  Some platforms have the gap time as long as one hour or so. In these cases,
+  Some platforms have a gap time as long as one hour or so. In these cases,
   you might want to utilize this time for training as much as possible until you
   have to save a checkpoint and exit. You can achieve this by passing the
   `grace_period` argument.
 
 
-  *The default behavior*:
+  **The default behavior**:
 
-  If you are training with Google’s Borg system or GCP, we automatically detect
-  the platform and make the right configuration for you. Besides these two
-  platforms, the default behavior on an unrecognized platform is:
+  * For Google Borg Platform:
+      * Automatically know how to detect preemption signal
+      * Exit with a platform recognized restart code
+      * Save a checkpoint and exit immediately
 
-  * If `termination_event` is `None`, we will treat `signal.SIGTERM` as a
-  termination event.
+  * For Google Could Platform:
+      * Automatically know how to detect maintenance signal.
+      * Exit with a code (**You may configure this**)
+      * Automatically utilized the extended training period before save and exit
 
-  * If `exit_fn` is not configured, we exit the program with an arbitrary code
-  42.
-
-  * If `grace_period` is not configured, the default is 0, and we will
-  wrap up the current training step, save a checkpoint, and exit the program as
-  soon as we receive the termination signal.
-
-  Args:
-  termination_watcher_fn: a function to execute repeatedly that returns True if
-    a preemption signal is available and False otherwise. The function cannot
-    block until a preemption signal is available, which prevents proper
-    cleanup of the program. This is NOT needed for users on Borg or GCP.
-  exit_fn: a function to execute after a checkpoint is saved and before the
-    preemption happens. Usually, it should be in the form of
-    `lambda: sys.exit(RESTART_CODE)`, where RESTART_CODE varies by platform.
-    This is NOT needed for Borg users. Users on GCP may use it for a customized
-    RESTART_CODE.
-  grace_period: the length of time between receiving a preemption signal and the
-    actual preemption. This is NOT needed for users on Borg or GCP or users with
-    a short grace period..
+  * For Other platform:
+      * If `termination_watcher_fn` is `None`, we will treat `signal.SIGTERM` as
+      a termination signal.
+      * If `exit_fn` is not configured, we exit the program with an arbitrary
+      code.
+      * If `grace_period` is not configured, we will wrap up the current
+      training step, save a checkpoint, and exit the program as soon as we
+      receive the termination signal.
   """
 
   def __init__(self,
                termination_watcher_fn=None,
                exit_fn=None,
                grace_period=None):
+    """Creates a `TerminationConfig` object.
+
+    Args:
+      termination_watcher_fn: a function to execute repeatedly that returns
+        `True` if a preemption signal is available and False otherwise. The
+        function cannot block until a preemption signal is available, which
+        prevents proper cleanup of the program. A change is **NOT** recommended
+        for users on Google Borg or Google Cloud Platform.
+      exit_fn: a function to execute after a checkpoint is saved and before the
+        preemption happens. Usually, it should be in the form of
+        `lambda: sys.exit(RESTART_CODE)`, where `RESTART_CODE` varies by
+        platform. A change is **NOT** recommended for users on Google Borg.
+        Users on Google Cloud Platform may configure it to use a customized
+        `RESTART_CODE`.
+      grace_period: the length of time between receiving a preemption signal and
+        the actual preemption. A change is **NOT** recommended for users on
+        Google Borg, Google Cloud Platform, or users with a short grace period.
+    """
     self.termination_watcher_fn = termination_watcher_fn
     self.exit_fn = exit_fn
     self.grace_period = grace_period
@@ -153,8 +166,9 @@ class GCPTerminationConfig(TerminationConfig):
       grace_period=None):
     self.termination_watcher_fn = termination_watcher_fn or gce_util.termination_watcher_function_gce
     self.exit_fn = exit_fn or gce_util.gce_exit_fn
-    self.grace_period = (grace_period if grace_period or grace_period is 0 else  # pylint: disable=literal-comparison
-                         gce_util.GRACE_PERIOD_GCE)
+    self.grace_period = (
+        grace_period
+        if grace_period or grace_period == 0 else gce_util.GRACE_PERIOD_GCE)
 
 
 class BorgTerminationConfig(TerminationConfig):
@@ -171,10 +185,11 @@ class BorgTerminationConfig(TerminationConfig):
     self.grace_period = grace_period or 0
 
 
-def _complete_config_for_environement(platform_device, termination_config):
+def _complete_config_for_environment(platform_device, termination_config):
   """Complete un-filled fields of TerminationConfig based on platform."""
   if not termination_config:
     termination_config = TerminationConfig()
+
   if platform_device is gce_util.PlatformDevice.GCE_GPU:
     return GCPTerminationConfig(termination_config.termination_watcher_fn,
                                 termination_config.exit_fn,
@@ -188,6 +203,7 @@ def _complete_config_for_environement(platform_device, termination_config):
         termination_config.exit_fn, termination_config.grace_period)
 
 
+# TODO(wxinyi): add release updates.
 # Implementation:
 # Each worker will create its own PreemptionCheckpointHandler instance, and the
 # instances communicate through coordination services. Each
@@ -246,29 +262,32 @@ def _complete_config_for_environement(platform_device, termination_config):
 #
 # When the program restarts and PreemptionCheckpointHandler object is created,
 # it will restore the checkpoint.
+@tf_export('distribute.experimental.PreemptionCheckpointHandler', v1=[])
 class PreemptionCheckpointHandler(object):
+  # pylint: disable=line-too-long
   """Preemption and error handler for synchronous training.
 
   Note: This API only supports use with
   `tf.distribute.MultiWorkerMirroredStrategy` for now.
 
-  A `PreemptionCheckpointHandler` helps coordinate all workers to save a
-  checkpoint upon receiving a preemption signal and helps propagate accurate
-  error messages during training among the cluster. When the program recovers
-  from preemption, the checkpoint passed to initialize a
-  `PreemptionCheckpointHandler` object will be loaded automatically.
+  A `PreemptionCheckpointHandler` coordinates all workers to save a checkpoint
+  upon receiving a preemption signal. It also helps disseminate application
+  error messages accurately among the cluster. When a
+  `PreemptionCheckpointHandler` object is created, it restores values from
+  the latest checkpoint file if any exists.
 
   Right after the initialization, a thread starts to watch out for a termination
   signal for any member in the cluster. If receiving a signal, the next time the
   worker enters a `PreemptionCheckpointHandler.run` call, the
   `PreemptionCheckpointHandler` will align the worker steps to save a checkpoint
-  and maybe exit -- depending on the `exit_fn` in `TerminationConfig`.
+  and maybe exit -- depending on the `exit_fn` in
+  `tf.distribute.experimental.TerminationConfig`.
 
-  Note: by default, the program will exit after saving a checkpoint. Users of
+  Note: by default, the program exits after saving a checkpoint. Users of
   `tf.distribute.MultiWorkerMirroredStrategy` who choose to configure their own
-  `exit_fn` in `TerminationConfig` must include a `sys.exit(CODE_OR_MESSAGE)`
-  in the `exit_fn` to guarantee that after restart, the workers can initialize
-  communication services correctly.
+  `exit_fn` in `tf.distribute.experimental.TerminationConfig` must include a
+  `sys.exit(CODE_OR_MESSAGE)` in the `exit_fn` to guarantee that after the
+  restart, the workers can initialize communication services correctly.
 
   Example usage:
   ```python
@@ -279,50 +298,41 @@ class PreemptionCheckpointHandler(object):
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
 
-    preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(
-        cluster_resolver, checkpoint, checkpoint_directory)
+    preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint, checkpoint_directory)
 
-
-    # `preemption_handler.total_run_calls` will be restored to its
-    # saved value if training is restored after interruption.
-    for epoch in range(preemption_handler.total_run_calls //
-                       STEPS_PER_EPOCH, num_epochs):
-      for step in range(preemption_handler.total_run_calls %
-                        STEPS_PER_EPOCH, STEPS_PER_EPOCH):
-        # distributed_train_step is a single-step training function wrapped by
-        # strategy.run.
-        loss += preemption_handler.run(distributed_train_step,
-                                                   args=(next(dataset),))
+    # preemption_handler.total_run_calls will be restored to its saved value if
+    # training is restored after interruption.
+    for epoch in range(preemption_handler.total_run_calls // STEPS_PER_EPOCH, num_epochs):
+      for step in range(preemption_handler.total_run_calls % STEPS_PER_EPOCH, STEPS_PER_EPOCH):
+        # distributed_train_step is a single-step training function wrapped by tf.distribute.Strategy.run.
+        loss += preemption_handler.run(distributed_train_step, args=(next(dataset),))
   ```
 
-  Not all interruption comes with an advance notice so that the
-  `PreemptionCheckpointHandler` can handle it, e.g., those caused by hardware
+  Not all interruptions come with advance notice so that the
+  `PreemptionCheckpointHandler` can handle them, e.g., those caused by hardware
   failure. For a user who saves checkpoints for these cases themselves outside
   the `PreemptionCheckpointHandler`, if they are using a
   `tf.train.CheckpointManager`, pass it as the
   `checkpoint_or_checkpoint_manager` argument to the
   `PreemptionCheckpointHandler`. If they do not have a
   `tf.train.CheckpointManager` but are directly working with
-  `tf.train.Checkpoint`, we advise saving the checkpoints in the same directory
-  that is passed to the `PreemptionCheckpointHandler`, so that at the program
+  `tf.train.Checkpoint`, we advise saving the checkpoints in the directory
+  that's passed as the `checkpoint_dir` argument. In this way, at the program
   beginning, `PreemptionCheckpointHandler` can restore the latest checkpoint
-  from the directory -- no matter it's saved by the user themselves or saved by
-  the `PreemptionCheckpointHandler` before program restarts.
+  from the directory, no matter it's saved by the user themselves or saved by
+  the `PreemptionCheckpointHandler` before preemption happens.
 
-  If user cannot infer the start epoch and start step from
+  If a user cannot infer the start epoch and start step from
   `PreemptionCheckpointHandler.total_run_calls` (e.g., if there is no preknown
   `STEPS_PER_EPOCH` or if their `STEPS_PER_EPOCH` may vary from epoch to epoch),
-  we recommend tracking the epoch and step themselves and save them in the
-  passed-in checkpoint:
+  we recommend tracking the epoch and step numbers themselves and save them in
+  the passed-in checkpoint:
 
   ```python
   strategy = tf.distribute.MultiWorkerMirroredStrategy()
 
-  trained_epoch = tf.Variable(
-      initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='epoch')
-  step_in_epoch = tf.Variable(
-      initial_value=tf.constant(0, dtype=tf.dtypes.int64),
-      name='step_in_epoch')
+  trained_epoch = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='epoch')
+  step_in_epoch = tf.Variable(initial_value=tf.constant(0, dtype=tf.dtypes.int64), name='step_in_epoch')
 
   with strategy.scope():
     dataset, model, optimizer = ...
@@ -332,8 +342,7 @@ class PreemptionCheckpointHandler(object):
                                      trained_epoch=trained_epoch,
                                      step_in_epoch=step_in_epoch)
 
-    preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(
-        cluster_resolver, checkpoint, checkpoint_dir)
+    preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint, checkpoint_dir)
 
   while trained_epoch.numpy() < NUM_EPOCH:
 
@@ -346,32 +355,45 @@ class PreemptionCheckpointHandler(object):
     epoch.assign_add(1)
     step_in_epoch.assign(0)
   ```
+
+  **A note on the platform:**
+
+  `PreemptionCheckpointHandler` can only handle the kind of termination with
+  advance notice. For now, the API recognizes the Google Borg and the Google
+  Cloud Platform, where it can automatically adopt the correct
+  preemption/maintenance notification detection mechanism. Users of other
+  platforms can configure it through a
+  `tf.distribute.experimental.TerminationConfig`. Customization for the exit
+  behavior and grace period length could also be done here.
   """
+  # pylint: enable=line-too-long
 
   def __init__(self,
                cluster_resolver,
                checkpoint_or_checkpoint_manager,
                checkpoint_dir=None,
                termination_config=None):
-    """Creates the failure handler.
+    """Creates the `PreemptionCheckpointHandler`.
 
     Args:
-      cluster_resolver: a `tf.distribute.cluster_resolver.ClusterResolver`. You
-        may also get it through the `cluster_resolver` attribute of the strategy
-        in use.
+      cluster_resolver: a `tf.distribute.cluster_resolver.ClusterResolver`
+        object. You may also obtain it through the `cluster_resolver` attribute
+        of the distribution strategy in use.
       checkpoint_or_checkpoint_manager: a `tf.train.CheckpointManager` or a
-        `tf.train.Checkpoint` that will be saved upon preemption and loaded upon
-        restart by the `PreemptionCheckpointHandler` API automatically. If you
-        have a `tf.train.CheckpointManager`, pass that. Otherwise,
-        `PreemptionCheckpointHandler` will create a `tf.train.CheckpointManager`
-        to manage the passed-in `checkpoint` in the `checkpoint_dir`.
+        `tf.train.Checkpoint`. If you are using a `tf.train.CheckpointManager`
+        to manage checkpoints outside the `PreemptionCheckpointHandler` for
+        backup purpose as well, pass it as `checkpoint_or_checkpoint_manager`
+        argument. Otherwise, pass a `tf.train.Checkpoint` and the
+        `PreemptionCheckpointHandler` will create
+        a `tf.train.CheckpointManager` to manage it in the `checkpoint_dir`.
       checkpoint_dir: a directory where the `PreemptionCheckpointHandler` saves
-        and restores checkpoints. This is not needed if a
-        `tf.train.CheckpointManager` is passed as the
-        `checkpoint_or_checkpoint_manager` argument. The latest checkpoint in
-        the `checkpoint_dir` will be restored when a
-        `PreemptionCheckpointHandler` is created.
-      termination_config: a `TerminationConfig` object to configure for a
+        and restores checkpoints. When a `PreemptionCheckpointHandler` is
+        created, the latest checkpoint in the `checkpoint_dir` will be restored.
+        (This is not needed if a `tf.train.CheckpointManager` instead of a
+        `tf.train.Checkpoint` is passed as the
+        `checkpoint_or_checkpoint_manager` argument.)
+      termination_config: optional, a
+        `tf.distribute.experimental.TerminationConfig` object to configure for a
         platform other than Google Borg or GCP.
     """
     self._cluster_resolver = cluster_resolver
@@ -440,7 +462,7 @@ class PreemptionCheckpointHandler(object):
       raise NotImplementedError('PreemptionCheckpointHandler does not support '
                                 'training with TPU or CPU device on GCP.')
 
-    completed_termination_config = _complete_config_for_environement(
+    completed_termination_config = _complete_config_for_environment(
         self._platform_device, termination_config)
     self._termination_watcher_fn = completed_termination_config.termination_watcher_fn
     self._exit_fn = completed_termination_config.exit_fn
@@ -497,6 +519,7 @@ class PreemptionCheckpointHandler(object):
                 max_to_keep=1))
 
   def _start_watching_for_signal(self):
+    logging.info('Start watcher for local signal.')
     signal.signal(signal.SIGTERM, self._sigterm_handler_fn)
 
   def _start_polling_for_termination_signal(self):
@@ -594,11 +617,14 @@ class PreemptionCheckpointHandler(object):
 
     This value tracks the number of all calls to
     `PreemptionCheckpointHandler.run` including those before the program is
-    restarted and the training is restored. The user can compute their total
-    number of iterations by:
-    `preemption_checkpoint_handler.run * number_of_steps_in_train_function`,
-    while for tf.distribute.MultiWorkerMirroredStrategy users,
-    `number_of_steps_in_train_function` should be one.
+    restarted and the training is restored, by saving and reading the value in
+    the checkpoint. A user can compute their total number of iterations
+    by `PreemptionCheckpointHandler.total_run_calls *
+    number_of_steps_in_train_function`,
+    while `number_of_steps_in_train_function` should be one for
+    `tf.distribute.MultiWorkerMirroredStrategy` users. They can also use this
+    value to infer the starting epoch and step after training restores, as shown
+    in the example above.
     """
     return self._run_counter
 
@@ -609,10 +635,8 @@ class PreemptionCheckpointHandler(object):
     """Runs a training function with error and preemption handling.
 
     This function handles the preemption signal from any peer in the cluster by
-    saving the training progress and exiting gracefully. (Specifically, when
-    running on Borg, it exits with a special code so that the cluster
-    automatically restarts the training after the down worker is back.) It will
-    also propagate any program error encountered during execution of
+    saving the training progress and exiting gracefully. It will
+    also broadcase any program error encountered during the execution of
     `distributed_train_function` to all workers so that they can raise the same
     error.
 
@@ -645,15 +669,15 @@ class PreemptionCheckpointHandler(object):
       return strategy.reduce(
           tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
 
-    for epoch in range(preemption_checkpoint_handler.total_run_calls //
-                       STEPS_PER_EPOCH, EPOCHS_TO_RUN):
+    for epoch in range(preemption_handler.total_run_calls // STEPS_PER_EPOCH,
+                       EPOCHS_TO_RUN):
       iterator = iter(multi_worker_dataset)
       total_loss = 0.0
       num_batches = 0
 
-      for step in range(preemption_checkpoint_handler.total_run_calls %
-                        STEPS_PER_EPOCH, STEPS_PER_EPOCH):
-        total_loss += preemption_checkpoint_handler.run(distributed_train_step)
+      for step in range(preemption_handler.total_run_calls % STEPS_PER_EPOCH,
+                        STEPS_PER_EPOCH):
+        total_loss += preemption_handler.run(distributed_train_step)
         num_batches += 1
 
       train_loss = total_loss / num_batches
@@ -668,9 +692,9 @@ class PreemptionCheckpointHandler(object):
       **kwargs: kwargs for `distributed_train_function`.
 
     Raises:
-      Program error encountered by any member in the cluster encounters one
-      while executing the `distributed_train_function`, or any error from the
-      program error propagation process.
+      Program error encountered by any member in the cluster while executing the
+      `distributed_train_function`, or any error from the program error
+      propagation process.
 
     Returns:
       Result of running the `distributed_train_function`.

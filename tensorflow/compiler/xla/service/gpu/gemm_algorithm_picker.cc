@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -294,9 +294,8 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
       /*broadcast_a=*/broadcast, /*broadcast_b=*/broadcast, dtype, dtype,
       device_id);
 
-  se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
-  if (BlasPlansAutotuneCacheSingleton::GetInstance()->Find(matmul_parameters,
-                                                           &algorithm_config)) {
+  BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
+  if (cache.Find(matmul_parameters)) {
     return Status::OK();
   }
 
@@ -318,21 +317,16 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
             se::OwningScratchAllocator<> scratch_allocator(
                 stream->parent()->device_ordinal(), allocator);
             se::blas::ProfileResult profile_result;
-            TF_RETURN_IF_ERROR(
-                RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                        &scratch_allocator, algorithm.get(), &profile_result));
+            TF_RETURN_IF_ERROR(RunBlasLtMatmul(
+                config, lhs_buffer, rhs_buffer, output_buffer, stream,
+                scratch_allocator, algorithm.get(), &profile_result));
             return std::move(profile_result);
           }));
 
   if (best_algorithm_idx) {
-    // Note that algorithm_config.algorithm() here is used to refer
-    // to the index within the algorithms vector, not the algorithm
-    // itself.
-    algorithm_config.set_algorithm(*best_algorithm_idx);
+    cache.Insert(std::move(matmul_parameters),
+                 se::blas::AlgorithmConfig(*best_algorithm_idx));
   }
-
-  BlasPlansAutotuneCacheSingleton::GetInstance()->Insert(matmul_parameters,
-                                                         algorithm_config);
   return Status::OK();
 }
 
@@ -416,10 +410,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
             // always return true, and the actual success-ness is returned in
             // ProfileResult::is_valid.
             TF_RETURN_IF_ERROR(RunGemm(config, lhs_buffer, rhs_buffer,
-                                       output_buffer, stream,
-                                       /*scratch allocator=*/nullptr,
-                                       /*algorithm_being_profiled=*/nullptr,
-                                       &profile_result, algorithm));
+                                       output_buffer, stream, algorithm,
+                                       &profile_result));
             return std::move(profile_result);
           }));
 

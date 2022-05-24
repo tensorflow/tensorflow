@@ -4272,8 +4272,10 @@ Status HloInstruction::GetBackendConfigInternal(
   proto->Clear();
 
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    proto->CopyFrom(*proto_ptr);
-    return Status::OK();
+    if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
+      proto->CopyFrom(*proto_ptr);
+      return Status::OK();
+    }
   }
 
   auto& raw_string = raw_backend_config_string();
