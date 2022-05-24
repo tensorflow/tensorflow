@@ -135,6 +135,18 @@ func.func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_rsqrt
+func.func @complex_rsqrt(%operand: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.rsqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.rsqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_cbrt
 func.func @float_cbrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.cbrt"(%operand)
@@ -224,6 +236,18 @@ func.func @float_expm1(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: expm1
   %0 = "mhlo.exponential_minus_one"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_expm1
+func.func @complex_expm1(%arg0: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.expm1
+  %0 = "mhlo.exponential_minus_one"(%arg0)
+    : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----

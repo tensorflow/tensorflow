@@ -83,6 +83,7 @@ struct MhloToScalarOp<mhlo::ExpOp> {
 template <>
 struct MhloToScalarOp<mhlo::Expm1Op> {
   using FOp = ::mlir::math::ExpM1Op;
+  using COp = ::mlir::complex::Expm1Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::FloorOp> {
@@ -130,6 +131,7 @@ struct MhloToScalarOp<mhlo::PopulationCountOp> {
 template <>
 struct MhloToScalarOp<mhlo::RsqrtOp> {
   using FOp = ::mlir::math::RsqrtOp;
+  using COp = ::mlir::complex::RsqrtOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::SubOp> {
