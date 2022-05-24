@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -35,22 +36,22 @@ namespace profiler {
 class DerivedXEventBuilder {
  public:
   DerivedXEventBuilder(XEventBuilder event, absl::optional<int64_t> group_id,
-                       absl::string_view low_level_event_name);
+                       const XEventMetadata* low_level_event_metadata);
 
   bool ShouldExpand(const XEventMetadata& event_metadata,
                     absl::optional<int64_t> group_id,
-                    absl::string_view low_level_event_name) const;
+                    const XEventMetadata* low_level_event_metadata) const;
 
-  void Expand(Timespan event_span, absl::string_view low_level_event_name);
+  void Expand(Timespan event_span,
+              const XEventMetadata* low_level_event_metadata);
 
  private:
   XEventBuilder event_;
   absl::optional<int64_t> group_id_;
   // The set of low level events associated with this XEvent.
-  // For a TF op that is compiled by XLA, these are its composing HLO op names.
-  // For a TF op that is not compiled by XLA, these are its composing kernel
-  // names.
-  absl::flat_hash_set<std::string> low_level_event_names_;
+  // For a TPU TF op, these are its composing HLO ops.
+  // For a GPU TF op, these are its composing kernels.
+  absl::flat_hash_set<int64_t> low_level_event_metadata_ids_;
 };
 
 // Helper for deriving an XLine from events in another XLine.
@@ -68,26 +69,17 @@ class DerivedXLineBuilder {
   //   TF-op, TF name scope: both group_id and low_level_event_name are used.
   //   HLO-op, step: only group_id is used.
   //   HLO module, source: both group_id and low_level_event_name are NOT used.
-  void ExpandOrAddEvent(const XEventMetadata& event_metadata,
-                        Timespan event_span, absl::optional<int64_t> group_id,
-                        absl::string_view low_level_event_name = "") {
-    ExpandOrAddLevelEvent(event_metadata, event_span, group_id,
-                          low_level_event_name, /*level=*/0);
-  }
+  void ExpandOrAddEvent(
+      const XEventMetadata& event_metadata, Timespan event_span,
+      absl::optional<int64_t> group_id,
+      const XEventMetadata* low_level_event_metadata = nullptr);
 
   // The multi-level version of ExpandOrAddEvent. Here, the XEvents at different
   // levels all share the same group_id and low_level_event_name.
   void ExpandOrAddEvents(
       const std::vector<XEventMetadata*>& events_metadata_per_level,
       Timespan event_span, absl::optional<int64_t> group_id,
-      absl::string_view low_level_event_name = "") {
-    size_t current_nested_level = events_metadata_per_level.size();
-    for (size_t level = 0; level < current_nested_level; ++level) {
-      ExpandOrAddLevelEvent(*events_metadata_per_level[level], event_span,
-                            group_id, low_level_event_name, level);
-    }
-    if (current_nested_level) ResetLastEvents(current_nested_level);
-  }
+      const XEventMetadata* low_level_event_metadata = nullptr);
 
   // Reset the last events lower than or equal to the given level.
   void ResetLastEvents(int level = 0);
@@ -102,7 +94,8 @@ class DerivedXLineBuilder {
   void ExpandOrAddLevelEvent(const XEventMetadata& event_metadata,
                              Timespan event_span,
                              absl::optional<int64_t> group_id,
-                             absl::string_view low_level_event_name, int level);
+                             const XEventMetadata* low_level_event_metadata,
+                             int level);
 
   const XStatMetadata* group_id_stat_metadata_ = nullptr;
   const XStatMetadata* level_stat_metadata_ = nullptr;
@@ -124,11 +117,11 @@ using SymbolResolver = std::function<Symbol(absl::optional<uint64_t> program_id,
 // Derives TF name scope and op events from the TF op's fully qualified name
 // with the name of the originating low-level event.
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
-                      absl::string_view low_level_event_name,
+                      const XEventMetadata& low_level_event_metadata,
                       Timespan event_span, absl::optional<int64_t> group_id,
-                      XPlaneBuilder* plane_builder,
-                      DerivedXLineBuilder* tf_name_scope_line_builder,
-                      DerivedXLineBuilder* tf_op_line_builder);
+                      XPlaneBuilder& plane_builder,
+                      DerivedXLineBuilder& tf_name_scope_line_builder,
+                      DerivedXLineBuilder& tf_op_line_builder);
 
 // Adds step names from GroupMetadataMap to "Steps" line in plane.
 // The event name is updated when converted to trace events.

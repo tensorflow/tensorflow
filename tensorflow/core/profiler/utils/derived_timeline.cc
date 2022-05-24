@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
@@ -44,51 +44,53 @@ namespace tensorflow {
 namespace profiler {
 
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
-                      absl::string_view low_level_event_name,
+                      const XEventMetadata& low_level_event_metadata,
                       Timespan event_span, absl::optional<int64_t> group_id,
-                      XPlaneBuilder* plane_builder,
-                      DerivedXLineBuilder* tf_name_scope_line_builder,
-                      DerivedXLineBuilder* tf_op_line_builder) {
+                      XPlaneBuilder& plane_builder,
+                      DerivedXLineBuilder& tf_name_scope_line_builder,
+                      DerivedXLineBuilder& tf_op_line_builder) {
   TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
   Category category = tf_op.category;
   if (category == Category::kTensorFlow || category == Category::kJax) {
-    tf_name_scope_line_builder->ExpandOrAddEvents(
-        plane_builder->GetOrCreateEventsMetadata(ParseTfNameScopes(tf_op)),
-        event_span, group_id, low_level_event_name);
+    tf_name_scope_line_builder.ExpandOrAddEvents(
+        plane_builder.GetOrCreateEventsMetadata(ParseTfNameScopes(tf_op)),
+        event_span, group_id, &low_level_event_metadata);
   }
   XEventMetadata* tf_op_event_metadata =
-      plane_builder->GetOrCreateEventMetadata(tf_op_full_name);
+      plane_builder.GetOrCreateEventMetadata(tf_op_full_name);
   // Set the display name to op_type so that the events of the same op_type have
   // the same color in the trace viewer.
   tf_op_event_metadata->set_display_name(TfOpEventName(tf_op));
-  tf_op_line_builder->ExpandOrAddEvent(*tf_op_event_metadata, event_span,
-                                       group_id, low_level_event_name);
+  tf_op_line_builder.ExpandOrAddEvent(*tf_op_event_metadata, event_span,
+                                      group_id, &low_level_event_metadata);
 }
 
 DerivedXEventBuilder::DerivedXEventBuilder(
     XEventBuilder event, absl::optional<int64_t> group_id,
-    absl::string_view low_level_event_name)
+    const XEventMetadata* low_level_event_metadata)
     : event_(std::move(event)), group_id_(group_id) {
-  if (!low_level_event_name.empty()) {
-    low_level_event_names_.insert(std::string(low_level_event_name));
+  if (low_level_event_metadata != nullptr) {
+    low_level_event_metadata_ids_.insert(low_level_event_metadata->id());
   }
 }
 
 bool DerivedXEventBuilder::ShouldExpand(
     const XEventMetadata& event_metadata, absl::optional<int64_t> group_id,
-    absl::string_view low_level_event_name) const {
+    const XEventMetadata* low_level_event_metadata) const {
   return event_.MetadataId() == event_metadata.id() && group_id_ == group_id &&
-         !low_level_event_names_.contains(low_level_event_name);
+         (low_level_event_metadata == nullptr ||
+          !low_level_event_metadata_ids_.contains(
+              low_level_event_metadata->id()));
 }
 
-void DerivedXEventBuilder::Expand(Timespan event_span,
-                                  absl::string_view low_level_event_name) {
+void DerivedXEventBuilder::Expand(
+    Timespan event_span, const XEventMetadata* low_level_event_metadata) {
   Timespan timespan = event_.GetTimespan();
   DCHECK_LE(timespan.begin_ps(), event_span.begin_ps());
   timespan.ExpandToInclude(event_span);
   event_.SetTimespan(timespan);
-  if (!low_level_event_name.empty()) {
-    low_level_event_names_.insert(std::string(low_level_event_name));
+  if (low_level_event_metadata != nullptr) {
+    low_level_event_metadata_ids_.insert(low_level_event_metadata->id());
   }
 }
 
@@ -104,15 +106,36 @@ DerivedXLineBuilder::DerivedXLineBuilder(
   line_.SetTimestampNs(timestamp_ns);
 }
 
+void DerivedXLineBuilder::ExpandOrAddEvent(
+    const XEventMetadata& event_metadata, Timespan event_span,
+    absl::optional<int64_t> group_id,
+    const XEventMetadata* low_level_event_metadata) {
+  ExpandOrAddLevelEvent(event_metadata, event_span, group_id,
+                        low_level_event_metadata, /*level=*/0);
+}
+
+void DerivedXLineBuilder::ExpandOrAddEvents(
+    const std::vector<XEventMetadata*>& events_metadata_per_level,
+    Timespan event_span, absl::optional<int64_t> group_id,
+    const XEventMetadata* low_level_event_metadata) {
+  if (events_metadata_per_level.empty()) return;
+  size_t current_nested_level = events_metadata_per_level.size();
+  for (size_t level = 0; level < current_nested_level; ++level) {
+    ExpandOrAddLevelEvent(*events_metadata_per_level[level], event_span,
+                          group_id, low_level_event_metadata, level);
+  }
+  ResetLastEvents(current_nested_level);
+}
+
 void DerivedXLineBuilder::ExpandOrAddLevelEvent(
     const XEventMetadata& event_metadata, Timespan event_span,
-    absl::optional<int64_t> group_id, absl::string_view low_level_event_name,
-    int level) {
+    absl::optional<int64_t> group_id,
+    const XEventMetadata* low_level_event_metadata, int level) {
   auto& last_event = last_event_by_level_[level];
   if (last_event && last_event->ShouldExpand(event_metadata, group_id,
-                                             low_level_event_name)) {
+                                             low_level_event_metadata)) {
     // Expand the last event to cover the given event.
-    last_event->Expand(event_span, low_level_event_name);
+    last_event->Expand(event_span, low_level_event_metadata);
   } else {
     // Otherwise, reset the last events lower than or equal to the given level.
     ResetLastEvents(level);
@@ -123,7 +146,7 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
       event.AddStatValue(*group_id_stat_metadata_, *group_id);
     }
     event.AddStatValue(*level_stat_metadata_, level);
-    last_event.emplace(std::move(event), group_id, low_level_event_name);
+    last_event.emplace(std::move(event), group_id, low_level_event_metadata);
   }
 }
 
@@ -229,9 +252,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                     stats.hlo_op_names.back());
       if (!symbol.tf_op_name.empty()) {
         ProcessTfOpEvent(symbol.tf_op_name,
-                         /*low_level_event_name=*/event.Name(), event_span,
-                         stats.group_id, &plane_builder, &tf_name_scope,
-                         &tf_ops);
+                         /*low_level_event_metadata=*/*event.metadata(),
+                         event_span, stats.group_id, plane_builder,
+                         tf_name_scope, tf_ops);
       }
       if (!symbol.source_info.empty()) {
         source.ExpandOrAddEvent(
@@ -240,8 +263,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
       }
     } else if (stats.IsTfOp()) {
       ProcessTfOpEvent(stats.tf_op_fullname,
-                       /*low_level_event_name=*/event.Name(), event_span,
-                       stats.group_id, &plane_builder, &tf_name_scope, &tf_ops);
+                       /*low_level_event_metadata=*/*event.metadata(),
+                       event_span, stats.group_id, plane_builder, tf_name_scope,
+                       tf_ops);
     }
   }
   RemoveEmptyLines(device_trace);
