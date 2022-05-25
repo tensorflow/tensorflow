@@ -127,11 +127,11 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
       %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+        : tensor<8x16xf32> at !gml_st.tile<4x4>
       %rhs_sub = gml_st.materialize %rhs_ at %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+        : tensor<8x16xf32> at !gml_st.tile<4x4>
       %out_sub = gml_st.materialize %out_ at %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+        : tensor<8x16xf32> at !gml_st.tile<4x4>
 
       %result_sub = linalg.generic (%lhs_sub, %rhs_sub, %out_sub) ...
 
@@ -166,11 +166,11 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
       %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
       %lhs_sub = gml_st.materialize %lhs_ at %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+        : tensor<8x16xf32> at !gml_st.tile<4x4>
       %rhs_sub = gml_st.materialize %rhs_ at %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+        : tensor<8x16xf32> at !gml_st.tile<4x4>
       %out_sub = gml_st.materialize %out_ at %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+        : tensor<8x16xf32> at !gml_st.tile<4x4>
 
       %result_sub = linalg.generic (%lhs_sub, %rhs_sub, %out_sub) ...
 

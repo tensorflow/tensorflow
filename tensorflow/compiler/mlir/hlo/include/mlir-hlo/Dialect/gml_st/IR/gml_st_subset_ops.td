@@ -101,8 +101,7 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
   let arguments = (ins
     AnySubset:$arg_tile,
     I64ElementsAttr:$remaining_dims);
-  let results = (outs 
-    AnySubset:$result);
+  let results = (outs AnySubset:$result);
   let assemblyFormat = [{
     $arg_tile `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
     type($arg_tile) `->` type($result)
