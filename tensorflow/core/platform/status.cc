@@ -154,8 +154,6 @@ void Status::SlowCopyFrom(const State* src) {
   }
 }
 
-Status OkStatus() { return Status(); }
-
 const std::string& Status::empty_string() {
   static string* empty = new string;
   return *empty;
@@ -277,6 +275,72 @@ void Status::ForEachPayload(
 std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;
+}
+
+Status OkStatus() { return Status(); }
+
+bool IsAborted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ABORTED;
+}
+
+bool IsAlreadyExists(const Status& status) {
+  return status.code() == tensorflow::errors::Code::ALREADY_EXISTS;
+}
+
+bool IsCancelled(const Status& status) {
+  return status.code() == tensorflow::errors::Code::CANCELLED;
+}
+
+bool IsDataLoss(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DATA_LOSS;
+}
+
+bool IsDeadlineExceeded(const Status& status) {
+  return status.code() == tensorflow::errors::Code::DEADLINE_EXCEEDED;
+}
+
+bool IsFailedPrecondition(const Status& status) {
+  return status.code() == tensorflow::errors::Code::FAILED_PRECONDITION;
+}
+
+bool IsInternal(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INTERNAL;
+}
+
+bool IsInvalidArgument(const Status& status) {
+  return status.code() == tensorflow::errors::Code::INVALID_ARGUMENT;
+}
+
+bool IsNotFound(const Status& status) {
+  return status.code() == tensorflow::errors::Code::NOT_FOUND;
+}
+
+bool IsOutOfRange(const Status& status) {
+  return status.code() == tensorflow::errors::Code::OUT_OF_RANGE;
+}
+
+bool IsPermissionDenied(const Status& status) {
+  return status.code() == tensorflow::errors::Code::PERMISSION_DENIED;
+}
+
+bool IsResourceExhausted(const Status& status) {
+  return status.code() == tensorflow::errors::Code::RESOURCE_EXHAUSTED;
+}
+
+bool IsUnauthenticated(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAUTHENTICATED;
+}
+
+bool IsUnavailable(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNAVAILABLE;
+}
+
+bool IsUnimplemented(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNIMPLEMENTED;
+}
+
+bool IsUnknown(const Status& status) {
+  return status.code() == tensorflow::errors::Code::UNKNOWN;
 }
 
 Status AbortedError(absl::string_view message) {
