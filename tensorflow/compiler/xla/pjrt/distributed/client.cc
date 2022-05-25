@@ -55,6 +55,15 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  // TODO(b/233099439): Implement and test this.
+  xla::Status KeyValueDelete(std::string key) override {
+    return tensorflow::errors::Unimplemented("Unimplemented.");
+  }
+  // TODO(b/233099439): Implement and test this.
+  xla::Status WaitAtBarrier(std::string barrier_id,
+                            absl::Duration timeout) override {
+    return tensorflow::errors::Unimplemented("Unimplemented.");
+  }
 
  private:
   // Entry point for the heartbeat thread.
@@ -118,6 +127,9 @@ class DistributedRuntimeCoordinationServiceClient
   xla::StatusOr<std::string> BlockingKeyValueGet(
       std::string key, absl::Duration timeout) override;
   xla::Status KeyValueSet(std::string key, std::string value) override;
+  xla::Status KeyValueDelete(std::string key) override;
+  xla::Status WaitAtBarrier(std::string barrier_id,
+                            absl::Duration timeout) override;
 
  private:
   std::unique_ptr<tensorflow::CoordinationServiceAgent> coord_agent_;
@@ -486,6 +498,15 @@ DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
 xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
     std::string key, std::string value) {
   return coord_agent_->InsertKeyValue(key, value);
+}
+
+xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
+    std::string key) {
+  return coord_agent_->DeleteKeyValue(key);
+}
+xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
+    std::string barrier_id, absl::Duration timeout) {
+  return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
 }
 
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(

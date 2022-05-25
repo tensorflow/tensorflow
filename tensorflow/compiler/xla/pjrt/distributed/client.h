@@ -112,6 +112,18 @@ class DistributedRuntimeClient {
       std::string key, absl::Duration timeout) = 0;
 
   virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
+
+  // The following APIs are not implemented by default.
+  // TODO(b/233099439): Implement in default distributed runtime service.
+  virtual xla::Status KeyValueDelete(std::string key) = 0;
+
+  // Blocks until all nodes are at the barrier or the barrier times out.
+  // `barrier_id` should be unique across barriers. Once the barrier has passed
+  // or failed, subsequent calls will not block, and immediately respond with
+  // the previous result.
+  // TODO(b/233099439): Implement in default distributed runtime service.
+  virtual xla::Status WaitAtBarrier(std::string barrier_id,
+                                    absl::Duration timeout) = 0;
 };
 
 // Creates a distributed runtime client.
