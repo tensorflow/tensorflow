@@ -20,6 +20,8 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -527,6 +529,64 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 // -------------------------------------------------------------------------- //
 
+namespace {
+struct Cholesky {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           jitrt::MemrefView operand, jitrt::MemrefView a,
+                           jitrt::MemrefView workspace, jitrt::MemrefView info,
+                           int64_t batch_size, int64_t n, int64_t uplo) const;
+  static Cholesky Handler() { return Cholesky(); }
+};
+}  // namespace
+
+LogicalResult Cholesky::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, jitrt::MemrefView operand,
+    jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
+    int64_t batch_size, int64_t n, int64_t uplo) const {
+  se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
+  se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
+  se::DeviceMemoryBase workspace_buffer = GetDeviceAddress(workspace);
+  se::DeviceMemoryBase info_buffer = GetDeviceAddress(info);
+
+  VLOG(3) << "Running Cholesky";
+  se::Stream* stream = run_options->stream();
+
+  // Copy operand to the a buffer if they are different.
+  if (a.data != operand.data)
+    stream->ThenMemcpy(&a_buffer, operand_buffer, operand_buffer.size());
+
+  CholeskyParams params{
+      n,        batch_size,       static_cast<se::blas::UpperLower>(uplo),
+      a_buffer, workspace_buffer, info_buffer};
+  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                              ToPrimitiveType(operand.dtype), &params, stream);
+  if (!executed.ok()) return failure();
+
+  return success();
+}
+
+static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .Arg<jitrt::MemrefView>()  // operand
+                             .Arg<jitrt::MemrefView>()  // a
+                             .Arg<jitrt::MemrefView>()  // workspace
+                             .Arg<jitrt::MemrefView>()  // info
+                             .Attr<int64_t>("batch_size")
+                             .Attr<int64_t>("n")
+                             .Attr<int64_t>("uplo")  // se::blas::UpperLower
+                             .To<RuntimeChecks()>(Cholesky::Handler())
+                             .release();
+
+  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+}
+
+// -------------------------------------------------------------------------- //
+
 SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
   SymbolMap symbol_map;
 
@@ -535,6 +595,7 @@ SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
+  bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
   bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   bind("xla.gpu.gemm", &xla::gpu::Gemm);
   bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
