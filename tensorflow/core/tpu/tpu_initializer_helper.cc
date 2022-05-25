@@ -128,7 +128,13 @@ Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
-  std::string load_library_override = absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
+  const char* env_value = getenv("TPU_LOAD_LIBRARY");
+  if (!env_value) {
+    return errors::FailedPrecondition(
+        "TPU_LOAD_LIBRARY environment variable not defined");
+  }
+
+  std::string load_library_override = absl::StrCat(env_value);
 
   if (load_library_override == "1") {
     return Status::OK();
