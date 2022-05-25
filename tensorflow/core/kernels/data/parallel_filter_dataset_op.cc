@@ -174,7 +174,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       {
         mutex_lock l(*mu_);
         EnsureThreadsStarted(ctx);
-        while (ShouldWait(&result)) {
+        while (ShouldWait(ctx, &result)) {
           RecordStop(ctx);
           cond_var_->wait(l);
           RecordStart(ctx);
@@ -401,7 +401,6 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
-        RecordBufferDequeue(ctx, *out_tensors);
         *end_of_sequence = false;
         return Status::OK();
       }
@@ -458,7 +457,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     // Determines whether the caller needs to wait for a result. Upon returning
     // false, `result` will point to the result and the result is fully
     // resolved, i.e. the predicate computation is finished.
-    bool ShouldWait(std::shared_ptr<InvocationResult>* result)
+    bool ShouldWait(IteratorContext* ctx,
+                    std::shared_ptr<InvocationResult>* result)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (cancelled_) {
         return false;
@@ -479,6 +479,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
              invocation_results_.front()->notification.HasBeenNotified() &&
              PredicateReady(invocation_results_.front().get()) &&
              !GetPredicateValue(invocation_results_.front().get())) {
+        RecordBufferDequeue(ctx, invocation_results_.front()->return_values);
         invocation_results_.pop_front();
         // A buffer is freed, notify all so that a new call can start.
         cond_var_->notify_all();
@@ -506,6 +507,12 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
             invocation_results_.front()->notification.HasBeenNotified()) {
           std::swap(*result, invocation_results_.front());
           invocation_results_.pop_front();
+          // End of input result is not recorded in the model proto when the
+          // invocation result was created. It should not be recorded when it is
+          // popped either.
+          if (!(*result)->end_of_input) {
+            RecordBufferDequeue(ctx, (*result)->return_values);
+          }
           cond_var_->notify_all();
           return false;
         }
