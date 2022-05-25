@@ -354,19 +354,14 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 }
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space, bool step_info_only) {
-  std::vector<XPlane*> device_traces =
-      FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
-  for (XPlane* plane : device_traces) {
-    DeriveStepEventsFromGroups(group_metadata_map, plane);
-  }
-  if (step_info_only) return;
+                              XSpace* space) {
   // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
   // to look up tensorflow op name from hlo_module/hlo_op.
   auto dummy_symbol_resolver =
       [](absl::optional<uint64_t> program_id, absl::string_view hlo_module,
          absl::string_view hlo_op) { return Symbol(); };
-  for (XPlane* plane : device_traces) {
+  for (XPlane* plane : FindMutablePlanesWithPrefix(space, kGpuPlanePrefix)) {
+    DeriveStepEventsFromGroups(group_metadata_map, plane);
     DeriveEventsFromAnnotations(dummy_symbol_resolver, plane);
   }
 }

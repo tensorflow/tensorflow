@@ -148,7 +148,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 // Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space, bool step_info_only = false);
+                              XSpace* space);
 
 }  // namespace profiler
 }  // namespace tensorflow
