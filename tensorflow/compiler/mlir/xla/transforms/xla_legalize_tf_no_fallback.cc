@@ -68,7 +68,6 @@ void LegalizeTFNoFallback::runOnOperation() {
   target.addLegalDialect<arith::ArithmeticDialect>();
   target.addLegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
