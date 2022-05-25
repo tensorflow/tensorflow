@@ -266,7 +266,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
     result.Append(", alias_passthrough_params=true");
   }
   if (config_.has_entry_computation_layout()) {
-    LOG(ERROR) << "HAS CONFIG " << this->name();
     result.Append(", entry_computation_layout={");
     result.Append(entry_computation_layout().ToString());
     result.Append("}");
