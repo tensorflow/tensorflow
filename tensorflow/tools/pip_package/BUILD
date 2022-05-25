@@ -218,6 +218,7 @@ filegroup(
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
+        "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@pthreadpool//:LICENSE",
