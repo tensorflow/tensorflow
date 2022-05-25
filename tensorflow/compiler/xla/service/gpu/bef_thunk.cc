@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
