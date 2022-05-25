@@ -35,6 +35,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:c_shims_test_util",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
+        "//tensorflow/lite/java/src/main/native:jni_utils",
         "//tensorflow/lite/java/src/main/native:native_framework_only",
     ],
     deps = [
@@ -59,6 +60,7 @@ cc_library_with_tflite(
     tflite_deps = [
         "//tensorflow/lite/core/shims:c_shims_test_util",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
+        "//tensorflow/lite/java/src/main/native:jni_utils",
         "//tensorflow/lite/java/src/main/native:native_stable",
         "//tensorflow/lite/java/src/main/native:native_stable_framework_only",
     ],
